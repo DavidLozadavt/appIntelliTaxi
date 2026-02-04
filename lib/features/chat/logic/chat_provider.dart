@@ -10,6 +10,7 @@ import 'package:intellitaxi/features/chat/data/activacion_chat_model.dart'
 import 'package:intellitaxi/features/chat/services/chat_service.dart';
 import 'package:pusher_channels_flutter/pusher_channels_flutter.dart';
 
+
 class ChatProvider with ChangeNotifier {
   final ChatService _chatService = ChatService();
   PusherChannelsFlutter? _pusher;

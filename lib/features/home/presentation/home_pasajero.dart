@@ -13,6 +13,7 @@ import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/places_service.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/rides/widgets/requesting_service_modal.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -28,7 +29,7 @@ class _HomePasajeroState extends State<HomePasajero>
   GoogleMapController? _mapController;
   Position? _currentPosition;
   bool _isLoadingLocation = true;
-  String _locationMessage = 'Obteniendo ubicación...';
+  String _locationMessage = 'Verificando tu ubicación actual con GPS de alta precisión...';
   Brightness? _lastBrightness;
 
   // Para el bottom sheet animado
@@ -116,35 +117,166 @@ class _HomePasajeroState extends State<HomePasajero>
         // Mapa de Google Maps
         _currentPosition == null
             ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (_isLoadingLocation)
-                      const CircularProgressIndicator()
-                    else
-                      Icon(
-                        Icons.location_off,
-                        size: 64,
-                        color: Colors.grey.shade400,
-                      ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _locationMessage,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey.shade600,
-                      ),
-                      textAlign: TextAlign.center,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        AppColors.accent.withOpacity(0.05),
+                        Colors.white,
+                      ],
                     ),
-                    if (!_isLoadingLocation) ...[
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        onPressed: _initializeLocation,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Reintentar'),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Animación de ubicación
+                      Container(
+                        width: 140,
+                        height: 140,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: _isLoadingLocation
+                                ? [
+                                    AppColors.accent.withOpacity(0.2),
+                                    AppColors.accent.withOpacity(0.05),
+                                  ]
+                                : [
+                                    Colors.grey.withOpacity(0.2),
+                                    Colors.grey.withOpacity(0.05),
+                                  ],
+                          ),
+                          boxShadow: _isLoadingLocation
+                              ? [
+                                  BoxShadow(
+                                    color: AppColors.accent.withOpacity(0.2),
+                                    blurRadius: 30,
+                                    spreadRadius: 10,
+                                  ),
+                                ]
+                              : [],
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 90,
+                            height: 90,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _isLoadingLocation
+                                  ? AppColors.accent.withOpacity(0.15)
+                                  : Colors.grey.withOpacity(0.15),
+                            ),
+                            child: Center(
+                              child: _isLoadingLocation
+                                  ? Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.location_on_rounded,
+                                          size: 45,
+                                          color: AppColors.accent,
+                                        ),
+                                        SizedBox(
+                                          width: 90,
+                                          height: 90,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 3,
+                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                              AppColors.accent,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Icon(
+                                      Icons.location_off_rounded,
+                                      size: 45,
+                                      color: Colors.grey.shade400,
+                                    ),
+                            ),
+                          ),
+                        ),
                       ),
+                      const SizedBox(height: 32),
+                      // Título
+                      Text(
+                        _isLoadingLocation 
+                            ? 'Conectando GPS' 
+                            : 'Ubicación no disponible',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade800,
+                          letterSpacing: -0.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      // Mensaje descriptivo
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                        child: Text(
+                          _locationMessage,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey.shade600,
+                            height: 1.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      // Botón de reintentar
+                      if (!_isLoadingLocation) ...[
+                        Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.accent.withOpacity(0.3),
+                                blurRadius: 15,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
+                            onPressed: _initializeLocation,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.accent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 18,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.refresh_rounded, size: 22),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Reintentar conexión',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               )
             : GoogleMap(
@@ -922,7 +1054,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
   Future<void> _getCurrentLocation() async {
     try {
-      setState(() => _locationMessage = 'Obteniendo ubicación...');
+      setState(() => _locationMessage = 'Verificando tu ubicación actual con GPS de alta precisión...');
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -932,7 +1064,7 @@ class _HomePasajeroState extends State<HomePasajero>
         setState(() {
           _currentPosition = position;
           _isLoadingLocation = false;
-          _locationMessage = 'Ubicación obtenida';
+          _locationMessage = 'Perfecto. Tu ubicación ha sido verificada y está lista para solicitar servicio';
 
           // Configurar origen por defecto
           _selectedOrigin = TripLocation.currentLocation(
@@ -1332,17 +1464,38 @@ class _HomePasajeroState extends State<HomePasajero>
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    isDelivery
-                        ? '📦 Buscando conductor para tu domicilio...'
-                        : '🚖 Buscando conductor cercano...',
-                  ),
-                  backgroundColor: isDelivery ? Colors.orange : Colors.green,
+
+              // Mostrar el modal épico de solicitud
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => RequestingServiceModal(
+                  isDelivery: isDelivery,
+                  origin: _selectedOrigin!.name,
+                  destination: _selectedDestination!.name,
+                  distance: _routeInfo!.distance,
+                  duration: _routeInfo!.duration,
+                  price: _routeInfo!.formattedPrice,
                 ),
               );
-              // Aquí integrarías con tu backend con el tipo de servicio
+
+              // Aquí integrarías con tu backend
+              // Simulación: cerrar el modal después de 5 segundos
+              Future.delayed(const Duration(seconds: 5), () {
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isDelivery
+                            ? '✅ Conductor asignado para tu domicilio'
+                            : '✅ Conductor en camino a tu ubicación',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              });
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: isDelivery

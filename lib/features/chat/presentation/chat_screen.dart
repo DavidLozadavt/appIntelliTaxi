@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
 
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 

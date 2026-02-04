@@ -17,7 +17,7 @@ class _HomeConductorState extends State<HomeConductor> {
   GoogleMapController? _mapController;
   Position? _currentPosition;
   bool _isLoadingLocation = true;
-  String _locationMessage = 'Obteniendo ubicación...';
+  String _locationMessage = 'Estableciendo conexión satelital para rastreo en tiempo real...';
   bool _isOnline = true;
   Brightness? _lastBrightness;
 
@@ -102,7 +102,7 @@ class _HomeConductorState extends State<HomeConductor> {
   Future<void> _getCurrentLocation() async {
     try {
       setState(() {
-        _locationMessage = 'Obteniendo ubicación...';
+        _locationMessage = 'Estableciendo conexión satelital para rastreo en tiempo real...';
       });
 
       Position position = await Geolocator.getCurrentPosition(
@@ -114,7 +114,7 @@ class _HomeConductorState extends State<HomeConductor> {
       setState(() {
         _currentPosition = position;
         _isLoadingLocation = false;
-        _locationMessage = 'Ubicación obtenida';
+        _locationMessage = 'Sistema GPS activo. Estás visible para pasajeros cercanos';
       });
 
       // Mover la cámara a la ubicación actual
