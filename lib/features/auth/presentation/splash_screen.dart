@@ -134,7 +134,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ],
                   ),
                   child: Image.asset(
-                    'assets/images/erp_logo.png',
+                    'assets/images/intellitaxi.png',
                     height: size.height * 0.25,
                   ),
                 );

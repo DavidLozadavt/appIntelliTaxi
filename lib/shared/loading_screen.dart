@@ -55,7 +55,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                 ],
               ),
               child: Image.asset(
-                'assets/images/erp_logo.png',
+                'assets/images/intellitaxi.png',
                 height: 48,
                 width: 48,
               ),

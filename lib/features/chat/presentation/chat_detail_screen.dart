@@ -226,7 +226,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           body: Container(
             decoration: BoxDecoration(
               image: DecorationImage(
-                image: const AssetImage("assets/images/erp_logo.png"),
+                image: const AssetImage("assets/images/intellitaxi.png"),
                 fit: BoxFit.contain,
                 alignment: Alignment.center,
                 scale: 3.3,
