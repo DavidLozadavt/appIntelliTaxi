@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Esta aplicación necesita acceder a tu ubicación para mostrarte en el mapa y conectarte con pasajeros cercanos.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Esta aplicación necesita acceso continuo a tu ubicación para rastrear viajes y recibir solicitudes incluso cuando no estés usando la app.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Esta aplicación necesita acceso a tu ubicación para mostrarte en el mapa, conectarte con pasajeros y rastrear viajes.</string>
 </dict>
 </plist>
