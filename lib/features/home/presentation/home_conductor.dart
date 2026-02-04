@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:intellitaxi/core/constants/map_styles.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -18,11 +19,27 @@ class _HomeConductorState extends State<HomeConductor> {
   bool _isLoadingLocation = true;
   String _locationMessage = 'Obteniendo ubicación...';
   bool _isOnline = true;
+  Brightness? _lastBrightness;
 
   @override
   void initState() {
     super.initState();
     _initializeLocation();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final currentBrightness = Theme.of(context).brightness;
+
+    // Si el tema cambió y el mapa está cargado, actualizar el estilo
+    if (_lastBrightness != null &&
+        _lastBrightness != currentBrightness &&
+        _mapController != null) {
+      _setMapStyle(_mapController!);
+    }
+
+    _lastBrightness = currentBrightness;
   }
 
   @override
@@ -119,6 +136,19 @@ class _HomeConductorState extends State<HomeConductor> {
     }
   }
 
+  Future<void> _setMapStyle(GoogleMapController controller) async {
+    // Detectar el tema actual
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    try {
+      await controller.setMapStyle(
+        isDarkMode ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
+      );
+    } catch (e) {
+      // Ignora si hay error al aplicar el estilo
+    }
+  }
+
   void _showPermissionDialog() {
     showDialog(
       context: context,
@@ -197,6 +227,7 @@ class _HomeConductorState extends State<HomeConductor> {
                 zoomControlsEnabled: false,
                 onMapCreated: (GoogleMapController controller) {
                   _mapController = controller;
+                  _setMapStyle(controller);
                 },
                 markers: {
                   Marker(
@@ -237,7 +268,7 @@ class _HomeConductorState extends State<HomeConductor> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: _isOnline
-                          ? [Colors.green.shade400, Colors.green.shade600]
+                          ? [Colors.deepOrange, Colors.orangeAccent]
                           : [Colors.grey.shade400, Colors.grey.shade600],
                     ),
                     borderRadius: BorderRadius.circular(30),
