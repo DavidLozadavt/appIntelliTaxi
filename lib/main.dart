@@ -15,11 +15,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
 import 'features/auth/logic/auth_provider.dart';
-import 'features/auth/presentation/splash_screen.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/navigation_screen.dart';
 import 'features/onboarding/presentation/initial_screen.dart';
