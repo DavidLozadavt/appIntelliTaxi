@@ -1,19 +1,19 @@
 // lib/config/app_config.dart
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class AppConfig {
   // URL base de tu API Laravel
-  static const String baseUrl = 'https://pre-rapidotambo-erp.virtualt.org/api/'; // Android Emulator
-  // static const String baseUrl = 'http://localhost:8000/api'; // iOS Simulator
-  // static const String baseUrl = 'https://tu-dominio.com/api'; // Producción
+  static String get baseUrl => dotenv.env['BASE_URL'] ?? 'https://tu-servidor.com/api/';
   
   // Google Maps API Key
-  static const String googleMapsApiKey = 'AIzaSyDN2nvuXUru3ZN1N5cr1oMpqkZRA6d4es0';
+  static String get googleMapsApiKey => dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
   
   // Pusher Configuration
-  static const String pusherAppKey = '6eb089dff17ffe3c7c47';
-  static const String pusherCluster = 'mt1';
+  static String get pusherAppKey => dotenv.env['PUSHER_APP_KEY'] ?? '';
+  static String get pusherCluster => dotenv.env['PUSHER_CLUSTER'] ?? 'mt1';
   
   // Configuración de la app
-  static const int defaultRadius = 20; // km
-  static const int offerExpirationMinutes = 5;
-  static const double defaultZoom = 15.0;
+  static int get defaultRadius => int.tryParse(dotenv.env['DEFAULT_RADIUS'] ?? '20') ?? 20;
+  static int get offerExpirationMinutes => int.tryParse(dotenv.env['OFFER_EXPIRATION_MINUTES'] ?? '5') ?? 5;
+  static double get defaultZoom => double.tryParse(dotenv.env['DEFAULT_ZOOM'] ?? '15.0') ?? 15.0;
 }
