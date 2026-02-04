@@ -112,7 +112,7 @@ class HomeConductor extends StatelessWidget {
                           onChanged: (value) {
                             // Cambiar estado del conductor
                           },
-                          activeColor: Colors.green,
+                          activeThumbColor: Colors.green,
                         ),
                       ],
                     ),

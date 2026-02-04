@@ -1,7 +1,7 @@
 import 'package:intellitaxi/features/home/presentation/custom_drawer.dart';
 import 'package:intellitaxi/features/home/presentation/home_conductor.dart';
 import 'package:intellitaxi/features/home/presentation/home_pasajero.dart';
-import 'package:intellitaxi/Profile/presentation/profile_screen.dart';
+import 'package:intellitaxi/features/Profile/presentation/profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../auth/logic/auth_provider.dart';
@@ -36,7 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Verificar rol de conductor (driver)
         if (roles.any(
-          (r) => ['CONDUCTOR', 'MOTORISTA', 'DRIVER'].contains(r),
+          (r) => ['CONDUCTOR', 'MOTORISTA', 'DRIVER', 'Admin'].contains(r),
         )) {
           body = const HomeConductor(stories: []);
         }

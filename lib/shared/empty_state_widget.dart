@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
 class EmptyStateWidget extends StatelessWidget {

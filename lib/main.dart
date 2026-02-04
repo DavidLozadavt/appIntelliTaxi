@@ -1,7 +1,6 @@
 import 'package:intellitaxi/core/services/connectivity_provider.dart';
 import 'package:intellitaxi/core/theme/theme_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
-import 'package:intellitaxi/core/theme/app_colors.dart';
 
 import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
@@ -107,12 +106,10 @@ class MyApp extends StatelessWidget {
                 secondary: AppColors.secondary,
                 tertiary: AppColors.accent,
                 surface: AppColors.darkSurface,
-                background: AppColors.darkBackground,
                 error: AppColors.error,
                 onPrimary: AppColors.darkOnPrimary,
                 onSecondary: AppColors.darkOnSecondary,
                 onSurface: AppColors.darkOnSurface,
-                onBackground: AppColors.darkOnBackground,
                 onError: AppColors.darkOnError,
               ),
             ),

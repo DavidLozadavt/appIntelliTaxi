@@ -1,5 +1,5 @@
 
-import 'package:intellitaxi/Profile/presentation/profile_body_screen.dart';
+import 'package:intellitaxi/features/Profile/presentation/profile_body_screen.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/shared/loading_screen.dart';
 import 'package:flutter/material.dart';
