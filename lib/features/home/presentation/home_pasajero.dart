@@ -1,11 +1,18 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
 import 'package:intellitaxi/core/constants/map_styles.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/places_service.dart';
+import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -29,7 +36,7 @@ class _HomePasajeroState extends State<HomePasajero>
   late Animation<double> _heightAnimation;
   bool _isExpanded = false;
   final double _minHeight = 0.15; // 15% para modo minimizado
-  final double _maxHeight = 0.6; // 60% para modo expandido
+  final double _maxHeight = 0.7; // 60% para modo expandido
 
   // Para las búsquedas
   final PlacesService _placesService = PlacesService();
@@ -46,13 +53,18 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _isSearchingOrigin = false;
   bool _isSearchingDestination = false;
 
+  // Tipo de servicio: 'taxi' o 'domicilio'
+  String _serviceType = 'taxi';
+
   // Marcadores y polilíneas
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
+  BitmapDescriptor? _userMarkerIcon;
 
   @override
   void initState() {
     super.initState();
+    _createUserMarkerIcon();
     _initializeLocation();
 
     // Animación
@@ -256,12 +268,16 @@ class _HomePasajeroState extends State<HomePasajero>
                 height: 50,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.deepOrange, Colors.orangeAccent],
+                    colors: _serviceType == 'taxi'
+                        ? [Colors.deepOrange, Colors.orangeAccent]
+                        : [Colors.green.shade600, Colors.green.shade400],
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.directions_car,
+                child: Icon(
+                  _serviceType == 'taxi'
+                      ? Icons.local_taxi
+                      : Icons.shopping_bag,
                   color: Colors.white,
                   size: 28,
                 ),
@@ -271,9 +287,11 @@ class _HomePasajeroState extends State<HomePasajero>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '¿A dónde vas?',
-                      style: TextStyle(
+                    Text(
+                      _serviceType == 'taxi'
+                          ? '¿A dónde vas?'
+                          : 'Enviar domicilio',
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
@@ -305,9 +323,33 @@ class _HomePasajeroState extends State<HomePasajero>
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text(
-          '¿A dónde vas?',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        // Selector de tipo de servicio
+        Row(
+          children: [
+            Expanded(
+              child: _buildServiceTypeButton(
+                type: 'taxi',
+                icon: Icons.local_taxi,
+                title: 'Taxi',
+                subtitle: 'Viaje rápido',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildServiceTypeButton(
+                type: 'domicilio',
+                icon: Icons.shopping_bag,
+                title: 'Domicilio',
+                subtitle: 'Envío rápido',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        Text(
+          _serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 20),
 
@@ -455,15 +497,22 @@ class _HomePasajeroState extends State<HomePasajero>
             child: ElevatedButton(
               onPressed: _requestRide,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade600,
+                backgroundColor: _serviceType == 'taxi'
+                    ? Colors.green.shade600
+                    : Colors.orange.shade600,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              child: const Text(
-                'Solicitar viaje',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              child: Text(
+                _serviceType == 'taxi'
+                    ? 'Solicitar viaje'
+                    : 'Solicitar domicilio',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
@@ -499,6 +548,83 @@ class _HomePasajeroState extends State<HomePasajero>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildServiceTypeButton({
+    required String type,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final isSelected = _serviceType == type;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _serviceType = type;
+          // Limpiar la ruta al cambiar de tipo
+          _clearRoute();
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (type == 'taxi' ? Colors.deepOrange : Colors.green.shade600)
+              : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? (type == 'taxi' ? Colors.deepOrange : Colors.green.shade600)
+                : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+            width: 2,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: isSelected
+                  ? Colors.white
+                  : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected
+                        ? Colors.white
+                        : theme.textTheme.bodyLarge?.color,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isSelected
+                        ? Colors.white.withOpacity(0.9)
+                        : (isDark
+                              ? Colors.grey.shade400
+                              : Colors.grey.shade600),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -630,6 +756,137 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   // Métodos de funcionalidad
+
+  // Crear icono de marcador personalizado con la foto de perfil del usuario
+  Future<void> _createUserMarkerIcon() async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userPhotoUrl = authProvider.persona?.rutaFotoUrl;
+
+      if (userPhotoUrl != null && userPhotoUrl.isNotEmpty) {
+        // Intentar cargar la foto desde la URL
+        final icon = await _getMarkerIconFromUrl(userPhotoUrl);
+        if (icon != null) {
+          setState(() => _userMarkerIcon = icon);
+          return;
+        }
+      }
+
+      // Si no hay foto o falla la carga, usar icono por defecto
+      setState(
+        () => _userMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
+          BitmapDescriptor.hueAzure,
+        ),
+      );
+    } catch (e) {
+      // En caso de error, usar marcador por defecto
+      setState(
+        () => _userMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
+          BitmapDescriptor.hueAzure,
+        ),
+      );
+    }
+  }
+
+  Future<BitmapDescriptor?> _getMarkerIconFromUrl(String imageUrl) async {
+    try {
+      // Descargar la imagen
+      final response = await http.get(Uri.parse(imageUrl));
+      if (response.statusCode != 200) return null;
+
+      // Convertir a ui.Image
+      final Uint8List imageData = response.bodyBytes;
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        imageData,
+        targetWidth: 150,
+        targetHeight: 150,
+      );
+      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+
+      // Crear un canvas para dibujar el marcador circular
+      final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+      final Canvas canvas = Canvas(pictureRecorder);
+      final double size = 150.0;
+
+      // Dibujar sombra exterior
+      final Paint shadowPaint = Paint()
+        ..color = Colors.black.withOpacity(0.4)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+      canvas.drawCircle(
+        Offset(size / 2 + 2, size / 2 + 2),
+        (size / 2) - 2,
+        shadowPaint,
+      );
+
+      // Dibujar círculo blanco como borde exterior
+      final Paint borderPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+        Offset(size / 2, size / 2),
+        (size / 2) - 2,
+        borderPaint,
+      );
+
+      // Guardar estado del canvas
+      canvas.save();
+
+      // Recortar la imagen en forma circular
+      final Path clipPath = Path()
+        ..addOval(
+          Rect.fromCircle(
+            center: Offset(size / 2, size / 2),
+            radius: (size / 2) - 8,
+          ),
+        );
+      canvas.clipPath(clipPath);
+
+      // Dibujar la imagen
+      canvas.drawImageRect(
+        frameInfo.image,
+        Rect.fromLTWH(
+          0,
+          0,
+          frameInfo.image.width.toDouble(),
+          frameInfo.image.height.toDouble(),
+        ),
+        Rect.fromLTWH(8, 8, size - 16, size - 16),
+        Paint()..filterQuality = FilterQuality.high,
+      );
+
+      // Restaurar estado del canvas
+      canvas.restore();
+
+      // Dibujar borde de color accent (naranja)
+      final Paint accentBorderPaint = Paint()
+        ..color = AppColors.accent
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5;
+      canvas.drawCircle(
+        Offset(size / 2, size / 2),
+        (size / 2) - 5,
+        accentBorderPaint,
+      );
+
+      // Convertir a imagen
+      final ui.Image markerImage = await pictureRecorder.endRecording().toImage(
+        size.toInt(),
+        size.toInt(),
+      );
+      final ByteData? byteData = await markerImage.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      final Uint8List? pngBytes = byteData?.buffer.asUint8List();
+
+      if (pngBytes != null) {
+        return BitmapDescriptor.fromBytes(pngBytes);
+      }
+    } catch (e) {
+      print('Error creando marcador personalizado: $e');
+    }
+    return null;
+  }
+
   Future<void> _initializeLocation() async {
     setState(() {
       _isLoadingLocation = true;
@@ -683,6 +940,21 @@ class _HomePasajeroState extends State<HomePasajero>
             lng: position.longitude,
           );
           _originController.text = 'Mi ubicación actual';
+
+          // Agregar marcador de ubicación del usuario si no hay ruta
+          if (_markers.isEmpty && _userMarkerIcon != null) {
+            _markers = {
+              Marker(
+                markerId: const MarkerId('user_location'),
+                position: LatLng(position.latitude, position.longitude),
+                icon: _userMarkerIcon!,
+                infoWindow: const InfoWindow(
+                  title: 'Tú',
+                  snippet: 'Tu ubicación actual',
+                ),
+              ),
+            };
+          }
         });
 
         if (_mapController != null) {
@@ -775,6 +1047,9 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _selectOrigin(PlacePrediction prediction) async {
+    // Remover listener temporalmente
+    _originController.removeListener(_onOriginChanged);
+
     final details = await _placesService.getPlaceDetails(prediction.placeId);
 
     if (details != null && mounted) {
@@ -788,11 +1063,18 @@ class _HomePasajeroState extends State<HomePasajero>
         );
         _originController.text = prediction.mainText;
         _originPredictions = [];
+        _isSearchingOrigin = false;
       });
+
+      // Restaurar listener
+      _originController.addListener(_onOriginChanged);
     }
   }
 
   Future<void> _selectDestination(PlacePrediction prediction) async {
+    // Remover listener temporalmente
+    _destinationController.removeListener(_onDestinationChanged);
+
     final details = await _placesService.getPlaceDetails(prediction.placeId);
 
     if (details != null && mounted) {
@@ -806,7 +1088,11 @@ class _HomePasajeroState extends State<HomePasajero>
         );
         _destinationController.text = prediction.mainText;
         _destinationPredictions = [];
+        _isSearchingDestination = false;
       });
+
+      // Restaurar listener
+      _destinationController.addListener(_onDestinationChanged);
     }
   }
 
@@ -865,18 +1151,34 @@ class _HomePasajeroState extends State<HomePasajero>
         };
 
         // Crear marcadores
-        _markers = {
+        final Set<Marker> newMarkers = {};
+
+        // Si el origen es la ubicación actual, usar foto de perfil
+        final bool isOriginCurrentLocation =
+            _selectedOrigin!.name == 'Mi ubicación actual' ||
+            (_currentPosition != null &&
+                _selectedOrigin!.lat == _currentPosition!.latitude &&
+                _selectedOrigin!.lng == _currentPosition!.longitude);
+
+        // Marcador de origen
+        newMarkers.add(
           Marker(
             markerId: const MarkerId('origin'),
             position: originLatLng,
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueGreen,
-            ),
+            icon: (isOriginCurrentLocation && _userMarkerIcon != null)
+                ? _userMarkerIcon!
+                : BitmapDescriptor.defaultMarkerWithHue(
+                    BitmapDescriptor.hueGreen,
+                  ),
             infoWindow: InfoWindow(
-              title: 'Origen',
+              title: isOriginCurrentLocation ? 'Tu ubicación' : 'Origen',
               snippet: _selectedOrigin!.name,
             ),
           ),
+        );
+
+        // Marcador de destino
+        newMarkers.add(
           Marker(
             markerId: const MarkerId('destination'),
             position: destinationLatLng,
@@ -888,7 +1190,30 @@ class _HomePasajeroState extends State<HomePasajero>
               snippet: _selectedDestination!.name,
             ),
           ),
-        };
+        );
+
+        // Si hay ubicación actual y es diferente al origen, mostrar también la ubicación en tiempo real
+        if (_currentPosition != null &&
+            !isOriginCurrentLocation &&
+            _userMarkerIcon != null) {
+          newMarkers.add(
+            Marker(
+              markerId: const MarkerId('current_location'),
+              position: LatLng(
+                _currentPosition!.latitude,
+                _currentPosition!.longitude,
+              ),
+              icon: _userMarkerIcon!,
+              infoWindow: const InfoWindow(
+                title: 'Tu ubicación',
+                snippet: 'Ubicación en tiempo real',
+              ),
+              zIndex: 1, // Asegurar que esté encima de otros marcadores
+            ),
+          );
+        }
+
+        _markers = newMarkers;
       });
 
       // Ajustar cámara
@@ -957,14 +1282,31 @@ class _HomePasajeroState extends State<HomePasajero>
   void _requestRide() {
     if (_routeInfo == null) return;
 
+    final isDelivery = _serviceType == 'domicilio';
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Confirmar viaje'),
+        title: Text(isDelivery ? 'Confirmar domicilio' : 'Confirmar viaje'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Row(
+              children: [
+                Icon(
+                  isDelivery ? Icons.shopping_bag : Icons.local_taxi,
+                  color: isDelivery ? Colors.green.shade600 : Colors.deepOrange,
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isDelivery ? 'Servicio de domicilio' : 'Servicio de taxi',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
             Text('Origen: ${_selectedOrigin!.name}'),
             const SizedBox(height: 8),
             Text('Destino: ${_selectedDestination!.name}'),
@@ -974,10 +1316,10 @@ class _HomePasajeroState extends State<HomePasajero>
             const SizedBox(height: 8),
             Text(
               'Precio estimado: ${_routeInfo!.formattedPrice}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.deepOrange,
+                color: isDelivery ? Colors.green.shade600 : Colors.deepOrange,
               ),
             ),
           ],
@@ -991,15 +1333,21 @@ class _HomePasajeroState extends State<HomePasajero>
             onPressed: () {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('🚖 Buscando conductor cercano...'),
-                  backgroundColor: Colors.green,
+                SnackBar(
+                  content: Text(
+                    isDelivery
+                        ? '📦 Buscando conductor para tu domicilio...'
+                        : '🚖 Buscando conductor cercano...',
+                  ),
+                  backgroundColor: isDelivery ? Colors.orange : Colors.green,
                 ),
               );
-              // Aquí integrarías con tu backend
+              // Aquí integrarías con tu backend con el tipo de servicio
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green.shade600,
+              backgroundColor: isDelivery
+                  ? Colors.orange.shade600
+                  : Colors.green.shade600,
             ),
             child: const Text('Confirmar'),
           ),
