@@ -42,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         // Verificar rol de pasajero (passenger)
         else if (roles.any(
-          (r) => ['PASAJERO', 'PASSENGER', 'CLIENTE'].contains(r),
+          (r) => ['PASAJERO', 'PASSENGER', 'CLIENTE', 'AUXILIAR CONTAB'].contains(r),
         )) {
           body = const HomePasajero(stories: []);
         }

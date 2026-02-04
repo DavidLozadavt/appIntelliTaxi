@@ -1,276 +1,1009 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:intellitaxi/core/constants/map_styles.dart';
+import 'package:intellitaxi/features/rides/data/trip_location.dart';
+import 'package:intellitaxi/features/rides/services/routes_service.dart';
+import 'package:intellitaxi/features/rides/services/places_service.dart';
 
-class HomePasajero extends StatelessWidget {
+class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
 
   const HomePasajero({super.key, required this.stories});
 
   @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Sección de historias
-            if (stories.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 100,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: stories.length,
-                  itemBuilder: (context, index) {
-                    final story = stories[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 70,
-                            height: 70,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.blue.shade400,
-                                  Colors.purple.shade400,
-                                ],
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(3),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.grey.shade300,
-                                  image: story['image'] != null
-                                      ? DecorationImage(
-                                          image: NetworkImage(story['image']),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                ),
-                                child: story['image'] == null
-                                    ? const Icon(Icons.person, size: 35)
-                                    : null,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            story['title'] ?? 'Historia',
-                            style: const TextStyle(fontSize: 12),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
+  State<HomePasajero> createState() => _HomePasajeroState();
+}
 
-            // Botón principal para solicitar viaje
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: InkWell(
-                onTap: () {
-                  // Navegar a la pantalla de solicitud de viaje
-                  // Navigator.pushNamed(context, '/request-ride');
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          Icons.local_taxi,
-                          color: Colors.blue.shade700,
-                          size: 32,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '¿A dónde vas?',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Solicita tu viaje ahora',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+class _HomePasajeroState extends State<HomePasajero>
+    with SingleTickerProviderStateMixin {
+  GoogleMapController? _mapController;
+  Position? _currentPosition;
+  bool _isLoadingLocation = true;
+  String _locationMessage = 'Obteniendo ubicación...';
+  Brightness? _lastBrightness;
+
+  // Para el bottom sheet animado
+  late AnimationController _animationController;
+  late Animation<double> _heightAnimation;
+  bool _isExpanded = false;
+  final double _minHeight = 0.15; // 15% para modo minimizado
+  final double _maxHeight = 0.6; // 60% para modo expandido
+
+  // Para las búsquedas
+  final PlacesService _placesService = PlacesService();
+  final RoutesService _routesService = RoutesService();
+  final TextEditingController _originController = TextEditingController();
+  final TextEditingController _destinationController = TextEditingController();
+
+  TripLocation? _selectedOrigin;
+  TripLocation? _selectedDestination;
+  RouteInfo? _routeInfo;
+
+  List<PlacePrediction> _originPredictions = [];
+  List<PlacePrediction> _destinationPredictions = [];
+  bool _isSearchingOrigin = false;
+  bool _isSearchingDestination = false;
+
+  // Marcadores y polilíneas
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeLocation();
+
+    // Animación
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    _heightAnimation = Tween<double>(begin: _minHeight, end: _maxHeight)
+        .animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeInOut,
+          ),
+        );
+
+    // Listeners
+    _originController.addListener(_onOriginChanged);
+    _destinationController.addListener(_onDestinationChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final currentBrightness = Theme.of(context).brightness;
+    if (_lastBrightness != null &&
+        _lastBrightness != currentBrightness &&
+        _mapController != null) {
+      _setMapStyle(_mapController!);
+    }
+    _lastBrightness = currentBrightness;
+  }
+
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    _animationController.dispose();
+    _originController.dispose();
+    _destinationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Stack(
+      children: [
+        // Mapa de Google Maps
+        _currentPosition == null
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_isLoadingLocation)
+                      const CircularProgressIndicator()
+                    else
                       Icon(
-                        Icons.arrow_forward_ios,
+                        Icons.location_off,
+                        size: 64,
                         color: Colors.grey.shade400,
-                        size: 20,
+                      ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _locationMessage,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (!_isLoadingLocation) ...[
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _initializeLocation,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reintentar'),
                       ),
                     ],
-                  ),
+                  ],
                 ),
+              )
+            : GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: LatLng(
+                    _currentPosition!.latitude,
+                    _currentPosition!.longitude,
+                  ),
+                  zoom: 15,
+                ),
+                myLocationEnabled: true,
+                myLocationButtonEnabled: false,
+                compassEnabled: true,
+                mapToolbarEnabled: false,
+                zoomControlsEnabled: false,
+                polylines: _polylines,
+                markers: _markers,
+                onMapCreated: (GoogleMapController controller) {
+                  _mapController = controller;
+                  _setMapStyle(controller);
+                },
               ),
-            ),
-            const SizedBox(height: 24),
 
-            // Opciones rápidas
-            const Text(
-              'Opciones rápidas',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildQuickOption(
-                    context,
-                    icon: Icons.history,
-                    title: 'Historial',
-                    onTap: () {
-                      // Navigator.pushNamed(context, '/history');
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickOption(
-                    context,
-                    icon: Icons.favorite_border,
-                    title: 'Favoritos',
-                    onTap: () {
-                      // Navigator.pushNamed(context, '/favorites');
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildQuickOption(
-                    context,
-                    icon: Icons.payment,
-                    title: 'Pagos',
-                    onTap: () {
-                      // Navigator.pushNamed(context, '/payments');
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildQuickOption(
-                    context,
-                    icon: Icons.support_agent,
-                    title: 'Soporte',
-                    onTap: () {
-                      // Navigator.pushNamed(context, '/support');
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Promociones o información adicional
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.local_offer,
-                      color: Colors.orange.shade700,
-                      size: 32,
+        // Bottom Sheet Persistente
+        if (_currentPosition != null)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: AnimatedBuilder(
+              animation: _heightAnimation,
+              builder: (context, child) {
+                return GestureDetector(
+                  onVerticalDragUpdate: (details) {
+                    if (details.primaryDelta! < -5 && !_isExpanded) {
+                      _toggleSheet();
+                    } else if (details.primaryDelta! > 5 && _isExpanded) {
+                      _toggleSheet();
+                    }
+                  },
+                  child: Container(
+                    height: screenHeight * _heightAnimation.value,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, -5),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Promociones disponibles',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                    child: Column(
+                      children: [
+                        // Handle
+                        GestureDetector(
+                          onTap: _toggleSheet,
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 12, bottom: 8),
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(2),
                             ),
                           ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Revisa las ofertas especiales',
-                            style: TextStyle(fontSize: 14, color: Colors.grey),
-                          ),
-                        ],
+                        ),
+
+                        // Contenido
+                        if (!_isExpanded)
+                          _buildMinimizedContent()
+                        else
+                          Expanded(child: _buildExpandedContent()),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+        // Botón de centrar ubicación
+        if (_currentPosition != null)
+          Positioned(
+            top: 16,
+            right: 16,
+            child: FloatingActionButton.small(
+              onPressed: _centerToCurrentLocation,
+              backgroundColor: Colors.white,
+              child: const Icon(Icons.my_location, color: Colors.deepOrange),
+            ),
+          ),
+
+        // Botón de limpiar ruta
+        if (_routeInfo != null)
+          Positioned(
+            top: 70,
+            right: 16,
+            child: FloatingActionButton.small(
+              onPressed: _clearRoute,
+              backgroundColor: Colors.white,
+              child: const Icon(Icons.clear, color: Colors.red),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMinimizedContent() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.deepOrange, Colors.orangeAccent],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.directions_car,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '¿A dónde vas?',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _routeInfo != null
+                          ? '${_routeInfo!.distance} • ${_routeInfo!.formattedPrice}'
+                          : 'Toca para seleccionar destino',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
+              const Icon(Icons.keyboard_arrow_up, color: Colors.grey),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildQuickOption(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Icon(icon, size: 32, color: Colors.blue.shade700),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+  Widget _buildExpandedContent() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Text(
+          '¿A dónde vas?',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 20),
+
+        // Campo de origen
+        _buildLocationField(
+          controller: _originController,
+          label: 'Origen',
+          icon: Icons.my_location,
+          iconColor: Colors.green,
+          predictions: _originPredictions,
+          isSearching: _isSearchingOrigin,
+          onSelectPrediction: _selectOrigin,
+          onClear: () {
+            setState(() {
+              _originController.clear();
+              _selectedOrigin = null;
+              _originPredictions = [];
+            });
+          },
+        ),
+
+        const SizedBox(height: 16),
+
+        // Campo de destino
+        _buildLocationField(
+          controller: _destinationController,
+          label: 'Destino',
+          icon: Icons.location_on,
+          iconColor: Colors.red,
+          predictions: _destinationPredictions,
+          isSearching: _isSearchingDestination,
+          onSelectPrediction: _selectDestination,
+          onClear: () {
+            setState(() {
+              _destinationController.clear();
+              _selectedDestination = null;
+              _destinationPredictions = [];
+              _clearRoute();
+            });
+          },
+        ),
+
+        const SizedBox(height: 24),
+
+        // Botón de trazar ruta
+        if (_selectedOrigin != null &&
+            _selectedDestination != null &&
+            _routeInfo == null)
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton.icon(
+              onPressed: _drawRoute,
+              icon: const Icon(Icons.route),
+              label: const Text(
+                'Ver ruta en el mapa',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepOrange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+
+        // Información de la ruta
+        if (_routeInfo != null) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                width: 1,
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildInfoItem(
+                        icon: Icons.straighten,
+                        label: 'Distancia',
+                        value: _routeInfo!.distance,
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 40,
+                      color: isDark
+                          ? Colors.grey.shade700
+                          : Colors.grey.shade300,
+                    ),
+                    Expanded(
+                      child: _buildInfoItem(
+                        icon: Icons.access_time,
+                        label: 'Duración',
+                        value: _routeInfo!.duration,
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.payments,
+                      color: Colors.deepOrange,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Precio estimado:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _routeInfo!.formattedPrice,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepOrange,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Botón de solicitar viaje
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _requestRide,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text(
+                'Solicitar viaje',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 16),
+
+        // Info de búsqueda
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(isDark ? 0.2 : 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.blue.withOpacity(isDark ? 0.5 : 0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.blue.shade400, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Búsqueda limitada a Popayán y alrededores',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+                  ),
+                ),
               ),
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildInfoItem({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Column(
+      children: [
+        Icon(icon, color: Colors.deepOrange, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: theme.textTheme.bodyLarge?.color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocationField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required Color iconColor,
+    required List<PlacePrediction> predictions,
+    required bool isSearching,
+    required Function(PlacePrediction) onSelectPrediction,
+    required VoidCallback onClear,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+              width: 1,
+            ),
+          ),
+          child: TextField(
+            controller: controller,
+            style: TextStyle(color: theme.textTheme.bodyLarge?.color),
+            decoration: InputDecoration(
+              hintText: label,
+              hintStyle: TextStyle(
+                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              ),
+              prefixIcon: Icon(icon, color: iconColor),
+              suffixIcon: controller.text.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear, color: theme.iconTheme.color),
+                      onPressed: onClear,
+                    )
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+            ),
+          ),
+        ),
+
+        if (isSearching)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+
+        if (!isSearching && predictions.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            decoration: BoxDecoration(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                width: 1,
+              ),
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: predictions.length > 5 ? 5 : predictions.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final prediction = predictions[index];
+                return ListTile(
+                  leading: Icon(
+                    Icons.location_on_outlined,
+                    color: Colors.grey.shade600,
+                  ),
+                  title: Text(
+                    prediction.mainText,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  subtitle: Text(
+                    prediction.secondaryText,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  onTap: () => onSelectPrediction(prediction),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  // Métodos de funcionalidad
+  Future<void> _initializeLocation() async {
+    setState(() {
+      _isLoadingLocation = true;
+      _locationMessage = 'Verificando permisos...';
+    });
+
+    bool permissionGranted = await _checkAndRequestPermissions();
+
+    if (!permissionGranted) {
+      setState(() {
+        _isLoadingLocation = false;
+        _locationMessage = 'Permisos de ubicación denegados';
+      });
+      return;
+    }
+
+    await _getCurrentLocation();
+  }
+
+  Future<bool> _checkAndRequestPermissions() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return false;
+    }
+
+    var status = await Permission.location.status;
+    if (!status.isGranted) {
+      status = await Permission.location.request();
+    }
+
+    return status.isGranted;
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      setState(() => _locationMessage = 'Obteniendo ubicación...');
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+          _isLoadingLocation = false;
+          _locationMessage = 'Ubicación obtenida';
+
+          // Configurar origen por defecto
+          _selectedOrigin = TripLocation.currentLocation(
+            lat: position.latitude,
+            lng: position.longitude,
+          );
+          _originController.text = 'Mi ubicación actual';
+        });
+
+        if (_mapController != null) {
+          _mapController!.animateCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: LatLng(position.latitude, position.longitude),
+                zoom: 15,
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingLocation = false;
+          _locationMessage = 'Error al obtener ubicación';
+        });
+      }
+    }
+  }
+
+  Future<void> _setMapStyle(GoogleMapController controller) async {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    try {
+      await controller.setMapStyle(
+        isDarkMode ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
+      );
+    } catch (e) {
+      // Ignorar error
+    }
+  }
+
+  void _toggleSheet() {
+    setState(() {
+      _isExpanded = !_isExpanded;
+      if (_isExpanded) {
+        _animationController.forward();
+      } else {
+        _animationController.reverse();
+      }
+    });
+  }
+
+  void _onOriginChanged() {
+    if (_originController.text.isEmpty) {
+      setState(() {
+        _originPredictions = [];
+        _isSearchingOrigin = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearchingOrigin = true);
+
+    _placesService.getAutocompletePredictions(_originController.text).then((
+      predictions,
+    ) {
+      if (mounted) {
+        setState(() {
+          _originPredictions = predictions;
+          _isSearchingOrigin = false;
+        });
+      }
+    });
+  }
+
+  void _onDestinationChanged() {
+    if (_destinationController.text.isEmpty) {
+      setState(() {
+        _destinationPredictions = [];
+        _isSearchingDestination = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearchingDestination = true);
+
+    _placesService.getAutocompletePredictions(_destinationController.text).then(
+      (predictions) {
+        if (mounted) {
+          setState(() {
+            _destinationPredictions = predictions;
+            _isSearchingDestination = false;
+          });
+        }
+      },
+    );
+  }
+
+  Future<void> _selectOrigin(PlacePrediction prediction) async {
+    final details = await _placesService.getPlaceDetails(prediction.placeId);
+
+    if (details != null && mounted) {
+      setState(() {
+        _selectedOrigin = TripLocation.fromPlaceDetails(
+          placeId: prediction.placeId,
+          name: details.name,
+          address: details.address,
+          lat: details.lat,
+          lng: details.lng,
+        );
+        _originController.text = prediction.mainText;
+        _originPredictions = [];
+      });
+    }
+  }
+
+  Future<void> _selectDestination(PlacePrediction prediction) async {
+    final details = await _placesService.getPlaceDetails(prediction.placeId);
+
+    if (details != null && mounted) {
+      setState(() {
+        _selectedDestination = TripLocation.fromPlaceDetails(
+          placeId: prediction.placeId,
+          name: details.name,
+          address: details.address,
+          lat: details.lat,
+          lng: details.lng,
+        );
+        _destinationController.text = prediction.mainText;
+        _destinationPredictions = [];
+      });
+    }
+  }
+
+  Future<void> _drawRoute() async {
+    if (_selectedOrigin == null || _selectedDestination == null) return;
+
+    // Mostrar indicador de carga
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              SizedBox(width: 16),
+              Text('Trazando ruta...'),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    final originLatLng = LatLng(_selectedOrigin!.lat, _selectedOrigin!.lng);
+    final destinationLatLng = LatLng(
+      _selectedDestination!.lat,
+      _selectedDestination!.lng,
+    );
+
+    final routeInfo = await _routesService.getRoute(
+      origin: originLatLng,
+      destination: destinationLatLng,
+    );
+
+    if (routeInfo != null && mounted) {
+      setState(() {
+        _routeInfo = routeInfo;
+
+        // Crear polilínea
+        _polylines = {
+          Polyline(
+            polylineId: const PolylineId('route'),
+            points: routeInfo.polylinePoints,
+            color: Colors.deepOrange,
+            width: 5,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            jointType: JointType.round,
+          ),
+        };
+
+        // Crear marcadores
+        _markers = {
+          Marker(
+            markerId: const MarkerId('origin'),
+            position: originLatLng,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueGreen,
+            ),
+            infoWindow: InfoWindow(
+              title: 'Origen',
+              snippet: _selectedOrigin!.name,
+            ),
+          ),
+          Marker(
+            markerId: const MarkerId('destination'),
+            position: destinationLatLng,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueRed,
+            ),
+            infoWindow: InfoWindow(
+              title: 'Destino',
+              snippet: _selectedDestination!.name,
+            ),
+          ),
+        };
+      });
+
+      // Ajustar cámara
+      _fitCameraToBounds(routeInfo.polylinePoints);
+
+      // Minimizar el bottom sheet
+      if (_isExpanded) {
+        _toggleSheet();
+      }
+    }
+  }
+
+  void _fitCameraToBounds(List<LatLng> points) {
+    if (_mapController == null || points.isEmpty) return;
+
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+
+    for (final point in points) {
+      if (point.latitude < minLat) minLat = point.latitude;
+      if (point.latitude > maxLat) maxLat = point.latitude;
+      if (point.longitude < minLng) minLng = point.longitude;
+      if (point.longitude > maxLng) maxLng = point.longitude;
+    }
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
+
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
+  }
+
+  void _clearRoute() {
+    setState(() {
+      _routeInfo = null;
+      _polylines = {};
+      _markers = {};
+      _selectedDestination = null;
+      _destinationController.clear();
+    });
+
+    if (_currentPosition != null) {
+      _centerToCurrentLocation();
+    }
+  }
+
+  void _centerToCurrentLocation() {
+    if (_mapController != null && _currentPosition != null) {
+      _mapController!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+            ),
+            zoom: 15,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _requestRide() {
+    if (_routeInfo == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmar viaje'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Origen: ${_selectedOrigin!.name}'),
+            const SizedBox(height: 8),
+            Text('Destino: ${_selectedDestination!.name}'),
+            const Divider(height: 24),
+            Text('Distancia: ${_routeInfo!.distance}'),
+            Text('Duración: ${_routeInfo!.duration}'),
+            const SizedBox(height: 8),
+            Text(
+              'Precio estimado: ${_routeInfo!.formattedPrice}',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.deepOrange,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('🚖 Buscando conductor cercano...'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+              // Aquí integrarías con tu backend
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green.shade600,
+            ),
+            child: const Text('Confirmar'),
+          ),
+        ],
       ),
     );
   }
