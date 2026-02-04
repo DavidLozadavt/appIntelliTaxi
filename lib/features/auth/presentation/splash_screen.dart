@@ -21,7 +21,7 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _glowAnimation;
 
   String _displayedText = "";
-  final String _fullText = "Bienvenido a ERP VT";
+  final String _fullText = "Bienvenido a IntelliTaxi";
 
   @override
   void initState() {
