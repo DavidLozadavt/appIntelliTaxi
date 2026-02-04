@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "550853729681",
+    "project_id": "intellitaxi-8189e",
+    "storage_bucket": "intellitaxi-8189e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:550853729681:android:38aca5e9076f6171304e30",
+        "android_client_info": {
+          "package_name": "com.virtualt.intellitaxi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBlWYoh8hz-yC_DV-tMi_bwIhNxYUSPWHw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
