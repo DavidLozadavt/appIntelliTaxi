@@ -1,5 +1,7 @@
 import 'package:intellitaxi/core/services/connectivity_provider.dart';
 import 'package:intellitaxi/core/theme/theme_provider.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 
 import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
@@ -87,10 +89,10 @@ class MyApp extends StatelessWidget {
               useMaterial3: true,
               textTheme: GoogleFonts.poppinsTextTheme(),
               colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFFFFC502),
-                primary: const Color(0xFFFFC502),
-                secondary: const Color(0xFFFFDC4A),
-                tertiary: const Color(0xFFFF6605),
+                seedColor: AppColors.primary,
+                primary: AppColors.primary,
+                secondary: AppColors.secondary,
+                tertiary: AppColors.accent,
                 brightness: Brightness.light,
               ),
             ),
@@ -100,12 +102,18 @@ class MyApp extends StatelessWidget {
               textTheme: GoogleFonts.poppinsTextTheme(
                 ThemeData(brightness: Brightness.dark).textTheme,
               ),
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: const Color(0xFFFFC502),
-                primary: const Color(0xFFFFC502),
-                secondary: const Color(0xFFFFDC4A),
-                tertiary: const Color(0xFFFF6605),
-                brightness: Brightness.dark,
+              colorScheme: const ColorScheme.dark(
+                primary: AppColors.primary,
+                secondary: AppColors.secondary,
+                tertiary: AppColors.accent,
+                surface: AppColors.darkSurface,
+                background: AppColors.darkBackground,
+                error: AppColors.error,
+                onPrimary: AppColors.darkOnPrimary,
+                onSecondary: AppColors.darkOnSecondary,
+                onSurface: AppColors.darkOnSurface,
+                onBackground: AppColors.darkOnBackground,
+                onError: AppColors.darkOnError,
               ),
             ),
             themeMode: themeProvider.themeMode,
