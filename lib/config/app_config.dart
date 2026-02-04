@@ -6,7 +6,7 @@ class AppConfig {
   // static const String baseUrl = 'https://tu-dominio.com/api'; // Producción
   
   // Google Maps API Key
-  static const String googleMapsApiKey = 'AIzaSyD-NETQeYSLrck00eID2E4j47kVcBEGnvg';
+  static const String googleMapsApiKey = 'AIzaSyDN2nvuXUru3ZN1N5cr1oMpqkZRA6d4es0';
   
   // Pusher Configuration
   static const String pusherAppKey = '6eb089dff17ffe3c7c47';
