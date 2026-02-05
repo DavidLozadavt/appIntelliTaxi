@@ -11,6 +11,7 @@ import 'package:intellitaxi/core/constants/map_styles.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/places_service.dart';
+import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/rides/widgets/requesting_service_modal.dart';
@@ -29,7 +30,8 @@ class _HomePasajeroState extends State<HomePasajero>
   GoogleMapController? _mapController;
   Position? _currentPosition;
   bool _isLoadingLocation = true;
-  String _locationMessage = 'Verificando tu ubicación actual con GPS de alta precisión...';
+  String _locationMessage =
+      'Verificando tu ubicación actual con GPS de alta precisión...';
   Brightness? _lastBrightness;
 
   // Para el bottom sheet animado
@@ -42,6 +44,7 @@ class _HomePasajeroState extends State<HomePasajero>
   // Para las búsquedas
   final PlacesService _placesService = PlacesService();
   final RoutesService _routesService = RoutesService();
+  final RideRequestService _rideRequestService = RideRequestService();
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
 
@@ -185,9 +188,10 @@ class _HomePasajeroState extends State<HomePasajero>
                                           height: 90,
                                           child: CircularProgressIndicator(
                                             strokeWidth: 3,
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                              AppColors.accent,
-                                            ),
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  AppColors.accent,
+                                                ),
                                           ),
                                         ),
                                       ],
@@ -204,8 +208,8 @@ class _HomePasajeroState extends State<HomePasajero>
                       const SizedBox(height: 32),
                       // Título
                       Text(
-                        _isLoadingLocation 
-                            ? 'Conectando GPS' 
+                        _isLoadingLocation
+                            ? 'Conectando GPS'
                             : 'Ubicación no disponible',
                         style: TextStyle(
                           fontSize: 24,
@@ -1054,7 +1058,10 @@ class _HomePasajeroState extends State<HomePasajero>
 
   Future<void> _getCurrentLocation() async {
     try {
-      setState(() => _locationMessage = 'Verificando tu ubicación actual con GPS de alta precisión...');
+      setState(
+        () => _locationMessage =
+            'Verificando tu ubicación actual con GPS de alta precisión...',
+      );
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -1064,7 +1071,8 @@ class _HomePasajeroState extends State<HomePasajero>
         setState(() {
           _currentPosition = position;
           _isLoadingLocation = false;
-          _locationMessage = 'Perfecto. Tu ubicación ha sido verificada y está lista para solicitar servicio';
+          _locationMessage =
+              'Perfecto. Tu ubicación ha sido verificada y está lista para solicitar servicio';
 
           // Configurar origen por defecto
           _selectedOrigin = TripLocation.currentLocation(
@@ -1462,7 +1470,7 @@ class _HomePasajeroState extends State<HomePasajero>
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
 
               // Mostrar el modal épico de solicitud
@@ -1479,23 +1487,71 @@ class _HomePasajeroState extends State<HomePasajero>
                 ),
               );
 
-              // Aquí integrarías con tu backend
-              // Simulación: cerrar el modal después de 5 segundos
-              Future.delayed(const Duration(seconds: 5), () {
+              // 📤 ENVIAR SOLICITUD AL BACKEND
+              try {
+                final authProvider = Provider.of<AuthProvider>(
+                  context,
+                  listen: false,
+                );
+                final token = await authProvider.getSavedToken();
+
+                await _rideRequestService.requestRide(
+                  personaId: authProvider.persona!.id,
+                  companyUserId: authProvider.activationId!,
+                  origin: _selectedOrigin!,
+                  destination: _selectedDestination!,
+                  distance: _routeInfo!.distance,
+                  distanceValue: _routeInfo!.distanceValue,
+                  duration: _routeInfo!.duration,
+                  durationValue: _routeInfo!.durationValue,
+                  estimatedPrice: _routeInfo!.estimatedPrice,
+                  serviceType: isDelivery ? 'domicilio' : 'taxi',
+                  observations:
+                      null, // Puedes agregar un campo para observaciones
+                  token: token,
+                );
+
+                // Cerrar modal y mostrar éxito
                 if (mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
                         isDelivery
-                            ? '✅ Conductor asignado para tu domicilio'
-                            : '✅ Conductor en camino a tu ubicación',
+                            ? '✅ Solicitud de domicilio enviada exitosamente'
+                            : '✅ Solicitud de viaje enviada exitosamente',
                       ),
                       backgroundColor: Colors.green,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+
+                  // Limpiar selección
+                  setState(() {
+                    _selectedOrigin = null;
+                    _selectedDestination = null;
+                    _routeInfo = null;
+                    _polylines.clear();
+                    _markers.clear();
+                    _originController.clear();
+                    _destinationController.clear();
+                  });
+                }
+              } catch (e) {
+                // Error al enviar solicitud
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Error: ${e.toString().replaceAll('Exception: ', '')}',
+                      ),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 4),
                     ),
                   );
                 }
-              });
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: isDelivery
