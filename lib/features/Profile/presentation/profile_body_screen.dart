@@ -1,7 +1,10 @@
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/data/auth_model.dart';
+import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/Profile/presentation/edit_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:provider/provider.dart';
 
 class ProfileBodyScreen extends StatelessWidget {
   final Company? company;
@@ -120,6 +123,49 @@ class ProfileBodyScreen extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
+
+          // Botón de editar perfil
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 60),
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                final authProvider = Provider.of<AuthProvider>(
+                  context,
+                  listen: false,
+                );
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditProfileScreen(
+                      persona: persona,
+                      user: authProvider.user!,
+                    ),
+                  ),
+                );
+
+                // Si se actualizó el perfil, recargar datos
+                if (result == true) {
+                  await authProvider.loadUserFromStorage();
+                }
+              },
+              icon: const Icon(Iconsax.edit_copy, size: 18),
+              label: const Text('Editar Perfil'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                elevation: 4,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
 
           // Roles con chip design
           Container(

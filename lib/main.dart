@@ -22,6 +22,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'features/auth/logic/auth_provider.dart';
 import 'features/auth/presentation/login_screen.dart';
+import 'features/auth/presentation/register_screen.dart';
 import 'features/home/presentation/navigation_screen.dart';
 import 'features/onboarding/presentation/initial_screen.dart';
 
@@ -136,6 +137,7 @@ class MyApp extends StatelessWidget {
             home: const InitialScreen(),
             routes: {
               '/login': (_) => const LoginScreen(),
+              '/register': (_) => const RegisterScreen(),
               '/home': (_) => const NavigationScreen(),
               '/notifications': (_) => const NotificationScreen(),
 

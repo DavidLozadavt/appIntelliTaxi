@@ -23,11 +23,11 @@ class Company {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'razonSocial': razonSocial,
-        'nit': nit,
-        'rutaLogoUrl': rutaLogoUrl,
-      };
+    'id': id,
+    'razonSocial': razonSocial,
+    'nit': nit,
+    'rutaLogoUrl': rutaLogoUrl,
+  };
 }
 
 class Persona {
@@ -42,6 +42,10 @@ class Persona {
   final String? telefono;
   final String? direccion;
   final String? celular;
+  final String? identificacion;
+  final String? fechaNac;
+  final String? sexo;
+  final int? idTipoIdentificacion;
 
   Persona({
     required this.id,
@@ -55,6 +59,10 @@ class Persona {
     this.telefono,
     this.direccion,
     this.celular,
+    this.identificacion,
+    this.fechaNac,
+    this.sexo,
+    this.idTipoIdentificacion,
   });
 
   factory Persona.fromJson(Map<String, dynamic> json) {
@@ -70,22 +78,30 @@ class Persona {
       telefono: json['telefono'] ?? '',
       direccion: json['direccion'] ?? '',
       celular: json['celular'] ?? '',
+      identificacion: json['identificacion'],
+      fechaNac: json['fechaNac'],
+      sexo: json['sexo'],
+      idTipoIdentificacion: json['idTipoIdentificacion'],
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'nombre1': nombre1,
-        'nombre2': nombre2,
-        'apellido1': apellido1,
-        'apellido2': apellido2,
-        'rutaFotoUrl': rutaFotoUrl,
-        'perfil': perfil,
-        'email': email ?? '',
-        'telefono': telefono ?? '',
-        'direccion': direccion ?? '',
-        'celular': celular ?? '',
-      };
+    'id': id,
+    'nombre1': nombre1,
+    'nombre2': nombre2,
+    'apellido1': apellido1,
+    'apellido2': apellido2,
+    'rutaFotoUrl': rutaFotoUrl,
+    'perfil': perfil,
+    'email': email ?? '',
+    'telefono': telefono ?? '',
+    'direccion': direccion ?? '',
+    'celular': celular ?? '',
+    'identificacion': identificacion,
+    'fechaNac': fechaNac,
+    'sexo': sexo,
+    'idTipoIdentificacion': idTipoIdentificacion,
+  };
 }
 
 class User {
@@ -110,9 +126,11 @@ class User {
       id: json['id'],
       email: json['email'],
       nombreCompleto:
-          "${personaJson['nombre1']} ${personaJson['nombre2'] ?? ''} ${personaJson['apellido1']} ${personaJson['apellido2'] ?? ''}".trim(),
+          "${personaJson['nombre1']} ${personaJson['nombre2'] ?? ''} ${personaJson['apellido1']} ${personaJson['apellido2'] ?? ''}"
+              .trim(),
       persona: Persona.fromJson(personaJson),
-      activationCompanyUsers: (json['activation_company_users'] as List<dynamic>?)
+      activationCompanyUsers:
+          (json['activation_company_users'] as List<dynamic>?)
               ?.map((e) => ActivationCompanyUser.fromJson(e))
               .toList() ??
           [],
@@ -120,13 +138,14 @@ class User {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'email': email,
-        'nombreCompleto': nombreCompleto,
-        'persona': persona.toJson(),
-        'activation_company_users':
-            activationCompanyUsers.map((e) => e.toJson()).toList(),
-      };
+    'id': id,
+    'email': email,
+    'nombreCompleto': nombreCompleto,
+    'persona': persona.toJson(),
+    'activation_company_users': activationCompanyUsers
+        .map((e) => e.toJson())
+        .toList(),
+  };
 }
 
 class AuthResponse {
@@ -155,15 +174,12 @@ class AuthResponse {
   }
 
   Map<String, dynamic> toJson() => {
-        'access_token': token,
-        'payload': {
-          'roles': roles,
-          'permissions': permissions,
-          'company': company.toJson(),
-        },
-        'user': user.toJson(),
-      };
-
-
-      
+    'access_token': token,
+    'payload': {
+      'roles': roles,
+      'permissions': permissions,
+      'company': company.toJson(),
+    },
+    'user': user.toJson(),
+  };
 }
