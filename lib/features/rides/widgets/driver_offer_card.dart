@@ -1,0 +1,517 @@
+import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
+
+/// Widget flotante elegante para mostrar contraofertas de conductores
+/// Similar al estilo de InDrive
+class DriverOfferCard extends StatefulWidget {
+  final Map<String, dynamic> offerData;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+  final VoidCallback? onDismiss;
+
+  const DriverOfferCard({
+    Key? key,
+    required this.offerData,
+    required this.onAccept,
+    required this.onReject,
+    this.onDismiss,
+  }) : super(key: key);
+
+  @override
+  State<DriverOfferCard> createState() => _DriverOfferCardState();
+}
+
+class _DriverOfferCardState extends State<DriverOfferCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
+
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _dismiss() async {
+    await _controller.reverse();
+    widget.onDismiss?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final conductorNombre = widget.offerData['conductor_nombre'] ?? 'Conductor';
+    final conductorFoto = widget.offerData['conductor_foto'];
+    final vehiculoMarca = widget.offerData['vehiculo_marca'] ?? '';
+    final vehiculoModelo = widget.offerData['vehiculo_modelo'] ?? '';
+    final vehiculoPlaca = widget.offerData['vehiculo_placa'] ?? '';
+
+    // Convertir precio a número si viene como string
+    final precioOfertado = widget.offerData['precio_ofertado'] is String
+        ? double.tryParse(widget.offerData['precio_ofertado']) ?? 0
+        : (widget.offerData['precio_ofertado'] ?? 0);
+
+    final tiempoLlegada =
+        widget.offerData['tiempo_llegada_estimado'] ??
+        widget.offerData['tiempo_llegada'] ??
+        5;
+
+    // Convertir calificación a double
+    final calificacion = widget.offerData['calificacion'] is String
+        ? double.tryParse(widget.offerData['calificacion']) ?? 0.0
+        : (widget.offerData['calificacion'] ?? 0.0);
+
+    final mensaje = widget.offerData['mensaje'];
+
+    return SlideTransition(
+      position: _slideAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.white, AppColors.accent.withOpacity(0.05)],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.accent.withOpacity(0.3),
+                blurRadius: 20,
+                spreadRadius: 2,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header con badge de "Nueva Oferta"
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.accent,
+                        AppColors.accent.withOpacity(0.8),
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(
+                              Icons.local_offer,
+                              size: 14,
+                              color: AppColors.accent,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'NUEVA OFERTA',
+                              style: TextStyle(
+                                color: AppColors.accent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: _dismiss,
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Contenido principal
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      // Info del conductor
+                      Row(
+                        children: [
+                          // Avatar
+                          Stack(
+                            children: [
+                              Container(
+                                width: 70,
+                                height: 70,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppColors.accent,
+                                    width: 3,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.accent.withOpacity(0.3),
+                                      blurRadius: 10,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                                child: ClipOval(
+                                  child: conductorFoto != null
+                                      ? Image.network(
+                                          conductorFoto,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              _buildAvatarPlaceholder(
+                                                conductorNombre,
+                                              ),
+                                        )
+                                      : _buildAvatarPlaceholder(
+                                          conductorNombre,
+                                        ),
+                                ),
+                              ),
+                              // Badge de verificación
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF4CAF50),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 16),
+
+                          // Info del conductor
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  conductorNombre,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.star,
+                                      size: 16,
+                                      color: Colors.amber,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      calificacion.toStringAsFixed(1),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                if (vehiculoMarca.isNotEmpty)
+                                  Text(
+                                    '$vehiculoMarca $vehiculoModelo',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                if (vehiculoPlaca.isNotEmpty)
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      vehiculoPlaca,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Precio y tiempo de llegada
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            // Precio
+                            Column(
+                              children: [
+                                const Text(
+                                  'Precio Ofertado',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '\$${precioOfertado.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.accent,
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Divisor vertical
+                            Container(
+                              width: 1,
+                              height: 50,
+                              color: Colors.grey[300],
+                            ),
+
+                            // Tiempo de llegada
+                            Column(
+                              children: [
+                                const Text(
+                                  'Llega en',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.access_time,
+                                      size: 20,
+                                      color: AppColors.accent,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$tiempoLlegada min',
+                                      style: const TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Mensaje del conductor (opcional)
+                      if (mensaje != null && mensaje.toString().isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.blue[200]!,
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.message,
+                                size: 18,
+                                color: Colors.blue[700],
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  mensaje.toString(),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.blue[900],
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 20),
+
+                      // Botones de acción
+                      Row(
+                        children: [
+                          // Botón Rechazar
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: widget.onReject,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey[300],
+                                foregroundColor: Colors.black87,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: const Text(
+                                'Rechazar',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+
+                          // Botón Aceptar
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton(
+                              onPressed: widget.onAccept,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.accent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                elevation: 4,
+                                shadowColor: AppColors.accent.withOpacity(0.5),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(Icons.check_circle, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Aceptar Oferta',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatarPlaceholder(String nombre) {
+    final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : '?';
+    return Container(
+      color: AppColors.accent.withOpacity(0.2),
+      child: Center(
+        child: Text(
+          inicial,
+          style: const TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+            color: AppColors.accent,
+          ),
+        ),
+      ),
+    );
+  }
+}

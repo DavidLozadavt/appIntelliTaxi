@@ -10,6 +10,7 @@ import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart
 import 'package:intellitaxi/features/notifications/logic/notification_provider.dart';
 import 'package:intellitaxi/features/notifications/presentation/notification_screen.dart';
 
+import 'package:intellitaxi/features/test/pusher_test_screen.dart';
 import 'package:intellitaxi/test_iconsax_screen.dart';
 import 'package:intellitaxi/firebase_msg.dart' show FirebaseMsg;
 import 'package:intellitaxi/firebase_options.dart' show DefaultFirebaseOptions;
@@ -25,6 +26,7 @@ import 'features/auth/presentation/login_screen.dart';
 import 'features/auth/presentation/register_screen.dart';
 import 'features/home/presentation/navigation_screen.dart';
 import 'features/onboarding/presentation/initial_screen.dart';
+import 'config/pusher_config.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -37,6 +39,9 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   await FirebaseMsg().initFCM();
+
+  // Inicializar Pusher (ambas conexiones)
+  await PusherService.initialize();
 
   // Optimizaciones de rendimiento
   _setupPerformanceOptimizations();
@@ -142,6 +147,7 @@ class MyApp extends StatelessWidget {
               '/notifications': (_) => const NotificationScreen(),
 
               '/chat': (_) => const ChatScreen(),
+              '/pusher-test': (_) => const PusherTestScreen(),
               // '/vinculaciones-propietario': (_) => TransportePropietario(),
               '/test-iconsax': (_) => const TestIconsaxScreen(),
             },

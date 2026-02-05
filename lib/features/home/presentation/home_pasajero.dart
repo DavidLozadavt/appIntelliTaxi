@@ -17,6 +17,9 @@ import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/rides/widgets/requesting_service_modal.dart';
+import 'package:intellitaxi/features/rides/widgets/driver_offer_card.dart';
+import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/core/services/sound_service.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -67,11 +70,16 @@ class _HomePasajeroState extends State<HomePasajero>
   Set<Polyline> _polylines = {};
   BitmapDescriptor? _userMarkerIcon;
 
+  // Para contraofertas de conductores
+  Map<String, dynamic>? _currentOffer;
+  bool _showOffer = false;
+
   @override
   void initState() {
     super.initState();
     _createUserMarkerIcon();
     _initializeLocation();
+    _setupPusherOffers();
 
     // Animación
     _animationController = AnimationController(
@@ -110,6 +118,13 @@ class _HomePasajeroState extends State<HomePasajero>
     _animationController.dispose();
     _originController.dispose();
     _destinationController.dispose();
+
+    // Desuscribirse de Pusher
+    PusherService.unsubscribeSecondary('ofertas-globales');
+    PusherService.unregisterEventHandlerSecondary(
+      'ofertas-globales:nueva-oferta',
+    );
+
     super.dispose();
   }
 
@@ -388,6 +403,22 @@ class _HomePasajeroState extends State<HomePasajero>
               onPressed: _clearRoute,
               backgroundColor: Colors.white,
               child: const Icon(Icons.clear, color: Colors.red),
+            ),
+          ),
+
+        // Tarjeta de contraoferta flotante (estilo InDrive)
+        if (_showOffer && _currentOffer != null)
+          Positioned(
+            top: 60,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: DriverOfferCard(
+                offerData: _currentOffer!,
+                onAccept: _acceptOffer,
+                onReject: _rejectOffer,
+                onDismiss: _dismissOffer,
+              ),
             ),
           ),
       ],
@@ -1597,5 +1628,149 @@ class _HomePasajeroState extends State<HomePasajero>
         ],
       ),
     );
+  }
+
+  // ========== MÉTODOS DE PUSHER - CONTRAOFERTAS ==========
+
+  /// Configura la conexión a Pusher para recibir contraofertas
+  Future<void> _setupPusherOffers() async {
+    try {
+      print('🚀 Configurando Pusher para ofertas globales...');
+
+      // Suscribirse al canal de ofertas globales (conexión secundaria)
+      await PusherService.subscribeSecondary('ofertas-globales');
+
+      // Registrar el handler para nueva oferta
+      PusherService.registerEventHandlerSecondary(
+        'ofertas-globales:nueva-oferta',
+        _handleNewOffer,
+      );
+
+      print(
+        '✅ Pusher configurado - Esperando ofertas en canal ofertas-globales',
+      );
+    } catch (e) {
+      print('❌ Error configurando Pusher: $e');
+    }
+  }
+
+  /// Maneja la llegada de una nueva contraoferta
+  void _handleNewOffer(dynamic data) {
+    print('🎉 ¡Nueva contraoferta recibida!');
+    print('📦 Data tipo: ${data.runtimeType}');
+    print('📦 Data completa: $data');
+
+    try {
+      // Parsear data si viene como string
+      Map<String, dynamic> offerData;
+      if (data is String) {
+        offerData = jsonDecode(data);
+      } else {
+        offerData = Map<String, dynamic>.from(data);
+      }
+
+      print('🔍 Datos parseados:');
+      print('   - oferta_id: ${offerData['oferta_id']}');
+      print('   - solicitud_id: ${offerData['solicitud_id']}');
+      print('   - pasajero_id: ${offerData['pasajero_id']}');
+      print('   - conductor_nombre: ${offerData['conductor_nombre']}');
+      print('   - precio_ofertado: ${offerData['precio_ofertado']}');
+
+      // Verificar que la oferta sea para este pasajero
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUserId = authProvider.idPersona;
+      final offerPassengerId = offerData['pasajero_id'];
+
+      print(
+        '👤 Usuario actual: $currentUserId, Oferta para: $offerPassengerId',
+      );
+
+      if (currentUserId == offerPassengerId) {
+        // Reproducir sonido de nueva oferta (2 veces) sin bloquear UI
+        SoundService.playNewOfferSound().catchError((error) {
+          print('⚠️ Error con sonido (ignorado): $error');
+        });
+
+        setState(() {
+          _currentOffer = offerData;
+          _showOffer = true;
+        });
+
+        print('✅ Oferta mostrada al usuario');
+
+        // Mostrar snackbar de notificación
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '🚗 Nueva oferta de ${offerData['conductor_nombre']} - \$${offerData['precio_ofertado']}',
+            ),
+            backgroundColor: AppColors.accent,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        print('⏭️ Oferta no es para este pasajero, ignorando');
+      }
+    } catch (e, stackTrace) {
+      print('❌ Error procesando oferta: $e');
+      print('📍 Stack trace: $stackTrace');
+    }
+  }
+
+  /// Acepta la contraoferta del conductor
+  void _acceptOffer() {
+    if (_currentOffer == null) return;
+
+    print('✅ Aceptando oferta: ${_currentOffer!['oferta_id']}');
+
+    // TODO: Llamar al backend para confirmar la aceptación
+    // await _rideRequestService.acceptOffer(_currentOffer!['oferta_id']);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '✅ ¡Oferta aceptada! El conductor ${_currentOffer!['conductor_nombre']} va en camino',
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    setState(() {
+      _showOffer = false;
+      _currentOffer = null;
+    });
+  }
+
+  /// Rechaza la contraoferta del conductor
+  void _rejectOffer() {
+    if (_currentOffer == null) return;
+
+    print('❌ Rechazando oferta: ${_currentOffer!['oferta_id']}');
+
+    // TODO: Llamar al backend para notificar el rechazo
+    // await _rideRequestService.rejectOffer(_currentOffer!['oferta_id']);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Oferta rechazada. Esperando más conductores...'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    setState(() {
+      _showOffer = false;
+      _currentOffer = null;
+    });
+  }
+
+  /// Cierra la oferta sin aceptar ni rechazar
+  void _dismissOffer() {
+    setState(() {
+      _showOffer = false;
+      _currentOffer = null;
+    });
   }
 }
