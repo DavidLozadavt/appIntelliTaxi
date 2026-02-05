@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -7,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/constants/map_styles.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
@@ -1023,6 +1025,31 @@ class _HomePasajeroState extends State<HomePasajero>
     return null;
   }
 
+  // Obtener dirección desde coordenadas (Geocoding reverso)
+  Future<String> _getAddressFromCoordinates(double lat, double lng) async {
+    try {
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/geocode/json?'
+        'latlng=$lat,$lng'
+        '&key=${AppConfig.googleMapsApiKey}'
+        '&language=es',
+      );
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
+          return data['results'][0]['formatted_address'];
+        }
+      }
+    } catch (e) {
+      debugPrint('Error obteniendo dirección: $e');
+    }
+    return 'Mi ubicación actual';
+  }
+
   Future<void> _initializeLocation() async {
     setState(() {
       _isLoadingLocation = true;
@@ -1068,18 +1095,25 @@ class _HomePasajeroState extends State<HomePasajero>
       );
 
       if (mounted) {
+        // Obtener dirección real
+        final address = await _getAddressFromCoordinates(
+          position.latitude,
+          position.longitude,
+        );
+
         setState(() {
           _currentPosition = position;
           _isLoadingLocation = false;
           _locationMessage =
               'Perfecto. Tu ubicación ha sido verificada y está lista para solicitar servicio';
 
-          // Configurar origen por defecto
+          // Configurar origen por defecto con dirección real
           _selectedOrigin = TripLocation.currentLocation(
             lat: position.latitude,
             lng: position.longitude,
+            address: address,
           );
-          _originController.text = 'Mi ubicación actual';
+          _originController.text = address;
 
           // Agregar marcador de ubicación del usuario si no hay ruta
           if (_markers.isEmpty && _userMarkerIcon != null) {
@@ -1295,7 +1329,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
         // Si el origen es la ubicación actual, usar foto de perfil
         final bool isOriginCurrentLocation =
-            _selectedOrigin!.name == 'Mi ubicación actual' ||
+            _selectedOrigin!.isCurrentLocation ||
             (_currentPosition != null &&
                 _selectedOrigin!.lat == _currentPosition!.latitude &&
                 _selectedOrigin!.lng == _currentPosition!.longitude);
