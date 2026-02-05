@@ -336,21 +336,34 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         Expanded(
                           child: Container(
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              color: AppColors.white.withOpacity(0.04),
+                              borderRadius: BorderRadius.circular(24),
+                              color: Colors.grey.shade100,
                               border: Border.all(
-                                color: Colors.black.withOpacity(0.2),
-                                width: 1, // grosor del borde
+                                color: Colors.grey.shade300,
+                                width: 1,
                               ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
                             child: TextField(
                               controller: _controller,
-                              decoration: const InputDecoration(
+                              maxLines: null,
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: InputDecoration(
                                 hintText: "Escribe un mensaje...",
+                                hintStyle: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: 14,
+                                ),
                                 border: InputBorder.none,
-                                contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 14,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 12,
                                 ),
                               ),
                               onSubmitted: (_) => sendMessage(),

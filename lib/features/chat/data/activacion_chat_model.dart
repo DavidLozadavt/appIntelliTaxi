@@ -26,11 +26,11 @@ class ActivationCompanyUser {
   factory ActivationCompanyUser.fromJson(Map<String, dynamic> json) {
     return ActivationCompanyUser(
       id: json['id'],
-      userId: json['user_id'],
-      stateId: json['state_id'],
-      companyId: json['company_id'],
-      fechaInicio: json['fechaInicio'],
-      fechaFin: json['fechaFin'],
+      userId: json['user_id']?.toString() ?? '',
+      stateId: json['state_id']?.toString() ?? '',
+      companyId: json['company_id']?.toString() ?? '',
+      fechaInicio: json['fechaInicio']?.toString() ?? '',
+      fechaFin: json['fechaFin']?.toString() ?? '',
       company: Company.fromJson(json['company']),
       user: User.fromJson(json['user']),
       roles: (json['roles'] as List).map((e) => Role.fromJson(e)).toList(),
@@ -48,7 +48,7 @@ class Role {
   factory Role.fromJson(Map<String, dynamic> json) {
     return Role(
       id: json['id'],
-      name: json['name'],
+      name: json['name']?.toString() ?? '',
     );
   }
 }
@@ -63,7 +63,7 @@ class User {
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
       id: json['id'],
-      email: json['email'],
+      email: json['email']?.toString() ?? '',
       persona: Persona.fromJson(json['persona']),
     );
   }
@@ -89,13 +89,12 @@ class Persona {
 
   factory Persona.fromJson(Map<String, dynamic> json) {
     return Persona(
-            id: json['id'],
-
-      nombre1: json['nombre1'] ?? '',
-      nombre2: json['nombre2'] ?? '',
-      apellido1: json['apellido1'] ?? '',
-      apellido2: json['apellido2'] ?? '',
-      rutaFotoUrl: json['rutaFotoUrl'],
+      id: json['id'],
+      nombre1: json['nombre1']?.toString() ?? '',
+      nombre2: json['nombre2']?.toString() ?? '',
+      apellido1: json['apellido1']?.toString() ?? '',
+      apellido2: json['apellido2']?.toString() ?? '',
+      rutaFotoUrl: json['rutaFotoUrl']?.toString(),
     );
   }
 
@@ -111,7 +110,7 @@ class Company {
 
   factory Company.fromJson(Map<String, dynamic> json) {
     return Company(
-      razonSocial: json['razonSocial'],
+      razonSocial: json['razonSocial']?.toString() ?? '',
     );
   }
 }
@@ -123,7 +122,7 @@ class Estado {
 
   factory Estado.fromJson(Map<String, dynamic> json) {
     return Estado(
-      estado: json['estado'],
+      estado: json['estado']?.toString() ?? '',
     );
   }
 }

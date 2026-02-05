@@ -1686,11 +1686,6 @@ class _HomePasajeroState extends State<HomePasajero>
       );
 
       if (currentUserId == offerPassengerId) {
-        // Reproducir sonido de nueva oferta (2 veces) sin bloquear UI
-        SoundService.playNewOfferSound().catchError((error) {
-          print('⚠️ Error con sonido (ignorado): $error');
-        });
-
         setState(() {
           _currentOffer = offerData;
           _showOffer = true;

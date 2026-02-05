@@ -65,8 +65,9 @@ class ChatProvider with ChangeNotifier {
         }
       }
     } catch (e) {
-      print("Error: $e");
-      rethrow;
+      print("⚠️ Error cargando usuarios: $e");
+      _users = [];
+      _filteredUsers = [];
     } finally {
       _isLoading = false;
       notifyListeners();

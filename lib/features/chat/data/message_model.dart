@@ -55,9 +55,18 @@ class Persona {
   factory Persona.fromJson(Map<String, dynamic> json) {
     return Persona(
       id: json['id'],
-      nombre1: json['nombre1'],
-      apellido1: json['apellido1'],
+      nombre1: json['nombre1']?.toString() ?? '',
+      apellido1: json['apellido1']?.toString() ?? '',
       rutaFotoUrl: json['rutaFotoUrl'],
     );
+  }
+  
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'nombre1': nombre1,
+      'apellido1': apellido1,
+      'rutaFotoUrl': rutaFotoUrl,
+    };
   }
 }

@@ -90,25 +90,25 @@ class _DriverOfferCardState extends State<DriverOfferCard>
       child: FadeTransition(
         opacity: _fadeAnimation,
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [Colors.white, AppColors.accent.withOpacity(0.05)],
             ),
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: AppColors.accent.withOpacity(0.3),
-                blurRadius: 20,
-                spreadRadius: 2,
-                offset: const Offset(0, 8),
+                color: AppColors.accent.withOpacity(0.2),
+                blurRadius: 12,
+                spreadRadius: 1,
+                offset: const Offset(0, 4),
               ),
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -120,8 +120,8 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                 // Header con badge de "Nueva Oferta"
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                    horizontal: 12,
+                    vertical: 8,
                   ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -131,34 +131,34 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                       ],
                     ),
                     borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(24),
-                      topRight: Radius.circular(24),
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
                     ),
                   ),
                   child: Row(
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
+                          horizontal: 8,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
                           children: const [
                             Icon(
                               Icons.local_offer,
-                              size: 14,
+                              size: 12,
                               color: AppColors.accent,
                             ),
-                            SizedBox(width: 4),
+                            SizedBox(width: 3),
                             Text(
                               'NUEVA OFERTA',
                               style: TextStyle(
                                 color: AppColors.accent,
-                                fontSize: 11,
+                                fontSize: 10,
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 0.5,
                               ),
@@ -168,7 +168,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                       ),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white),
+                        icon: const Icon(Icons.close, color: Colors.white, size: 18),
                         onPressed: _dismiss,
                         constraints: const BoxConstraints(),
                         padding: EdgeInsets.zero,
@@ -179,7 +179,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
 
                 // Contenido principal
                 Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(12),
                   child: Column(
                     children: [
                       // Info del conductor
@@ -189,19 +189,19 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                           Stack(
                             children: [
                               Container(
-                                width: 70,
-                                height: 70,
+                                width: 50,
+                                height: 50,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: AppColors.accent,
-                                    width: 3,
+                                    width: 2,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppColors.accent.withOpacity(0.3),
-                                      blurRadius: 10,
-                                      spreadRadius: 2,
+                                      color: AppColors.accent.withOpacity(0.2),
+                                      blurRadius: 6,
+                                      spreadRadius: 1,
                                     ),
                                   ],
                                 ),
@@ -225,7 +225,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                 bottom: 0,
                                 right: 0,
                                 child: Container(
-                                  padding: const EdgeInsets.all(4),
+                                  padding: const EdgeInsets.all(3),
                                   decoration: const BoxDecoration(
                                     color: Color(0xFF4CAF50),
                                     shape: BoxShape.circle,
@@ -233,13 +233,13 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                   child: const Icon(
                                     Icons.check,
                                     color: Colors.white,
-                                    size: 14,
+                                    size: 10,
                                   ),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 10),
 
                           // Info del conductor
                           Expanded(
@@ -249,57 +249,59 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                 Text(
                                   conductorNombre,
                                   style: const TextStyle(
-                                    fontSize: 18,
+                                    fontSize: 15,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.black87,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 2),
                                 Row(
                                   children: [
                                     const Icon(
                                       Icons.star,
-                                      size: 16,
+                                      size: 14,
                                       color: Colors.amber,
                                     ),
-                                    const SizedBox(width: 4),
+                                    const SizedBox(width: 3),
                                     Text(
                                       calificacion.toStringAsFixed(1),
                                       style: const TextStyle(
-                                        fontSize: 14,
+                                        fontSize: 12,
                                         fontWeight: FontWeight.w600,
                                         color: Colors.black54,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 2),
                                 if (vehiculoMarca.isNotEmpty)
                                   Text(
                                     '$vehiculoMarca $vehiculoModelo',
                                     style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 11,
                                       color: Colors.grey[600],
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 if (vehiculoPlaca.isNotEmpty)
                                   Container(
-                                    margin: const EdgeInsets.only(top: 4),
+                                    margin: const EdgeInsets.only(top: 2),
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
+                                      horizontal: 6,
+                                      vertical: 1,
                                     ),
                                     decoration: BoxDecoration(
                                       color: Colors.grey[200],
-                                      borderRadius: BorderRadius.circular(6),
+                                      borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text(
                                       vehiculoPlaca,
                                       style: const TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 10,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.black87,
-                                        letterSpacing: 1,
+                                        letterSpacing: 0.8,
                                       ),
                                     ),
                                   ),
@@ -309,14 +311,14 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                         ],
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 10),
 
                       // Precio y tiempo de llegada
                       Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           color: AppColors.accent.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -325,17 +327,17 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                             Column(
                               children: [
                                 const Text(
-                                  'Precio Ofertado',
+                                  'Precio',
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 10,
                                     color: Colors.black54,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 2),
                                 Text(
                                   '\$${precioOfertado.toStringAsFixed(0)}',
                                   style: const TextStyle(
-                                    fontSize: 28,
+                                    fontSize: 22,
                                     fontWeight: FontWeight.bold,
                                     color: AppColors.accent,
                                   ),
@@ -346,7 +348,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                             // Divisor vertical
                             Container(
                               width: 1,
-                              height: 50,
+                              height: 38,
                               color: Colors.grey[300],
                             ),
 
@@ -356,23 +358,23 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                 const Text(
                                   'Llega en',
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 10,
                                     color: Colors.black54,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 2),
                                 Row(
                                   children: [
                                     Icon(
                                       Icons.access_time,
-                                      size: 20,
+                                      size: 16,
                                       color: AppColors.accent,
                                     ),
-                                    const SizedBox(width: 4),
+                                    const SizedBox(width: 3),
                                     Text(
                                       '$tiempoLlegada min',
                                       style: const TextStyle(
-                                        fontSize: 22,
+                                        fontSize: 18,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.black87,
                                       ),
@@ -387,33 +389,75 @@ class _DriverOfferCardState extends State<DriverOfferCard>
 
                       // Mensaje del conductor (opcional)
                       if (mensaje != null && mensaje.toString().isNotEmpty) ...[
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
                           decoration: BoxDecoration(
-                            color: Colors.blue[50],
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.accent.withOpacity(0.08),
+                                AppColors.accent.withOpacity(0.04),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.blue[200]!,
+                              color: AppColors.accent.withOpacity(0.2),
                               width: 1,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.accent.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                Icons.message,
-                                size: 18,
-                                color: Colors.blue[700],
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Icon(
+                                  Icons.chat_bubble_outline,
+                                  size: 14,
+                                  color: AppColors.accent,
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Expanded(
-                                child: Text(
-                                  mensaje.toString(),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.blue[900],
-                                    fontStyle: FontStyle.italic,
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Mensaje del conductor',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.black45,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      mensaje.toString(),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.black87,
+                                        height: 1.3,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -421,7 +465,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                         ),
                       ],
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 10),
 
                       // Botones de acción
                       Row(
@@ -434,23 +478,23 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                 backgroundColor: Colors.grey[300],
                                 foregroundColor: Colors.black87,
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
+                                  vertical: 10,
                                 ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
                                 elevation: 0,
                               ),
                               child: const Text(
                                 'Rechazar',
                                 style: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 8),
 
                           // Botón Aceptar
                           Expanded(
@@ -461,23 +505,23 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                 backgroundColor: AppColors.accent,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
+                                  vertical: 10,
                                 ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                elevation: 4,
-                                shadowColor: AppColors.accent.withOpacity(0.5),
+                                elevation: 3,
+                                shadowColor: AppColors.accent.withOpacity(0.4),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: const [
-                                  Icon(Icons.check_circle, size: 20),
-                                  SizedBox(width: 8),
+                                  Icon(Icons.check_circle, size: 16),
+                                  SizedBox(width: 6),
                                   Text(
-                                    'Aceptar Oferta',
+                                    'Aceptar',
                                     style: TextStyle(
-                                      fontSize: 16,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
