@@ -1,6 +1,6 @@
 import 'package:intellitaxi/features/home/presentation/custom_drawer.dart';
 import 'package:intellitaxi/features/conductor/presentation/home_conductor.dart';
-import 'package:intellitaxi/features/home/presentation/home_pasajero.dart';
+import 'package:intellitaxi/features/pasajero/home_pasajero.dart';
 import 'package:intellitaxi/features/Profile/presentation/profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
