@@ -7,11 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/constants/map_styles.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
-import 'package:intellitaxi/features/home/services/conductor_service.dart';
-import 'package:intellitaxi/features/home/data/vehiculo_conductor_model.dart';
-import 'package:intellitaxi/features/home/data/turno_model.dart';
-import 'package:intellitaxi/features/home/widgets/vehiculo_selection_sheet.dart';
-import 'package:intellitaxi/features/home/widgets/documentos_alert_dialog.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
+import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
+import 'package:intellitaxi/features/conductor/data/turno_model.dart';
+import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.dart';
+import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;

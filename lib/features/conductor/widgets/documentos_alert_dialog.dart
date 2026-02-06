@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
-import 'package:intellitaxi/features/home/data/documento_conductor_model.dart';
+import 'package:intellitaxi/features/conductor/data/documento_conductor_model.dart';
 
 class DocumentosAlertDialog extends StatelessWidget {
   final List<DocumentoConductor> documentosVencidos;

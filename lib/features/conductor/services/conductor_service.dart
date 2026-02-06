@@ -1,8 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
-import 'package:intellitaxi/features/home/data/documento_conductor_model.dart';
-import 'package:intellitaxi/features/home/data/turno_model.dart';
-import 'package:intellitaxi/features/home/data/vehiculo_conductor_model.dart';
+import 'package:intellitaxi/features/conductor/data/documento_conductor_model.dart';
+import 'package:intellitaxi/features/conductor/data/turno_model.dart';
+import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 
 class ConductorService {
   final Dio _dio = DioClient.getInstance();

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
-import 'package:intellitaxi/features/home/data/vehiculo_conductor_model.dart';
+import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 
 class VehiculoSelectionSheet extends StatelessWidget {
   final List<VehiculoConductor> vehiculos;
