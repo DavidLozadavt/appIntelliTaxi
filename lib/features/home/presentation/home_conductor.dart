@@ -2,7 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/constants/map_styles.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/home/services/conductor_service.dart';
+import 'package:intellitaxi/features/home/data/vehiculo_conductor_model.dart';
+import 'package:intellitaxi/features/home/data/turno_model.dart';
+import 'package:intellitaxi/features/home/widgets/vehiculo_selection_sheet.dart';
+import 'package:intellitaxi/features/home/widgets/documentos_alert_dialog.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -17,14 +26,23 @@ class _HomeConductorState extends State<HomeConductor> {
   GoogleMapController? _mapController;
   Position? _currentPosition;
   bool _isLoadingLocation = true;
-  String _locationMessage = 'Estableciendo conexión satelital para rastreo en tiempo real...';
-  bool _isOnline = true;
+  String _locationMessage =
+      'Estableciendo conexión satelital para rastreo en tiempo real...';
+  bool _isOnline = false;
   Brightness? _lastBrightness;
+
+  // Servicio y datos del conductor
+  final ConductorService _conductorService = ConductorService();
+  VehiculoConductor? _vehiculoSeleccionado;
+  List<VehiculoConductor> _vehiculosDisponibles = [];
+  TurnoActivo? _turnoActivo;
 
   @override
   void initState() {
     super.initState();
     _initializeLocation();
+    _cargarVehiculos();
+    _cargarTurnoActual();
   }
 
   @override
@@ -102,7 +120,8 @@ class _HomeConductorState extends State<HomeConductor> {
   Future<void> _getCurrentLocation() async {
     try {
       setState(() {
-        _locationMessage = 'Estableciendo conexión satelital para rastreo en tiempo real...';
+        _locationMessage =
+            'Estableciendo conexión satelital para rastreo en tiempo real...';
       });
 
       Position position = await Geolocator.getCurrentPosition(
@@ -114,7 +133,8 @@ class _HomeConductorState extends State<HomeConductor> {
       setState(() {
         _currentPosition = position;
         _isLoadingLocation = false;
-        _locationMessage = 'Sistema GPS activo. Estás visible para pasajeros cercanos';
+        _locationMessage =
+            'Sistema GPS activo. Estás visible para pasajeros cercanos';
       });
 
       // Mover la cámara a la ubicación actual
@@ -137,6 +157,9 @@ class _HomeConductorState extends State<HomeConductor> {
   }
 
   Future<void> _setMapStyle(GoogleMapController controller) async {
+    // Verificar que el widget está montado antes de acceder al contexto
+    if (!mounted) return;
+
     // Detectar el tema actual
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -150,6 +173,8 @@ class _HomeConductorState extends State<HomeConductor> {
   }
 
   void _showPermissionDialog() {
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -174,42 +199,412 @@ class _HomeConductorState extends State<HomeConductor> {
     );
   }
 
+  /// Carga los vehículos disponibles del conductor
+  Future<void> _cargarVehiculos() async {
+    try {
+      final vehiculos = await _conductorService.getVehiculosConductor();
+      setState(() {
+        _vehiculosDisponibles = vehiculos;
+      });
+    } catch (e) {
+      print('⚠️ Error cargando vehículos: $e');
+    }
+  }
+
+  /// Carga el turno actual del conductor si existe
+  Future<void> _cargarTurnoActual() async {
+    try {
+      final turno = await _conductorService.getTurnoActivo();
+
+      if (turno != null && mounted) {
+        setState(() {
+          _turnoActivo = turno;
+          // Si el turno tiene vehículo, asignarlo
+          if (turno.vehiculo != null) {
+            _vehiculoSeleccionado = turno.vehiculo;
+          }
+        });
+
+        // Guardar turno en SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('turno_activo_id', turno.id);
+        await prefs.setInt('turno_vehiculo_id', turno.idVehiculo);
+        await prefs.setString('turno_fecha', turno.fechaTurno);
+        await prefs.setString('turno_hora_inicio', turno.horaInicio);
+
+        print(
+          '✅ Turno activo cargado: ID ${turno.id}, Vehículo: ${turno.vehiculo?.placa ?? "N/A"}',
+        );
+      }
+    } catch (e) {
+      print('⚠️ Error cargando turno actual: $e');
+    }
+  }
+
+  /// Inicia un turno con el vehículo seleccionado
+  Future<bool> _iniciarTurno(int idVehiculo) async {
+    if (!mounted) return false;
+
+    // Guardar referencia al messenger antes de operaciones asíncronas
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    try {
+      // Mostrar loading
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) =>
+              const Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      final turno = await _conductorService.iniciarTurno(idVehiculo);
+
+      // Guardar turno en SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('turno_activo_id', turno.id);
+      await prefs.setInt('turno_vehiculo_id', turno.idVehiculo);
+      await prefs.setString('turno_fecha', turno.fechaTurno);
+      await prefs.setString('turno_hora_inicio', turno.horaInicio);
+
+      if (mounted) {
+        setState(() {
+          _turnoActivo = turno;
+        });
+      }
+
+      // Cerrar loading
+      if (mounted) navigator.pop();
+
+      return true;
+    } catch (e) {
+      print('⚠️ Error iniciando turno: $e');
+
+      // Cerrar loading
+      if (mounted) navigator.pop();
+
+      // Mostrar error usando la referencia guardada
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Error al iniciar turno: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+
+      return false;
+    }
+  }
+
+  /// Finaliza el turno activo
+  Future<void> _finalizarTurno() async {
+    if (_turnoActivo == null || !mounted) return;
+
+    // Guardar referencia al messenger antes de operaciones asíncronas
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await _conductorService.finalizarTurno(_turnoActivo!.id);
+
+      // Limpiar SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('turno_activo_id');
+      await prefs.remove('turno_vehiculo_id');
+      await prefs.remove('turno_fecha');
+      await prefs.remove('turno_hora_inicio');
+
+      if (mounted) {
+        setState(() {
+          _turnoActivo = null;
+          _vehiculoSeleccionado = null;
+          _isOnline = false;
+        });
+      }
+
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Turno finalizado correctamente'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      print('⚠️ Error finalizando turno: $e');
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Error al finalizar turno: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Verifica documentos del conductor y muestra alertas
+  Future<void> _verificarDocumentos() async {
+    try {
+      if (!mounted) return;
+
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final userId = authProvider.user?.id;
+
+      if (userId == null) return;
+
+      final resultado = await _conductorService.verificarDocumentos(userId);
+      final vencidos = resultado['vencidos'] ?? [];
+      final porVencer = resultado['porVencer'] ?? [];
+
+      if (vencidos.isNotEmpty || porVencer.isNotEmpty) {
+        if (!mounted) return;
+
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => DocumentosAlertDialog(
+            documentosVencidos: vencidos,
+            documentosPorVencer: porVencer,
+          ),
+        );
+      }
+    } catch (e) {
+      print('⚠️ Error verificando documentos: $e');
+    }
+  }
+
+  /// Muestra el selector de vehículo
+  Future<void> _mostrarSelectorVehiculo() async {
+    if (!mounted) return;
+
+    // Guardar referencia al messenger antes de operaciones asíncronas
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (_vehiculosDisponibles.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('No tienes vehículos asignados'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => VehiculoSelectionSheet(
+        vehiculos: _vehiculosDisponibles,
+        onVehiculoSelected: (vehiculo) async {
+          // Primero iniciar el turno
+          final turnoIniciado = await _iniciarTurno(vehiculo.id);
+
+          if (turnoIniciado && mounted) {
+            setState(() {
+              _vehiculoSeleccionado = vehiculo;
+            });
+
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text('Turno iniciado con vehículo ${vehiculo.placa}'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+
+            // Verificar documentos después de iniciar turno
+            _verificarDocumentos();
+          }
+        },
+      ),
+    );
+  }
+
+  /// Cambia el estado del conductor (online/offline)
+  Future<void> _cambiarEstadoConductor() async {
+    if (!_isOnline) {
+      // Activándose: debe seleccionar vehículo primero
+      if (_vehiculoSeleccionado == null) {
+        await _mostrarSelectorVehiculo();
+        if (_vehiculoSeleccionado != null && _turnoActivo != null) {
+          setState(() {
+            _isOnline = true;
+          });
+        }
+      } else {
+        setState(() {
+          _isOnline = true;
+        });
+      }
+    } else {
+      // Desactivándose: finalizar turno
+      await _finalizarTurno();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         // Mapa de Google Maps
         _currentPosition == null
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (_isLoadingLocation)
-                      const CircularProgressIndicator()
-                    else
-                      Icon(
-                        Icons.location_off,
-                        size: 64,
-                        color: Colors.grey.shade400,
+            ? Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.grey.shade50, Colors.white],
+                  ),
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Animación de ubicación
+                      Container(
+                        width: 140,
+                        height: 140,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: _isLoadingLocation
+                                ? [
+                                    AppColors.accent.withOpacity(0.2),
+                                    AppColors.accent.withOpacity(0.05),
+                                  ]
+                                : [
+                                    Colors.grey.withOpacity(0.2),
+                                    Colors.grey.withOpacity(0.05),
+                                  ],
+                          ),
+                          boxShadow: _isLoadingLocation
+                              ? [
+                                  BoxShadow(
+                                    color: AppColors.accent.withOpacity(0.2),
+                                    blurRadius: 30,
+                                    spreadRadius: 10,
+                                  ),
+                                ]
+                              : [],
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 90,
+                            height: 90,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _isLoadingLocation
+                                  ? AppColors.accent.withOpacity(0.15)
+                                  : Colors.grey.withOpacity(0.15),
+                            ),
+                            child: Center(
+                              child: _isLoadingLocation
+                                  ? Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.location_on_rounded,
+                                          size: 45,
+                                          color: AppColors.accent,
+                                        ),
+                                        SizedBox(
+                                          width: 90,
+                                          height: 90,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 3,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  AppColors.accent,
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Icon(
+                                      Icons.location_off_rounded,
+                                      size: 45,
+                                      color: Colors.grey.shade400,
+                                    ),
+                            ),
+                          ),
+                        ),
                       ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _locationMessage,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey.shade600,
+                      const SizedBox(height: 32),
+                      // Título
+                      Text(
+                        _isLoadingLocation
+                            ? 'Conectando GPS'
+                            : 'Ubicación no disponible',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade800,
+                          letterSpacing: -0.5,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    if (!_isLoadingLocation) ...[
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        onPressed: _initializeLocation,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Reintentar'),
+                      const SizedBox(height: 12),
+                      // Mensaje descriptivo
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                        child: Text(
+                          _locationMessage,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey.shade600,
+                            height: 1.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
+                      const SizedBox(height: 32),
+                      // Botón de reintentar
+                      if (!_isLoadingLocation) ...[
+                        Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.accent.withOpacity(0.3),
+                                blurRadius: 15,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
+                            onPressed: _initializeLocation,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.accent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 18,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(Icons.refresh_rounded, size: 22),
+                                SizedBox(width: 10),
+                                Text(
+                                  'Reintentar conexión',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               )
             : GoogleMap(
@@ -254,11 +649,7 @@ class _HomeConductorState extends State<HomeConductor> {
               elevation: 8,
               borderRadius: BorderRadius.circular(30),
               child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _isOnline = !_isOnline;
-                  });
-                },
+                onTap: _cambiarEstadoConductor,
                 borderRadius: BorderRadius.circular(30),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -268,37 +659,54 @@ class _HomeConductorState extends State<HomeConductor> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: _isOnline
-                          ? [Colors.deepOrange, Colors.orangeAccent]
+                          ? [AppColors.accent, Colors.orangeAccent]
                           : [Colors.grey.shade400, Colors.grey.shade600],
                     ),
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
                         color: _isOnline
-                            ? Colors.green.withOpacity(0.4)
+                            ? AppColors.accent.withOpacity(0.4)
                             : Colors.grey.withOpacity(0.4),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        _isOnline ? Icons.check_circle : Icons.cancel,
-                        color: Colors.white,
-                        size: 28,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _isOnline ? Icons.check_circle : Icons.cancel,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            _isOnline ? 'En Línea' : 'Desconectado',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Text(
-                        _isOnline ? 'En Línea - Disponible' : 'Desconectado',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      if (_vehiculoSeleccionado != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _vehiculoSeleccionado!.nombreCompleto,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
