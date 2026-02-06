@@ -5,6 +5,7 @@ import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
 
 import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
+import 'package:intellitaxi/features/conductor/presentation/documentos_screen.dart';
 import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart';
 
 import 'package:intellitaxi/features/notifications/logic/notification_provider.dart';
@@ -145,7 +146,7 @@ class MyApp extends StatelessWidget {
               '/register': (_) => const RegisterScreen(),
               '/home': (_) => const NavigationScreen(),
               '/notifications': (_) => const NotificationScreen(),
-
+              '/mis-documentos': (_) => const DocumentosScreen(),
               '/chat': (_) => const ChatScreen(),
               '/pusher-test': (_) => const PusherTestScreen(),
               // '/vinculaciones-propietario': (_) => TransportePropietario(),

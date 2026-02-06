@@ -131,4 +131,33 @@ class ConductorService {
       return null;
     }
   }
+
+  /// Actualiza un documento del conductor
+  Future<void> actualizarDocumento({
+    required int idDocumento,
+    required String filePath,
+    required String fechaVigencia,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'idDocumento': idDocumento,
+        'rutaFile': await MultipartFile.fromFile(filePath),
+        'fecha_vigencia': fechaVigencia,
+      });
+
+      final response = await _dio.post(
+        'update_documento_conductor',
+        data: formData,
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception(
+          'Error al actualizar documento: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      print('⚠️ Error actualizando documento: $e');
+      rethrow;
+    }
+  }
 }

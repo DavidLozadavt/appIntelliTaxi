@@ -156,6 +156,8 @@ class DocumentosAlertDialog extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context);
+                      // Navegar a la pantalla de documentos
+                      Navigator.pushNamed(context, '/mis-documentos');
                       onContinuar?.call();
                     },
                     style: ElevatedButton.styleFrom(
@@ -170,7 +172,7 @@ class DocumentosAlertDialog extends StatelessWidget {
                       elevation: 0,
                     ),
                     child: Text(
-                      hayVencidos ? 'Entendido' : 'Continuar',
+                      hayVencidos ? 'Actualizar' : 'Ver documentos',
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,

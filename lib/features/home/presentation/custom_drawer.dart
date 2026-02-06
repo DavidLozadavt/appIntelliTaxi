@@ -31,6 +31,12 @@ class CustomDrawer extends StatelessWidget {
         allowedRoles: ["MOTORISTA", "CONDUCTOR", "ADMINISTRADOR"],
       ),
       DrawerItem(
+        title: 'Mis Documentos',
+        icon: Iconsax.document_text_copy,
+        route: '/mis-documentos',
+        allowedRoles: ["MOTORISTA", "CONDUCTOR"],
+      ),
+      DrawerItem(
         title: 'Kanban',
         icon: Iconsax.element_4_copy,
         route: '/kanban',
