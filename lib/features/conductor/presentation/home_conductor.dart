@@ -657,8 +657,8 @@ class _HomeConductorState extends State<HomeConductor> {
                 borderRadius: BorderRadius.circular(30),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
+                    horizontal: 20,
+                    vertical: 14,
                   ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -677,40 +677,42 @@ class _HomeConductorState extends State<HomeConductor> {
                       ),
                     ],
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _isOnline ? Icons.check_circle : Icons.cancel,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            _isOnline ? 'En Línea' : 'Desconectado',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                      Icon(
+                        _isOnline ? Icons.check_circle : Icons.cancel,
+                        color: Colors.white,
+                        size: 24,
                       ),
-                      if (_vehiculoSeleccionado != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          _vehiculoSeleccionado!.nombreCompleto,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          textAlign: TextAlign.center,
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _isOnline ? 'En Línea' : 'Desconectado',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (_vehiculoSeleccionado != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                _vehiculoSeleccionado!.placa,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
