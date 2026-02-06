@@ -45,25 +45,34 @@ class ConductorService {
     }
   }
 
-  /// Verifica si hay documentos próximos a vencer o vencidos
+  /// Verifica si hay documentos próximos a vencer o vencidos usando el endpoint de alertas
   Future<Map<String, List<DocumentoConductor>>> verificarDocumentos(
     int conductorId,
   ) async {
     try {
-      final documentos = await getDocumentosConductor(conductorId);
+      final response = await _dio.get('get_documents_alert_driver');
 
-      final vencidos = <DocumentoConductor>[];
-      final porVencer = <DocumentoConductor>[];
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data;
+        final documentos = data
+            .map((json) => DocumentoConductor.fromJson(json))
+            .toList();
 
-      for (final doc in documentos) {
-        if (doc.estaVencido) {
-          vencidos.add(doc);
-        } else if (doc.estaPorVencer) {
-          porVencer.add(doc);
+        final vencidos = <DocumentoConductor>[];
+        final porVencer = <DocumentoConductor>[];
+
+        for (final doc in documentos) {
+          if (doc.estaVencido) {
+            vencidos.add(doc);
+          } else if (doc.estaPorVencer) {
+            porVencer.add(doc);
+          }
         }
-      }
 
-      return {'vencidos': vencidos, 'porVencer': porVencer};
+        return {'vencidos': vencidos, 'porVencer': porVencer};
+      } else {
+        throw Exception('Error al obtener alertas: ${response.statusCode}');
+      }
     } catch (e) {
       print('⚠️ Error verificando documentos: $e');
       return {'vencidos': [], 'porVencer': []};

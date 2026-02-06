@@ -223,6 +223,8 @@ class _HomeConductorState extends State<HomeConductor> {
           if (turno.vehiculo != null) {
             _vehiculoSeleccionado = turno.vehiculo;
           }
+          // ✅ Si hay turno activo, el conductor debe estar en línea
+          _isOnline = turno.estaActivo;
         });
 
         // Guardar turno en SharedPreferences
@@ -400,6 +402,8 @@ class _HomeConductorState extends State<HomeConductor> {
           if (turnoIniciado && mounted) {
             setState(() {
               _vehiculoSeleccionado = vehiculo;
+              // ✅ Activar el botón cuando se inicia el turno
+              _isOnline = true;
             });
 
             messenger.showSnackBar(

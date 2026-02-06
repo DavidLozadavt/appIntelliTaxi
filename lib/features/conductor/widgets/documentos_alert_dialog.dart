@@ -24,19 +24,14 @@ class DocumentosAlertDialog extends StatelessWidget {
     }
 
     return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       elevation: 8,
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Colors.white,
-              Colors.grey.shade50,
-            ],
+            colors: [Colors.white, Colors.grey.shade50],
           ),
           borderRadius: BorderRadius.circular(24),
         ),
@@ -164,7 +159,9 @@ class DocumentosAlertDialog extends StatelessWidget {
                       onContinuar?.call();
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: hayVencidos ? Colors.red : AppColors.accent,
+                      backgroundColor: hayVencidos
+                          ? Colors.red
+                          : AppColors.accent,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
@@ -200,10 +197,7 @@ class DocumentosAlertDialog extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.2),
-          width: 1,
-        ),
+        border: Border.all(color: color.withOpacity(0.2), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -230,17 +224,20 @@ class DocumentosAlertDialog extends StatelessWidget {
   }
 
   Widget _buildDocumentoItem(DocumentoConductor doc, Color color) {
-    final dias = doc.diasRestantes;
-    String mensaje = '';
+    // Usar el mensaje del servidor si está disponible, sino calcular localmente
+    String mensaje = doc.mensajeAlerta ?? '';
 
-    if (dias == null) {
-      mensaje = 'Sin fecha de vigencia';
-    } else if (dias < 0) {
-      mensaje = 'Vencido hace ${dias.abs()} día${dias.abs() != 1 ? 's' : ''}';
-    } else if (dias == 0) {
-      mensaje = 'Vence hoy';
-    } else {
-      mensaje = 'Vence en $dias día${dias != 1 ? 's' : ''}';
+    if (mensaje.isEmpty) {
+      final dias = doc.diasRestantes;
+      if (dias == null) {
+        mensaje = 'Sin fecha de vigencia';
+      } else if (dias < 0) {
+        mensaje = 'Vencido hace ${dias.abs()} día${dias.abs() != 1 ? 's' : ''}';
+      } else if (dias == 0) {
+        mensaje = 'Vence hoy';
+      } else {
+        mensaje = 'Vence en $dias día${dias != 1 ? 's' : ''}';
+      }
     }
 
     return Padding(
@@ -250,10 +247,7 @@ class DocumentosAlertDialog extends StatelessWidget {
           Container(
             width: 4,
             height: 4,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -270,10 +264,7 @@ class DocumentosAlertDialog extends StatelessWidget {
                 ),
                 Text(
                   mensaje,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
               ],
             ),
