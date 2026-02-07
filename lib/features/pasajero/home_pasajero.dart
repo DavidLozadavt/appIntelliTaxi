@@ -19,7 +19,8 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/rides/widgets/requesting_service_modal.dart';
 import 'package:intellitaxi/features/rides/widgets/driver_offer_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
-import 'package:intellitaxi/core/services/sound_service.dart';
+import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
+import 'package:intellitaxi/features/rides/presentation/active_service_screen.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -74,12 +75,20 @@ class _HomePasajeroState extends State<HomePasajero>
   Map<String, dynamic>? _currentOffer;
   bool _showOffer = false;
 
+  // Para confirmación de solicitud
+  Map<String, dynamic>? _confirmedRequest;
+
+  // Gestor de servicio activo
+  final ActiveServiceManager _activeServiceManager = ActiveServiceManager();
+
   @override
   void initState() {
     super.initState();
     _createUserMarkerIcon();
     _initializeLocation();
     _setupPusherOffers();
+    _setupPusherRequestConfirmation();
+    _checkActiveService(); // Verificar servicio activo al iniciar
 
     // Animación
     _animationController = AnimationController(
@@ -119,13 +128,84 @@ class _HomePasajeroState extends State<HomePasajero>
     _originController.dispose();
     _destinationController.dispose();
 
+    // Limpiar ActiveServiceManager
+    _activeServiceManager.cleanup();
+
     // Desuscribirse de Pusher
     PusherService.unsubscribeSecondary('ofertas-globales');
     PusherService.unregisterEventHandlerSecondary(
       'ofertas-globales:nueva-oferta',
     );
 
+    PusherService.unsubscribeSecondary('solicitudes-servicio');
+    PusherService.unregisterEventHandlerSecondary(
+      'solicitudes-servicio:nueva-solicitud',
+    );
+
     super.dispose();
+  }
+
+  // ========== MÉTODOS DE SERVICIO ACTIVO ==========
+
+  /// Verifica si hay un servicio activo al iniciar la app
+  Future<void> _checkActiveService() async {
+    try {
+      print('🔍 Verificando servicio activo al iniciar...');
+
+      final servicio = await _activeServiceManager.getActiveService();
+
+      if (servicio != null && servicio.isActivo) {
+        print('✅ Servicio activo encontrado: ${servicio.id}');
+        print('📊 Estado: ${servicio.estado.estado}');
+
+        // Navegar a pantalla de servicio activo
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ActiveServiceScreen(
+                servicio: servicio,
+                onServiceCompleted: () {
+                  // Cuando el servicio se complete, volver al home
+                  if (mounted) {
+                    Navigator.pop(context);
+                  }
+                },
+              ),
+            ),
+          );
+
+          // Iniciar polling para actualizar el servicio
+          _startServiceTracking(servicio.id);
+        }
+      } else {
+        print('ℹ️ No hay servicio activo');
+      }
+    } catch (e) {
+      print('⚠️ Error verificando servicio activo: $e');
+    }
+  }
+
+  /// Inicia el tracking del servicio activo
+  void _startServiceTracking(int servicioId) {
+    // Configurar callbacks
+    _activeServiceManager.onServiceUpdated = (servicio) {
+      print('🔄 Servicio actualizado: ${servicio.estado.estado}');
+      // TODO: Actualizar UI si es necesario
+    };
+
+    _activeServiceManager.onServiceCompleted = () {
+      print('🏁 Servicio completado/cancelado');
+      if (mounted) {
+        Navigator.popUntil(context, (route) => route.isFirst);
+      }
+    };
+
+    // Iniciar polling
+    _activeServiceManager.startPolling();
+
+    // Suscribirse a eventos de Pusher
+    _activeServiceManager.subscribeToServiceEvents(servicioId);
   }
 
   @override
@@ -1631,6 +1711,99 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   // ========== MÉTODOS DE PUSHER - CONTRAOFERTAS ==========
+
+  /// Configura la conexión a Pusher para recibir la confirmación de solicitud creada
+  Future<void> _setupPusherRequestConfirmation() async {
+    try {
+      print('🚀 Configurando Pusher para confirmación de solicitudes...');
+
+      // Suscribirse al canal de solicitudes-servicio (conexión secundaria)
+      await PusherService.subscribeSecondary('solicitudes-servicio');
+
+      // Registrar el handler para nueva solicitud
+      PusherService.registerEventHandlerSecondary(
+        'solicitudes-servicio:nueva-solicitud',
+        _manejarNuevaSolicitud,
+      );
+
+      print(
+        '✅ Pusher configurado - Esperando confirmación en canal solicitudes-servicio',
+      );
+    } catch (e) {
+      print('❌ Error configurando Pusher: $e');
+    }
+  }
+
+  /// Maneja la llegada de la confirmación de solicitud creada
+  void _manejarNuevaSolicitud(dynamic data) {
+    print('🚕 _manejarNuevaSolicitud llamado en PASAJERO');
+    print('📦 Tipo de datos: ${data.runtimeType}');
+    print('📦 Datos recibidos: $data');
+
+    if (!mounted) {
+      print('⚠️ Widget no montado, ignorando solicitud');
+      return;
+    }
+
+    try {
+      Map<String, dynamic> solicitudData;
+
+      // Manejar diferentes tipos de datos
+      if (data is String) {
+        // Si viene como JSON string, parsearlo
+        solicitudData = Map<String, dynamic>.from(
+          const JsonDecoder().convert(data) as Map,
+        );
+      } else if (data is Map) {
+        solicitudData = Map<String, dynamic>.from(data);
+      } else {
+        print('⚠️ Tipo de datos no soportado: ${data.runtimeType}');
+        return;
+      }
+
+      print('✅ Datos parseados correctamente');
+      print('🔍 Contenido:');
+      print('   - servicio_id: ${solicitudData['servicio_id']}');
+      print('   - success: ${solicitudData['success']}');
+      print('   - message: ${solicitudData['message']}');
+
+      // Verificar que la solicitud sea para este pasajero
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final currentUserId = authProvider.idPersona;
+
+      // Obtener el pasajero_id de los datos o del data anidado
+      final pasajeroId =
+          solicitudData['pasajero_id'] ?? solicitudData['data']?['pasajero_id'];
+
+      print('👤 Usuario actual: $currentUserId, Solicitud para: $pasajeroId');
+
+      if (currentUserId == pasajeroId) {
+        print('✅ La solicitud es para este pasajero');
+
+        setState(() {
+          _confirmedRequest = solicitudData;
+        });
+
+        // Mostrar notificación de solicitud confirmada
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              solicitudData['message'] ??
+                  '✅ Solicitud confirmada. Esperando conductores...',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        print('⏭️ Solicitud no es para este pasajero, ignorando');
+      }
+    } catch (e, stackTrace) {
+      print('⚠️ Error procesando solicitud: $e');
+      print('📍 Stack trace: $stackTrace');
+    }
+  }
 
   /// Configura la conexión a Pusher para recibir contraofertas
   Future<void> _setupPusherOffers() async {
