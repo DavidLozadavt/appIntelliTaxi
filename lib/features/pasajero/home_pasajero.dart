@@ -16,7 +16,6 @@ import 'package:intellitaxi/features/rides/services/places_service.dart';
 import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
-import 'package:intellitaxi/features/rides/widgets/requesting_service_modal.dart';
 import 'package:intellitaxi/features/rides/widgets/driver_offer_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
@@ -24,6 +23,11 @@ import 'package:intellitaxi/features/rides/presentation/active_service_screen.da
 import 'package:intellitaxi/features/rides/data/conductor_model.dart';
 import 'package:intellitaxi/features/rides/services/conductores_service.dart';
 import 'package:intellitaxi/features/rides/services/pusher_conductores_service.dart';
+import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart';
+import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
+import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
+import 'package:intellitaxi/features/pasajero/widgets/ride_confirmation_dialog.dart';
+import 'package:intellitaxi/features/pasajero/widgets/waiting_for_driver_dialog.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -920,26 +924,14 @@ class _HomePasajeroState extends State<HomePasajero>
       padding: const EdgeInsets.all(20),
       children: [
         // Selector de tipo de servicio
-        Row(
-          children: [
-            Expanded(
-              child: _buildServiceTypeButton(
-                type: 'taxi',
-                icon: Icons.local_taxi,
-                title: 'Taxi',
-                subtitle: 'Viaje rápido',
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildServiceTypeButton(
-                type: 'domicilio',
-                icon: Icons.shopping_bag,
-                title: 'Domicilio',
-                subtitle: 'Envío rápido',
-              ),
-            ),
-          ],
+        ServiceTypeSelector(
+          selectedType: _serviceType,
+          onTypeChanged: (type) {
+            setState(() {
+              _serviceType = type;
+              _clearRoute();
+            });
+          },
         ),
         const SizedBox(height: 16),
 
@@ -950,7 +942,7 @@ class _HomePasajeroState extends State<HomePasajero>
         const SizedBox(height: 20),
 
         // Campo de origen
-        _buildLocationField(
+        LocationSearchField(
           controller: _originController,
           label: 'Origen',
           icon: Icons.my_location,
@@ -970,7 +962,7 @@ class _HomePasajeroState extends State<HomePasajero>
         const SizedBox(height: 16),
 
         // Campo de destino
-        _buildLocationField(
+        LocationSearchField(
           controller: _destinationController,
           label: 'Destino',
           icon: Icons.location_on,
@@ -1016,74 +1008,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
         // Información de la ruta
         if (_routeInfo != null) ...[
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-                width: 1,
-              ),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildInfoItem(
-                        icon: Icons.straighten,
-                        label: 'Distancia',
-                        value: _routeInfo!.distance,
-                      ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 40,
-                      color: isDark
-                          ? Colors.grey.shade700
-                          : Colors.grey.shade300,
-                    ),
-                    Expanded(
-                      child: _buildInfoItem(
-                        icon: Icons.access_time,
-                        label: 'Duración',
-                        value: _routeInfo!.duration,
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.payments,
-                      color: Colors.deepOrange,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Precio estimado:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _routeInfo!.formattedPrice,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.deepOrange,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          RouteInfoCard(routeInfo: _routeInfo!),
           const SizedBox(height: 16),
 
           // Botón de solicitar viaje
@@ -1143,210 +1068,6 @@ class _HomePasajeroState extends State<HomePasajero>
             ],
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildServiceTypeButton({
-    required String type,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    final isSelected = _serviceType == type;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _serviceType = type;
-          // Limpiar la ruta al cambiar de tipo
-          _clearRoute();
-        });
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? (type == 'taxi' ? Colors.deepOrange : Colors.green.shade600)
-              : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? (type == 'taxi' ? Colors.deepOrange : Colors.green.shade600)
-                : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
-            width: 2,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 22,
-              color: isSelected
-                  ? Colors.white
-                  : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: isSelected
-                        ? Colors.white
-                        : theme.textTheme.bodyLarge?.color,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: isSelected
-                        ? Colors.white.withOpacity(0.9)
-                        : (isDark
-                              ? Colors.grey.shade400
-                              : Colors.grey.shade600),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoItem({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Column(
-      children: [
-        Icon(icon, color: Colors.deepOrange, size: 20),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: theme.textTheme.bodyLarge?.color,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLocationField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    required Color iconColor,
-    required List<PlacePrediction> predictions,
-    required bool isSearching,
-    required Function(PlacePrediction) onSelectPrediction,
-    required VoidCallback onClear,
-  }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-              width: 1,
-            ),
-          ),
-          child: TextField(
-            controller: controller,
-            style: TextStyle(color: theme.textTheme.bodyLarge?.color),
-            decoration: InputDecoration(
-              hintText: label,
-              hintStyle: TextStyle(
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-              ),
-              prefixIcon: Icon(icon, color: iconColor),
-              suffixIcon: controller.text.isNotEmpty
-                  ? IconButton(
-                      icon: Icon(Icons.clear, color: theme.iconTheme.color),
-                      onPressed: onClear,
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
-              ),
-            ),
-          ),
-        ),
-
-        if (isSearching)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
-          ),
-
-        if (!isSearching && predictions.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-                width: 1,
-              ),
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: predictions.length > 5 ? 5 : predictions.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final prediction = predictions[index];
-                return ListTile(
-                  leading: Icon(
-                    Icons.location_on_outlined,
-                    color: Colors.grey.shade600,
-                  ),
-                  title: Text(
-                    prediction.mainText,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  subtitle: Text(
-                    prediction.secondaryText,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  onTap: () => onSelectPrediction(prediction),
-                );
-              },
-            ),
-          ),
       ],
     );
   }
@@ -1947,160 +1668,106 @@ class _HomePasajeroState extends State<HomePasajero>
   void _requestRide() {
     if (_routeInfo == null) return;
 
+    showDialog(
+      context: context,
+      builder: (context) => RideConfirmationDialog(
+        serviceType: _serviceType,
+        origin: _selectedOrigin!,
+        destination: _selectedDestination!,
+        routeInfo: _routeInfo!,
+        onConfirm: () => _handleRideConfirmation(),
+      ),
+    );
+  }
+
+  Future<void> _handleRideConfirmation() async {
     final isDelivery = _serviceType == 'domicilio';
+
+    // Cerrar el diálogo de confirmación
+    Navigator.pop(context);
+
+    // Esperar un momento para que se complete la animación del cierre
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (!mounted) return;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isDelivery ? 'Confirmar domicilio' : 'Confirmar viaje'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  isDelivery ? Icons.shopping_bag : Icons.local_taxi,
-                  color: isDelivery ? Colors.green.shade600 : Colors.deepOrange,
-                  size: 24,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isDelivery ? 'Servicio de domicilio' : 'Servicio de taxi',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            Text('Origen: ${_selectedOrigin!.name}'),
-            const SizedBox(height: 8),
-            Text('Destino: ${_selectedDestination!.name}'),
-            const Divider(height: 24),
-            Text('Distancia: ${_routeInfo!.distance}'),
-            Text('Duración: ${_routeInfo!.duration}'),
-            const SizedBox(height: 8),
-            Text(
-              'Precio estimado: ${_routeInfo!.formattedPrice}',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: isDelivery ? Colors.green.shade600 : Colors.deepOrange,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              // Cerrar el diálogo de confirmación
-              Navigator.pop(context);
-
-              // Esperar un momento para que se complete la animación del cierre
-              await Future.delayed(const Duration(milliseconds: 300));
-
-              if (!mounted) return;
-
-              // Mostrar el modal épico de solicitud y obtener su contexto
-              // showDialog(
-              //   context: context,
-              //   barrierDismissible: false,
-              //   builder: (dialogContext) {
-              //     return RequestingServiceModal(
-              //       isDelivery: isDelivery,
-              //       origin: _selectedOrigin!.name,
-              //       destination: _selectedDestination!.name,
-              //       distance: _routeInfo!.distance,
-              //       duration: _routeInfo!.duration,
-              //       price: _routeInfo!.formattedPrice,
-              //     );
-              //   },
-              // );
-
-              // Esperar un momento para que el diálogo se muestre completamente
-              await Future.delayed(const Duration(milliseconds: 500));
-
-              // 📤 ENVIAR SOLICITUD AL BACKEND
-              try {
-                await _rideRequestService.requestRide(
-                  origin: _selectedOrigin!,
-                  destination: _selectedDestination!,
-                  distance: _routeInfo!.distance,
-                  distanceValue: _routeInfo!.distanceValue,
-                  duration: _routeInfo!.duration,
-                  durationValue: _routeInfo!.durationValue,
-                  estimatedPrice: _routeInfo!.estimatedPrice,
-                  serviceType: isDelivery ? 'domicilio' : 'taxi',
-                );
-
-                // Cerrar modal de búsqueda
-                if (mounted) {
-                  Navigator.of(context, rootNavigator: true).pop();
-                }
-
-                // Esperar para asegurar que el diálogo se cerró
-                await Future.delayed(const Duration(milliseconds: 200));
-
-                // Mostrar éxito
-                if (mounted && _scaffoldMessenger != null) {
-                  _scaffoldMessenger!.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        isDelivery
-                            ? '✅ Solicitud de domicilio enviada exitosamente'
-                            : '✅ Solicitud de viaje enviada exitosamente',
-                      ),
-                      backgroundColor: Colors.green,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
-
-                  // Limpiar selección
-                  setState(() {
-                    _selectedOrigin = null;
-                    _selectedDestination = null;
-                    _routeInfo = null;
-                    _polylines.clear();
-                    _markers.clear();
-                    _originController.clear();
-                    _destinationController.clear();
-                  });
-                }
-              } catch (e) {
-                // Error al enviar solicitud - cerrar modal
-                if (mounted) {
-                  Navigator.of(context, rootNavigator: true).pop();
-                }
-
-                // Esperar para asegurar que el diálogo se cerró
-                await Future.delayed(const Duration(milliseconds: 200));
-
-                if (mounted && _scaffoldMessenger != null) {
-                  _scaffoldMessenger!.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Error: ${e.toString().replaceAll('Exception: ', '')}',
-                      ),
-                      backgroundColor: Colors.red,
-                      duration: const Duration(seconds: 4),
-                    ),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isDelivery
-                  ? Colors.orange.shade600
-                  : Colors.green.shade600,
-            ),
-            child: const Text('Confirmar'),
-          ),
-        ],
-      ),
+      barrierDismissible: false,
+      builder: (dialogContext) =>
+          WaitingForDriverDialog(isDelivery: isDelivery),
     );
+
+    // Esperar un momento para que el diálogo se muestre completamente
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // 📤 ENVIAR SOLICITUD AL BACKEND
+    try {
+      await _rideRequestService.requestRide(
+        origin: _selectedOrigin!,
+        destination: _selectedDestination!,
+        distance: _routeInfo!.distance,
+        distanceValue: _routeInfo!.distanceValue,
+        duration: _routeInfo!.duration,
+        durationValue: _routeInfo!.durationValue,
+        estimatedPrice: _routeInfo!.estimatedPrice,
+        serviceType: isDelivery ? 'domicilio' : 'taxi',
+      );
+
+      // Cerrar modal de búsqueda
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      // Esperar para asegurar que el diálogo se cerró
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // Mostrar éxito
+      if (mounted && _scaffoldMessenger != null) {
+        _scaffoldMessenger!.showSnackBar(
+          SnackBar(
+            content: Text(
+              isDelivery
+                  ? '✅ Solicitud de domicilio enviada. Esperando respuesta de conductores...'
+                  : '✅ Solicitud de viaje enviada. Esperando respuesta de conductores...',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+
+        // Limpiar selección
+        setState(() {
+          _selectedOrigin = null;
+          _selectedDestination = null;
+          _routeInfo = null;
+          _polylines.clear();
+          _markers.clear();
+          _originController.clear();
+          _destinationController.clear();
+        });
+      }
+    } catch (e) {
+      // Error al enviar solicitud - cerrar modal
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      // Esperar para asegurar que el diálogo se cerró
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      if (mounted && _scaffoldMessenger != null) {
+        _scaffoldMessenger!.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error: ${e.toString().replaceAll('Exception: ', '')}',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   // ========== MÉTODOS DE PUSHER - CONTRAOFERTAS ==========
