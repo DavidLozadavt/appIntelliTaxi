@@ -39,6 +39,7 @@ class _HomePasajeroState extends State<HomePasajero>
   String _locationMessage =
       'Verificando tu ubicación actual con GPS de alta precisión...';
   Brightness? _lastBrightness;
+  Brightness _currentBrightness = Brightness.light;
 
   // Para el bottom sheet animado
   late AnimationController _animationController;
@@ -75,11 +76,11 @@ class _HomePasajeroState extends State<HomePasajero>
   Map<String, dynamic>? _currentOffer;
   bool _showOffer = false;
 
-  // Para confirmación de solicitud
-  Map<String, dynamic>? _confirmedRequest;
-
   // Gestor de servicio activo
   final ActiveServiceManager _activeServiceManager = ActiveServiceManager();
+
+  // Referencia segura al ScaffoldMessenger
+  ScaffoldMessengerState? _scaffoldMessenger;
 
   @override
   void initState() {
@@ -112,7 +113,14 @@ class _HomePasajeroState extends State<HomePasajero>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (!mounted) return;
+
+    // Guardar referencia segura al ScaffoldMessenger
+    _scaffoldMessenger = ScaffoldMessenger.of(context);
+
     final currentBrightness = Theme.of(context).brightness;
+    _currentBrightness = currentBrightness;
+
     if (_lastBrightness != null &&
         _lastBrightness != currentBrightness &&
         _mapController != null) {
@@ -123,10 +131,12 @@ class _HomePasajeroState extends State<HomePasajero>
 
   @override
   void dispose() {
-    _mapController?.dispose();
-    _animationController.dispose();
-    _originController.dispose();
-    _destinationController.dispose();
+    // Limpiar callbacks PRIMERO para evitar llamadas con context inválido
+    _activeServiceManager.onServiceUpdated = null;
+    _activeServiceManager.onServiceCompleted = null;
+
+    // Limpiar referencia al ScaffoldMessenger
+    _scaffoldMessenger = null;
 
     // Limpiar ActiveServiceManager
     _activeServiceManager.cleanup();
@@ -141,6 +151,16 @@ class _HomePasajeroState extends State<HomePasajero>
     PusherService.unregisterEventHandlerSecondary(
       'solicitudes-servicio:nueva-solicitud',
     );
+
+    // Remover listeners de los controladores de texto ANTES de disponer
+    _originController.removeListener(_onOriginChanged);
+    _destinationController.removeListener(_onDestinationChanged);
+
+    // Disponer recursos
+    _mapController?.dispose();
+    _animationController.dispose();
+    _originController.dispose();
+    _destinationController.dispose();
 
     super.dispose();
   }
@@ -159,25 +179,25 @@ class _HomePasajeroState extends State<HomePasajero>
         print('📊 Estado: ${servicio.estado.estado}');
 
         // Navegar a pantalla de servicio activo
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ActiveServiceScreen(
-                servicio: servicio,
-                onServiceCompleted: () {
-                  // Cuando el servicio se complete, volver al home
-                  if (mounted) {
-                    Navigator.pop(context);
-                  }
-                },
-              ),
-            ),
-          );
+        if (!mounted) return;
 
-          // Iniciar polling para actualizar el servicio
-          _startServiceTracking(servicio.id);
-        }
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ActiveServiceScreen(
+              servicio: servicio,
+              onServiceCompleted: () {
+                // Cuando el servicio se complete, volver al home
+                if (mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+            ),
+          ),
+        );
+
+        // Iniciar polling para actualizar el servicio
+        _startServiceTracking(servicio.id);
       } else {
         print('ℹ️ No hay servicio activo');
       }
@@ -190,15 +210,21 @@ class _HomePasajeroState extends State<HomePasajero>
   void _startServiceTracking(int servicioId) {
     // Configurar callbacks
     _activeServiceManager.onServiceUpdated = (servicio) {
+      if (!mounted) return;
       print('🔄 Servicio actualizado: ${servicio.estado.estado}');
       // TODO: Actualizar UI si es necesario
     };
 
     _activeServiceManager.onServiceCompleted = () {
       print('🏁 Servicio completado/cancelado');
-      if (mounted) {
-        Navigator.popUntil(context, (route) => route.isFirst);
-      }
+      if (!mounted) return;
+
+      // Usar WidgetsBinding para asegurar que se ejecute después del frame actual
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+      });
     };
 
     // Iniciar polling
@@ -1264,7 +1290,8 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _setMapStyle(GoogleMapController controller) async {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    if (!mounted) return;
+    final isDarkMode = _currentBrightness == Brightness.dark;
     try {
       await controller.setMapStyle(
         isDarkMode ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
@@ -1286,6 +1313,8 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   void _onOriginChanged() {
+    if (!mounted) return;
+
     if (_originController.text.isEmpty) {
       setState(() {
         _originPredictions = [];
@@ -1309,6 +1338,8 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   void _onDestinationChanged() {
+    if (!mounted) return;
+
     if (_destinationController.text.isEmpty) {
       setState(() {
         _destinationPredictions = [];
@@ -1385,8 +1416,8 @@ class _HomePasajeroState extends State<HomePasajero>
     if (_selectedOrigin == null || _selectedDestination == null) return;
 
     // Mostrar indicador de carga
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    if (mounted && _scaffoldMessenger != null) {
+      _scaffoldMessenger!.showSnackBar(
         const SnackBar(
           content: Row(
             children: [
@@ -1616,33 +1647,36 @@ class _HomePasajeroState extends State<HomePasajero>
           ),
           ElevatedButton(
             onPressed: () async {
+              // Cerrar el diálogo de confirmación
               Navigator.pop(context);
 
-              // Mostrar el modal épico de solicitud
+              // Esperar un momento para que se complete la animación del cierre
+              await Future.delayed(const Duration(milliseconds: 300));
+
+              if (!mounted) return;
+
+              // Mostrar el modal épico de solicitud y obtener su contexto
               showDialog(
                 context: context,
                 barrierDismissible: false,
-                builder: (context) => RequestingServiceModal(
-                  isDelivery: isDelivery,
-                  origin: _selectedOrigin!.name,
-                  destination: _selectedDestination!.name,
-                  distance: _routeInfo!.distance,
-                  duration: _routeInfo!.duration,
-                  price: _routeInfo!.formattedPrice,
-                ),
+                builder: (dialogContext) {
+                  return RequestingServiceModal(
+                    isDelivery: isDelivery,
+                    origin: _selectedOrigin!.name,
+                    destination: _selectedDestination!.name,
+                    distance: _routeInfo!.distance,
+                    duration: _routeInfo!.duration,
+                    price: _routeInfo!.formattedPrice,
+                  );
+                },
               );
+
+              // Esperar un momento para que el diálogo se muestre completamente
+              await Future.delayed(const Duration(milliseconds: 500));
 
               // 📤 ENVIAR SOLICITUD AL BACKEND
               try {
-                final authProvider = Provider.of<AuthProvider>(
-                  context,
-                  listen: false,
-                );
-                final token = await authProvider.getSavedToken();
-
                 await _rideRequestService.requestRide(
-                  personaId: authProvider.persona!.id,
-                  companyUserId: authProvider.activationId!,
                   origin: _selectedOrigin!,
                   destination: _selectedDestination!,
                   distance: _routeInfo!.distance,
@@ -1651,15 +1685,19 @@ class _HomePasajeroState extends State<HomePasajero>
                   durationValue: _routeInfo!.durationValue,
                   estimatedPrice: _routeInfo!.estimatedPrice,
                   serviceType: isDelivery ? 'domicilio' : 'taxi',
-                  observations:
-                      null, // Puedes agregar un campo para observaciones
-                  token: token,
                 );
 
-                // Cerrar modal y mostrar éxito
+                // Cerrar modal de búsqueda
                 if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  Navigator.of(context, rootNavigator: true).pop();
+                }
+
+                // Esperar para asegurar que el diálogo se cerró
+                await Future.delayed(const Duration(milliseconds: 200));
+
+                // Mostrar éxito
+                if (mounted && _scaffoldMessenger != null) {
+                  _scaffoldMessenger!.showSnackBar(
                     SnackBar(
                       content: Text(
                         isDelivery
@@ -1683,10 +1721,16 @@ class _HomePasajeroState extends State<HomePasajero>
                   });
                 }
               } catch (e) {
-                // Error al enviar solicitud
+                // Error al enviar solicitud - cerrar modal
                 if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  Navigator.of(context, rootNavigator: true).pop();
+                }
+
+                // Esperar para asegurar que el diálogo se cerró
+                await Future.delayed(const Duration(milliseconds: 200));
+
+                if (mounted && _scaffoldMessenger != null) {
+                  _scaffoldMessenger!.showSnackBar(
                     SnackBar(
                       content: Text(
                         'Error: ${e.toString().replaceAll('Exception: ', '')}',
@@ -1767,6 +1811,9 @@ class _HomePasajeroState extends State<HomePasajero>
       print('   - success: ${solicitudData['success']}');
       print('   - message: ${solicitudData['message']}');
 
+      // Verificar que el widget aún esté montado
+      if (!mounted) return;
+
       // Verificar que la solicitud sea para este pasajero
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUserId = authProvider.idPersona;
@@ -1780,22 +1827,20 @@ class _HomePasajeroState extends State<HomePasajero>
       if (currentUserId == pasajeroId) {
         print('✅ La solicitud es para este pasajero');
 
-        setState(() {
-          _confirmedRequest = solicitudData;
-        });
-
         // Mostrar notificación de solicitud confirmada
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              solicitudData['message'] ??
-                  '✅ Solicitud confirmada. Esperando conductores...',
+        if (mounted && _scaffoldMessenger != null) {
+          _scaffoldMessenger!.showSnackBar(
+            SnackBar(
+              content: Text(
+                solicitudData['message'] ??
+                    '✅ Solicitud confirmada. Esperando conductores...',
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+              behavior: SnackBarBehavior.floating,
             ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+          );
+        }
       } else {
         print('⏭️ Solicitud no es para este pasajero, ignorando');
       }
@@ -1849,6 +1894,9 @@ class _HomePasajeroState extends State<HomePasajero>
       print('   - conductor_nombre: ${offerData['conductor_nombre']}');
       print('   - precio_ofertado: ${offerData['precio_ofertado']}');
 
+      // Verificar que el widget aún esté montado
+      if (!mounted) return;
+
       // Verificar que la oferta sea para este pasajero
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final currentUserId = authProvider.idPersona;
@@ -1859,6 +1907,8 @@ class _HomePasajeroState extends State<HomePasajero>
       );
 
       if (currentUserId == offerPassengerId) {
+        if (!mounted) return;
+
         setState(() {
           _currentOffer = offerData;
           _showOffer = true;
@@ -1867,16 +1917,18 @@ class _HomePasajeroState extends State<HomePasajero>
         print('✅ Oferta mostrada al usuario');
 
         // Mostrar snackbar de notificación
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '🚗 Nueva oferta de ${offerData['conductor_nombre']} - \$${offerData['precio_ofertado']}',
+        if (mounted && _scaffoldMessenger != null) {
+          _scaffoldMessenger!.showSnackBar(
+            SnackBar(
+              content: Text(
+                '🚗 Nueva oferta de ${offerData['conductor_nombre']} - \$${offerData['precio_ofertado']}',
+              ),
+              backgroundColor: AppColors.accent,
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
             ),
-            backgroundColor: AppColors.accent,
-            duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+          );
+        }
       } else {
         print('⏭️ Oferta no es para este pasajero, ignorando');
       }
@@ -1895,15 +1947,19 @@ class _HomePasajeroState extends State<HomePasajero>
     // TODO: Llamar al backend para confirmar la aceptación
     // await _rideRequestService.acceptOffer(_currentOffer!['oferta_id']);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '✅ ¡Oferta aceptada! El conductor ${_currentOffer!['conductor_nombre']} va en camino',
+    if (!mounted) return;
+
+    if (_scaffoldMessenger != null) {
+      _scaffoldMessenger!.showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ ¡Oferta aceptada! El conductor ${_currentOffer!['conductor_nombre']} va en camino',
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+      );
+    }
 
     setState(() {
       _showOffer = false;
@@ -1920,13 +1976,17 @@ class _HomePasajeroState extends State<HomePasajero>
     // TODO: Llamar al backend para notificar el rechazo
     // await _rideRequestService.rejectOffer(_currentOffer!['oferta_id']);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Oferta rechazada. Esperando más conductores...'),
-        backgroundColor: Colors.orange,
-        duration: Duration(seconds: 2),
-      ),
-    );
+    if (!mounted) return;
+
+    if (_scaffoldMessenger != null) {
+      _scaffoldMessenger!.showSnackBar(
+        const SnackBar(
+          content: Text('Oferta rechazada. Esperando más conductores...'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
 
     setState(() {
       _showOffer = false;

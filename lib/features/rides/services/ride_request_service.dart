@@ -2,23 +2,14 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 
 class RideRequestService {
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: AppConfig.baseUrl,
-      headers: {"Accept": "application/json"},
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 30),
-    ),
-  );
+  final Dio _dio = DioClient.getInstance();
 
   /// 📌 SOLICITAR SERVICIO DE VIAJE
   Future<Map<String, dynamic>> requestRide({
-    required int personaId,
-    required int companyUserId,
     required TripLocation origin,
     required TripLocation destination,
     required String distance,
@@ -27,15 +18,9 @@ class RideRequestService {
     required int durationValue, // en segundos
     required double estimatedPrice,
     required String serviceType, // 'taxi' o 'domicilio'
-    String? observations,
-    String? token,
   }) async {
-    // Preparar los datos que se enviarán
+    // Preparar los datos según el formato del backend
     final Map<String, dynamic> requestData = {
-      // IDs del usuario
-      'persona_id': personaId,
-      'company_user_id': companyUserId,
-
       // Información del origen
       'origin_lat': origin.lat,
       'origin_lng': origin.lng,
@@ -51,33 +36,20 @@ class RideRequestService {
       'destination_place_id': destination.placeId,
 
       // Información de la ruta
-      'distance': distance, // Ej: "5.2 km"
-      'distance_value': distanceValue, // Ej: 5200 (metros)
-      'duration': duration, // Ej: "12 mins"
-      'duration_value': durationValue, // Ej: 720 (segundos)
-      'estimated_price': estimatedPrice, // Ej: 18000.0
+      'distance': distance, // Ej: "8,7 km"
+      'distance_value': distanceValue, // Ej: 8675 (metros)
+      'duration': duration, // Ej: "21 min"
+      'duration_value': durationValue, // Ej: 1275 (segundos)
+      'estimated_price': estimatedPrice, // Ej: 26700.0
       // Tipo de servicio
       'service_type': serviceType, // 'taxi' o 'domicilio'
-      'status': 'pending', // Estado inicial
-      // Observaciones opcionales
-      if (observations != null && observations.isNotEmpty)
-        'observations': observations,
-
-      // Timestamp de la solicitud
-      'requested_at': DateTime.now().toIso8601String(),
     };
 
     // 🔍 LOGS EN CONSOLA - Mostrar los datos que se van a enviar
     _logRequestData(requestData);
 
     try {
-      final response = await _dio.post(
-        'rides/request', // Ajusta este endpoint según tu backend
-        data: requestData,
-        options: Options(
-          headers: {if (token != null) "Authorization": "Bearer $token"},
-        ),
-      );
+      final response = await _dio.post('taxi/solicitud', data: requestData);
 
       // Log de respuesta exitosa
       _logResponse(response.data);

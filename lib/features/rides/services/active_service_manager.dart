@@ -77,24 +77,34 @@ class ActiveServiceManager {
     print('🔄 Iniciando polling cada ${interval.inSeconds}s');
 
     _pollingTimer = Timer.periodic(interval, (_) async {
-      final servicio = await getActiveService();
+      try {
+        final servicio = await getActiveService();
 
-      if (servicio != null) {
-        // Notificar actualización
-        onServiceUpdated?.call(servicio);
+        if (servicio != null) {
+          // Notificar actualización solo si el callback sigue definido
+          if (onServiceUpdated != null) {
+            onServiceUpdated?.call(servicio);
+          }
 
-        // Si el servicio está finalizado o cancelado, detener polling
-        if (!servicio.isActivo) {
-          print('🏁 Servicio finalizado/cancelado, deteniendo polling');
+          // Si el servicio está finalizado o cancelado, detener polling
+          if (!servicio.isActivo) {
+            print('🏁 Servicio finalizado/cancelado, deteniendo polling');
+            stopPolling();
+            await clearActiveServiceId();
+            if (onServiceCompleted != null) {
+              onServiceCompleted?.call();
+            }
+          }
+        } else {
+          // No hay servicio activo, detener polling
+          print('⏹️ Sin servicio activo, deteniendo polling');
           stopPolling();
-          await clearActiveServiceId();
-          onServiceCompleted?.call();
+          if (onServiceCompleted != null) {
+            onServiceCompleted?.call();
+          }
         }
-      } else {
-        // No hay servicio activo, detener polling
-        print('⏹️ Sin servicio activo, deteniendo polling');
-        stopPolling();
-        onServiceCompleted?.call();
+      } catch (e) {
+        print('⚠️ Error en polling: $e');
       }
     });
   }
@@ -125,14 +135,20 @@ class ActiveServiceManager {
         '$channelName:estado-cambiado',
         (data) async {
           print('🔔 Estado del servicio cambió');
-          final servicio = await getActiveService();
-          if (servicio != null) {
-            onServiceUpdated?.call(servicio);
+          try {
+            final servicio = await getActiveService();
+            if (servicio != null && onServiceUpdated != null) {
+              onServiceUpdated?.call(servicio);
 
-            if (!servicio.isActivo) {
-              await unsubscribeFromServiceEvents(servicioId);
-              onServiceCompleted?.call();
+              if (!servicio.isActivo) {
+                await unsubscribeFromServiceEvents(servicioId);
+                if (onServiceCompleted != null) {
+                  onServiceCompleted?.call();
+                }
+              }
             }
+          } catch (e) {
+            print('⚠️ Error procesando estado-cambiado: $e');
           }
         },
       );
@@ -151,9 +167,13 @@ class ActiveServiceManager {
         '$channelName:servicio-aceptado',
         (data) async {
           print('✅ Servicio aceptado por conductor');
-          final servicio = await getActiveService();
-          if (servicio != null) {
-            onServiceUpdated?.call(servicio);
+          try {
+            final servicio = await getActiveService();
+            if (servicio != null && onServiceUpdated != null) {
+              onServiceUpdated?.call(servicio);
+            }
+          } catch (e) {
+            print('⚠️ Error procesando servicio-aceptado: $e');
           }
         },
       );
