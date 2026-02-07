@@ -802,7 +802,27 @@ class _HomeConductorState extends State<HomeConductor> {
         );
       }
 
-      final turno = await _conductorService.iniciarTurno(idVehiculo);
+      // Obtener ubicación actual del conductor
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
+        );
+        print(
+          '📍 Ubicación obtenida: ${position.latitude}, ${position.longitude}',
+        );
+      } catch (e) {
+        print('⚠️ No se pudo obtener ubicación GPS: $e');
+        // Continuar sin ubicación si falla
+      }
+
+      // Iniciar turno con ubicación si está disponible
+      final turno = await _conductorService.iniciarTurno(
+        idVehiculo,
+        lat: position?.latitude,
+        lng: position?.longitude,
+      );
 
       // Guardar turno en SharedPreferences
       final prefs = await SharedPreferences.getInstance();

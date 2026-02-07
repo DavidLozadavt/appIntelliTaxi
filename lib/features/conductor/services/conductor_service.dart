@@ -82,12 +82,22 @@ class ConductorService {
   }
 
   /// Inicia un turno con el vehículo seleccionado
-  Future<TurnoActivo> iniciarTurno(int idVehiculo) async {
+  Future<TurnoActivo> iniciarTurno(
+    int idVehiculo, {
+    double? lat,
+    double? lng,
+  }) async {
     try {
-      final response = await _dio.post(
-        'turnos',
-        data: {'idVehiculo': idVehiculo},
-      );
+      // Preparar datos con ubicación si están disponibles
+      final Map<String, dynamic> requestData = {
+        'idVehiculo': idVehiculo,
+        if (lat != null) 'lat': lat,
+        if (lng != null) 'lng': lng,
+      };
+
+      print('🚀 Iniciando turno con datos: $requestData');
+
+      final response = await _dio.post('turnos', data: requestData);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         // La respuesta puede venir en response.data directamente o en response.data['data']

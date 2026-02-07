@@ -21,6 +21,9 @@ import 'package:intellitaxi/features/rides/widgets/driver_offer_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 import 'package:intellitaxi/features/rides/presentation/active_service_screen.dart';
+import 'package:intellitaxi/features/rides/data/conductor_model.dart';
+import 'package:intellitaxi/features/rides/services/conductores_service.dart';
+import 'package:intellitaxi/features/rides/services/pusher_conductores_service.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -82,14 +85,23 @@ class _HomePasajeroState extends State<HomePasajero>
   // Referencia segura al ScaffoldMessenger
   ScaffoldMessengerState? _scaffoldMessenger;
 
+  // Conductores disponibles
+  final ConductoresService _conductoresService = ConductoresService();
+  PusherConductoresService? _pusherConductoresService;
+  Map<int, Conductor> _conductoresDisponibles = {};
+  BitmapDescriptor? _driverMarkerIcon;
+  bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
+
   @override
   void initState() {
     super.initState();
     _createUserMarkerIcon();
+    _createDriverMarkerIcon();
     _initializeLocation();
     _setupPusherOffers();
     _setupPusherRequestConfirmation();
     _checkActiveService(); // Verificar servicio activo al iniciar
+    _setupPusherConductores(); // Configurar Pusher para conductores
 
     // Animación
     _animationController = AnimationController(
@@ -156,10 +168,9 @@ class _HomePasajeroState extends State<HomePasajero>
     _originController.removeListener(_onOriginChanged);
     _destinationController.removeListener(_onDestinationChanged);
 
-    // Disponer recursos
-    _mapController?.dispose();
-    _animationController.dispose();
-    _originController.dispose();
+    // Desconectar servicio de conductores
+    _pusherConductoresService?.disconnect();
+
     _destinationController.dispose();
 
     super.dispose();
@@ -232,6 +243,257 @@ class _HomePasajeroState extends State<HomePasajero>
 
     // Suscribirse a eventos de Pusher
     _activeServiceManager.subscribeToServiceEvents(servicioId);
+  }
+
+  // ========== MÉTODOS DE CONDUCTORES DISPONIBLES ==========
+
+  /// Configura el servicio de Pusher para conductores
+  Future<void> _setupPusherConductores() async {
+    try {
+      // Por ahora usar empresa ID = 1 (puedes obtenerlo del backend si es necesario)
+      const idEmpresa = 1;
+
+      print('🚗 Configurando Pusher para conductores...');
+      print('   🏢 Empresa ID: $idEmpresa');
+
+      _pusherConductoresService = PusherConductoresService(
+        idEmpresa: idEmpresa,
+      );
+
+      // Configurar callbacks
+      _pusherConductoresService!.onDriverUpdate = (conductor) {
+        if (!mounted) return;
+        _updateDriverMarker(conductor);
+      };
+
+      _pusherConductoresService!.onDriverOffline = (conductorId) {
+        if (!mounted) return;
+        _removeDriverMarker(conductorId);
+      };
+
+      // Conectar al canal
+      await _pusherConductoresService!.connect();
+
+      print('✅ Pusher conductores configurado');
+    } catch (e) {
+      print('❌ Error configurando Pusher conductores: $e');
+    }
+  }
+
+  /// Carga los conductores disponibles inicialmente
+  Future<void> _loadAvailableDrivers() async {
+    if (_currentPosition == null) {
+      print('⚠️ No hay posición actual para buscar conductores');
+      return;
+    }
+
+    try {
+      print('🔍 Cargando conductores disponibles...');
+
+      final conductores = await _conductoresService.getConductoresDisponibles(
+        lat: _currentPosition!.latitude,
+        lng: _currentPosition!.longitude,
+        radioKm: 10,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _conductoresDisponibles.clear();
+        for (var conductor in conductores) {
+          _conductoresDisponibles[conductor.conductorId] = conductor;
+        }
+      });
+
+      // Actualizar marcadores
+      _updateAllDriverMarkers();
+
+      print('✅ ${conductores.length} conductores cargados');
+    } catch (e) {
+      print('❌ Error cargando conductores: $e');
+    }
+  }
+
+  /// Actualiza el marcador de un conductor específico
+  void _updateDriverMarker(Conductor conductor) {
+    if (!_showDrivers) return;
+
+    setState(() {
+      _conductoresDisponibles[conductor.conductorId] = conductor;
+      _updateAllDriverMarkers();
+    });
+
+    print('📍 Marcador actualizado: ${conductor.nombre}');
+  }
+
+  /// Elimina el marcador de un conductor
+  void _removeDriverMarker(int conductorId) {
+    setState(() {
+      _conductoresDisponibles.remove(conductorId);
+      _updateAllDriverMarkers();
+    });
+
+    print('🔴 Conductor removido: $conductorId');
+  }
+
+  /// Actualiza todos los marcadores en el mapa
+  void _updateAllDriverMarkers() {
+    final Set<Marker> newMarkers = {};
+
+    // Agregar marcadores de conductores solo si están visibles
+    if (_showDrivers) {
+      for (var conductor in _conductoresDisponibles.values) {
+        newMarkers.add(
+          Marker(
+            markerId: MarkerId('driver_${conductor.conductorId}'),
+            position: LatLng(conductor.lat, conductor.lng),
+            icon:
+                _driverMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueGreen,
+                ),
+            infoWindow: InfoWindow(
+              title: '🚗 ${conductor.nombre}',
+              snippet:
+                  '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
+                  '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}\n'
+                  '📏 ${conductor.distanciaKm != null ? "${conductor.distanciaKm!.toStringAsFixed(2)} km" : ""}',
+            ),
+            zIndex: 1, // Debajo de otros marcadores
+          ),
+        );
+      }
+    }
+
+    // Agregar marcadores existentes que NO sean de conductores (ruta, origen, destino, etc)
+    for (var marker in _markers) {
+      if (!marker.markerId.value.startsWith('driver_')) {
+        newMarkers.add(marker);
+      }
+    }
+
+    // Si hay ubicación actual y no hay ruta, mostrar marcador de usuario
+    if (_currentPosition != null &&
+        _routeInfo == null &&
+        _userMarkerIcon != null) {
+      newMarkers.add(
+        Marker(
+          markerId: const MarkerId('user_location'),
+          position: LatLng(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+          ),
+          icon: _userMarkerIcon!,
+          infoWindow: const InfoWindow(
+            title: 'Tú',
+            snippet: 'Tu ubicación actual',
+          ),
+          zIndex: 10, // Encima de todos
+        ),
+      );
+    }
+
+    setState(() {
+      _markers = newMarkers;
+    });
+
+    print(
+      '🗺️ Marcadores actualizados: ${_conductoresDisponibles.length} conductores, ${newMarkers.length} marcadores totales',
+    );
+  }
+
+  /// Alterna la visibilidad de los conductores
+  void _toggleDriversVisibility() {
+    setState(() {
+      _showDrivers = !_showDrivers;
+      if (_showDrivers) {
+        _updateAllDriverMarkers();
+      } else {
+        // Mantener solo marcadores de ruta
+        _markers.removeWhere(
+          (marker) => marker.markerId.value.startsWith('driver_'),
+        );
+      }
+    });
+  }
+
+  /// Crea el icono del marcador para conductores
+  Future<void> _createDriverMarkerIcon() async {
+    try {
+      // Crear un icono de taxi verde
+      final icon = await _createCustomMarkerIcon(
+        icon: Icons.local_taxi,
+        color: Colors.green,
+        size: 100,
+      );
+
+      setState(() => _driverMarkerIcon = icon);
+    } catch (e) {
+      print('Error creando icono de conductor: $e');
+      setState(
+        () => _driverMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
+          BitmapDescriptor.hueGreen,
+        ),
+      );
+    }
+  }
+
+  /// Crea un marcador personalizado con un icono
+  Future<BitmapDescriptor?> _createCustomMarkerIcon({
+    required IconData icon,
+    required Color color,
+    double size = 100,
+  }) async {
+    try {
+      final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
+      final Canvas canvas = Canvas(pictureRecorder);
+
+      // Dibujar círculo de fondo
+      final Paint circlePaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(size / 2, size / 2), size / 2, circlePaint);
+
+      // Dibujar borde blanco
+      final Paint borderPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4;
+      canvas.drawCircle(Offset(size / 2, size / 2), size / 2 - 2, borderPaint);
+
+      // Dibujar icono
+      final textPainter = TextPainter(textDirection: TextDirection.ltr);
+      textPainter.text = TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          fontSize: size * 0.5,
+          fontFamily: icon.fontFamily,
+          color: Colors.white,
+        ),
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
+      );
+
+      // Convertir a imagen
+      final ui.Image markerImage = await pictureRecorder.endRecording().toImage(
+        size.toInt(),
+        size.toInt(),
+      );
+      final ByteData? byteData = await markerImage.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      final Uint8List? pngBytes = byteData?.buffer.asUint8List();
+
+      if (pngBytes != null) {
+        return BitmapDescriptor.fromBytes(pngBytes);
+      }
+    } catch (e) {
+      print('Error creando icono personalizado: $e');
+    }
+    return null;
   }
 
   @override
@@ -509,6 +771,65 @@ class _HomePasajeroState extends State<HomePasajero>
               onPressed: _clearRoute,
               backgroundColor: Colors.white,
               child: const Icon(Icons.clear, color: Colors.red),
+            ),
+          ),
+
+        // Botones de control de conductores
+        if (_currentPosition != null && _routeInfo == null)
+          Positioned(
+            top: 70,
+            right: 16,
+            child: Column(
+              children: [
+                // Toggle mostrar/ocultar conductores
+                FloatingActionButton.small(
+                  onPressed: _toggleDriversVisibility,
+                  backgroundColor: _showDrivers ? Colors.green : Colors.grey,
+                  heroTag: 'toggle_drivers',
+                  child: Icon(
+                    _showDrivers ? Icons.visibility : Icons.visibility_off,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Recargar conductores
+                FloatingActionButton.small(
+                  onPressed: _loadAvailableDrivers,
+                  backgroundColor: Colors.white,
+                  heroTag: 'reload_drivers',
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(Icons.local_taxi, color: Colors.green),
+                      if (_conductoresDisponibles.isNotEmpty)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              '${_conductoresDisponibles.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -1278,6 +1599,9 @@ class _HomePasajeroState extends State<HomePasajero>
             ),
           );
         }
+
+        // Cargar conductores disponibles
+        _loadAvailableDrivers();
       }
     } catch (e) {
       if (mounted) {
@@ -1505,8 +1829,33 @@ class _HomePasajeroState extends State<HomePasajero>
               title: 'Destino',
               snippet: _selectedDestination!.name,
             ),
+            zIndex: 5,
           ),
         );
+
+        // Agregar marcadores de conductores si están visibles
+        if (_showDrivers) {
+          for (var conductor in _conductoresDisponibles.values) {
+            newMarkers.add(
+              Marker(
+                markerId: MarkerId('driver_${conductor.conductorId}'),
+                position: LatLng(conductor.lat, conductor.lng),
+                icon:
+                    _driverMarkerIcon ??
+                    BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueGreen,
+                    ),
+                infoWindow: InfoWindow(
+                  title: '🚗 ${conductor.nombre}',
+                  snippet:
+                      '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
+                      '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}',
+                ),
+                zIndex: 1,
+              ),
+            );
+          }
+        }
 
         // Si hay ubicación actual y es diferente al origen, mostrar también la ubicación en tiempo real
         if (_currentPosition != null &&
@@ -1656,20 +2005,20 @@ class _HomePasajeroState extends State<HomePasajero>
               if (!mounted) return;
 
               // Mostrar el modal épico de solicitud y obtener su contexto
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (dialogContext) {
-                  return RequestingServiceModal(
-                    isDelivery: isDelivery,
-                    origin: _selectedOrigin!.name,
-                    destination: _selectedDestination!.name,
-                    distance: _routeInfo!.distance,
-                    duration: _routeInfo!.duration,
-                    price: _routeInfo!.formattedPrice,
-                  );
-                },
-              );
+              // showDialog(
+              //   context: context,
+              //   barrierDismissible: false,
+              //   builder: (dialogContext) {
+              //     return RequestingServiceModal(
+              //       isDelivery: isDelivery,
+              //       origin: _selectedOrigin!.name,
+              //       destination: _selectedDestination!.name,
+              //       distance: _routeInfo!.distance,
+              //       duration: _routeInfo!.duration,
+              //       price: _routeInfo!.formattedPrice,
+              //     );
+              //   },
+              // );
 
               // Esperar un momento para que el diálogo se muestre completamente
               await Future.delayed(const Duration(milliseconds: 500));
