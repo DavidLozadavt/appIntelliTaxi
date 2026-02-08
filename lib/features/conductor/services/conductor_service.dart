@@ -216,6 +216,7 @@ class ConductorService {
       final response = await _dio.post(
         'taxi/solicitud/aceptar',
         data: {
+          'id': servicioIdNumerico,
           'servicio_id': servicioIdNumerico,
           'conductor_id': conductorId,
           'precio_ofertado': precioOfertado,

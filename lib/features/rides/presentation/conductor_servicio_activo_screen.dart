@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
+import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
@@ -24,12 +25,15 @@ class _ConductorServicioActivoScreenState
     extends State<ConductorServicioActivoScreen> {
   GoogleMapController? _mapController;
   final ServicioTrackingService _trackingService = ServicioTrackingService();
+  final RoutesService _routesService = RoutesService();
 
   String _estadoActual = 'aceptado';
   LatLng? _miUbicacion;
   LatLng? _destinoActual;
   Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
   bool _isLoading = false;
+  BitmapDescriptor? _carIcon;
 
   @override
   void initState() {
@@ -44,7 +48,22 @@ class _ConductorServicioActivoScreenState
     return 0.0;
   }
 
+  Future<void> _cargarIconoCarro() async {
+    try {
+      _carIcon = await BitmapDescriptor.asset(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/images/carMarker.png',
+      );
+      print('✅ CONDUCTOR: Ícono del carro cargado');
+    } catch (e) {
+      print('⚠️ Error cargando ícono del carro: $e');
+    }
+  }
+
   Future<void> _inicializar() async {
+    // Cargar icono del carro
+    await _cargarIconoCarro();
+
     // Iniciar seguimiento
     await _trackingService.iniciarSeguimiento(
       servicioId: widget.servicio['id'],
@@ -73,6 +92,10 @@ class _ConductorServicioActivoScreenState
       setState(() {
         _miUbicacion = LatLng(position.latitude, position.longitude);
       });
+
+      // Actualizar marcadores y ruta
+      _actualizarMarcadores();
+      _dibujarRuta();
 
       // Centrar cámara
       _mapController?.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
@@ -107,7 +130,66 @@ class _ConductorServicioActivoScreenState
           ),
         );
       }
+
+      // Mi ubicación (conductor) con icono personalizado
+      if (_miUbicacion != null) {
+        _markers.add(
+          Marker(
+            markerId: const MarkerId('mi_ubicacion'),
+            position: _miUbicacion!,
+            icon:
+                _carIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: const InfoWindow(title: 'Mi ubicación'),
+            anchor: const Offset(0.5, 0.5),
+          ),
+        );
+      }
     });
+  }
+
+  Future<void> _dibujarRuta() async {
+    if (_miUbicacion == null || _destinoActual == null) return;
+
+    try {
+      // Obtener ruta real de Google Maps
+      final routeInfo = await _routesService.getRoute(
+        origin: _miUbicacion!,
+        destination: _destinoActual!,
+      );
+
+      if (routeInfo != null) {
+        setState(() {
+          _polylines.clear();
+
+          // Línea con la ruta real desde mi ubicación hasta el destino actual
+          _polylines.add(
+            Polyline(
+              polylineId: const PolylineId('ruta_actual'),
+              points: routeInfo.polylinePoints,
+              color: _estadoActual == 'en_curso' ? Colors.green : Colors.blue,
+              width: 5,
+            ),
+          );
+        });
+        print('✅ Ruta dibujada: ${routeInfo.distance} - ${routeInfo.duration}');
+      }
+    } catch (e) {
+      print('❌ Error dibujando ruta: $e');
+      // Fallback: línea recta
+      setState(() {
+        _polylines.clear();
+        _polylines.add(
+          Polyline(
+            polylineId: const PolylineId('ruta_actual'),
+            points: [_miUbicacion!, _destinoActual!],
+            color: _estadoActual == 'en_curso' ? Colors.green : Colors.blue,
+            width: 5,
+            patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
@@ -220,6 +302,7 @@ class _ConductorServicioActivoScreenState
                 myLocationEnabled: true,
                 myLocationButtonEnabled: true,
                 markers: _markers,
+                polylines: _polylines,
                 onMapCreated: (controller) {
                   _mapController = controller;
                 },

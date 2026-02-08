@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
+import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/dio_client.dart';
@@ -24,12 +25,14 @@ class _PasajeroEsperandoConductorScreenState
     extends State<PasajeroEsperandoConductorScreen> {
   GoogleMapController? _mapController;
   final ServicioPusherService _pusherService = ServicioPusherService();
+  final RoutesService _routesService = RoutesService();
 
   Map<String, dynamic>? _conductor;
   LatLng? _conductorUbicacion;
   String _estadoServicio = 'buscando';
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
+  BitmapDescriptor? _carIcon;
 
   @override
   void initState() {
@@ -44,6 +47,7 @@ class _PasajeroEsperandoConductorScreenState
     print('=' * 80 + '\n');
 
     print('🎨 PASAJERO: Creando marcadores...');
+    _cargarIconoCarro();
     _crearMarcadores();
     print('✅ PASAJERO: Marcadores creados');
 
@@ -137,6 +141,18 @@ class _PasajeroEsperandoConductorScreenState
     }
   }
 
+  Future<void> _cargarIconoCarro() async {
+    try {
+      _carIcon = await BitmapDescriptor.asset(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/images/carMarker.png',
+      );
+      print('✅ PASAJERO: Ícono del carro cargado');
+    } catch (e) {
+      print('⚠️ Error cargando ícono del carro: $e');
+    }
+  }
+
   double _parseDouble(dynamic value) {
     if (value is double) return value;
     if (value is int) return value.toDouble();
@@ -207,20 +223,28 @@ class _PasajeroEsperandoConductorScreenState
       onEstadoCambiado: (data) {
         print('🔄 Estado cambiado: ${data['estado']}');
         print('   Data completa del cambio: $data');
+
+        final nuevoEstado = data['estado'] as String;
+
         setState(() {
-          _estadoServicio = data['estado'];
+          _estadoServicio = nuevoEstado;
         });
 
-        // Mostrar mensajes según el estado
-        _mostrarMensajeEstado(data['estado']);
+        // Redibujar ruta según el nuevo estado
+        if (nuevoEstado == 'en_curso') {
+          // En curso: cambiar destino a punto final
+          print('🏁 Viaje iniciado, ruta ahora es conductor → destino');
+          _dibujarRuta();
+        } else {
+          _dibujarRuta();
+        }
 
-        if (data['estado'] == 'finalizado') {
-          // Regresar a pantalla anterior después de un delay
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted) {
-              Navigator.pop(context, true);
-            }
-          });
+        // Mostrar notificación visual
+        _mostrarMensajeEstado(nuevoEstado);
+
+        if (nuevoEstado == 'finalizado') {
+          // Mostrar diálogo de viaje finalizado
+          _mostrarDialogoFinalizado();
         }
       },
     );
@@ -229,37 +253,105 @@ class _PasajeroEsperandoConductorScreenState
   void _mostrarMensajeEstado(String estado) {
     String mensaje;
     Color color = Colors.blue;
+    IconData icono = Icons.info;
 
     switch (estado) {
       case 'aceptado':
-        mensaje = 'Conductor aceptó tu solicitud';
+        mensaje = '✅ Conductor aceptó tu solicitud';
         color = Colors.green;
+        icono = Icons.check_circle;
         break;
       case 'en_camino':
-        mensaje = 'Conductor en camino';
+        mensaje = '🚗 Conductor en camino a recogerte';
         color = Colors.blue;
+        icono = Icons.directions_car;
         break;
       case 'llegue':
-        mensaje = '¡El conductor ha llegado!';
+        mensaje = '📍 ¡El conductor ha llegado!';
         color = Colors.orange;
+        icono = Icons.location_on;
         break;
       case 'en_curso':
-        mensaje = 'Viaje iniciado';
+        mensaje = '🏁 Viaje iniciado - En camino al destino';
         color = Colors.green;
+        icono = Icons.navigation;
         break;
       case 'finalizado':
-        mensaje = 'Viaje finalizado';
+        mensaje = '✓ Viaje finalizado';
         color = Colors.grey;
+        icono = Icons.flag;
         break;
       default:
         return;
     }
 
+    // SnackBar más visible
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(mensaje),
+        content: Row(
+          children: [
+            Icon(icono, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                mensaje,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: color,
-        duration: const Duration(seconds: 2),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _mostrarDialogoFinalizado() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 32),
+            SizedBox(width: 12),
+            Text('Viaje Finalizado'),
+          ],
+        ),
+        content: const Text(
+          '¡Gracias por usar nuestro servicio!\n\n¿Cómo calificas tu experiencia?',
+          style: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Cerrar diálogo
+              Navigator.pop(context, true); // Regresar a home
+            },
+            child: const Text('Cerrar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context); // Cerrar diálogo
+              // TODO: Abrir pantalla de calificación
+              Navigator.pop(context, true); // Regresar a home
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Calificar'),
+          ),
+        ],
       ),
     );
   }
@@ -317,13 +409,20 @@ class _PasajeroEsperandoConductorScreenState
         Marker(
           markerId: const MarkerId('conductor'),
           position: _conductorUbicacion!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          icon:
+              _carIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
           infoWindow: InfoWindow(
             title: _conductor?['conductor_nombre'] ?? 'Conductor',
             snippet: '${_conductor?['vehiculo_placa'] ?? ''}',
           ),
+          rotation: 0.0,
+          anchor: const Offset(0.5, 0.5),
         ),
       );
+
+      // Dibujar línea entre conductor y punto de recogida
+      _dibujarRuta();
     });
 
     print('✅ Marcador del conductor actualizado');
@@ -354,6 +453,60 @@ class _PasajeroEsperandoConductorScreenState
         lngs.reduce((a, b) => a > b ? a : b),
       ),
     );
+  }
+
+  Future<void> _dibujarRuta() async {
+    final origenLat = _parseDouble(widget.datosServicio['origen_lat']);
+    final origenLng = _parseDouble(widget.datosServicio['origen_lng']);
+    final destinoLat = _parseDouble(widget.datosServicio['destino_lat']);
+    final destinoLng = _parseDouble(widget.datosServicio['destino_lng']);
+
+    try {
+      _polylines.clear();
+
+      // Línea del conductor al punto de recogida (solo si está yendo a recoger)
+      if (_conductorUbicacion != null &&
+          (_estadoServicio == 'aceptado' || _estadoServicio == 'en_camino')) {
+        final rutaConductorOrigen = await _routesService.getRoute(
+          origin: _conductorUbicacion!,
+          destination: LatLng(origenLat, origenLng),
+        );
+
+        if (rutaConductorOrigen != null) {
+          _polylines.add(
+            Polyline(
+              polylineId: const PolylineId('conductor_origen'),
+              points: rutaConductorOrigen.polylinePoints,
+              color: Colors.blue,
+              width: 4,
+            ),
+          );
+        }
+      }
+
+      // Línea del origen al destino (ruta del viaje)
+      final rutaOrigenDestino = await _routesService.getRoute(
+        origin: LatLng(origenLat, origenLng),
+        destination: LatLng(destinoLat, destinoLng),
+      );
+
+      if (rutaOrigenDestino != null) {
+        _polylines.add(
+          Polyline(
+            polylineId: const PolylineId('origen_destino'),
+            points: rutaOrigenDestino.polylinePoints,
+            color: AppColors.primary,
+            width: 3,
+            patterns: [PatternItem.dash(15), PatternItem.gap(10)],
+          ),
+        );
+      }
+
+      setState(() {});
+      print('✅ Polylines con rutas reales dibujadas');
+    } catch (e) {
+      print('❌ Error dibujando rutas: $e');
+    }
   }
 
   Future<void> _llamarConductor() async {
@@ -444,19 +597,32 @@ class _PasajeroEsperandoConductorScreenState
   }
 
   Widget _buildPanelInfo() {
-    final estadosTexto = {
-      'aceptado': 'Conductor en camino',
-      'en_camino': 'Conductor en camino',
-      'llegue': 'Conductor ha llegado',
-      'en_curso': 'Viaje en curso',
+    final estadosInfo = {
+      'aceptado': {
+        'texto': '🚗 Conductor en camino a recogerte',
+        'color': Colors.blue,
+        'icono': Icons.directions_car,
+      },
+      'en_camino': {
+        'texto': '🚗 Conductor en camino a recogerte',
+        'color': Colors.blue,
+        'icono': Icons.directions_car,
+      },
+      'llegue': {
+        'texto': '📍 Conductor ha llegado - ¡Sal a encontrarlo!',
+        'color': Colors.orange,
+        'icono': Icons.location_on,
+      },
+      'en_curso': {
+        'texto': '🏁 Viaje en curso - Dirígete al destino',
+        'color': Colors.green,
+        'icono': Icons.navigation,
+      },
     };
 
-    final estadosColor = {
-      'aceptado': Colors.blue,
-      'en_camino': Colors.blue,
-      'llegue': Colors.orange,
-      'en_curso': Colors.green,
-    };
+    final info =
+        estadosInfo[_estadoServicio] ??
+        {'texto': 'Servicio activo', 'color': Colors.grey, 'icono': Icons.info};
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -474,24 +640,35 @@ class _PasajeroEsperandoConductorScreenState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Indicador de estado
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          // Indicador de estado animado
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: estadosColor[_estadoServicio] ?? Colors.grey,
+              color: info['color'] as Color,
               borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: (info['color'] as Color).withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.info_outline, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  estadosTexto[_estadoServicio] ?? 'Servicio activo',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                Icon(info['icono'] as IconData, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    info['texto'] as String,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ],
