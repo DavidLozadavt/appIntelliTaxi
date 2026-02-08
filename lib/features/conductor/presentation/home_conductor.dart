@@ -18,6 +18,7 @@ import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.d
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
+import 'package:intellitaxi/features/rides/presentation/conductor_servicio_activo_screen.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -447,21 +448,40 @@ class _HomeConductorState extends State<HomeConductor> {
 
       print('✅ Solicitud $solicitudId aceptada exitosamente');
 
-      // Actualizar el estado para mostrar el servicio activo en el mismo mapa
+      // Navegar a la pantalla de servicio activo del conductor
       if (mounted && response['servicio'] != null) {
         try {
           final servicioData = response['servicio'] as Map<String, dynamic>;
           final servicio = ServicioActivo.fromJson(servicioData);
 
-          setState(() {
-            _servicioActivo = servicio;
-          });
+          // Obtener conductor ID del auth provider
+          final authProvider = Provider.of<AuthProvider>(
+            context,
+            listen: false,
+          );
+          final conductorId = authProvider.user?.id ?? 0;
 
           // Guardar en SharedPreferences
           await _guardarServicioActivo(servicio);
 
-          // Actualizar el mapa para mostrar la ruta al punto de recogida
-          _actualizarMapaConServicio(servicio);
+          // Navegar a ConductorServicioActivoScreen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ConductorServicioActivoScreen(
+                servicio: servicioData,
+                conductorId: conductorId,
+              ),
+            ),
+          ).then((result) {
+            // Cuando regrese, limpiar servicio activo
+            if (result == true) {
+              setState(() {
+                _servicioActivo = null;
+              });
+              _limpiarServicioActivo();
+            }
+          });
         } catch (e) {
           print('⚠️ Error procesando servicio activo: $e');
         }

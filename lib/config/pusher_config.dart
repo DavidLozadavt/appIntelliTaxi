@@ -19,6 +19,10 @@ class PusherService {
     _pusherPrimary = PusherChannelsFlutter.getInstance();
 
     try {
+      print('🔧 Inicializando Pusher Primary...');
+      print('   App Key: ${AppConfig.pusherAppKey}');
+      print('   Cluster: ${AppConfig.pusherCluster}');
+
       await _pusherPrimary!.init(
         apiKey: AppConfig.pusherAppKey,
         cluster: AppConfig.pusherCluster,
@@ -30,6 +34,7 @@ class PusherService {
 
       await _pusherPrimary!.connect();
       print('✅ Pusher Primary conectado (Key: ${AppConfig.pusherAppKey})');
+      print('   Esperando eventos...');
     } catch (e) {
       print('❌ Error inicializando Pusher Primary: $e');
     }
@@ -63,10 +68,13 @@ class PusherService {
 
   static Future<void> subscribe(String channelName) async {
     try {
+      print('📡 Intentando suscribirse a: $channelName');
       await _pusherPrimary?.subscribe(channelName: channelName);
-      print('📡 Suscrito a canal principal: $channelName');
+      print('✅ Suscrito exitosamente a canal principal: $channelName');
+      print('   Handlers registrados: ${_eventHandlers.keys.toList()}');
     } catch (e) {
       print('❌ Error suscribiéndose al canal principal $channelName: $e');
+      rethrow;
     }
   }
 
@@ -90,15 +98,24 @@ class PusherService {
   }
 
   static void _onEventPrimary(PusherEvent event) {
-    print(
-      '🔵 [PRIMARY] Evento recibido: ${event.eventName} en ${event.channelName}',
-    );
-    print('📦 [PRIMARY] Data: ${event.data}');
+    print('\n========================================');
+    print('🔵 [PRIMARY] ¡EVENTO PUSHER RECIBIDO!');
+    print('========================================');
+    print('   Canal: ${event.channelName}');
+    print('   Evento: ${event.eventName}');
+    print('   Data: ${event.data}');
 
     final key = '${event.channelName}:${event.eventName}';
+    print('   Key buscada: $key');
+    print('   Handlers disponibles: ${_eventHandlers.keys.toList()}');
+
     if (_eventHandlers.containsKey(key)) {
+      print('   ✅ Handler encontrado, ejecutando...');
       _eventHandlers[key]!(event.data);
+    } else {
+      print('   ⚠️ NO hay handler registrado para este evento');
     }
+    print('========================================\n');
   }
 
   static void _onSubscriptionSucceededPrimary(

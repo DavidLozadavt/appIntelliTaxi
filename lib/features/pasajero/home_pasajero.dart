@@ -20,6 +20,7 @@ import 'package:intellitaxi/features/rides/widgets/driver_offer_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 import 'package:intellitaxi/features/rides/presentation/active_service_screen.dart';
+import 'package:intellitaxi/features/rides/presentation/pasajero_esperando_conductor_screen.dart';
 import 'package:intellitaxi/features/rides/data/conductor_model.dart';
 import 'package:intellitaxi/features/rides/services/conductores_service.dart';
 import 'package:intellitaxi/features/rides/services/pusher_conductores_service.dart';
@@ -760,6 +761,7 @@ class _HomePasajeroState extends State<HomePasajero>
             top: 16,
             right: 16,
             child: FloatingActionButton.small(
+              heroTag: 'center_location',
               onPressed: _centerToCurrentLocation,
               backgroundColor: Colors.white,
               child: const Icon(Icons.my_location, color: Colors.deepOrange),
@@ -772,6 +774,7 @@ class _HomePasajeroState extends State<HomePasajero>
             top: 70,
             right: 16,
             child: FloatingActionButton.small(
+              heroTag: 'clear_route',
               onPressed: _clearRoute,
               backgroundColor: Colors.white,
               child: const Icon(Icons.clear, color: Colors.red),
@@ -1703,7 +1706,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
     // 📤 ENVIAR SOLICITUD AL BACKEND
     try {
-      await _rideRequestService.requestRide(
+      final response = await _rideRequestService.requestRide(
         origin: _selectedOrigin!,
         destination: _selectedDestination!,
         distance: _routeInfo!.distance,
@@ -1722,30 +1725,59 @@ class _HomePasajeroState extends State<HomePasajero>
       // Esperar para asegurar que el diálogo se cerró
       await Future.delayed(const Duration(milliseconds: 200));
 
-      // Mostrar éxito
-      if (mounted && _scaffoldMessenger != null) {
-        _scaffoldMessenger!.showSnackBar(
-          SnackBar(
-            content: Text(
-              isDelivery
-                  ? '✅ Solicitud de domicilio enviada. Esperando respuesta de conductores...'
-                  : '✅ Solicitud de viaje enviada. Esperando respuesta de conductores...',
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+      // Navegar a pantalla de espera del conductor
+      if (mounted) {
+        // El backend puede devolver 'servicio', 'data' o 'servicio_id'
+        int? servicioId;
 
-        // Limpiar selección
-        setState(() {
-          _selectedOrigin = null;
-          _selectedDestination = null;
-          _routeInfo = null;
-          _polylines.clear();
-          _markers.clear();
-          _originController.clear();
-          _destinationController.clear();
-        });
+        if (response['servicio'] != null) {
+          final servicioData = response['servicio'] as Map<String, dynamic>;
+          servicioId = servicioData['id'] as int;
+        } else if (response['data'] != null) {
+          final servicioData = response['data'] as Map<String, dynamic>;
+          servicioId = servicioData['id'] as int;
+        } else if (response['servicio_id'] != null) {
+          servicioId = response['servicio_id'] as int;
+        }
+
+        if (servicioId != null) {
+          print('🚀 PASAJERO: Navegando a PasajeroEsperandoConductorScreen');
+          print('   Servicio ID: $servicioId');
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PasajeroEsperandoConductorScreen(
+                servicioId: servicioId!,
+                datosServicio: {
+                  'origen_lat': _selectedOrigin!.lat,
+                  'origen_lng': _selectedOrigin!.lng,
+                  'origen_address': _selectedOrigin!.address,
+                  'destino_lat': _selectedDestination!.lat,
+                  'destino_lng': _selectedDestination!.lng,
+                  'destino_address': _selectedDestination!.address,
+                  'precio_estimado': _routeInfo!.estimatedPrice,
+                },
+              ),
+            ),
+          ).then((result) {
+            // Cuando regrese, limpiar selección
+            if (mounted) {
+              setState(() {
+                _selectedOrigin = null;
+                _selectedDestination = null;
+                _routeInfo = null;
+                _polylines.clear();
+                _markers.clear();
+                _originController.clear();
+                _destinationController.clear();
+              });
+            }
+          });
+        } else {
+          print('⚠️ No se pudo obtener servicio_id de la respuesta');
+          print('   Response completo: $response');
+        }
       }
     } catch (e) {
       // Error al enviar solicitud - cerrar modal
