@@ -11,6 +11,11 @@ class ServicioTrackingService {
   int? _servicioId;
   int? _conductorId;
   bool _isTracking = false;
+  Position? _lastPosition;
+
+  // Configuración de intervalos (en segundos)
+  static const int _intervaloActualizacion = 12; // Cada 12 segundos
+  static const double _distanciaMinima = 10.0; // 10 metros mínimo
 
   /// Iniciar seguimiento del conductor durante servicio
   Future<void> iniciarSeguimiento({
@@ -23,10 +28,10 @@ class ServicioTrackingService {
 
     print('✅ Iniciando seguimiento para servicio $_servicioId');
 
-    // Actualizar ubicación cada 5 segundos
+    // Actualizar ubicación cada 12 segundos (más eficiente)
     _locationTimer?.cancel();
     _locationTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds: _intervaloActualizacion),
       (_) => _enviarUbicacion(),
     );
 
@@ -40,6 +45,7 @@ class ServicioTrackingService {
     _isTracking = false;
     _servicioId = null;
     _conductorId = null;
+    _lastPosition = null;
     print('🛑 Seguimiento detenido');
   }
 
@@ -51,6 +57,22 @@ class ServicioTrackingService {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+
+      // Optimización: Solo enviar si se movió al menos 10 metros
+      if (_lastPosition != null) {
+        final distancia = Geolocator.distanceBetween(
+          _lastPosition!.latitude,
+          _lastPosition!.longitude,
+          position.latitude,
+          position.longitude,
+        );
+
+        // Si no se ha movido lo suficiente y la velocidad es baja, no enviar
+        if (distancia < _distanciaMinima && position.speed < 1.0) {
+          print('⏭️ Ubicación sin cambios significativos, omitiendo envío');
+          return;
+        }
+      }
 
       await _dio.post(
         'servicios/actualizar-ubicacion',
@@ -64,8 +86,9 @@ class ServicioTrackingService {
         },
       );
 
+      _lastPosition = position;
       print(
-        '📍 Ubicación enviada: ${position.latitude}, ${position.longitude}',
+        '📍 Ubicación enviada: ${position.latitude}, ${position.longitude} | Velocidad: ${position.speed.toStringAsFixed(1)} m/s',
       );
     } catch (e) {
       print('⚠️ Error enviando ubicación: $e');

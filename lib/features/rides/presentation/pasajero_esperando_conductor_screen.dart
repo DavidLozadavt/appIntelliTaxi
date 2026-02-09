@@ -147,7 +147,7 @@ class _PasajeroEsperandoConductorScreenState
     try {
       _carIcon = await BitmapDescriptor.asset(
         const ImageConfiguration(size: Size(48, 48)),
-        'assets/images/carMarker.png',
+        'assets/images/marker.png',
       );
       print('✅ PASAJERO: Ícono del carro cargado');
     } catch (e) {
