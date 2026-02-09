@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
+import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
+import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intellitaxi/shared/widgets/standard_map.dart';
 
 class ActiveServiceScreen extends StatefulWidget {
   final ServicioActivo servicio;
@@ -22,11 +25,68 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
+  final ServicioPersistenciaService _persistencia =
+      ServicioPersistenciaService();
+  final ServicioNotificacionForeground _notificacionService =
+      ServicioNotificacionForeground();
 
   @override
   void initState() {
     super.initState();
     _initializeMap();
+    _inicializarPersistencia();
+  }
+
+  @override
+  void dispose() {
+    // Si el servicio está finalizado, limpiar
+    if (widget.servicio.isFinalizado || widget.servicio.isCancelado) {
+      _limpiarServicio();
+    }
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _inicializarPersistencia() async {
+    // Inicializar notificaciones
+    await _notificacionService.inicializar();
+
+    // Guardar servicio activo localmente
+    await _guardarServicioActivo();
+
+    // Mostrar notificación persistente
+    await _mostrarNotificacionPersistente();
+  }
+
+  Future<void> _guardarServicioActivo() async {
+    await _persistencia.guardarServicioActivo(
+      servicioId: widget.servicio.id,
+      tipo: 'pasajero',
+      datosServicio: widget.servicio.toJson(),
+    );
+  }
+
+  Future<void> _mostrarNotificacionPersistente() async {
+    await _notificacionService.mostrarNotificacionPasajero(
+      servicioId: widget.servicio.id,
+      estado: widget.servicio.estado.estado,
+      conductorNombre: widget.servicio.conductor?.nombre,
+      vehiculoInfo: widget.servicio.vehiculo != null
+          ? '${widget.servicio.vehiculo!.marca} ${widget.servicio.vehiculo!.modelo}'
+          : null,
+      destino: widget.servicio.destinoAddress,
+    );
+  }
+
+  Future<void> _limpiarServicio() async {
+    // Cancelar notificación
+    await _notificacionService.cancelarNotificacion(
+      widget.servicio.id,
+      tipo: 'pasajero',
+    );
+
+    // Limpiar persistencia
+    await _persistencia.limpiarServicioActivo();
   }
 
   void _initializeMap() {
@@ -80,15 +140,15 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
   Color _getStateColor() {
     switch (widget.servicio.idEstado) {
       case 1:
-        return Colors.orange; // Pendiente
+        return AppColors.accent; // Pendiente
       case 2:
         return Colors.blue; // Aceptado
       case 3:
-        return Colors.green; // En camino
+        return AppColors.green; // En camino
       case 4:
-        return Colors.purple; // Llegué
+        return AppColors.primary; // Llegué
       case 5:
-        return Colors.green; // En curso
+        return AppColors.green; // En curso
       case 6:
         return Colors.grey; // Finalizado
       case 7:
@@ -122,127 +182,138 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isServiceActive =
+        !widget.servicio.isFinalizado && !widget.servicio.isCancelado;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Servicio #${widget.servicio.id}'),
-        backgroundColor: _getStateColor(),
-      ),
-      body: Stack(
-        children: [
-          // Mapa
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: LatLng(
+    return PopScope(
+      canPop: !isServiceActive,
+      onPopInvoked: (didPop) {
+        if (!didPop && isServiceActive) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No puedes salir hasta que el servicio termine'),
+              backgroundColor: AppColors.accent,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Servicio #${widget.servicio.id}'),
+          automaticallyImplyLeading: !isServiceActive,
+        ),
+        body: Stack(
+          children: [
+            // Mapa
+            StandardMap(
+              initialPosition: LatLng(
                 widget.servicio.origenLat,
                 widget.servicio.origenLng,
               ),
               zoom: 14,
+              markers: _markers,
+              polylines: _polylines,
+              onMapCreated: (controller) {
+                _mapController = controller;
+              },
             ),
-            markers: _markers,
-            polylines: _polylines,
-            onMapCreated: (controller) {
-              _mapController = controller;
-            },
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
-            zoomControlsEnabled: false,
-          ),
 
-          // Panel inferior con información
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade900 : Colors.white,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, -4),
+            // Panel inferior con información
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey.shade900 : Colors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
                   ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Handle
-                  Container(
-                    margin: const EdgeInsets.only(top: 12),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, -4),
                     ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Estado del servicio
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 20),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _getStateColor().withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: _getStateColor().withOpacity(0.3),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Handle
+                    Container(
+                      margin: const EdgeInsets.only(top: 12),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _getStateIcon(),
-                          color: _getStateColor(),
-                          size: 32,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.servicio.estado.estado,
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: _getStateColor(),
-                                ),
-                              ),
-                              Text(
-                                _getStateMessage(),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
 
-                  if (widget.servicio.conductor != null) ...[
                     const SizedBox(height: 16),
-                    _buildConductorInfo(),
+
+                    // Estado del servicio
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: _getStateColor().withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: _getStateColor().withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _getStateIcon(),
+                            color: _getStateColor(),
+                            size: 32,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.servicio.estado.estado,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: _getStateColor(),
+                                  ),
+                                ),
+                                Text(
+                                  _getStateMessage(),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    if (widget.servicio.conductor != null) ...[
+                      const SizedBox(height: 16),
+                      _buildConductorInfo(),
+                    ],
+
+                    const SizedBox(height: 16),
+                    _buildTripInfo(),
+
+                    const SizedBox(height: 20),
                   ],
-
-                  const SizedBox(height: 16),
-                  _buildTripInfo(),
-
-                  const SizedBox(height: 20),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -366,8 +437,9 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade200,
+                      color: AppColors.primary.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.primary),
                     ),
                     child: Text(
                       vehiculo.placa!,
@@ -390,9 +462,9 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.05),
+        color: AppColors.primary.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green.withOpacity(0.2)),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
       ),
       child: Column(
         children: [
@@ -405,7 +477,7 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
                 width: 12,
                 height: 12,
                 decoration: const BoxDecoration(
-                  color: Colors.green,
+                  color: AppColors.green,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -435,7 +507,7 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
             margin: const EdgeInsets.only(left: 5),
             width: 2,
             height: 20,
-            color: Colors.grey.shade300,
+            color: AppColors.primary.withOpacity(0.3),
           ),
 
           // Destino
@@ -447,7 +519,7 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
                 width: 12,
                 height: 12,
                 decoration: const BoxDecoration(
-                  color: Colors.red,
+                  color: AppColors.accent,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -504,23 +576,17 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: Colors.grey.shade600),
+        Icon(icon, size: 16, color: AppColors.accent),
         const SizedBox(width: 4),
         Text(
           text,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 13,
-            color: Colors.grey.shade700,
-            fontWeight: FontWeight.w500,
+            color: Colors.black87,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
     );
-  }
-
-  @override
-  void dispose() {
-    _mapController?.dispose();
-    super.dispose();
   }
 }

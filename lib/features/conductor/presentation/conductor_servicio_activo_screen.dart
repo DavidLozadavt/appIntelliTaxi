@@ -4,6 +4,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
+import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
+import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
 /// Pantalla del conductor durante un servicio activo
@@ -26,6 +28,10 @@ class _ConductorServicioActivoScreenState
     extends State<ConductorServicioActivoScreen> {
   GoogleMapController? _mapController;
   final ServicioTrackingService _trackingService = ServicioTrackingService();
+  final ServicioPersistenciaService _persistencia =
+      ServicioPersistenciaService();
+  final ServicioNotificacionForeground _notificacionService =
+      ServicioNotificacionForeground();
 
   String _estadoActual = 'aceptado';
   Position? _miUbicacion;
@@ -40,6 +46,24 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _inicializar() async {
+    // Inicializar notificaciones
+    await _notificacionService.inicializar();
+
+    // Guardar servicio activo
+    await _persistencia.guardarServicioActivo(
+      servicioId: widget.servicio.id,
+      tipo: 'conductor',
+      datosServicio: widget.servicio.toJson(),
+    );
+
+    // Mostrar notificación persistente
+    await _notificacionService.mostrarNotificacionConductor(
+      servicioId: widget.servicio.id,
+      estado: widget.servicio.estado.estado,
+      origen: widget.servicio.origenAddress,
+      destino: widget.servicio.destinoAddress,
+    );
+
     // Iniciar seguimiento GPS
     await _trackingService.iniciarSeguimiento(
       servicioId: widget.servicio.id,
@@ -117,10 +141,7 @@ class _ConductorServicioActivoScreenState
     _mapController!.animateCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
-          target: LatLng(
-            _miUbicacion!.latitude,
-            _miUbicacion!.longitude,
-          ),
+          target: LatLng(_miUbicacion!.latitude, _miUbicacion!.longitude),
           zoom: 16,
           bearing: _miUbicacion!.heading,
         ),
@@ -133,9 +154,7 @@ class _ConductorServicioActivoScreenState
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
     final success = await _trackingService.cambiarEstado(
@@ -161,6 +180,15 @@ class _ConductorServicioActivoScreenState
         }
       });
 
+      // Actualizar notificación
+      await _notificacionService.actualizarNotificacion(
+        servicioId: widget.servicio.id,
+        tipo: 'conductor',
+        estado: nuevoEstado,
+        origen: widget.servicio.origenAddress,
+        destino: widget.servicio.destinoAddress,
+      );
+
       // Mostrar snackbar de confirmación
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -174,6 +202,16 @@ class _ConductorServicioActivoScreenState
       // Si finalizó, detener seguimiento y volver
       if (nuevoEstado == 'finalizado') {
         _trackingService.detenerSeguimiento();
+
+        // Cancelar notificación
+        await _notificacionService.cancelarNotificacion(
+          widget.servicio.id,
+          tipo: 'conductor',
+        );
+
+        // Limpiar persistencia
+        await _persistencia.limpiarServicioActivo();
+
         if (mounted) {
           Navigator.pop(context, true); // true indica que finalizó
         }
@@ -264,17 +302,10 @@ class _ConductorServicioActivoScreenState
                 },
               )
             else
-              const Center(
-                child: CircularProgressIndicator(),
-              ),
+              const Center(child: CircularProgressIndicator()),
 
             // Panel de información y botones
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _buildPanelInfo(),
-            ),
+            Positioned(left: 0, right: 0, bottom: 0, child: _buildPanelInfo()),
           ],
         ),
       ),
@@ -325,13 +356,10 @@ class _ConductorServicioActivoScreenState
 
   Widget _buildEstadoIndicator() {
     final estados = {
-      'aceptado': {
-        'texto': 'YENDO AL PUNTO DE RECOGIDA',
-        'color': Colors.blue
-      },
+      'aceptado': {'texto': 'YENDO AL PUNTO DE RECOGIDA', 'color': Colors.blue},
       'en_camino': {
         'texto': 'YENDO AL PUNTO DE RECOGIDA',
-        'color': Colors.blue
+        'color': Colors.blue,
       },
       'llegue': {'texto': 'ESPERANDO PASAJERO', 'color': Colors.orange},
       'en_curso': {'texto': 'VIAJE EN CURSO', 'color': Colors.green},
@@ -378,10 +406,7 @@ class _ConductorServicioActivoScreenState
             children: [
               const Text(
                 'Pasajero',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               Text(
                 '\$${widget.servicio.precioFinal ?? widget.servicio.precioEstimado}',
@@ -440,6 +465,13 @@ class _ConductorServicioActivoScreenState
     );
   }
 
+  @override
+  void dispose() {
+    _ubicacionTimer?.cancel();
+    _trackingService.detenerSeguimiento();
+    super.dispose();
+  }
+
   Widget _buildBotonAccion() {
     String texto;
     String proximoEstado;
@@ -487,12 +519,5 @@ class _ConductorServicioActivoScreenState
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _ubicacionTimer?.cancel();
-    _trackingService.detenerSeguimiento();
-    super.dispose();
   }
 }

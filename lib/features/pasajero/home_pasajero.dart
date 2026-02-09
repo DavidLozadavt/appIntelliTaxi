@@ -28,6 +28,8 @@ import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart
 import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
 import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/features/pasajero/widgets/ride_confirmation_dialog.dart';
+import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:intellitaxi/shared/widgets/standard_button.dart';
 import 'package:intellitaxi/features/pasajero/widgets/waiting_for_driver_dialog.dart';
 
 class HomePasajero extends StatefulWidget {
@@ -673,24 +675,16 @@ class _HomePasajeroState extends State<HomePasajero>
                   ),
                 ),
               )
-            : GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: LatLng(
-                    _currentPosition!.latitude,
-                    _currentPosition!.longitude,
-                  ),
-                  zoom: 15,
+            : StandardMap(
+                initialPosition: LatLng(
+                  _currentPosition!.latitude,
+                  _currentPosition!.longitude,
                 ),
-                myLocationEnabled: true,
-                myLocationButtonEnabled: false,
-                compassEnabled: true,
-                mapToolbarEnabled: false,
-                zoomControlsEnabled: false,
+                zoom: 15,
                 polylines: _polylines,
                 markers: _markers,
-                onMapCreated: (GoogleMapController controller) {
+                onMapCreated: (controller) {
                   _mapController = controller;
-                  _setMapStyle(controller);
                 },
               ),
 

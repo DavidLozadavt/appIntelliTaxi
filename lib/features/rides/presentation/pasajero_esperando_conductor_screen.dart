@@ -5,6 +5,8 @@ import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:intellitaxi/shared/widgets/standard_button.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -313,47 +315,138 @@ class _PasajeroEsperandoConductorScreenState
   }
 
   void _mostrarDialogoFinalizado() {
+    int calificacionSeleccionada = 5;
+    final TextEditingController comentarioController = TextEditingController();
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 32),
-            SizedBox(width: 12),
-            Text('Viaje Finalizado'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green, size: 32),
+              SizedBox(width: 12),
+              Expanded(child: Text('Viaje Finalizado')),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '¡Gracias por usar nuestro servicio!',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Califica a ${_conductor?['conductor_nombre'] ?? 'tu conductor'}',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Estrellas de calificación
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (index) {
+                    final starValue = index + 1;
+                    return IconButton(
+                      iconSize: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      onPressed: () {
+                        setDialogState(() {
+                          calificacionSeleccionada = starValue;
+                        });
+                      },
+                      icon: Icon(
+                        starValue <= calificacionSeleccionada
+                            ? Icons.star
+                            : Icons.star_border,
+                        color: Colors.amber,
+                      ),
+                    );
+                  }),
+                ),
+
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    _obtenerTextoCalificacion(calificacionSeleccionada),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[700],
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Campo de comentario opcional
+                TextField(
+                  controller: comentarioController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: 'Comentarios (opcional)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    contentPadding: const EdgeInsets.all(12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Cerrar diálogo
+                Navigator.pop(context, true); // Regresar a home
+              },
+              child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
+            ),
+            StandardButton(
+              text: 'Enviar Calificación',
+              icon: Icons.send,
+              onPressed: () {
+                // TODO: Enviar calificación al backend
+                print('Calificación: $calificacionSeleccionada');
+                print('Comentario: ${comentarioController.text}');
+
+                Navigator.pop(context); // Cerrar diálogo
+                Navigator.pop(context, true); // Regresar a home
+              },
+              height: 45,
+              fontSize: 14,
+            ),
           ],
         ),
-        content: const Text(
-          '¡Gracias por usar nuestro servicio!\n\n¿Cómo calificas tu experiencia?',
-          style: TextStyle(fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Cerrar diálogo
-              Navigator.pop(context, true); // Regresar a home
-            },
-            child: const Text('Cerrar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context); // Cerrar diálogo
-              // TODO: Abrir pantalla de calificación
-              Navigator.pop(context, true); // Regresar a home
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            child: const Text('Calificar'),
-          ),
-        ],
       ),
     );
+  }
+
+  String _obtenerTextoCalificacion(int calificacion) {
+    switch (calificacion) {
+      case 1:
+        return 'Muy malo';
+      case 2:
+        return 'Malo';
+      case 3:
+        return 'Regular';
+      case 4:
+        return 'Bueno';
+      case 5:
+        return 'Excelente';
+      default:
+        return '';
+    }
   }
 
   void _crearMarcadores() {
@@ -526,21 +619,32 @@ class _PasajeroEsperandoConductorScreenState
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
+      onPopInvoked: (didPop) {
+        if (!didPop) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No puedes salir hasta que el servicio termine'),
+              backgroundColor: AppColors.accent,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      },
       child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Servicio Activo'),
+          automaticallyImplyLeading: false,
+        ),
         body: Stack(
           children: [
-            GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: LatLng(
-                  _parseDouble(widget.datosServicio['origen_lat']),
-                  _parseDouble(widget.datosServicio['origen_lng']),
-                ),
-                zoom: 14,
+            StandardMap(
+              initialPosition: LatLng(
+                _parseDouble(widget.datosServicio['origen_lat']),
+                _parseDouble(widget.datosServicio['origen_lng']),
               ),
+              zoom: 14,
               markers: _markers,
               polylines: _polylines,
-              myLocationEnabled: true,
-              myLocationButtonEnabled: true,
               onMapCreated: (controller) {
                 _mapController = controller;
               },
@@ -600,22 +704,22 @@ class _PasajeroEsperandoConductorScreenState
     final estadosInfo = {
       'aceptado': {
         'texto': '🚗 Conductor en camino a recogerte',
-        'color': Colors.blue,
+        'color': AppColors.green,
         'icono': Icons.directions_car,
       },
       'en_camino': {
         'texto': '🚗 Conductor en camino a recogerte',
-        'color': Colors.blue,
+        'color': AppColors.green,
         'icono': Icons.directions_car,
       },
       'llegue': {
         'texto': '📍 Conductor ha llegado - ¡Sal a encontrarlo!',
-        'color': Colors.orange,
+        'color': AppColors.accent,
         'icono': Icons.location_on,
       },
       'en_curso': {
         'texto': '🏁 Viaje en curso - Dirígete al destino',
-        'color': Colors.green,
+        'color': AppColors.green,
         'icono': Icons.navigation,
       },
     };
@@ -627,19 +731,30 @@ class _PasajeroEsperandoConductorScreenState
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 15,
+            offset: const Offset(0, -3),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Handle decorativo
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
           // Indicador de estado animado
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
@@ -681,8 +796,12 @@ class _PasajeroEsperandoConductorScreenState
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.grey[50],
+              color: AppColors.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.primary.withOpacity(0.3),
+                width: 1,
+              ),
             ),
             child: Row(
               children: [
@@ -722,7 +841,7 @@ class _PasajeroEsperandoConductorScreenState
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Iconsax.call, color: Colors.green, size: 30),
+                  icon: Icon(Iconsax.call, color: AppColors.green, size: 30),
                   onPressed: _llamarConductor,
                 ),
               ],
@@ -735,9 +854,12 @@ class _PasajeroEsperandoConductorScreenState
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: AppColors.accent.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.grey[300]!),
+              border: Border.all(
+                color: AppColors.accent.withOpacity(0.3),
+                width: 1,
+              ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,

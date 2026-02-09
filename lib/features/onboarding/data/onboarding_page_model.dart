@@ -16,46 +16,30 @@ class OnboardingPageModel {
   });
 }
 
-// Páginas del onboarding de Virtual Technology
+// Páginas del onboarding de IntelliTaxi
 final List<OnboardingPageModel> onboardingPages = [
   OnboardingPageModel(
-    title: 'Virtual Technology',
-    subtitle: 'Tu aliado tecnológico empresarial',
+    title: 'Bienvenido a IntelliTaxi',
+    subtitle: 'Tu compañero de viaje ideal',
     description:
-        'Somos proveedores de soluciones tecnológicas integrales para empresas modernas. Optimiza tu gestión con nuestro ERP completo.',
-    icon: Icons.business_center_rounded,
-    gradientColors: [Color(0xFF1E293B), Color(0xFF334155)],
+        'Descubre una nueva forma de moverte por la ciudad. Conectamos personas con conductores confiables en segundos.',
+    icon: Icons.waving_hand_rounded,
+    gradientColors: [Color(0xFFFFC502), Color(0xFFFFB300)],
   ),
   OnboardingPageModel(
-    title: 'Facturación Electrónica',
-    subtitle: 'Factura de forma rápida y segura',
+    title: 'Viaja con Confianza',
+    subtitle: 'Seguridad en cada kilómetro',
     description:
-        'Genera facturas electrónicas con cumplimiento legal completo. Automatiza tus procesos de facturación y ahorra tiempo.',
-    icon: Icons.receipt_long_rounded,
-    gradientColors: [Color(0xFF475569), Color(0xFF64748B)],
+        'Conductores verificados, seguimiento en tiempo real y soporte disponible siempre. Tu tranquilidad es nuestra misión.',
+    icon: Icons.shield_rounded,
+    gradientColors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
   ),
   OnboardingPageModel(
-    title: 'Gestión de Nómina',
-    subtitle: 'Control total de tu personal',
+    title: 'Tu Destino te Espera',
+    subtitle: 'Simple, rápido y confiable',
     description:
-        'Administra salarios, deducciones y prestaciones de forma automática. Genera reportes detallados y cumple con las normativas laborales.',
-    icon: Icons.payments_rounded,
-    gradientColors: [Color(0xFFEA580C), Color(0xFFF97316)],
-  ),
-  OnboardingPageModel(
-    title: 'Sistema de Transporte',
-    subtitle: 'Gestiona tu flota eficientemente',
-    description:
-        'Controla vehículos, rutas, conductores y documentación. Optimiza operaciones logísticas con tecnología de punta.',
-    icon: Icons.local_shipping_rounded,
-    gradientColors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-  ),
-  OnboardingPageModel(
-    title: '¡Comencemos!',
-    subtitle: 'Todo en un solo lugar',
-    description:
-        'Centraliza todas las operaciones de tu empresa en una sola plataforma. Potencia tu negocio con Virtual Technology.',
-    icon: Icons.rocket_launch_rounded,
-    gradientColors: [Color(0xFFC2410C), Color(0xFFEA580C)],
+        'Solicita tu viaje con un toque, disfruta del trayecto y llega a donde necesitas. ¡Es hora de comenzar!',
+    icon: Icons.explore_rounded,
+    gradientColors: [Color(0xFFFFB300), Color(0xFFFF6F00)],
   ),
 ];

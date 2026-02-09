@@ -3,8 +3,12 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
+import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
+import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:intellitaxi/shared/widgets/standard_button.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
   final Map<String, dynamic> servicio;
@@ -26,6 +30,10 @@ class _ConductorServicioActivoScreenState
   GoogleMapController? _mapController;
   final ServicioTrackingService _trackingService = ServicioTrackingService();
   final RoutesService _routesService = RoutesService();
+  final ServicioPersistenciaService _persistencia =
+      ServicioPersistenciaService();
+  final ServicioNotificacionForeground _notificacionService =
+      ServicioNotificacionForeground();
 
   String _estadoActual = 'aceptado';
   LatLng? _miUbicacion;
@@ -39,6 +47,12 @@ class _ConductorServicioActivoScreenState
   void initState() {
     super.initState();
     _inicializar();
+  }
+
+  @override
+  void dispose() {
+    _trackingService.detenerSeguimiento();
+    super.dispose();
   }
 
   double _parseDouble(dynamic value) {
@@ -64,6 +78,15 @@ class _ConductorServicioActivoScreenState
     // Cargar icono del carro
     await _cargarIconoCarro();
 
+    // Inicializar servicio de notificaciones
+    await _notificacionService.inicializar();
+
+    // Guardar servicio activo localmente
+    await _guardarServicioActivo();
+
+    // Mostrar notificación persistente
+    await _mostrarNotificacionPersistente();
+
     // Iniciar seguimiento
     await _trackingService.iniciarSeguimiento(
       servicioId: widget.servicio['id'],
@@ -84,6 +107,23 @@ class _ConductorServicioActivoScreenState
 
     // Actualizar marcadores
     _actualizarMarcadores();
+  }
+
+  Future<void> _guardarServicioActivo() async {
+    await _persistencia.guardarServicioActivo(
+      servicioId: widget.servicio['id'],
+      tipo: 'conductor',
+      datosServicio: widget.servicio,
+    );
+  }
+
+  Future<void> _mostrarNotificacionPersistente() async {
+    await _notificacionService.mostrarNotificacionConductor(
+      servicioId: widget.servicio['id'],
+      estado: _estadoActual,
+      origen: widget.servicio['origen_address'] ?? 'Origen',
+      destino: widget.servicio['destino_address'] ?? 'Destino',
+    );
   }
 
   Future<void> _obtenerUbicacionActual() async {
@@ -212,27 +252,55 @@ class _ConductorServicioActivoScreenState
           final destinoLat = _parseDouble(widget.servicio['destino_lat']);
           final destinoLng = _parseDouble(widget.servicio['destino_lng']);
           _destinoActual = LatLng(destinoLat, destinoLng);
-          _actualizarMarcadores();
+        } else if (nuevoEstado == 'en_curso') {
+          final destinoLat = _parseDouble(widget.servicio['destino_lat']);
+          final destinoLng = _parseDouble(widget.servicio['destino_lng']);
+          _destinoActual = LatLng(destinoLat, destinoLng);
         }
       });
 
-      // Mostrar mensaje
-      _mostrarMensaje(_obtenerMensajeEstado(nuevoEstado));
+      // Actualizar notificación persistente
+      await _notificacionService.actualizarNotificacion(
+        servicioId: widget.servicio['id'],
+        tipo: 'conductor',
+        estado: nuevoEstado,
+        origen: widget.servicio['origen_address'] ?? 'Origen',
+        destino: widget.servicio['destino_address'] ?? 'Destino',
+      );
 
-      // Si finalizó, detener seguimiento y volver
+      _mostrarMensaje(_getMensajeEstado(nuevoEstado));
+      _actualizarMarcadores();
+      _dibujarRuta();
+
+      // Si finalizó el viaje, limpiar y salir
       if (nuevoEstado == 'finalizado') {
-        _trackingService.detenerSeguimiento();
         await Future.delayed(const Duration(seconds: 2));
-        if (mounted) {
-          Navigator.pop(context, true);
-        }
+        await _finalizarServicio();
       }
     } else {
-      _mostrarError('Error al cambiar estado');
+      _mostrarError('No se pudo actualizar el estado');
     }
   }
 
-  String _obtenerMensajeEstado(String estado) {
+  Future<void> _finalizarServicio() async {
+    // Detener seguimiento
+    _trackingService.detenerSeguimiento();
+
+    // Cancelar notificación
+    await _notificacionService.cancelarNotificacion(
+      widget.servicio['id'],
+      tipo: 'conductor',
+    );
+
+    // Limpiar persistencia
+    await _persistencia.limpiarServicioActivo();
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  String _getMensajeEstado(String estado) {
     switch (estado) {
       case 'en_camino':
         return 'En camino al punto de recogida';
@@ -288,19 +356,14 @@ class _ConductorServicioActivoScreenState
         appBar: AppBar(
           title: const Text('Servicio en Curso'),
           automaticallyImplyLeading: false,
-          backgroundColor: AppColors.primary,
         ),
         body: Stack(
           children: [
             // Mapa
             if (_miUbicacion != null && _destinoActual != null)
-              GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: _miUbicacion!,
-                  zoom: 15,
-                ),
-                myLocationEnabled: true,
-                myLocationButtonEnabled: true,
+              StandardMap(
+                initialPosition: _miUbicacion!,
+                zoom: 15,
                 markers: _markers,
                 polylines: _polylines,
                 onMapCreated: (controller) {
@@ -317,15 +380,15 @@ class _ConductorServicioActivoScreenState
               bottom: 0,
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(20),
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, -2),
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 15,
+                      offset: const Offset(0, -3),
                     ),
                   ],
                 ),
@@ -333,6 +396,17 @@ class _ConductorServicioActivoScreenState
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Handle decorativo
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+
                     // Indicador de estado
                     _buildEstadoIndicator(),
 
@@ -369,13 +443,16 @@ class _ConductorServicioActivoScreenState
 
   Widget _buildEstadoIndicator() {
     final estados = {
-      'aceptado': {'texto': 'YENDO AL PUNTO DE RECOGIDA', 'color': Colors.blue},
+      'aceptado': {
+        'texto': 'YENDO AL PUNTO DE RECOGIDA',
+        'color': AppColors.green,
+      },
       'en_camino': {
         'texto': 'YENDO AL PUNTO DE RECOGIDA',
-        'color': Colors.blue,
+        'color': AppColors.green,
       },
-      'llegue': {'texto': 'ESPERANDO PASAJERO', 'color': Colors.orange},
-      'en_curso': {'texto': 'VIAJE EN CURSO', 'color': Colors.green},
+      'llegue': {'texto': 'ESPERANDO PASAJERO', 'color': AppColors.accent},
+      'en_curso': {'texto': 'VIAJE EN CURSO', 'color': AppColors.green},
     };
 
     final info =
@@ -410,8 +487,9 @@ class _ConductorServicioActivoScreenState
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: AppColors.primary.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1),
       ),
       child: Row(
         children: [
@@ -437,7 +515,7 @@ class _ConductorServicioActivoScreenState
                   '\$${widget.servicio['precio_final'] ?? widget.servicio['precio_estimado']}',
                   style: const TextStyle(
                     fontSize: 15,
-                    color: Colors.green,
+                    color: AppColors.green,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -445,7 +523,7 @@ class _ConductorServicioActivoScreenState
             ),
           ),
           IconButton(
-            icon: const Icon(Iconsax.call, color: Colors.green, size: 28),
+            icon: const Icon(Iconsax.call, color: AppColors.green, size: 28),
             onPressed: _llamarPasajero,
           ),
         ],
@@ -461,9 +539,9 @@ class _ConductorServicioActivoScreenState
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: AppColors.accent.withOpacity(0.1),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey[300]!),
+        border: Border.all(color: AppColors.accent.withOpacity(0.3), width: 1),
       ),
       child: Row(
         children: [
@@ -471,7 +549,9 @@ class _ConductorServicioActivoScreenState
             _estadoActual == 'en_curso'
                 ? Iconsax.location
                 : Iconsax.location_add,
-            color: _estadoActual == 'en_curso' ? Colors.green : Colors.red,
+            color: _estadoActual == 'en_curso'
+                ? AppColors.green
+                : AppColors.accent,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -513,29 +593,13 @@ class _ConductorServicioActivoScreenState
         return const SizedBox();
     }
 
-    return SizedBox(
+    return StandardButton(
+      text: texto,
+      icon: icono,
+      onPressed: () => _cambiarEstado(proximoEstado),
+      isLoading: _isLoading,
       width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _isLoading ? null : () => _cambiarEstado(proximoEstado),
-        icon: Icon(icono),
-        label: Text(texto),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      ),
+      height: 56,
     );
-  }
-
-  @override
-  void dispose() {
-    _trackingService.detenerSeguimiento();
-    _mapController?.dispose();
-    super.dispose();
   }
 }

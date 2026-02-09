@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/shared/widgets/standard_map.dart';
 
 /// Pantalla del pasajero para seguir al conductor en tiempo real
 class PasajeroSeguimientoConductorScreen extends StatefulWidget {
@@ -51,7 +52,7 @@ class _PasajeroSeguimientoConductorScreenState
       servicioId: widget.servicioId,
       onServicioAceptado: (data) {
         print('📥 Servicio aceptado: $data');
-        
+
         if (!mounted) return;
 
         setState(() {
@@ -62,7 +63,7 @@ class _PasajeroSeguimientoConductorScreenState
           );
           _estadoServicio = 'aceptado';
         });
-        
+
         _actualizarMarcadores();
         _centrarMapa();
       },
@@ -70,21 +71,19 @@ class _PasajeroSeguimientoConductorScreenState
         if (!mounted) return;
 
         setState(() {
-          _conductorUbicacion = LatLng(
-            data['lat'] ?? 0.0,
-            data['lng'] ?? 0.0,
-          );
+          _conductorUbicacion = LatLng(data['lat'] ?? 0.0, data['lng'] ?? 0.0);
         });
-        
+
         _actualizarMarcadores();
       },
       onEstadoCambiado: (data) {
         print('📥 Estado cambiado: $data');
-        
+
         if (!mounted) return;
 
         setState(() {
-          _estadoServicio = data['estado'] ?? data['nuevo_estado'] ?? _estadoServicio;
+          _estadoServicio =
+              data['estado'] ?? data['nuevo_estado'] ?? _estadoServicio;
         });
 
         // Mostrar notificación según el estado
@@ -167,9 +166,7 @@ class _PasajeroSeguimientoConductorScreenState
             widget.datosServicio['destino_lat'] ?? 0.0,
             widget.datosServicio['destino_lng'] ?? 0.0,
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueRed,
-          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
           infoWindow: InfoWindow(
             title: 'Destino',
             snippet: widget.datosServicio['destino_address'] ?? '',
@@ -188,9 +185,7 @@ class _PasajeroSeguimientoConductorScreenState
         Marker(
           markerId: const MarkerId('conductor'),
           position: _conductorUbicacion!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueBlue,
-          ),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
           infoWindow: InfoWindow(
             title: _conductor?['conductor_nombre'] ?? 'Conductor',
             snippet:
@@ -225,9 +220,7 @@ class _PasajeroSeguimientoConductorScreenState
       ),
     );
 
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 100),
-    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
   }
 
   @override
@@ -261,7 +254,6 @@ class _PasajeroSeguimientoConductorScreenState
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Tu viaje'),
-          backgroundColor: AppColors.primary,
           automaticallyImplyLeading: _estadoServicio != 'buscando',
         ),
         body: _isLoading
@@ -269,18 +261,13 @@ class _PasajeroSeguimientoConductorScreenState
             : Stack(
                 children: [
                   // Mapa
-                  GoogleMap(
-                    initialCameraPosition: CameraPosition(
-                      target: LatLng(
-                        widget.datosServicio['origen_lat'] ?? 0.0,
-                        widget.datosServicio['origen_lng'] ?? 0.0,
-                      ),
-                      zoom: 14,
+                  StandardMap(
+                    initialPosition: LatLng(
+                      widget.datosServicio['origen_lat'] ?? 0.0,
+                      widget.datosServicio['origen_lng'] ?? 0.0,
                     ),
+                    zoom: 14,
                     markers: _markers,
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: true,
-                    compassEnabled: true,
                     onMapCreated: (controller) {
                       _mapController = controller;
                     },

@@ -19,6 +19,8 @@ import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.d
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/presentation/conductor_servicio_activo_screen.dart';
+import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:intellitaxi/shared/widgets/standard_button.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -1197,23 +1199,12 @@ class _HomeConductorState extends State<HomeConductor> {
                   ),
                 ),
               )
-            : GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: LatLng(
-                    _currentPosition!.latitude,
-                    _currentPosition!.longitude,
-                  ),
-                  zoom: 15,
+            : StandardMap(
+                initialPosition: LatLng(
+                  _currentPosition!.latitude,
+                  _currentPosition!.longitude,
                 ),
-                myLocationEnabled: true,
-                myLocationButtonEnabled: true,
-                compassEnabled: true,
-                mapToolbarEnabled: false,
-                zoomControlsEnabled: false,
-                onMapCreated: (GoogleMapController controller) {
-                  _mapController = controller;
-                  _setMapStyle(controller);
-                },
+                zoom: 15,
                 markers: {
                   Marker(
                     markerId: const MarkerId('current_location'),
@@ -1226,6 +1217,9 @@ class _HomeConductorState extends State<HomeConductor> {
                       snippet: 'Estás aquí',
                     ),
                   ),
+                },
+                onMapCreated: (controller) {
+                  _mapController = controller;
                 },
               ),
 

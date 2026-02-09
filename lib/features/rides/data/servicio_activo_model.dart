@@ -100,6 +100,53 @@ class ServicioActivo {
   bool get isFinalizado => idEstado == 6;
   bool get isCancelado => idEstado == 7;
   bool get isActivo => !isFinalizado && !isCancelado;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'fechaServicio': fechaServicio,
+      'idActivationCompanyUser': idActivationCompanyUser,
+      'idEmpresa': idEmpresa,
+      'idEstado': idEstado,
+      'origenServicio': origenServicio,
+      'origen_lat': origenLat,
+      'origen_lng': origenLng,
+      'origen_address': origenAddress,
+      'origen_name': origenName,
+      'destino_lat': destinoLat,
+      'destino_lng': destinoLng,
+      'destino_address': destinoAddress,
+      'destino_name': destinoName,
+      'distancia_metros': distanciaMetros,
+      'distancia_texto': distanciaTexto,
+      'duracion_segundos': duracionSegundos,
+      'duracion_texto': duracionTexto,
+      'precio_estimado': precioEstimado,
+      'precio_final': precioFinal,
+      'tipo_servicio': tipoServicio,
+      'conductor_id': conductorId,
+      'estado': {'id': estado.id, 'estado': estado.estado},
+      'conductor': conductor != null
+          ? {
+              'id': conductor!.id,
+              'nombre': conductor!.nombre,
+              'telefono': conductor!.telefono,
+              'foto': conductor!.foto,
+              'calificacion': conductor!.calificacion,
+              'lat': conductor!.lat,
+              'lng': conductor!.lng,
+            }
+          : null,
+      'vehiculo': vehiculo != null
+          ? {
+              'marca': vehiculo!.marca,
+              'modelo': vehiculo!.modelo,
+              'placa': vehiculo!.placa,
+              'color': vehiculo!.color,
+            }
+          : null,
+    };
+  }
 }
 
 class EstadoServicio {
