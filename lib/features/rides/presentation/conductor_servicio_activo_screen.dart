@@ -62,6 +62,109 @@ class _ConductorServicioActivoScreenState
     return 0.0;
   }
 
+  // Método helper para obtener el nombre del pasajero
+  String _getNombrePasajero() {
+    // Intentar obtener de diferentes campos posibles
+    if (widget.servicio['pasajero_nombre'] != null) {
+      return widget.servicio['pasajero_nombre'];
+    }
+    
+    // Buscar en usuario_pasajero.persona
+    if (widget.servicio['usuario_pasajero'] != null) {
+      final usuarioPasajero = widget.servicio['usuario_pasajero'];
+      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
+        final persona = usuarioPasajero['persona'];
+        if (persona is Map) {
+          final nombre1 = persona['nombre1'] ?? '';
+          final nombre2 = persona['nombre2'] ?? '';
+          final apellido1 = persona['apellido1'] ?? '';
+          final apellido2 = persona['apellido2'] ?? '';
+          
+          final nombreCompleto = '$nombre1 ${nombre2.isEmpty ? '' : nombre2} $apellido1 ${apellido2.isEmpty ? '' : apellido2}'.trim();
+          if (nombreCompleto.isNotEmpty) {
+            return nombreCompleto;
+          }
+        }
+      }
+    }
+    
+    // Si hay un objeto pasajero anidado
+    if (widget.servicio['pasajero'] != null) {
+      final pasajero = widget.servicio['pasajero'];
+      if (pasajero is Map) {
+        return pasajero['nombre'] ?? pasajero['name'] ?? 'Pasajero';
+      }
+    }
+    
+    return 'Pasajero';
+  }
+
+  // Método helper para obtener el teléfono del pasajero
+  String? _getTelefonoPasajero() {
+    // Buscar en usuario_pasajero.persona
+    if (widget.servicio['usuario_pasajero'] != null) {
+      final usuarioPasajero = widget.servicio['usuario_pasajero'];
+      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
+        final persona = usuarioPasajero['persona'];
+        if (persona is Map) {
+          final celular = persona['celular'];
+          if (celular != null && celular.toString().isNotEmpty) {
+            return celular.toString();
+          }
+        }
+      }
+    }
+    
+    // Intentar obtener de diferentes campos posibles
+    if (widget.servicio['pasajero_telefono'] != null) {
+      return widget.servicio['pasajero_telefono'];
+    }
+    
+    // Si hay un objeto pasajero anidado
+    if (widget.servicio['pasajero'] != null) {
+      final pasajero = widget.servicio['pasajero'];
+      if (pasajero is Map) {
+        return pasajero['telefono'] ?? pasajero['phone'] ?? pasajero['celular'];
+      }
+    }
+    
+    return null;
+  }
+
+  // Método helper para obtener el precio
+  String _getPrecio() {
+    final precioFinal = widget.servicio['precio_final'];
+    final precioEstimado = widget.servicio['precio_estimado'];
+    
+    if (precioFinal != null) {
+      return precioFinal.toString().replaceAll('.00', '');
+    }
+    if (precioEstimado != null) {
+      return precioEstimado.toString().replaceAll('.00', '');
+    }
+    
+    return '0';
+  }
+
+  // Método helper para obtener la foto del pasajero
+  String? _getFotoPasajero() {
+    // Buscar en usuario_pasajero.persona.rutaFotoUrl
+    if (widget.servicio['usuario_pasajero'] != null) {
+      final usuarioPasajero = widget.servicio['usuario_pasajero'];
+      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
+        final persona = usuarioPasajero['persona'];
+        if (persona is Map) {
+          final fotoUrl = persona['rutaFotoUrl'];
+          if (fotoUrl != null && fotoUrl.toString().isNotEmpty) {
+            return fotoUrl.toString();
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
   Future<void> _cargarIconoCarro() async {
     try {
       _carIcon = await BitmapDescriptor.asset(
@@ -75,6 +178,17 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _inicializar() async {
+    // Debug: Ver estructura completa del servicio
+    print('🔍 DATOS DEL SERVICIO RECIBIDOS:');
+    print('   ID: ${widget.servicio['id']}');
+    print('   Pasajero nombre directo: ${widget.servicio['pasajero_nombre']}');
+    print('   Pasajero objeto: ${widget.servicio['pasajero']}');
+    print('   Precio final: ${widget.servicio['precio_final']}');
+    print('   Precio estimado: ${widget.servicio['precio_estimado']}');
+    print('   Origen: ${widget.servicio['origen_address']}');
+    print('   Destino: ${widget.servicio['destino_address']}');
+    print('');
+    
     // Cargar icono del carro
     await _cargarIconoCarro();
 
@@ -110,11 +224,27 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _guardarServicioActivo() async {
-    await _persistencia.guardarServicioActivo(
-      servicioId: widget.servicio['id'],
-      tipo: 'conductor',
-      datosServicio: widget.servicio,
-    );
+    try {
+      print('📋 Intentando guardar servicio activo...');
+      print('📦 Datos del servicio: ${widget.servicio}');
+      
+      final servicioId = widget.servicio['id'];
+      if (servicioId == null) {
+        print('❌ Error: servicioId es null');
+        print('📦 Keys disponibles: ${widget.servicio.keys}');
+        return;
+      }
+      
+      await _persistencia.guardarServicioActivo(
+        servicioId: servicioId,
+        tipo: 'conductor',
+        datosServicio: widget.servicio,
+      );
+      print('✅ Servicio activo guardado: $servicioId');
+    } catch (e, stackTrace) {
+      print('❌ Error guardando servicio activo: $e');
+      print('Stack trace: $stackTrace');
+    }
   }
 
   Future<void> _mostrarNotificacionPersistente() async {
@@ -336,13 +466,20 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _llamarPasajero() async {
-    final telefono = widget.servicio['pasajero_telefono'];
+    final telefono = _getTelefonoPasajero();
     if (telefono != null) {
       // TODO: Implementar llamada telefónica
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Llamar a: $telefono'),
           duration: const Duration(seconds: 2),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay teléfono disponible'),
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -484,6 +621,8 @@ class _ConductorServicioActivoScreenState
   }
 
   Widget _buildInfoPasajero() {
+    final fotoUrl = _getFotoPasajero();
+    
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -493,18 +632,29 @@ class _ConductorServicioActivoScreenState
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: AppColors.primary,
-            child: const Icon(Icons.person, color: Colors.white, size: 32),
-          ),
+          // Avatar con foto o icono por defecto
+          fotoUrl != null && fotoUrl.isNotEmpty
+              ? CircleAvatar(
+                  radius: 28,
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundImage: NetworkImage(fotoUrl),
+                  onBackgroundImageError: (exception, stackTrace) {
+                    print('⚠️ Error cargando foto del pasajero: $exception');
+                  },
+                  child: null,
+                )
+              : CircleAvatar(
+                  radius: 28,
+                  backgroundColor: AppColors.primary,
+                  child: const Icon(Icons.person, color: Colors.white, size: 32),
+                ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.servicio['pasajero_nombre'] ?? 'Pasajero',
+                  _getNombrePasajero(),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -512,7 +662,7 @@ class _ConductorServicioActivoScreenState
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '\$${widget.servicio['precio_final'] ?? widget.servicio['precio_estimado']}',
+                  '\$${_getPrecio()}',
                   style: const TextStyle(
                     fontSize: 15,
                     color: AppColors.green,

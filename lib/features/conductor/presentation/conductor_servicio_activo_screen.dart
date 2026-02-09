@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
@@ -10,12 +11,12 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 
 /// Pantalla del conductor durante un servicio activo
 class ConductorServicioActivoScreen extends StatefulWidget {
-  final ServicioActivo servicio;
+  final Map<String, dynamic> servicioData;
   final int conductorId;
 
   const ConductorServicioActivoScreen({
     super.key,
-    required this.servicio,
+    required this.servicioData,
     required this.conductorId,
   });
 
@@ -33,6 +34,12 @@ class _ConductorServicioActivoScreenState
   final ServicioNotificacionForeground _notificacionService =
       ServicioNotificacionForeground();
 
+  late ServicioActivo servicio;
+  String? pasajeroNombre;
+  String? pasajeroTelefono;
+  String? pasajeroEmail;
+  String? pasajeroFoto;
+
   String _estadoActual = 'aceptado';
   Position? _miUbicacion;
   LatLng? _destinoActual;
@@ -42,7 +49,46 @@ class _ConductorServicioActivoScreenState
   @override
   void initState() {
     super.initState();
+    _parsearDatos();
     _inicializar();
+  }
+
+  void _parsearDatos() {
+    // Parsear el servicio desde servicioData
+    final servicioMap = widget.servicioData['servicio'] as Map<String, dynamic>? ??
+        widget.servicioData;
+    servicio = ServicioActivo.fromJson(servicioMap);
+
+    // Extraer datos del pasajero
+    final pasajeroData = widget.servicioData['pasajero'] as Map<String, dynamic>?;
+    if (pasajeroData != null) {
+      pasajeroNombre = pasajeroData['nombre'];
+      pasajeroTelefono = pasajeroData['celular'];
+      pasajeroEmail = pasajeroData['email'];
+      pasajeroFoto = pasajeroData['foto'];
+    } else {
+      // Fallback: extraer del usuario_pasajero
+      final usuarioPasajero =
+          widget.servicioData['usuario_pasajero'] as Map<String, dynamic>?;
+      if (usuarioPasajero != null) {
+        final persona = usuarioPasajero['persona'] as Map<String, dynamic>?;
+        if (persona != null) {
+          pasajeroNombre =
+              '${persona['nombre1'] ?? ''} ${persona['apellido1'] ?? ''}'.trim();
+          pasajeroTelefono = persona['celular'];
+          pasajeroEmail = persona['email'];
+          pasajeroFoto = persona['rutaFotoUrl'];
+        }
+      }
+    }
+
+    // Si no se encontró nombre, usar "Pasajero"
+    pasajeroNombre ??= 'Pasajero';
+
+    print('👥 Datos del pasajero cargados:');
+    print('   Nombre: $pasajeroNombre');
+    print('   Teléfono: $pasajeroTelefono');
+    print('   Email: $pasajeroEmail');
   }
 
   Future<void> _inicializar() async {
@@ -51,32 +97,32 @@ class _ConductorServicioActivoScreenState
 
     // Guardar servicio activo
     await _persistencia.guardarServicioActivo(
-      servicioId: widget.servicio.id,
+      servicioId: servicio.id,
       tipo: 'conductor',
-      datosServicio: widget.servicio.toJson(),
+      datosServicio: servicio.toJson(),
     );
 
     // Mostrar notificación persistente
     await _notificacionService.mostrarNotificacionConductor(
-      servicioId: widget.servicio.id,
-      estado: widget.servicio.estado.estado,
-      origen: widget.servicio.origenAddress,
-      destino: widget.servicio.destinoAddress,
+      servicioId: servicio.id,
+      estado: servicio.estado.estado,
+      origen: servicio.origenAddress,
+      destino: servicio.destinoAddress,
     );
 
     // Iniciar seguimiento GPS
     await _trackingService.iniciarSeguimiento(
-      servicioId: widget.servicio.id,
+      servicioId: servicio.id,
       conductorId: widget.conductorId,
     );
 
     // El destino inicial es el punto de recogida
     setState(() {
       _destinoActual = LatLng(
-        widget.servicio.origenLat,
-        widget.servicio.origenLng,
+        servicio.origenLat,
+        servicio.origenLng,
       );
-      _estadoActual = widget.servicio.estado.estado;
+      _estadoActual = servicio.estado.estado;
     });
 
     // Obtener ubicación actual
@@ -127,8 +173,8 @@ class _ConductorServicioActivoScreenState
                 ? 'Destino Final'
                 : 'Punto de Recogida',
             snippet: _estadoActual == 'en_curso'
-                ? widget.servicio.destinoAddress
-                : widget.servicio.origenAddress,
+                ? servicio.destinoAddress
+                : servicio.origenAddress,
           ),
         ),
       );
@@ -158,7 +204,7 @@ class _ConductorServicioActivoScreenState
     );
 
     final success = await _trackingService.cambiarEstado(
-      servicioId: widget.servicio.id,
+      servicioId: servicio.id,
       conductorId: widget.conductorId,
       estado: nuevoEstado,
     );
@@ -173,8 +219,8 @@ class _ConductorServicioActivoScreenState
         // Si llegó al punto de recogida, cambiar destino al final
         if (nuevoEstado == 'llegue') {
           _destinoActual = LatLng(
-            widget.servicio.destinoLat,
-            widget.servicio.destinoLng,
+            servicio.destinoLat,
+            servicio.destinoLng,
           );
           _crearMarcadores();
         }
@@ -182,11 +228,11 @@ class _ConductorServicioActivoScreenState
 
       // Actualizar notificación
       await _notificacionService.actualizarNotificacion(
-        servicioId: widget.servicio.id,
+        servicioId: servicio.id,
         tipo: 'conductor',
         estado: nuevoEstado,
-        origen: widget.servicio.origenAddress,
-        destino: widget.servicio.destinoAddress,
+        origen: servicio.origenAddress,
+        destino: servicio.destinoAddress,
       );
 
       // Mostrar snackbar de confirmación
@@ -205,7 +251,7 @@ class _ConductorServicioActivoScreenState
 
         // Cancelar notificación
         await _notificacionService.cancelarNotificacion(
-          widget.servicio.id,
+          servicio.id,
           tipo: 'conductor',
         );
 
@@ -394,22 +440,40 @@ class _ConductorServicioActivoScreenState
   Widget _buildInfoServicio() {
     return Row(
       children: [
-        const CircleAvatar(
+        CircleAvatar(
           radius: 25,
           backgroundColor: AppColors.accent,
-          child: Icon(Icons.person, color: Colors.white, size: 30),
+          backgroundImage: pasajeroFoto != null && pasajeroFoto!.isNotEmpty
+              ? NetworkImage(pasajeroFoto!)
+              : null,
+          child: pasajeroFoto == null || pasajeroFoto!.isEmpty
+              ? const Icon(Icons.person, color: Colors.white, size: 30)
+              : null,
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Pasajero',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
               Text(
-                '\$${widget.servicio.precioFinal ?? widget.servicio.precioEstimado}',
+                pasajeroNombre ?? 'Pasajero',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (pasajeroTelefono != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  pasajeroTelefono!,
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+              ],
+              const SizedBox(height: 4),
+              Text(
+                '\$${servicio.precioFinal ?? servicio.precioEstimado}',
                 style: const TextStyle(
                   fontSize: 14,
                   color: Colors.green,
@@ -419,20 +483,36 @@ class _ConductorServicioActivoScreenState
             ],
           ),
         ),
-        IconButton(
-          icon: const Icon(Icons.phone, color: Colors.green, size: 30),
-          onPressed: () {
-            // TODO: Llamar al pasajero
-          },
-        ),
+        if (pasajeroTelefono != null)
+          IconButton(
+            icon: const Icon(Icons.phone, color: Colors.green, size: 30),
+            onPressed: () async {
+              // Llamar al pasajero
+              final Uri telUri = Uri(scheme: 'tel', path: pasajeroTelefono);
+              if (await canLaunchUrl(telUri)) {
+                await launchUrl(telUri);
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('No se puede realizar la llamada'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+          )
+        else
+          const SizedBox(width: 48),
       ],
     );
   }
 
   Widget _buildDireccionActual() {
     final direccion = _estadoActual == 'en_curso'
-        ? widget.servicio.destinoAddress
-        : widget.servicio.origenAddress;
+        ? servicio.destinoAddress
+        : servicio.origenAddress;
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;

@@ -17,10 +17,8 @@ import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.
 import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
-import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
-import 'package:intellitaxi/shared/widgets/standard_button.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -51,9 +49,6 @@ class _HomeConductorState extends State<HomeConductor> {
   Map<String, Timer> _timersExpiacion = {};
   bool _suscritoAPusher = false;
 
-  // Servicio activo
-  ServicioActivo? _servicioActivo;
-
   // Audio player para notificaciones
   final AudioPlayer _audioPlayer = AudioPlayer();
 
@@ -63,7 +58,6 @@ class _HomeConductorState extends State<HomeConductor> {
     _initializeLocation();
     _cargarVehiculos();
     _cargarTurnoActual();
-    _cargarServicioActivo();
   }
 
   @override
@@ -453,9 +447,6 @@ class _HomeConductorState extends State<HomeConductor> {
       // Navegar a la pantalla de servicio activo del conductor
       if (mounted && response['servicio'] != null) {
         try {
-          final servicioData = response['servicio'] as Map<String, dynamic>;
-          final servicio = ServicioActivo.fromJson(servicioData);
-
           // Obtener conductor ID del auth provider
           final authProvider = Provider.of<AuthProvider>(
             context,
@@ -463,27 +454,16 @@ class _HomeConductorState extends State<HomeConductor> {
           );
           final conductorId = authProvider.user?.id ?? 0;
 
-          // Guardar en SharedPreferences
-          await _guardarServicioActivo(servicio);
-
-          // Navegar a ConductorServicioActivoScreen
+          // Navegar a ConductorServicioActivoScreen pasando el objeto servicio
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => ConductorServicioActivoScreen(
-                servicio: servicioData,
+                servicio: response['servicio'],
                 conductorId: conductorId,
               ),
             ),
-          ).then((result) {
-            // Cuando regrese, limpiar servicio activo
-            if (result == true) {
-              setState(() {
-                _servicioActivo = null;
-              });
-              _limpiarServicioActivo();
-            }
-          });
+          );
         } catch (e) {
           print('⚠️ Error procesando servicio activo: $e');
         }
@@ -524,103 +504,6 @@ class _HomeConductorState extends State<HomeConductor> {
     );
 
     _eliminarSolicitud(solicitudId);
-  }
-
-  /// Guarda el servicio activo en SharedPreferences
-  Future<void> _guardarServicioActivo(ServicioActivo servicio) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final servicioJson = json.encode({
-        'id': servicio.id,
-        'fechaServicio': servicio.fechaServicio,
-        'idActivationCompanyUser': servicio.idActivationCompanyUser,
-        'idEmpresa': servicio.idEmpresa,
-        'idEstado': servicio.idEstado,
-        'origenServicio': servicio.origenServicio,
-        'origen_lat': servicio.origenLat,
-        'origen_lng': servicio.origenLng,
-        'origen_address': servicio.origenAddress,
-        'origen_name': servicio.origenName,
-        'destino_lat': servicio.destinoLat,
-        'destino_lng': servicio.destinoLng,
-        'destino_address': servicio.destinoAddress,
-        'destino_name': servicio.destinoName,
-        'precio_estimado': servicio.precioEstimado,
-        'tipo_servicio': servicio.tipoServicio,
-        'conductor_id': servicio.conductorId,
-        'estado': {'id': servicio.estado.id, 'estado': servicio.estado.estado},
-      });
-      await prefs.setString('servicio_activo_conductor', servicioJson);
-      print('💾 Servicio activo guardado');
-    } catch (e) {
-      print('⚠️ Error guardando servicio activo: $e');
-    }
-  }
-
-  /// Carga el servicio activo desde SharedPreferences
-  Future<void> _cargarServicioActivo() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final servicioJson = prefs.getString('servicio_activo_conductor');
-
-      if (servicioJson != null) {
-        final servicioData = json.decode(servicioJson);
-        final servicio = ServicioActivo.fromJson(servicioData);
-
-        // Solo cargar si el servicio sigue activo (no finalizado ni cancelado)
-        if (servicio.isActivo) {
-          setState(() {
-            _servicioActivo = servicio;
-          });
-          _actualizarMapaConServicio(servicio);
-          print('✅ Servicio activo recuperado: ${servicio.id}');
-        } else {
-          // Si está finalizado, limpiar
-          await _limpiarServicioActivo();
-        }
-      }
-    } catch (e) {
-      print('⚠️ Error cargando servicio activo: $e');
-    }
-  }
-
-  /// Limpia el servicio activo de SharedPreferences
-  Future<void> _limpiarServicioActivo() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('servicio_activo_conductor');
-      print('🗑️ Servicio activo limpiado');
-    } catch (e) {
-      print('⚠️ Error limpiando servicio activo: $e');
-    }
-  }
-
-  /// Actualiza el mapa para mostrar el servicio activo
-  void _actualizarMapaConServicio(ServicioActivo servicio) {
-    if (_mapController == null) return;
-
-    // Calcular bounds para incluir origen (conductor) y destino (pasajero)
-    final bounds = LatLngBounds(
-      southwest: LatLng(
-        servicio.origenLat < servicio.destinoLat
-            ? servicio.origenLat
-            : servicio.destinoLat,
-        servicio.origenLng < servicio.destinoLng
-            ? servicio.origenLng
-            : servicio.destinoLng,
-      ),
-      northeast: LatLng(
-        servicio.origenLat > servicio.destinoLat
-            ? servicio.origenLat
-            : servicio.destinoLat,
-        servicio.origenLng > servicio.destinoLng
-            ? servicio.origenLng
-            : servicio.destinoLng,
-      ),
-    );
-
-    // Animar cámara a los bounds
-    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
   }
 
   Future<void> _initializeLocation() async {
@@ -1224,7 +1107,7 @@ class _HomeConductorState extends State<HomeConductor> {
               ),
 
         // Botón de estado del conductor (inferior centro)
-        if (_currentPosition != null && _servicioActivo == null)
+        if (_currentPosition != null)
           Positioned(
             bottom: 24,
             left: 20,
@@ -1379,248 +1262,7 @@ class _HomeConductorState extends State<HomeConductor> {
               },
             ),
           ),
-
-        // Panel de servicio activo (reemplaza las solicitudes cuando hay un servicio aceptado)
-        if (_servicioActivo != null)
-          Positioned(
-            bottom: 100,
-            left: 0,
-            right: 0,
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.darkCard
-                    : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Estado del servicio
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getEstadoColor(_servicioActivo!.idEstado),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _servicioActivo!.estado.estado.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Información del pasajero
-                  Row(
-                    children: [
-                      const CircleAvatar(radius: 25, child: Icon(Icons.person)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Pasajero',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'ID: ${_servicioActivo!.idActivationCompanyUser}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {
-                          // TODO: Llamar al pasajero
-                        },
-                        icon: const Icon(Icons.phone, color: Colors.green),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Origen y destino
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Column(
-                        children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: const BoxDecoration(
-                              color: Colors.green,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          Container(
-                            width: 2,
-                            height: 30,
-                            color: Colors.grey.shade300,
-                          ),
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Recoger en:',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            Text(
-                              _servicioActivo!.origenName ?? 'Ubicación origen',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Destino:',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            Text(
-                              _servicioActivo!.destinoName ??
-                                  'Ubicación destino',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Botones de acción según el estado
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            // TODO: Implementar cambio de estado del servicio
-                            // Por ahora, si es finalizado, limpiar
-                            if (_servicioActivo!.estado.id == 5) {
-                              // Simular finalización
-                              await _limpiarServicioActivo();
-                              setState(() {
-                                _servicioActivo = null;
-                              });
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('🏁 Servicio finalizado'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.accent,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            _getButtonText(_servicioActivo!.estado.id),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
       ],
     );
-  }
-
-  String _getButtonText(int estadoId) {
-    switch (estadoId) {
-      case 2: // Aceptado
-        return 'Iniciar viaje al origen';
-      case 3: // En camino
-        return 'Ya llegué';
-      case 4: // Llegué
-        return 'Iniciar viaje';
-      case 5: // En curso
-        return 'Finalizar viaje';
-      default:
-        return 'Continuar';
-    }
-  }
-
-  Color _getEstadoColor(int estadoId) {
-    switch (estadoId) {
-      case 1: // Pendiente
-        return AppColors.secondary;
-      case 2: // Aceptado
-        return AppColors.primary;
-      case 3: // En camino
-        return AppColors.accent;
-      case 4: // Llegué
-        return AppColors.accent;
-      case 5: // En curso
-        return AppColors.green;
-      case 6: // Finalizado
-        return AppColors.grey;
-      case 7: // Cancelado
-        return AppColors.error;
-      default:
-        return AppColors.grey;
-    }
   }
 }
