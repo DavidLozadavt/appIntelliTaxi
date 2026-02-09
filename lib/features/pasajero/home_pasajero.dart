@@ -427,11 +427,10 @@ class _HomePasajeroState extends State<HomePasajero>
   /// Crea el icono del marcador para conductores
   Future<void> _createDriverMarkerIcon() async {
     try {
-      // Crear un icono de taxi verde
-      final icon = await _createCustomMarkerIcon(
-        icon: Icons.local_taxi,
-        color: Colors.green,
-        size: 100,
+      // Usar la imagen personalizada desde assets
+      final icon = await BitmapDescriptor.asset(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/images/marker.png',
       );
 
       setState(() => _driverMarkerIcon = icon);
@@ -801,7 +800,11 @@ class _HomePasajeroState extends State<HomePasajero>
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      const Icon(Icons.local_taxi, color: Colors.green),
+                      Image.asset(
+                        'assets/images/marker.png',
+                        width: 24,
+                        height: 24,
+                      ),
                       if (_conductoresDisponibles.isNotEmpty)
                         Positioned(
                           right: 0,
