@@ -59,6 +59,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final pasajeroNombre = widget.solicitud['pasajero_nombre'] ?? 'Pasajero';
+    final pasajeroFoto = widget.solicitud['pasajero_foto'];
     final origen = widget.solicitud['origen'] ?? 'Origen no especificado';
     final destino = widget.solicitud['destino'] ?? 'Destino no especificado';
     // Nota: No se usa precio porque funciona con taxímetro
@@ -147,14 +148,26 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     // Pasajero
                     Row(
                       children: [
-                        CircleAvatar(
-                          backgroundColor: AppColors.accent.withOpacity(0.1),
-                          child: Icon(
-                            Iconsax.user_copy,
-                            color: AppColors.accent,
-                            size: 20,
-                          ),
-                        ),
+                        // Avatar del pasajero con foto
+                        pasajeroFoto != null &&
+                                pasajeroFoto.toString().isNotEmpty
+                            ? CircleAvatar(
+                                radius: 22,
+                                backgroundImage: NetworkImage(pasajeroFoto),
+                                backgroundColor: Colors.grey.shade300,
+                                onBackgroundImageError: (_, __) {},
+                              )
+                            : CircleAvatar(
+                                radius: 22,
+                                backgroundColor: AppColors.accent.withOpacity(
+                                  0.1,
+                                ),
+                                child: Icon(
+                                  Iconsax.user_copy,
+                                  color: AppColors.accent,
+                                  size: 22,
+                                ),
+                              ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(

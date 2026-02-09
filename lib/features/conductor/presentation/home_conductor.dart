@@ -221,6 +221,15 @@ class _HomeConductorState extends State<HomeConductor> {
         solicitud['precio_estimado'] = nestedData['precio_estimado'];
         solicitud['tipo_servicio'] = nestedData['tipo_servicio'];
         solicitud['clase_vehiculo'] = nestedData['tipo_servicio'] ?? 'taxi';
+        solicitud['pasajero_nombre'] =
+            nestedData['pasajero_nombre'] ??
+            nestedData['usuario_nombre'] ??
+            nestedData['user']?['nombre'] ??
+            'Pasajero';
+        solicitud['pasajero_foto'] =
+            nestedData['pasajero_foto'] ??
+            nestedData['usuario_foto'] ??
+            nestedData['user']?['foto'];
 
         print('✅ Datos anidados extraídos correctamente');
       } else {
@@ -240,10 +249,16 @@ class _HomeConductorState extends State<HomeConductor> {
         solicitud['pasajero_nombre'] = 'Pasajero';
       }
 
+      // Asegurarse de que pasajero_foto exista
+      if (!solicitud.containsKey('pasajero_foto')) {
+        solicitud['pasajero_foto'] = null;
+      }
+
       // Logs de verificación
       print('📋 Solicitud procesada:');
       print('   ID: ${solicitud['solicitud_id']}');
       print('   Pasajero: ${solicitud['pasajero_nombre']}');
+      print('   Foto: ${solicitud['pasajero_foto']}');
       print('   Origen: ${solicitud['origen']}');
       print('   Destino: ${solicitud['destino']}');
       print('   Precio: ${solicitud['precio_estimado']}');
@@ -403,19 +418,29 @@ class _HomeConductorState extends State<HomeConductor> {
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            // color: Colors.blue.shade100,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Iconsax.user_copy,
-                            color: Colors.blue.shade700,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
+                        // Avatar del pasajero
+                        solicitud['pasajero_foto'] != null &&
+                                solicitud['pasajero_foto'].toString().isNotEmpty
+                            ? CircleAvatar(
+                                radius: 24,
+                                backgroundImage: NetworkImage(
+                                  solicitud['pasajero_foto'],
+                                ),
+                                backgroundColor: Colors.grey.shade300,
+                                onBackgroundImageError: (_, __) {},
+                              )
+                            : CircleAvatar(
+                                radius: 24,
+                                backgroundColor: AppColors.accent.withOpacity(
+                                  0.15,
+                                ),
+                                child: Icon(
+                                  Iconsax.user_copy,
+                                  color: AppColors.accent,
+                                  size: 24,
+                                ),
+                              ),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
