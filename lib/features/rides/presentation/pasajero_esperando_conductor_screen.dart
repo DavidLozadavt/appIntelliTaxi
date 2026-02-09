@@ -171,10 +171,10 @@ class _PasajeroEsperandoConductorScreenState
       servicioId: widget.servicioId,
       onServicioAceptado: (data) {
         print('🎉 Servicio aceptado - Data completa:');
+        print('   Keys: ${data.keys}');
         print('   Conductor: ${data['conductor_nombre']}');
-        print(
-          '   Lat: ${data['conductor_lat']}, Lng: ${data['conductor_lng']}',
-        );
+        print('   Foto: ${data['conductor_foto']}');
+        print('   Lat: ${data['conductor_lat']}, Lng: ${data['conductor_lng']}');
         print('   Vehículo: ${data['vehiculo_placa']}');
         setState(() {
           _conductor = data;
@@ -805,15 +805,28 @@ class _PasajeroEsperandoConductorScreenState
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: AppColors.primary,
-                  child: const Icon(
-                    Icons.person,
-                    color: Colors.white,
-                    size: 35,
-                  ),
-                ),
+                // Avatar con foto o icono por defecto
+                _conductor?['conductor_foto'] != null &&
+                        _conductor!['conductor_foto'].toString().isNotEmpty
+                    ? CircleAvatar(
+                        radius: 30,
+                        backgroundColor: AppColors.primary.withOpacity(0.1),
+                        backgroundImage: NetworkImage(
+                          _conductor!['conductor_foto'],
+                        ),
+                        onBackgroundImageError: (exception, stackTrace) {
+                          print('⚠️ Error cargando foto del conductor: $exception');
+                        },
+                      )
+                    : CircleAvatar(
+                        radius: 30,
+                        backgroundColor: AppColors.primary,
+                        child: const Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 35,
+                        ),
+                      ),
                 const SizedBox(width: 15),
                 Expanded(
                   child: Column(

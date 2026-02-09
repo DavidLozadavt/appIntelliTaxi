@@ -51,7 +51,12 @@ class _PasajeroSeguimientoConductorScreenState
     await _pusherService.suscribirServicio(
       servicioId: widget.servicioId,
       onServicioAceptado: (data) {
-        print('📥 Servicio aceptado: $data');
+        print('📥 [PASAJERO] Servicio aceptado - Data completa:');
+        print('   Keys disponibles: ${data.keys}');
+        print('   conductor_foto: ${data['conductor_foto']}');
+        print('   foto: ${data['foto']}');
+        print('   conductor_nombre: ${data['conductor_nombre']}');
+        print('   conductor_calificacion: ${data['conductor_calificacion']}');
 
         if (!mounted) return;
 
@@ -223,6 +228,50 @@ class _PasajeroSeguimientoConductorScreenState
     _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
   }
 
+  // Helper para obtener la URL de la foto del conductor
+  String? _getFotoConductor() {
+    if (_conductor == null) return null;
+    
+    // Intentar diferentes campos posibles
+    final foto = _conductor!['conductor_foto'] ?? 
+                 _conductor!['foto'] ?? 
+                 _conductor!['conductor']?['foto'];
+    
+    if (foto != null && foto.toString().isNotEmpty) {
+      print('✅ [PASAJERO] Foto encontrada: $foto');
+      return foto.toString();
+    }
+    
+    print('⚠️ [PASAJERO] No se encontró foto del conductor');
+    return null;
+  }
+
+  // Widget para el avatar del conductor
+  Widget _buildConductorAvatar() {
+    final fotoUrl = _getFotoConductor();
+    
+    if (fotoUrl != null && fotoUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: 30,
+        backgroundColor: AppColors.accent.withOpacity(0.1),
+        backgroundImage: NetworkImage(fotoUrl),
+        onBackgroundImageError: (exception, stackTrace) {
+          print('⚠️ Error cargando foto del conductor: $exception');
+        },
+      );
+    }
+    
+    return CircleAvatar(
+      radius: 30,
+      backgroundColor: AppColors.accent,
+      child: const Icon(
+        Icons.person,
+        size: 30,
+        color: Colors.white,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -367,29 +416,15 @@ class _PasajeroSeguimientoConductorScreenState
           if (_conductor != null) ...[
             Row(
               children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: AppColors.accent,
-                  child: _conductor?['conductor_foto'] != null
-                      ? ClipOval(
-                          child: Image.network(
-                            _conductor!['conductor_foto'],
-                            fit: BoxFit.cover,
-                            width: 60,
-                            height: 60,
-                            errorBuilder: (_, __, ___) =>
-                                const Icon(Icons.person, size: 30),
-                          ),
-                        )
-                      : const Icon(Icons.person, size: 30, color: Colors.white),
-                ),
+                // Avatar con foto o icono por defecto
+                _buildConductorAvatar(),
                 const SizedBox(width: 15),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _conductor?['conductor_nombre'] ?? 'Conductor',
+                        _conductor?['conductor_nombre'] ?? _conductor?['nombre'] ?? 'Conductor',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -400,7 +435,7 @@ class _PasajeroSeguimientoConductorScreenState
                           const Icon(Icons.star, color: Colors.amber, size: 18),
                           const SizedBox(width: 5),
                           Text(
-                            '${_conductor?['conductor_calificacion'] ?? 5.0}',
+                            '${_conductor?['conductor_calificacion'] ?? _conductor?['calificacion'] ?? 5.0}',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
