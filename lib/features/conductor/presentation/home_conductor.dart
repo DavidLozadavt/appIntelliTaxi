@@ -342,11 +342,11 @@ class _HomeConductorState extends State<HomeConductor> {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Colors.white, AppColors.accent.withOpacity(0.05)],
-            ),
+            // gradient: LinearGradient(
+            //   begin: Alignment.topLeft,
+            //   end: Alignment.bottomRight,
+            //   colors: [Colors.white, AppColors.accent.withOpacity(0.05)],
+            // ),
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -397,7 +397,7 @@ class _HomeConductorState extends State<HomeConductor> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
+                      // color: Colors.blue.shade50,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.blue.shade100),
                     ),
@@ -406,7 +406,7 @@ class _HomeConductorState extends State<HomeConductor> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.blue.shade100,
+                            // color: Colors.blue.shade100,
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -448,7 +448,7 @@ class _HomeConductorState extends State<HomeConductor> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
+                      // color: Colors.grey.shade50,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.grey.shade200),
                     ),
@@ -507,7 +507,7 @@ class _HomeConductorState extends State<HomeConductor> {
                             Container(
                               padding: const EdgeInsets.all(6),
                               decoration: BoxDecoration(
-                                color: Colors.red.shade100,
+                                // color: Colors.red.shade100,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Icon(
@@ -550,64 +550,64 @@ class _HomeConductorState extends State<HomeConductor> {
                   const SizedBox(height: 16),
 
                   // Campo de mensaje
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Iconsax.message_copy,
-                            size: 16,
-                            color: Colors.grey.shade700,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Mensaje (opcional)',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: mensajeController,
-                        maxLines: 2,
-                        decoration: InputDecoration(
-                          hintText: 'Ej: Voy en camino...',
-                          hintStyle: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade400,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey.shade50,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: AppColors.accent,
-                              width: 2,
-                            ),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  // Column(
+                  //   crossAxisAlignment: CrossAxisAlignment.start,
+                  //   children: [
+                  //     Row(
+                  //       children: [
+                  //         Icon(
+                  //           Iconsax.message_copy,
+                  //           size: 16,
+                  //           color: Colors.grey.shade700,
+                  //         ),
+                  //         const SizedBox(width: 8),
+                  //         Expanded(
+                  //           child: Text(
+                  //             'Mensaje (opcional)',
+                  //             style: TextStyle(
+                  //               fontSize: 12,
+                  //               fontWeight: FontWeight.w600,
+                  //               color: Colors.grey.shade700,
+                  //             ),
+                  //           ),
+                  //         ),
+                  //       ],
+                  //     ),
+                  //     const SizedBox(height: 10),
+                  //     TextField(
+                  //       controller: mensajeController,
+                  //       maxLines: 2,
+                  //       decoration: InputDecoration(
+                  //         hintText: 'Ej: Voy en camino...',
+                  //         hintStyle: TextStyle(
+                  //           fontSize: 12,
+                  //           color: Colors.grey.shade400,
+                  //         ),
+                  //         filled: true,
+                  //         fillColor: Colors.grey.shade50,
+                  //         border: OutlineInputBorder(
+                  //           borderRadius: BorderRadius.circular(12),
+                  //           borderSide: BorderSide(color: Colors.grey.shade300),
+                  //         ),
+                  //         enabledBorder: OutlineInputBorder(
+                  //           borderRadius: BorderRadius.circular(12),
+                  //           borderSide: BorderSide(color: Colors.grey.shade300),
+                  //         ),
+                  //         focusedBorder: OutlineInputBorder(
+                  //           borderRadius: BorderRadius.circular(12),
+                  //           borderSide: BorderSide(
+                  //             color: AppColors.accent,
+                  //             width: 2,
+                  //           ),
+                  //         ),
+                  //         contentPadding: const EdgeInsets.symmetric(
+                  //           horizontal: 12,
+                  //           vertical: 12,
+                  //         ),
+                  //       ),
+                  //     ),
+                  //   ],
+                  // ),
                   const SizedBox(height: 20),
 
                   // Botones
