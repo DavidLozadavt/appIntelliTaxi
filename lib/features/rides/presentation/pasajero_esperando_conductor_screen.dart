@@ -8,6 +8,9 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/standard_button.dart';
+import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
+import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:provider/provider.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -29,6 +32,7 @@ class _PasajeroEsperandoConductorScreenState
   GoogleMapController? _mapController;
   final ServicioPusherService _pusherService = ServicioPusherService();
   final RoutesService _routesService = RoutesService();
+  final CalificacionService _calificacionService = CalificacionService();
 
   Map<String, dynamic>? _conductor;
   LatLng? _conductorUbicacion;
@@ -468,13 +472,108 @@ class _PasajeroEsperandoConductorScreenState
             StandardButton(
               text: 'Enviar Calificación',
               icon: Icons.send,
-              onPressed: () {
-                // TODO: Enviar calificación al backend
+              onPressed: () async {
                 print('Calificación: $calificacionSeleccionada');
                 print('Comentario: ${comentarioController.text}');
 
-                Navigator.pop(context); // Cerrar diálogo
-                Navigator.pop(context, true); // Regresar a home
+                // Cerrar diálogo y mostrar loading
+                Navigator.pop(context);
+
+                // Mostrar loading
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text('Enviando calificación...'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+
+                try {
+                  // Obtener ID del pasajero desde AuthProvider
+                  final authProvider = Provider.of<AuthProvider>(
+                    context,
+                    listen: false,
+                  );
+                  final idPasajero = authProvider.idPersona;
+
+                  if (idPasajero == null) {
+                    throw Exception('No se pudo obtener ID del pasajero');
+                  }
+
+                  // Obtener ID del conductor
+                  final idConductor = _conductor?['conductor_id'];
+
+                  if (idConductor == null) {
+                    throw Exception('No se pudo obtener ID del conductor');
+                  }
+
+                  print('📤 Enviando calificación:');
+                  print('   Servicio: ${widget.servicioId}');
+                  print('   Pasajero (califica): $idPasajero');
+                  print('   Conductor (calificado): $idConductor');
+                  print('   Estrellas: $calificacionSeleccionada');
+                  print('   Comentario: ${comentarioController.text}');
+
+                  // Enviar calificación
+                  await _calificacionService.crearCalificacion(
+                    idServicio: widget.servicioId,
+                    idUsuarioCalifica: idPasajero,
+                    idUsuarioCalificado: idConductor,
+                    tipoCalificacion: 'CONDUCTOR',
+                    calificacion: calificacionSeleccionada,
+                    comentario: comentarioController.text.isNotEmpty
+                        ? comentarioController.text
+                        : null,
+                  );
+
+                  if (!mounted) return;
+
+                  // Cerrar loading
+                  Navigator.pop(context);
+
+                  // Mostrar mensaje de éxito
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ ¡Gracias por tu calificación!'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+
+                  // Regresar a home
+                  Navigator.pop(context, true);
+                } catch (e) {
+                  print('❌ Error enviando calificación: $e');
+
+                  if (!mounted) return;
+
+                  // Cerrar loading
+                  Navigator.pop(context);
+
+                  // Mostrar error
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error al enviar calificación: $e'),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+
+                  // Regresar a home de todas formas
+                  Navigator.pop(context, true);
+                }
               },
               height: 45,
               fontSize: 14,

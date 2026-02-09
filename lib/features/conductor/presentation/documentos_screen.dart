@@ -76,6 +76,16 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // Calcular porcentaje de completitud
+    final totalDocumentos = _documentos.length;
+    final documentosVigentes = _documentos.where((doc) {
+      final estado = doc.estadoVigencia?.toUpperCase() ?? 'VIGENTE';
+      return estado == 'VIGENTE';
+    }).length;
+    final porcentaje = totalDocumentos > 0
+        ? (documentosVigentes / totalDocumentos)
+        : 0.0;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -95,15 +105,187 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
           ? _buildEmptyState(isDark)
           : RefreshIndicator(
               onRefresh: _cargarDocumentos,
-              child: ListView.builder(
+              child: ListView(
                 padding: const EdgeInsets.all(16),
-                itemCount: _documentos.length,
-                itemBuilder: (context, index) {
-                  final documento = _documentos[index];
-                  return _buildDocumentoCard(documento, isDark);
-                },
+                children: [
+                  // Indicador de progreso circular
+                  _buildProgressIndicator(
+                    porcentaje,
+                    documentosVigentes,
+                    totalDocumentos,
+                    isDark,
+                  ),
+                  const SizedBox(height: 24),
+                  // Lista de documentos
+                  ...List.generate(
+                    _documentos.length,
+                    (index) => _buildDocumentoCard(_documentos[index], isDark),
+                  ),
+                ],
               ),
             ),
+    );
+  }
+
+  Widget _buildProgressIndicator(
+    double porcentaje,
+    int completados,
+    int total,
+    bool isDark,
+  ) {
+    final color = porcentaje >= 1.0
+        ? AppColors.green
+        : porcentaje >= 0.7
+        ? Colors.orange
+        : Colors.red;
+
+    return Card(
+      elevation: 0,
+      // color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.grey.shade200, width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            // Círculo de progreso
+            SizedBox(
+              width: 100,
+              height: 100,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Círculo de fondo
+                  SizedBox(
+                    width: 100,
+                    height: 100,
+                    child: CircularProgressIndicator(
+                      value: 1.0,
+                      strokeWidth: 8,
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                      ),
+                    ),
+                  ),
+                  // Círculo de progreso
+                  SizedBox(
+                    width: 100,
+                    height: 100,
+                    child: CircularProgressIndicator(
+                      value: porcentaje,
+                      strokeWidth: 8,
+                      backgroundColor: Colors.transparent,
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                    ),
+                  ),
+                  // Porcentaje en el centro
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${(porcentaje * 100).toInt()}%',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                      Text(
+                        '$completados/$total',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? Colors.grey.shade400
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 20),
+            // Información
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        porcentaje >= 1.0
+                            ? Iconsax.shield_tick_copy
+                            : porcentaje >= 0.7
+                            ? Iconsax.warning_2_copy
+                            : Iconsax.danger_copy,
+                        color: color,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          porcentaje >= 1.0
+                              ? 'Documentos completos'
+                              : porcentaje >= 0.7
+                              ? 'Revisa tus documentos'
+                              : 'Actualiza urgentemente',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    porcentaje >= 1.0
+                        ? 'Todos tus documentos están vigentes y al día.'
+                        : 'Tienes ${total - completados} documento(s) que necesita atención.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark
+                          ? Colors.grey.shade400
+                          : Colors.grey.shade600,
+                    ),
+                  ),
+                  if (porcentaje < 1.0) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(
+                          Iconsax.info_circle_copy,
+                          size: 14,
+                          color: isDark
+                              ? Colors.grey.shade500
+                              : Colors.grey.shade500,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Toca un documento para actualizarlo',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                              color: isDark
+                                  ? Colors.grey.shade500
+                                  : Colors.grey.shade500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -150,12 +332,19 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
       estadoIcon = Icons.check_circle;
     }
 
+    // Calcular progreso basado en días restantes (asumiendo 365 días máximo)
+    final maxDias = 365;
+    final progreso = diasRestantes != null
+        ? (diasRestantes / maxDias).clamp(0.0, 1.0)
+        : (estadoVigencia == 'VIGENTE' ? 1.0 : 0.0);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+      elevation: 0,
+      // color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: estadoColor.withOpacity(0.3), width: 1.5),
+        side: BorderSide(color: Colors.grey.shade200, width: 1),
       ),
       child: InkWell(
         onTap: () => _mostrarEditarDocumento(documento),
@@ -167,16 +356,55 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
             children: [
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: estadoColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Iconsax.document_text_copy,
-                      color: estadoColor,
-                      size: 24,
+                  // Círculo de progreso con icono
+                  SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Círculo de fondo
+                        SizedBox(
+                          width: 60,
+                          height: 60,
+                          child: CircularProgressIndicator(
+                            value: 1.0,
+                            strokeWidth: 4,
+                            backgroundColor: Colors.transparent,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isDark
+                                  ? Colors.grey.shade800
+                                  : Colors.grey.shade200,
+                            ),
+                          ),
+                        ),
+                        // Círculo de progreso
+                        SizedBox(
+                          width: 60,
+                          height: 60,
+                          child: CircularProgressIndicator(
+                            value: progreso,
+                            strokeWidth: 4,
+                            backgroundColor: Colors.transparent,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              estadoColor,
+                            ),
+                          ),
+                        ),
+                        // Icono en el centro
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: estadoColor.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Iconsax.document_text_copy,
+                            color: estadoColor,
+                            size: 20,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -206,6 +434,20 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                             ),
                           ],
                         ),
+                        if (diasRestantes != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            diasRestantes > 0
+                                ? '$diasRestantes días restantes'
+                                : 'Vencido',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -223,25 +465,53 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                     color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'Vigencia: ${documento.fechaVigencia ?? 'No especificada'}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark
-                          ? Colors.grey.shade400
-                          : Colors.grey.shade700,
+                  Expanded(
+                    child: Text(
+                      'Vigencia: ${documento.fechaVigencia ?? 'No especificada'}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade700,
+                      ),
                     ),
                   ),
                 ],
               ),
-              if (diasRestantes != null) ...[
+              if (documento.mensajeAlerta != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  documento.mensajeAlerta ?? _getMensajeDias(diasRestantes),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontStyle: FontStyle.italic,
-                    color: estadoColor,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: estadoColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: estadoColor.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Iconsax.info_circle_copy,
+                        size: 14,
+                        color: estadoColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          documento.mensajeAlerta!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: estadoColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -250,16 +520,6 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
         ),
       ),
     );
-  }
-
-  String _getMensajeDias(int dias) {
-    if (dias < 0) {
-      return 'Vencido hace ${dias.abs()} día${dias.abs() != 1 ? 's' : ''}';
-    } else if (dias == 0) {
-      return 'Vence hoy';
-    } else {
-      return 'Vence en $dias día${dias != 1 ? 's' : ''}';
-    }
   }
 }
 
