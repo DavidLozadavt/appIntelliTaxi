@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 /// Modal que se muestra mientras se busca un conductor disponible
 class WaitingForDriverDialog extends StatelessWidget {
   final bool isDelivery;
+  final VoidCallback? onCancel;
 
   const WaitingForDriverDialog({
     super.key,
     this.isDelivery = false,
+    this.onCancel,
   });
 
   @override
@@ -14,9 +16,7 @@ class WaitingForDriverDialog extends StatelessWidget {
     return WillPopScope(
       onWillPop: () async => false,
       child: Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -37,12 +37,18 @@ class WaitingForDriverDialog extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 'Esto puede tomar unos segundos',
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: Colors.grey[600], fontSize: 14),
                 textAlign: TextAlign.center,
               ),
+              if (onCancel != null) ...[
+                const SizedBox(height: 20),
+                TextButton.icon(
+                  onPressed: onCancel,
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Cancelar'),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                ),
+              ],
             ],
           ),
         ),

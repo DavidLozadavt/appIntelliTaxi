@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
@@ -36,6 +37,12 @@ class _PasajeroEsperandoConductorScreenState
   Set<Polyline> _polylines = {};
   BitmapDescriptor? _carIcon;
 
+  // ⏱️ Control de timeout
+  Timer? _timeoutTimer;
+  static const int _maxWaitingSeconds = 120; // 2 minutos
+  int _elapsedSeconds = 0;
+  Timer? _countdownTimer;
+
   @override
   void initState() {
     super.initState();
@@ -65,7 +72,47 @@ class _PasajeroEsperandoConductorScreenState
       _verificarEstadoServicio();
     });
 
+    // ⏱️ Iniciar timer de timeout
+    _iniciarTimeout();
+
     print('✅ PASAJERO: initState completado, continuando con build...\n');
+  }
+
+  /// ⏱️ Inicia el temporizador de timeout para búsqueda de conductor
+  void _iniciarTimeout() {
+    _elapsedSeconds = 0;
+
+    // Timer para contar segundos
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_estadoServicio == 'buscando') {
+        setState(() {
+          _elapsedSeconds++;
+        });
+      } else {
+        timer.cancel();
+      }
+    });
+
+    // Timer de timeout
+    _timeoutTimer = Timer(Duration(seconds: _maxWaitingSeconds), () {
+      if (_estadoServicio == 'buscando' && mounted) {
+        print(
+          '⏰ TIMEOUT: No se encontró conductor en $_maxWaitingSeconds segundos',
+        );
+        _mostrarDialogoTimeout();
+      }
+    });
+
+    print('⏱️ Timer de timeout iniciado ($_maxWaitingSeconds segundos)');
+  }
+
+  /// 🚫 Cancela los timers de timeout
+  void _cancelarTimeout() {
+    _timeoutTimer?.cancel();
+    _countdownTimer?.cancel();
+    _timeoutTimer = null;
+    _countdownTimer = null;
+    print('✅ Timers de timeout cancelados');
   }
 
   Future<void> _verificarEstadoServicio() async {
@@ -174,8 +221,14 @@ class _PasajeroEsperandoConductorScreenState
         print('   Keys: ${data.keys}');
         print('   Conductor: ${data['conductor_nombre']}');
         print('   Foto: ${data['conductor_foto']}');
-        print('   Lat: ${data['conductor_lat']}, Lng: ${data['conductor_lng']}');
+        print(
+          '   Lat: ${data['conductor_lat']}, Lng: ${data['conductor_lng']}',
+        );
         print('   Vehículo: ${data['vehiculo_placa']}');
+
+        // ✅ Cancelar timeout
+        _cancelarTimeout();
+
         setState(() {
           _conductor = data;
           if (data['conductor_lat'] != null && data['conductor_lng'] != null) {
@@ -615,6 +668,161 @@ class _PasajeroEsperandoConductorScreenState
     }
   }
 
+  /// ⏰ Muestra diálogo cuando se agota el tiempo de espera
+  Future<void> _mostrarDialogoTimeout() async {
+    _cancelarTimeout();
+
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.timer_off, color: Colors.orange.shade700, size: 32),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('Sin conductores disponibles')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'No hemos encontrado conductores disponibles en este momento.',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '💡 Sugerencias:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 8),
+                  Text('• Intenta nuevamente en unos momentos'),
+                  Text('• Verifica tu ubicación'),
+                  Text('• Puede ser hora de alta demanda'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => _cancelarServicio(context),
+            child: const Text(
+              'Cancelar solicitud',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _reintentar();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Reintentar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 🔄 Reinicia la búsqueda de conductor
+  void _reintentar() {
+    setState(() {
+      _estadoServicio = 'buscando';
+    });
+    _iniciarTimeout();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🔄 Buscando conductor nuevamente...'),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  /// 🚫 Cancela el servicio y regresa a la pantalla anterior
+  Future<void> _cancelarServicio(BuildContext dialogContext) async {
+    try {
+      final dio = DioClient.getInstance();
+
+      // Mostrar loading
+      Navigator.pop(dialogContext);
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Cancelando solicitud...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Llamar al backend para cancelar
+      await dio.post(
+        '/servicios/taxi/${widget.servicioId}/cancelar',
+        data: {'motivo': 'No se encontraron conductores disponibles'},
+      );
+
+      if (!mounted) return;
+
+      // Cerrar loading
+      Navigator.pop(context);
+
+      // Volver a la pantalla anterior
+      Navigator.pop(context);
+
+      // Mostrar mensaje de confirmación
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Solicitud cancelada'),
+          backgroundColor: Colors.grey,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      print('❌ Error cancelando servicio: $e');
+
+      if (!mounted) return;
+
+      Navigator.pop(context); // Cerrar loading
+      Navigator.pop(context); // Volver a home
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al cancelar: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -674,6 +882,10 @@ class _PasajeroEsperandoConductorScreenState
   }
 
   Widget _buildBuscandoConductor() {
+    final remainingSeconds = _maxWaitingSeconds - _elapsedSeconds;
+    final minutes = remainingSeconds ~/ 60;
+    final seconds = remainingSeconds % 60;
+
     return Container(
       padding: const EdgeInsets.all(30),
       decoration: const BoxDecoration(
@@ -683,7 +895,30 @@ class _PasajeroEsperandoConductorScreenState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 60,
+                height: 60,
+                child: CircularProgressIndicator(
+                  value: _elapsedSeconds / _maxWaitingSeconds,
+                  strokeWidth: 4,
+                  backgroundColor: Colors.grey.shade300,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    remainingSeconds > 30 ? AppColors.accent : Colors.orange,
+                  ),
+                ),
+              ),
+              Text(
+                '$minutes:${seconds.toString().padLeft(2, '0')}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 20),
           const Text(
             'Buscando conductor disponible...',
@@ -694,6 +929,13 @@ class _PasajeroEsperandoConductorScreenState
             'Por favor espera mientras encontramos un conductor cerca de ti',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: () => _cancelarServicio(context),
+            icon: const Icon(Icons.close, size: 18),
+            label: const Text('Cancelar búsqueda'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
           ),
         ],
       ),
@@ -815,7 +1057,9 @@ class _PasajeroEsperandoConductorScreenState
                           _conductor!['conductor_foto'],
                         ),
                         onBackgroundImageError: (exception, stackTrace) {
-                          print('⚠️ Error cargando foto del conductor: $exception');
+                          print(
+                            '⚠️ Error cargando foto del conductor: $exception',
+                          );
                         },
                       )
                     : CircleAvatar(
@@ -918,6 +1162,7 @@ class _PasajeroEsperandoConductorScreenState
 
   @override
   void dispose() {
+    _cancelarTimeout();
     _pusherService.desconectar();
     _mapController?.dispose();
     super.dispose();
