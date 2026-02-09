@@ -5,10 +5,7 @@ import 'package:intellitaxi/features/rides/services/routes_service.dart';
 class RouteInfoCard extends StatelessWidget {
   final RouteInfo routeInfo;
 
-  const RouteInfoCard({
-    super.key,
-    required this.routeInfo,
-  });
+  const RouteInfoCard({super.key, required this.routeInfo});
 
   @override
   Widget build(BuildContext context) {
@@ -40,12 +37,31 @@ class RouteInfoCard extends StatelessWidget {
                 label: 'Tiempo',
                 value: routeInfo.duration,
               ),
-              _InfoItem(
-                icon: Icons.attach_money,
-                label: 'Precio',
-                value: routeInfo.formattedPrice,
-              ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.info_outline, color: Colors.blue.shade700, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Cobro según taxímetro',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.blue.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

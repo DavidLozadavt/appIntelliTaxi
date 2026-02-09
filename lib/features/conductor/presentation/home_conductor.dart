@@ -328,13 +328,9 @@ class _HomeConductorState extends State<HomeConductor> {
       return;
     }
 
-    final precioEstimado =
-        double.tryParse(solicitud['precio_estimado']?.toString() ?? '0') ?? 0.0;
+    // Nota: No se calcula precio porque funciona con taxímetro
 
     // Controladores para el diálogo
-    final precioController = TextEditingController(
-      text: precioEstimado.toStringAsFixed(0),
-    );
     final mensajeController = TextEditingController(text: 'Voy en camino');
 
     // Mostrar diálogo de confirmación
@@ -356,21 +352,6 @@ class _HomeConductorState extends State<HomeConductor> {
               const SizedBox(height: 4),
               Text('Destino: ${solicitud['destino']}'),
               const Divider(height: 24),
-              const Text(
-                'Precio Ofertado',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: precioController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  prefixText: '\$ ',
-                  border: OutlineInputBorder(),
-                  hintText: 'Ej: 27000',
-                ),
-              ),
-              const SizedBox(height: 16),
               const Text(
                 'Mensaje para el pasajero (opcional)',
                 style: TextStyle(fontWeight: FontWeight.bold),
@@ -415,7 +396,7 @@ class _HomeConductorState extends State<HomeConductor> {
     try {
       // Llamar al servicio
       final precioOfertado =
-          double.tryParse(precioController.text) ?? precioEstimado;
+          0.0; // No se envía precio porque funciona con taxímetro
       final mensaje = mensajeController.text.trim();
 
       final response = await _conductorService.aceptarSolicitud(
@@ -487,7 +468,6 @@ class _HomeConductorState extends State<HomeConductor> {
       print('⚠️ Error al aceptar solicitud: $e');
     } finally {
       // Limpiar controladores
-      precioController.dispose();
       mensajeController.dispose();
     }
   }

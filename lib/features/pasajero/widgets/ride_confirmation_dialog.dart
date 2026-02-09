@@ -50,13 +50,29 @@ class RideConfirmationDialog extends StatelessWidget {
           const Divider(height: 24),
           Text('Distancia: ${routeInfo.distance}'),
           Text('Duración: ${routeInfo.duration}'),
-          const SizedBox(height: 8),
-          Text(
-            'Precio estimado: ${routeInfo.formattedPrice}',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: isDelivery ? Colors.green.shade600 : Colors.deepOrange,
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.speed, color: Colors.blue.shade700, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'El cobro se realizará según taxímetro',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

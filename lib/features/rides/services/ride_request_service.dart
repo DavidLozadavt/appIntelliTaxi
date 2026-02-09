@@ -16,7 +16,7 @@ class RideRequestService {
     required int distanceValue, // en metros
     required String duration,
     required int durationValue, // en segundos
-    required double estimatedPrice,
+    double? estimatedPrice, // Opcional porque funciona con taxímetro
     required String serviceType, // 'taxi' o 'domicilio'
   }) async {
     // Preparar los datos según el formato del backend
@@ -40,7 +40,7 @@ class RideRequestService {
       'distance_value': distanceValue, // Ej: 8675 (metros)
       'duration': duration, // Ej: "21 min"
       'duration_value': durationValue, // Ej: 1275 (segundos)
-      'estimated_price': estimatedPrice, // Ej: 26700.0
+      'estimated_price': estimatedPrice ?? 0, // 0 porque funciona con taxímetro
       // Tipo de servicio
       'service_type': serviceType, // 'taxi' o 'domicilio'
     };

@@ -57,31 +57,12 @@ class RoutesService {
   /// Decodifica una polilínea de Google Maps
   List<LatLng> _decodePolyline(String encoded) {
     final List<PointLatLng> points = _polylinePoints.decodePolyline(encoded);
-    return points.map((point) => LatLng(point.latitude, point.longitude)).toList();
+    return points
+        .map((point) => LatLng(point.latitude, point.longitude))
+        .toList();
   }
 
-  /// Calcula el precio estimado basado en la distancia
-  double calculateEstimatedPrice(int distanceInMeters) {
-    // Tarifa base
-    const double baseFare = 5000; // $5,000 COP
-    
-    // Precio por kilómetro
-    const double pricePerKm = 2500; // $2,500 COP por km
-    
-    final distanceInKm = distanceInMeters / 1000;
-    final totalPrice = baseFare + (distanceInKm * pricePerKm);
-    
-    // Redondear a múltiplos de 100
-    return (totalPrice / 100).ceil() * 100;
-  }
-
-  /// Formatea el precio en pesos colombianos
-  String formatPrice(double price) {
-    return '\$${price.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
-    )}';
-  }
+  // Nota: El precio no se calcula aquí porque funciona con taxímetro
 }
 
 /// Información de una ruta
@@ -104,18 +85,5 @@ class RouteInfo {
     required this.endAddress,
   });
 
-  double get estimatedPrice {
-    const double baseFare = 5000;
-    const double pricePerKm = 2500;
-    final distanceInKm = distanceValue / 1000;
-    final totalPrice = baseFare + (distanceInKm * pricePerKm);
-    return (totalPrice / 100).ceil() * 100;
-  }
-
-  String get formattedPrice {
-    return '\$${estimatedPrice.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
-    )}';
-  }
+  // Nota: El precio no se muestra porque funciona con taxímetro
 }

@@ -55,12 +55,14 @@ class _ConductorServicioActivoScreenState
 
   void _parsearDatos() {
     // Parsear el servicio desde servicioData
-    final servicioMap = widget.servicioData['servicio'] as Map<String, dynamic>? ??
+    final servicioMap =
+        widget.servicioData['servicio'] as Map<String, dynamic>? ??
         widget.servicioData;
     servicio = ServicioActivo.fromJson(servicioMap);
 
     // Extraer datos del pasajero
-    final pasajeroData = widget.servicioData['pasajero'] as Map<String, dynamic>?;
+    final pasajeroData =
+        widget.servicioData['pasajero'] as Map<String, dynamic>?;
     if (pasajeroData != null) {
       pasajeroNombre = pasajeroData['nombre'];
       pasajeroTelefono = pasajeroData['celular'];
@@ -74,7 +76,8 @@ class _ConductorServicioActivoScreenState
         final persona = usuarioPasajero['persona'] as Map<String, dynamic>?;
         if (persona != null) {
           pasajeroNombre =
-              '${persona['nombre1'] ?? ''} ${persona['apellido1'] ?? ''}'.trim();
+              '${persona['nombre1'] ?? ''} ${persona['apellido1'] ?? ''}'
+                  .trim();
           pasajeroTelefono = persona['celular'];
           pasajeroEmail = persona['email'];
           pasajeroFoto = persona['rutaFotoUrl'];
@@ -118,10 +121,7 @@ class _ConductorServicioActivoScreenState
 
     // El destino inicial es el punto de recogida
     setState(() {
-      _destinoActual = LatLng(
-        servicio.origenLat,
-        servicio.origenLng,
-      );
+      _destinoActual = LatLng(servicio.origenLat, servicio.origenLng);
       _estadoActual = servicio.estado.estado;
     });
 
@@ -218,10 +218,7 @@ class _ConductorServicioActivoScreenState
 
         // Si llegó al punto de recogida, cambiar destino al final
         if (nuevoEstado == 'llegue') {
-          _destinoActual = LatLng(
-            servicio.destinoLat,
-            servicio.destinoLng,
-          );
+          _destinoActual = LatLng(servicio.destinoLat, servicio.destinoLng);
           _crearMarcadores();
         }
       });
@@ -471,15 +468,7 @@ class _ConductorServicioActivoScreenState
                   style: const TextStyle(fontSize: 13, color: Colors.grey),
                 ),
               ],
-              const SizedBox(height: 4),
-              Text(
-                '\$${servicio.precioFinal ?? servicio.precioEstimado}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.green,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              // Nota: No se muestra precio porque funciona con taxímetro
             ],
           ),
         ),

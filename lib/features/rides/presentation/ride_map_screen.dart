@@ -21,7 +21,7 @@ class RideMapScreen extends StatefulWidget {
 class _RideMapScreenState extends State<RideMapScreen> {
   GoogleMapController? _mapController;
   final RoutesService _routesService = RoutesService();
-  
+
   RouteInfo? _routeInfo;
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};
@@ -37,7 +37,10 @@ class _RideMapScreenState extends State<RideMapScreen> {
     setState(() => _isLoadingRoute = true);
 
     final originLatLng = LatLng(widget.origin.lat, widget.origin.lng);
-    final destinationLatLng = LatLng(widget.destination.lat, widget.destination.lng);
+    final destinationLatLng = LatLng(
+      widget.destination.lat,
+      widget.destination.lng,
+    );
 
     final routeInfo = await _routesService.getRoute(
       origin: originLatLng,
@@ -79,10 +82,7 @@ class _RideMapScreenState extends State<RideMapScreen> {
         markerId: const MarkerId('origin'),
         position: LatLng(widget.origin.lat, widget.origin.lng),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        infoWindow: InfoWindow(
-          title: 'Origen',
-          snippet: widget.origin.name,
-        ),
+        infoWindow: InfoWindow(title: 'Origen', snippet: widget.origin.name),
       ),
       Marker(
         markerId: const MarkerId('destination'),
@@ -116,9 +116,7 @@ class _RideMapScreenState extends State<RideMapScreen> {
       northeast: LatLng(maxLat, maxLng),
     );
 
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 100),
-    );
+    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
   }
 
   Future<void> _setMapStyle(GoogleMapController controller) async {
@@ -142,8 +140,7 @@ class _RideMapScreenState extends State<RideMapScreen> {
           'Origen: ${widget.origin.name}\n'
           'Destino: ${widget.destination.name}\n'
           'Distancia: ${_routeInfo?.distance ?? 'N/A'}\n'
-          'Duración: ${_routeInfo?.duration ?? 'N/A'}\n'
-          'Precio estimado: ${_routeInfo?.formattedPrice ?? 'N/A'}',
+          'Duración: ${_routeInfo?.duration ?? 'N/A'}',
         ),
         actions: [
           TextButton(
@@ -171,10 +168,7 @@ class _RideMapScreenState extends State<RideMapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Detalles del viaje'),
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text('Detalles del viaje'), elevation: 0),
       body: Stack(
         children: [
           // Mapa
@@ -286,45 +280,7 @@ class _RideMapScreenState extends State<RideMapScreen> {
                         const SizedBox(height: 16),
 
                         // Precio
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.deepOrange.shade400,
-                                Colors.deepOrange.shade600,
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.payments,
-                                color: Colors.white,
-                                size: 28,
-                              ),
-                              const SizedBox(width: 12),
-                              const Text(
-                                'Precio estimado:',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                _routeInfo!.formattedPrice,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
+                        // Nota: No se muestra precio porque funciona con taxímetro
                         const SizedBox(height: 16),
 
                         // Botón de confirmar
@@ -390,10 +346,7 @@ class _RideMapScreenState extends State<RideMapScreen> {
       decoration: BoxDecoration(
         color: Colors.grey.shade100,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey.shade300,
-          width: 1,
-        ),
+        border: Border.all(color: Colors.grey.shade300, width: 1),
       ),
       child: Column(
         children: [
@@ -401,18 +354,12 @@ class _RideMapScreenState extends State<RideMapScreen> {
           const SizedBox(height: 8),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade600,
-            ),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ],
       ),

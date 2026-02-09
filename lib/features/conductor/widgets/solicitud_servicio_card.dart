@@ -61,7 +61,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     final pasajeroNombre = widget.solicitud['pasajero_nombre'] ?? 'Pasajero';
     final origen = widget.solicitud['origen'] ?? 'Origen no especificado';
     final destino = widget.solicitud['destino'] ?? 'Destino no especificado';
-    final precio = widget.solicitud['precio_estimado'] ?? 0;
+    // Nota: No se usa precio porque funciona con taxímetro
     final claseVehiculo = widget.solicitud['clase_vehiculo'] ?? 'taxi';
 
     return SlideTransition(
@@ -290,31 +290,29 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
 
                     const SizedBox(height: 16),
 
-                    // Precio
+                    // Mensaje de taxímetro
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
+                        color: Colors.blue.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.green.withOpacity(0.3),
-                        ),
+                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(
-                            Iconsax.dollar_circle_copy,
-                            color: Colors.green,
+                          Icon(
+                            Icons.speed,
+                            color: Colors.blue.shade700,
                             size: 20,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Precio estimado: \$${precio.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
+                            'Cobro por taxímetro',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blue.shade700,
                             ),
                           ),
                         ],

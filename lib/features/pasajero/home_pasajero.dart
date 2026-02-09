@@ -899,7 +899,7 @@ class _HomePasajeroState extends State<HomePasajero>
                     const SizedBox(height: 4),
                     Text(
                       _routeInfo != null
-                          ? '${_routeInfo!.distance} • ${_routeInfo!.formattedPrice}'
+                          ? '${_routeInfo!.distance} • Cobro por taxímetro'
                           : 'Toca para seleccionar destino',
                       style: TextStyle(
                         fontSize: 14,
@@ -1710,7 +1710,7 @@ class _HomePasajeroState extends State<HomePasajero>
         distanceValue: _routeInfo!.distanceValue,
         duration: _routeInfo!.duration,
         durationValue: _routeInfo!.durationValue,
-        estimatedPrice: _routeInfo!.estimatedPrice,
+        // No se envía precio porque funciona con taxímetro
         serviceType: isDelivery ? 'domicilio' : 'taxi',
       );
 
@@ -1753,7 +1753,7 @@ class _HomePasajeroState extends State<HomePasajero>
                   'destino_lat': _selectedDestination!.lat,
                   'destino_lng': _selectedDestination!.lng,
                   'destino_address': _selectedDestination!.address,
-                  'precio_estimado': _routeInfo!.estimatedPrice,
+                  // No se envía precio porque funciona con taxímetro
                 },
               ),
             ),
