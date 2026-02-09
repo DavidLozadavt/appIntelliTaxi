@@ -7,6 +7,7 @@ import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
+import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
 /// Pantalla del conductor durante un servicio activo
@@ -242,7 +243,7 @@ class _ConductorServicioActivoScreenState
         );
       }
 
-      // Si finalizó, detener seguimiento y volver
+      // Si finalizó, detener seguimiento y mostrar calificación
       if (nuevoEstado == 'finalizado') {
         _trackingService.detenerSeguimiento();
 
@@ -255,7 +256,9 @@ class _ConductorServicioActivoScreenState
         // Limpiar persistencia
         await _persistencia.limpiarServicioActivo();
 
+        // Mostrar diálogo de calificación
         if (mounted) {
+          await _mostrarDialogoCalificacion();
           Navigator.pop(context, true); // true indica que finalizó
         }
       }
@@ -285,6 +288,31 @@ class _ConductorServicioActivoScreenState
       default:
         return 'Estado actualizado';
     }
+  }
+
+  /// Mostrar diálogo de calificación
+  Future<void> _mostrarDialogoCalificacion() async {
+    // Obtener ID del pasajero (usuario que solicita el servicio)
+    final idUsuarioPasajero = servicio.idActivationCompanyUser;
+
+    if (idUsuarioPasajero == 0) {
+      print('⚠️ No se puede calificar: ID del pasajero no válido');
+      return;
+    }
+
+    // Mostrar diálogo de calificación
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => CalificacionDialog(
+        idServicio: servicio.id,
+        idUsuarioCalifica: widget.conductorId,
+        idUsuarioCalificado: idUsuarioPasajero,
+        tipoCalificacion: 'PASAJERO',
+        nombreCalificado: pasajeroNombre ?? 'Pasajero',
+        fotoCalificado: pasajeroFoto,
+      ),
+    );
   }
 
   @override

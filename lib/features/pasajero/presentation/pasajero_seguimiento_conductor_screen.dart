@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
+import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 
@@ -81,7 +84,7 @@ class _PasajeroSeguimientoConductorScreenState
 
         _actualizarMarcadores();
       },
-      onEstadoCambiado: (data) {
+      onEstadoCambiado: (data) async {
         print('📥 Estado cambiado: $data');
 
         if (!mounted) return;
@@ -94,9 +97,10 @@ class _PasajeroSeguimientoConductorScreenState
         // Mostrar notificación según el estado
         _mostrarNotificacionEstado(_estadoServicio);
 
-        // Si finalizó, cerrar pantalla
+        // Si finalizó, mostrar calificación y cerrar pantalla
         if (_estadoServicio == 'finalizado') {
-          Future.delayed(const Duration(seconds: 2), () {
+          await _mostrarDialogoCalificacion();
+          Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted) {
               Navigator.pop(context, true);
             }
@@ -139,6 +143,47 @@ class _PasajeroSeguimientoConductorScreenState
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  /// Mostrar diálogo de calificación
+  Future<void> _mostrarDialogoCalificacion() async {
+    try {
+      // Obtener ID del usuario (pasajero)
+      final prefs = await SharedPreferences.getInstance();
+      final userDataStr = prefs.getString('user_data');
+      if (userDataStr == null) return;
+
+      final userData = json.decode(userDataStr);
+      final pasajeroId = userData['user']?['id'];
+
+      // Obtener ID del conductor de los datos del servicio
+      final conductorId = _conductor?['id'];
+
+      if (pasajeroId == null || conductorId == null) {
+        print('⚠️ No se puede calificar: IDs no válidos');
+        return;
+      }
+
+      // Obtener nombre y foto del conductor
+      final conductorNombre = _conductor?['nombre'] ?? 'Conductor';
+      final conductorFoto = _conductor?['foto'];
+
+      // Mostrar diálogo de calificación
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => CalificacionDialog(
+          idServicio: widget.servicioId,
+          idUsuarioCalifica: pasajeroId,
+          idUsuarioCalificado: conductorId,
+          tipoCalificacion: 'CONDUCTOR',
+          nombreCalificado: conductorNombre,
+          fotoCalificado: conductorFoto,
+        ),
+      );
+    } catch (e) {
+      print('⚠️ Error al mostrar diálogo de calificación: $e');
+    }
   }
 
   void _crearMarcadores() {
@@ -231,17 +276,18 @@ class _PasajeroSeguimientoConductorScreenState
   // Helper para obtener la URL de la foto del conductor
   String? _getFotoConductor() {
     if (_conductor == null) return null;
-    
+
     // Intentar diferentes campos posibles
-    final foto = _conductor!['conductor_foto'] ?? 
-                 _conductor!['foto'] ?? 
-                 _conductor!['conductor']?['foto'];
-    
+    final foto =
+        _conductor!['conductor_foto'] ??
+        _conductor!['foto'] ??
+        _conductor!['conductor']?['foto'];
+
     if (foto != null && foto.toString().isNotEmpty) {
       print('✅ [PASAJERO] Foto encontrada: $foto');
       return foto.toString();
     }
-    
+
     print('⚠️ [PASAJERO] No se encontró foto del conductor');
     return null;
   }
@@ -249,7 +295,7 @@ class _PasajeroSeguimientoConductorScreenState
   // Widget para el avatar del conductor
   Widget _buildConductorAvatar() {
     final fotoUrl = _getFotoConductor();
-    
+
     if (fotoUrl != null && fotoUrl.isNotEmpty) {
       return CircleAvatar(
         radius: 30,
@@ -260,15 +306,11 @@ class _PasajeroSeguimientoConductorScreenState
         },
       );
     }
-    
+
     return CircleAvatar(
       radius: 30,
       backgroundColor: AppColors.accent,
-      child: const Icon(
-        Icons.person,
-        size: 30,
-        color: Colors.white,
-      ),
+      child: const Icon(Icons.person, size: 30, color: Colors.white),
     );
   }
 
@@ -424,7 +466,9 @@ class _PasajeroSeguimientoConductorScreenState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _conductor?['conductor_nombre'] ?? _conductor?['nombre'] ?? 'Conductor',
+                        _conductor?['conductor_nombre'] ??
+                            _conductor?['nombre'] ??
+                            'Conductor',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,

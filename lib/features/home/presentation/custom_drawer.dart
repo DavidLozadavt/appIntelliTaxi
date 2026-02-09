@@ -18,36 +18,63 @@ class CustomDrawer extends StatelessWidget {
     final themeProvider = context.watch<ThemeProvider>();
 
     final allDrawerItems = [
+      // Opciones de historial y calificaciones para conductor
       DrawerItem(
-        title: 'Horas Extras',
-        icon: Iconsax.clock_copy,
-        route: '/horas-extras',
-        allowedRoles: ["Admin", "MOTORISTA", "CONDUCTOR", "ADMINISTRADOR"],
+        title: 'Mis Servicios Terminados',
+        icon: Iconsax.task_square_copy,
+        route: '/historial-conductor',
+        allowedRoles: ["CONDUCTOR"],
       ),
       DrawerItem(
-        title: 'Mis Deducciones',
-        icon: Iconsax.note_2_copy,
-        route: '/mis-deducciones',
-        allowedRoles: ["MOTORISTA", "CONDUCTOR", "ADMINISTRADOR"],
+        title: 'Mis Calificaciones',
+        icon: Iconsax.star_1_copy,
+        route: '/calificaciones-conductor',
+        allowedRoles: ["CONDUCTOR"],
       ),
+      // Opciones de historial y calificaciones para pasajero
+      DrawerItem(
+        title: 'Mis Viajes',
+        icon: Iconsax.routing_2_copy,
+        route: '/historial-pasajero',
+        allowedRoles: ["PASAJERO"],
+      ),
+      DrawerItem(
+        title: 'Mis Calificaciones',
+        icon: Iconsax.star_1_copy,
+        route: '/calificaciones-pasajero',
+        allowedRoles: ["PASAJERO"],
+      ),
+      // Opciones existentes
+      // DrawerItem(
+      //   title: 'Horas Extras',
+      //   icon: Iconsax.clock_copy,
+      //   route: '/horas-extras',
+      //   allowedRoles: ["Admin", "MOTORISTA", "CONDUCTOR", "ADMINISTRADOR"],
+      // ),
+      // DrawerItem(
+      //   title: 'Mis Deducciones',
+      //   icon: Iconsax.note_2_copy,
+      //   route: '/mis-deducciones',
+      //   allowedRoles: ["MOTORISTA", "CONDUCTOR", "ADMINISTRADOR"],
+      // ),
       DrawerItem(
         title: 'Mis Documentos',
         icon: Iconsax.document_text_copy,
         route: '/mis-documentos',
         allowedRoles: ["MOTORISTA", "CONDUCTOR"],
       ),
-      DrawerItem(
-        title: 'Kanban',
-        icon: Iconsax.element_4_copy,
-        route: '/kanban',
-        allowedRoles: [],
-      ),
-      DrawerItem(
-        title: '🎨 Iconos Iconsax',
-        icon: Iconsax.brush_1_copy,
-        route: '/test-iconsax',
-        allowedRoles: [],
-      ),
+      // DrawerItem(
+      //   title: 'Kanban',
+      //   icon: Iconsax.element_4_copy,
+      //   route: '/kanban',
+      //   allowedRoles: [],
+      // ),
+      // DrawerItem(
+      //   title: '🎨 Iconos Iconsax',
+      //   icon: Iconsax.brush_1_copy,
+      //   route: '/test-iconsax',
+      //   allowedRoles: [],
+      // ),
     ];
 
     final visibleDrawerItems = allDrawerItems.where((item) {
