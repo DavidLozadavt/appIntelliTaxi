@@ -63,7 +63,7 @@ class ProfileBodyScreen extends StatelessWidget {
                       errorBuilder: (context, error, stackTrace) =>
                           const Center(
                             child: Icon(
-                              Icons.business,
+                              Iconsax.building_copy,
                               size: 60,
                               color: Colors.white,
                             ),
@@ -104,7 +104,7 @@ class ProfileBodyScreen extends StatelessWidget {
                           width: 100,
                           height: 100,
                           color: Colors.grey.shade300,
-                          child: const Icon(Icons.person, size: 50),
+                          child: const Icon(Iconsax.user_copy, size: 50),
                         ),
                       ),
                     ),

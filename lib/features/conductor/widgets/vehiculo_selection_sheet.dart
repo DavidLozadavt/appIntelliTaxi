@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 class VehiculoSelectionSheet extends StatelessWidget {
   final List<VehiculoConductor> vehiculos;
@@ -83,7 +84,7 @@ class VehiculoSelectionSheet extends StatelessWidget {
                     ],
                   ),
                   child: const Icon(
-                    Icons.directions_car,
+                    Iconsax.car_copy,
                     color: Colors.white,
                     size: 26,
                   ),
@@ -292,7 +293,7 @@ class VehiculoSelectionSheet extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            Icons.info_outline,
+                            Iconsax.info_circle_copy,
                             size: 14,
                             color: subtextColor,
                           ),
@@ -316,7 +317,7 @@ class VehiculoSelectionSheet extends StatelessWidget {
                       Row(
                         children: [
                           Icon(
-                            Icons.airline_seat_recline_normal,
+                            Iconsax.profile_2user_copy,
                             size: 14,
                             color: subtextColor,
                           ),
@@ -333,7 +334,7 @@ class VehiculoSelectionSheet extends StatelessWidget {
 
                 // Icono de flecha
                 Icon(
-                  Icons.arrow_forward_ios,
+                  Iconsax.arrow_right_3_copy,
                   size: 18,
                   color: AppColors.accent,
                 ),
@@ -346,7 +347,7 @@ class VehiculoSelectionSheet extends StatelessWidget {
   }
 
   Widget _buildCarPlaceholder() {
-    return Icon(Icons.directions_car, size: 40, color: Colors.grey.shade400);
+    return Icon(Iconsax.car_copy, size: 40, color: Colors.grey.shade400);
   }
 
   Widget _buildEmptyState() {
@@ -365,7 +366,7 @@ class VehiculoSelectionSheet extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.directions_car_outlined,
+                  Iconsax.car_copy,
                   size: 64,
                   color: isDarkMode
                       ? Colors.grey.shade700

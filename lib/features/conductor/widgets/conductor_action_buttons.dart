@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget que agrupa los botones flotantes del conductor (centrar, refrescar, etc)
 class ConductorActionButtons extends StatelessWidget {
@@ -23,7 +24,7 @@ class ConductorActionButtons extends StatelessWidget {
           heroTag: 'center_location',
           onPressed: onCenterLocation,
           backgroundColor: Colors.white,
-          child: const Icon(Icons.my_location, color: Colors.deepOrange),
+          child: const Icon(Iconsax.gps_copy, color: Colors.deepOrange),
         ),
         
         // Botón de refrescar (opcional)
@@ -33,7 +34,7 @@ class ConductorActionButtons extends StatelessWidget {
             heroTag: 'refresh',
             onPressed: onRefresh,
             backgroundColor: Colors.white,
-            child: const Icon(Icons.refresh, color: Colors.blue),
+            child: const Icon(Iconsax.refresh_copy, color: Colors.blue),
           ),
         ],
       ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget que muestra la información de la ruta calculada
 class RouteInfoCard extends StatelessWidget {
@@ -28,12 +29,12 @@ class RouteInfoCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _InfoItem(
-                icon: Icons.straighten,
+                icon: Iconsax.ruler_copy,
                 label: 'Distancia',
                 value: routeInfo.distance,
               ),
               _InfoItem(
-                icon: Icons.access_time,
+                icon: Iconsax.clock_copy,
                 label: 'Tiempo',
                 value: routeInfo.duration,
               ),
@@ -50,7 +51,7 @@ class RouteInfoCard extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.info_outline, color: Colors.blue.shade700, size: 18),
+                Icon(Iconsax.info_circle_copy, color: Colors.blue.shade700, size: 18),
                 const SizedBox(width: 8),
                 Text(
                   'Cobro según taxímetro',

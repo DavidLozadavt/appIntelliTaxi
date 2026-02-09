@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/onboarding/data/onboarding_page_model.dart';
 import 'package:intellitaxi/features/onboarding/widgets/onboarding_page_widget.dart';
 import 'package:intellitaxi/features/onboarding/services/onboarding_service.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -166,8 +167,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             const SizedBox(width: 8),
                             Icon(
                               _currentPage == onboardingPages.length - 1
-                                  ? Icons.check_circle_rounded
-                                  : Icons.arrow_forward_rounded,
+                                  ? Iconsax.tick_circle_copy
+                                  : Iconsax.arrow_right_3_copy,
                               size: 22,
                             ),
                           ],

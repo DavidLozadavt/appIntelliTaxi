@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/rides/services/conductor_location_service.dart';
 import 'package:intellitaxi/features/conductor/services/turno_service.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget para controlar el estado del conductor (online/offline)
 /// y el envío de ubicación en tiempo real
@@ -290,7 +291,7 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
                       strokeWidth: 3,
                     )
                   : Icon(
-                      _isOnline ? Icons.check_circle : Icons.power_settings_new,
+                      _isOnline ? Iconsax.tick_circle_copy : Iconsax.login_copy,
                       size: 50,
                       color: Colors.white,
                     ),
@@ -314,17 +315,17 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
             if (_lastPosition != null) ...[
               const Divider(height: 30),
               _InfoRow(
-                icon: Icons.location_on,
+                icon: Iconsax.location_copy,
                 label: 'Latitud',
                 value: _lastPosition!.latitude.toStringAsFixed(6),
               ),
               _InfoRow(
-                icon: Icons.location_on,
+                icon: Iconsax.location_copy,
                 label: 'Longitud',
                 value: _lastPosition!.longitude.toStringAsFixed(6),
               ),
               _InfoRow(
-                icon: Icons.speed,
+                icon: Iconsax.speedometer_copy,
                 label: 'Velocidad',
                 value:
                     '${(_lastPosition!.speed * 3.6).toStringAsFixed(1)} km/h',
@@ -361,7 +362,7 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
               const SizedBox(height: 10),
               TextButton.icon(
                 onPressed: _sendLocationNow,
-                icon: const Icon(Icons.send),
+                icon: const Icon(Iconsax.send_2_copy),
                 label: const Text('Enviar ubicación ahora'),
               ),
             ],

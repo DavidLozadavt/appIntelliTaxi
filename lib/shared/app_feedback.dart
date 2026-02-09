@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 class AppFeedback {
   static void show(
@@ -13,7 +14,7 @@ class AppFeedback {
         content: Row(
           children: [
             Icon(
-              icon ?? (success ? Icons.check_circle : Icons.error),
+              icon ?? (success ? Iconsax.tick_circle_copy : Iconsax.info_circle_copy),
               color: Colors.white,
             ),
             const SizedBox(width: 8),
@@ -34,7 +35,7 @@ class AppFeedback {
       context,
       mensaje,
       success: true,
-      icon: Icons.info,
+      icon: Iconsax.info_circle_copy,
     );
   }
 }

@@ -302,7 +302,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.speed,
+                            Iconsax.speedometer_copy,
                             color: Colors.blue.shade700,
                             size: 20,
                           ),

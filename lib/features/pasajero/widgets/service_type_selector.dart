@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget para seleccionar el tipo de servicio (Taxi o Domicilio)
 class ServiceTypeSelector extends StatelessWidget {
@@ -18,7 +19,7 @@ class ServiceTypeSelector extends StatelessWidget {
         Expanded(
           child: _ServiceTypeButton(
             type: 'taxi',
-            icon: Icons.local_taxi,
+            icon: Iconsax.car_copy,
             title: 'Taxi',
             subtitle: 'Viaje rápido',
             isSelected: selectedType == 'taxi',
@@ -29,7 +30,7 @@ class ServiceTypeSelector extends StatelessWidget {
         Expanded(
           child: _ServiceTypeButton(
             type: 'domicilio',
-            icon: Icons.shopping_bag,
+            icon: Iconsax.shopping_bag_copy,
             title: 'Domicilio',
             subtitle: 'Envío rápido',
             isSelected: selectedType == 'domicilio',

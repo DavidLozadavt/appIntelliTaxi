@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/data/documento_conductor_model.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 class DocumentosAlertDialog extends StatelessWidget {
   final List<DocumentoConductor> documentosVencidos;
@@ -69,7 +70,7 @@ class DocumentosAlertDialog extends StatelessWidget {
                 ],
               ),
               child: Icon(
-                hayVencidos ? Icons.error_outline : Icons.warning_amber,
+                hayVencidos ? Iconsax.info_circle_copy : Iconsax.warning_2_copy,
                 color: hayVencidos ? Colors.red : Colors.orange,
                 size: 40,
               ),
@@ -111,7 +112,7 @@ class DocumentosAlertDialog extends StatelessWidget {
                 'Vencidos',
                 documentosVencidos,
                 Colors.red,
-                Icons.cancel,
+                Iconsax.close_circle_copy,
               ),
               const SizedBox(height: 12),
             ],
@@ -122,7 +123,7 @@ class DocumentosAlertDialog extends StatelessWidget {
                 'Por vencer',
                 documentosPorVencer,
                 Colors.orange,
-                Icons.access_time,
+                Iconsax.clock_copy,
               ),
             ],
 

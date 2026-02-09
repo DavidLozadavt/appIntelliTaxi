@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/conductor/conductor_home_page.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Página para seleccionar el vehículo antes de iniciar turno
 class VehiculoSelectorPage extends StatefulWidget {
@@ -141,7 +142,7 @@ class _VehiculoSelectorPageState extends State<VehiculoSelectorPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Icon(
-                          Icons.error_outline,
+                          Iconsax.info_circle_copy,
                           size: 64,
                           color: Colors.red,
                         ),
@@ -179,7 +180,7 @@ class _VehiculoSelectorPageState extends State<VehiculoSelectorPage> {
                             children: [
                               const Row(
                                 children: [
-                                  Icon(Icons.check_circle,
+                                  Icon(Iconsax.tick_circle_copy,
                                       color: Colors.green),
                                   SizedBox(width: 10),
                                   Text(
@@ -221,7 +222,7 @@ class _VehiculoSelectorPageState extends State<VehiculoSelectorPage> {
                         child: ListTile(
                           leading: const CircleAvatar(
                             backgroundColor: Colors.blue,
-                            child: Icon(Icons.directions_car,
+                            child: Icon(Iconsax.car_copy,
                                 color: Colors.white),
                           ),
                           title: Text(
@@ -232,7 +233,7 @@ class _VehiculoSelectorPageState extends State<VehiculoSelectorPage> {
                             ),
                           ),
                           subtitle: Text('${vehiculo.marca} ${vehiculo.modelo}'),
-                          trailing: const Icon(Icons.arrow_forward_ios),
+                          trailing: const Icon(Iconsax.arrow_right_3_copy),
                           onTap: () => _seleccionarVehiculo(vehiculo),
                         ),
                       );

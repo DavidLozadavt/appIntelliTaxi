@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget que muestra la información del servicio activo para el conductor
 class ServicioActivoInfo extends StatelessWidget {
@@ -42,7 +43,7 @@ class ServicioActivoInfo extends StatelessWidget {
           Row(
             children: [
               Icon(
-                Icons.local_taxi,
+                Iconsax.car_copy,
                 color: AppColors.accent,
                 size: 28,
               ),
@@ -71,26 +72,26 @@ class ServicioActivoInfo extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onViewDetails,
-                icon: const Icon(Icons.arrow_forward_ios, size: 18),
+                icon: const Icon(Iconsax.arrow_right_3_copy, size: 18),
               ),
             ],
           ),
           const Divider(height: 24),
           _InfoItem(
-            icon: Icons.person,
+            icon: Iconsax.user_copy,
             label: 'Pasajero',
             value: 'Pasajero',
           ),
           const SizedBox(height: 8),
           _InfoItem(
-            icon: Icons.location_on,
+            icon: Iconsax.location_copy,
             label: 'Origen',
             value: servicio.origenAddress,
             maxLines: 2,
           ),
           const SizedBox(height: 8),
           _InfoItem(
-            icon: Icons.location_on,
+            icon: Iconsax.location_copy,
             label: 'Destino',
             value: servicio.destinoAddress,
             maxLines: 2,

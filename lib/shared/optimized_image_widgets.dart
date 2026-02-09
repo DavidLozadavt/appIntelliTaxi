@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget optimizado para cargar imágenes de red con caché y placeholders
 class OptimizedNetworkImage extends StatelessWidget {
@@ -30,7 +31,7 @@ class OptimizedNetworkImage extends StatelessWidget {
       placeholder: (context, url) =>
           placeholder ?? const Center(child: CircularProgressIndicator()),
       errorWidget: (context, url, error) =>
-          errorWidget ?? const Icon(Icons.error, color: Colors.grey),
+          errorWidget ?? const Icon(Iconsax.info_circle_copy, color: Colors.grey),
       // Optimizaciones de caché
       memCacheWidth: width != null ? (width! * 2).toInt() : null,
       memCacheHeight: height != null ? (height! * 2).toInt() : null,

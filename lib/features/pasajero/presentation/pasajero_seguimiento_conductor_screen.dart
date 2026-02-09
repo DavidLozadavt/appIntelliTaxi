@@ -7,6 +7,7 @@ import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart
 import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Pantalla del pasajero para seguir al conductor en tiempo real
 class PasajeroSeguimientoConductorScreen extends StatefulWidget {
@@ -310,7 +311,7 @@ class _PasajeroSeguimientoConductorScreenState
     return CircleAvatar(
       radius: 30,
       backgroundColor: AppColors.accent,
-      child: const Icon(Icons.person, size: 30, color: Colors.white),
+      child: const Icon(Iconsax.user_copy, size: 30, color: Colors.white),
     );
   }
 
@@ -476,7 +477,7 @@ class _PasajeroSeguimientoConductorScreenState
                       ),
                       Row(
                         children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 18),
+                          const Icon(Iconsax.star_1_copy, color: Colors.amber, size: 18),
                           const SizedBox(width: 5),
                           Text(
                             '${_conductor?['conductor_calificacion'] ?? _conductor?['calificacion'] ?? 5.0}',
@@ -488,7 +489,7 @@ class _PasajeroSeguimientoConductorScreenState
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.phone, color: Colors.green, size: 30),
+                  icon: const Icon(Iconsax.call_copy, color: Colors.green, size: 30),
                   onPressed: () {
                     // TODO: Llamar al conductor
                   },

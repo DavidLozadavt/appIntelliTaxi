@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 class OnboardingPageModel {
   final String title;
@@ -23,7 +24,7 @@ final List<OnboardingPageModel> onboardingPages = [
     subtitle: 'Tu compañero de viaje ideal',
     description:
         'Descubre una nueva forma de moverte por la ciudad. Conectamos personas con conductores confiables en segundos.',
-    icon: Icons.waving_hand_rounded,
+    icon: Iconsax.emoji_happy_copy,
     gradientColors: [Color(0xFFFFC502), Color(0xFFFFB300)],
   ),
   OnboardingPageModel(
@@ -31,7 +32,7 @@ final List<OnboardingPageModel> onboardingPages = [
     subtitle: 'Seguridad en cada kilómetro',
     description:
         'Conductores verificados, seguimiento en tiempo real y soporte disponible siempre. Tu tranquilidad es nuestra misión.',
-    icon: Icons.shield_rounded,
+    icon: Iconsax.shield_tick_copy,
     gradientColors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
   ),
   OnboardingPageModel(
@@ -39,7 +40,7 @@ final List<OnboardingPageModel> onboardingPages = [
     subtitle: 'Simple, rápido y confiable',
     description:
         'Solicita tu viaje con un toque, disfruta del trayecto y llega a donde necesitas. ¡Es hora de comenzar!',
-    icon: Icons.explore_rounded,
+    icon: Iconsax.global_copy,
     gradientColors: [Color(0xFFFFB300), Color(0xFFFF6F00)],
   ),
 ];

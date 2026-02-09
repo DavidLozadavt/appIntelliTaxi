@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/rides/services/places_service.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget reutilizable para campos de búsqueda de ubicación (origen/destino)
 class LocationSearchField extends StatelessWidget {
@@ -52,7 +53,7 @@ class LocationSearchField extends StatelessWidget {
               prefixIcon: Icon(icon, color: iconColor),
               suffixIcon: controller.text.isNotEmpty
                   ? IconButton(
-                      icon: const Icon(Icons.clear),
+                      icon: const Icon(Iconsax.close_circle_copy),
                       onPressed: onClear,
                     )
                   : null,
@@ -91,7 +92,7 @@ class LocationSearchField extends StatelessWidget {
                 final prediction = predictions[index];
                 return ListTile(
                   leading: Icon(
-                    Icons.location_on,
+                    Iconsax.location_copy,
                     color: Colors.grey.shade600,
                   ),
                   title: Text(

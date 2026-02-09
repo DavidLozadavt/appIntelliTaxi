@@ -1,5 +1,6 @@
 import 'package:intellitaxi/features/auth/data/auth_model.dart';
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 class CuentaTab extends StatelessWidget {
   final Persona persona;
@@ -17,14 +18,14 @@ class CuentaTab extends StatelessWidget {
 
           if (persona.email != null)
             ListTile(
-              leading: const Icon(Icons.email, color: Colors.orange),
+              leading: const Icon(Iconsax.sms_copy, color: Colors.orange),
               title: const Text("Correo"),
               subtitle: Text(persona.email!),
             ),
 
           if (persona.celular != null)
             ListTile(
-              leading: const Icon(Icons.phone, color: Colors.blue),
+              leading: const Icon(Iconsax.call_copy, color: Colors.blue),
               title: const Text("Teléfono"),
               subtitle: Text(persona.celular!),
             ),
