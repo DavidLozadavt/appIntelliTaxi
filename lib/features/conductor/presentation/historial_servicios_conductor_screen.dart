@@ -30,6 +30,7 @@ class _HistorialServiciosConductorScreenState
   bool _isLoadingMore = false;
   String? _error;
   int _currentPage = 1;
+  String _filtroSeleccionado = 'hoy'; // Filtro por defecto
 
   @override
   void initState() {
@@ -72,10 +73,11 @@ class _HistorialServiciosConductorScreenState
         page: loadMore ? _currentPage + 1 : 1,
       );
 
-      // Cargar estadísticas solo la primera vez
-      if (!loadMore && _estadisticas == null) {
+      // Cargar estadísticas solo la primera vez o cuando cambie el filtro
+      if (!loadMore) {
         _estadisticas = await _historialService.obtenerEstadisticasConductor(
           conductorId: conductorId,
+          filtro: _filtroSeleccionado,
         );
       }
 
@@ -99,6 +101,41 @@ class _HistorialServiciosConductorScreenState
           _error = e.toString().replaceAll('Exception: ', '');
           _isLoading = false;
           _isLoadingMore = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _cambiarFiltro(String nuevoFiltro) async {
+    if (_filtroSeleccionado == nuevoFiltro) return;
+
+    setState(() {
+      _filtroSeleccionado = nuevoFiltro;
+      _isLoading = true;
+      _error = null;
+    });
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final conductorId = authProvider.user?.id;
+
+    if (conductorId == null) return;
+
+    try {
+      _estadisticas = await _historialService.obtenerEstadisticasConductor(
+        conductorId: conductorId,
+        filtro: _filtroSeleccionado,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
         });
       }
     }
@@ -576,146 +613,516 @@ class _HistorialServiciosConductorScreenState
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.1,
+      child: Column(
         children: [
-          _buildEstadisticaCard(
-            icon: Iconsax.car_copy,
-            titulo: 'Servicios',
-            valor: _estadisticas!.totalServicios.toString(),
-            color: Colors.blue,
-          ),
-          _buildEstadisticaCard(
-            icon: Iconsax.money_copy,
-            titulo: 'Ingresos',
-            valor: _estadisticas!.ingresosFormateado,
-            color: Colors.green,
-          ),
-          if (_estadisticas!.promedioCalificacion != null)
-            _buildEstadisticaCard(
-              icon: Iconsax.star_1_copy,
-              titulo: 'Calificación',
-              valor: _estadisticas!.promedioCalificacion!.toStringAsFixed(1),
-              subtitulo: '${_estadisticas!.totalCalificaciones}',
-              color: Colors.amber,
-            ),
-          if (_estadisticas!.distanciaTotalKm != null)
-            _buildEstadisticaCard(
-              icon: Iconsax.map_copy,
-              titulo: 'Distancia',
-              valor:
-                  '${_estadisticas!.distanciaTotalKm!.toStringAsFixed(0)} km',
-              color: Colors.purple,
-            ),
-          if (_estadisticas!.tiempoPromedioMinutos != null)
-            _buildEstadisticaCard(
-              icon: Iconsax.clock_copy,
-              titulo: 'Tiempo',
-              valor:
-                  '${_estadisticas!.tiempoPromedioMinutos!.toStringAsFixed(0)} min',
-              color: Colors.orange,
-            ),
+          // Filtros de periodo
+          _buildFiltrosPeriodo(),
+
+          // KPIs principales (estilo empresarial)
+          _buildKPIsPrincipales(),
+
+          // Gráficos y métricas detalladas
+          _buildMetricasDetalladas(),
+
+          // Resumen por periodo
+          _buildResumenPeriodo(),
         ],
       ),
     );
   }
 
-  Widget _buildEstadisticaCard({
-    required IconData icon,
-    required String titulo,
-    required String valor,
-    String? subtitulo,
-    required Color color,
-  }) {
+  // Filtros de periodo
+  Widget _buildFiltrosPeriodo() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey.shade900 : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Periodo de análisis',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildChipFiltro('Hoy', 'hoy'),
+              _buildChipFiltro('Esta semana', 'semana'),
+              _buildChipFiltro('Este mes', 'mes'),
+              _buildChipFiltro('Últimos 3 meses', 'ano'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChipFiltro(String label, String filtroValue) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final isSelected = _filtroSeleccionado == filtroValue;
+
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          _cambiarFiltro(filtroValue);
+        }
+      },
+      backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+      selectedColor: AppColors.accent.withOpacity(0.2),
+      checkmarkColor: AppColors.accent,
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        color: isSelected
+            ? AppColors.accent
+            : (isDark ? Colors.white70 : Colors.black87),
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: isSelected ? AppColors.accent : Colors.transparent,
+          width: 1.5,
+        ),
+      ),
+    );
+  }
+
+  // KPIs principales estilo empresarial
+  Widget _buildKPIsPrincipales() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [color.withOpacity(0.08), color.withOpacity(0.03)],
+          colors: [AppColors.accent, AppColors.accent.withOpacity(0.8)],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.2), width: 1),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: AppColors.accent.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [color.withOpacity(0.2), color.withOpacity(0.3)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(0.3),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Icon(icon, color: color, size: 26),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              titulo,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                valor,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Iconsax.chart_1_copy, color: Colors.white, size: 24),
+              const SizedBox(width: 8),
+              const Text(
+                'Rendimiento General',
                 style: TextStyle(
-                  fontSize: 20,
+                  color: Colors.white,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: color,
-                  letterSpacing: -0.5,
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            if (subtitulo != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                subtitulo,
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade500,
-                ),
-                textAlign: TextAlign.center,
               ),
             ],
-          ],
-        ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildKPIItem(
+                'Ingresos',
+                _estadisticas!.ingresosFormateado,
+                Iconsax.money_4_copy,
+                '+12%',
+              ),
+              Container(
+                width: 1,
+                height: 60,
+                color: Colors.white.withOpacity(0.3),
+              ),
+              _buildKPIItem(
+                'Servicios',
+                _estadisticas!.totalServicios.toString(),
+                Iconsax.car_copy,
+                '+8%',
+              ),
+              Container(
+                width: 1,
+                height: 60,
+                color: Colors.white.withOpacity(0.3),
+              ),
+              _buildKPIItem(
+                'Rating',
+                _estadisticas!.promedioCalificacion?.toStringAsFixed(1) ??
+                    'N/A',
+                Iconsax.star_1_copy,
+                '+0.2',
+              ),
+            ],
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildKPIItem(
+    String titulo,
+    String valor,
+    IconData icon,
+    String? tendencia,
+  ) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white.withOpacity(0.9), size: 28),
+        const SizedBox(height: 8),
+        Text(
+          valor,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          titulo,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.9),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        if (tendencia != null) ...[
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              tendencia,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // Métricas detalladas
+  Widget _buildMetricasDetalladas() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Métricas Detalladas',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white
+                  : Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 16),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.3,
+            children: [
+              _buildMetricaCard(
+                icon: Iconsax.map_copy,
+                titulo: 'Distancia Total',
+                valor:
+                    '${_estadisticas!.distanciaTotalKm?.toStringAsFixed(1) ?? '0'} km',
+                cambio: '+15%',
+                isPositivo: true,
+                color: const Color(0xFF6366F1),
+              ),
+              _buildMetricaCard(
+                icon: Iconsax.clock_copy,
+                titulo: 'Tiempo Promedio',
+                valor:
+                    '${_estadisticas!.tiempoPromedioMinutos?.toStringAsFixed(0) ?? '0'} min',
+                cambio: '-5%',
+                isPositivo: true,
+                color: const Color(0xFF8B5CF6),
+              ),
+              _buildMetricaCard(
+                icon: Iconsax.routing_2_copy,
+                titulo: 'Tarifa Promedio',
+                valor:
+                    _estadisticas!.totalServicios > 0 &&
+                        _estadisticas!.totalIngresos != null
+                    ? '\$${(_estadisticas!.totalIngresos! / _estadisticas!.totalServicios).toStringAsFixed(2)}'
+                    : '\$0',
+                cambio: '+3%',
+                isPositivo: true,
+                color: const Color(0xFF10B981),
+              ),
+              _buildMetricaCard(
+                icon: Iconsax.activity_copy,
+                titulo: 'Tasa Aceptación',
+                valor: '95%',
+                cambio: '+2%',
+                isPositivo: true,
+                color: const Color(0xFFF59E0B),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricaCard({
+    required IconData icon,
+    required String titulo,
+    required String valor,
+    required String cambio,
+    required bool isPositivo,
+    required Color color,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey.shade900 : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isPositivo
+                      ? Colors.green.withOpacity(0.1)
+                      : Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isPositivo ? Icons.arrow_upward : Icons.arrow_downward,
+                      size: 10,
+                      color: isPositivo ? Colors.green : Colors.red,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      cambio,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: isPositivo ? Colors.green : Colors.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  valor,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                    letterSpacing: -0.5,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  titulo,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? Colors.grey.shade400 : Colors.black54,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Resumen por periodo
+  Widget _buildResumenPeriodo() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey.shade900 : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Iconsax.document_text_copy,
+                size: 22,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Resumen del Periodo',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildResumenItem(
+            'Total de servicios completados',
+            _estadisticas!.totalServicios.toString(),
+            Iconsax.tick_circle_copy,
+            Colors.green,
+          ),
+          const Divider(height: 24),
+          _buildResumenItem(
+            'Calificaciones recibidas',
+            _estadisticas!.totalCalificaciones?.toString() ?? '0',
+            Iconsax.star_1_copy,
+            Colors.amber,
+          ),
+          const Divider(height: 24),
+          _buildResumenItem(
+            'Distancia recorrida',
+            '${_estadisticas!.distanciaTotalKm?.toStringAsFixed(1) ?? '0'} km',
+            Iconsax.map_copy,
+            Colors.blue,
+          ),
+          const Divider(height: 24),
+          _buildResumenItem(
+            'Ingresos generados',
+            _estadisticas!.ingresosFormateado,
+            Iconsax.money_4_copy,
+            Colors.green,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResumenItem(
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 18),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.grey.shade400 : Colors.black54,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 

@@ -37,8 +37,14 @@ class CalificacionService {
       );
 
       print('✅ Calificación creada exitosamente');
-      final data = response.data['data'] ?? response.data;
-      return CalificacionServicio.fromJson(data);
+      
+      // Extraer data de forma segura
+      final responseData = response.data;
+      final data = responseData is Map<String, dynamic> 
+          ? (responseData['data'] ?? responseData)
+          : responseData;
+          
+      return CalificacionServicio.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
       print('⚠️ Error al crear calificación: ${e.response?.data}');
       throw _handleError(e);

@@ -6,6 +6,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 void onNotificationTap(NotificationResponse notificationResponse) {
+  // Obtener el payload (datos de la notificación)
+  final payload = notificationResponse.payload;
+  print('📱 Notificación tocada. Payload: $payload');
+  
+  // Si el payload contiene información del tipo de notificación
+  if (payload != null && payload.contains('tipo')) {
+    if (payload.contains('calificacion') || payload.contains('CALIFICACION')) {
+      print('🔔 Navegando a pantalla de notificaciones (calificación)');
+      navigatorKey.currentState?.pushNamed('/notifications');
+      return;
+    }
+  }
+  
+  // Por defecto, ir a chat
   navigatorKey.currentState?.pushNamed('/chat');
 }
 
@@ -27,7 +41,16 @@ class FirebaseMsg {
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       print('Notificación abierta desde segundo plano: ${message.notification?.title}');
-      navigatorKey.currentState?.pushNamed('/chat');
+      print('Data: ${message.data}');
+      
+      // Verificar si es notificación de calificación
+      final tipo = message.data['tipo']?.toString().toLowerCase();
+      if (tipo != null && tipo.contains('calificacion')) {
+        print('🔔 Navegando a pantalla de notificaciones (calificación)');
+        navigatorKey.currentState?.pushNamed('/notifications');
+      } else {
+        navigatorKey.currentState?.pushNamed('/chat');
+      }
     });
 
     _handleTerminatedStateNotification();
@@ -37,7 +60,16 @@ class FirebaseMsg {
     RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
       print('App abierta desde estado terminado por notificación: ${initialMessage.notification?.title}');
-      navigatorKey.currentState?.pushNamed('/chat');
+      print('Data: ${initialMessage.data}');
+      
+      // Verificar si es notificación de calificación
+      final tipo = initialMessage.data['tipo']?.toString().toLowerCase();
+      if (tipo != null && tipo.contains('calificacion')) {
+        print('🔔 Navegando a pantalla de notificaciones (calificación)');
+        navigatorKey.currentState?.pushNamed('/notifications');
+      } else {
+        navigatorKey.currentState?.pushNamed('/chat');
+      }
     }
   }
 
@@ -143,12 +175,15 @@ Future<void> _setupTokenHandling() async {
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
     );
 
+    // Pasar los datos de la notificación como payload (convertir a String)
+    String payload = message.data.toString();
+
     await localNotifications.show(
       id: 0,
       title: message.notification?.title,
       body: message.notification?.body,
       notificationDetails: NotificationDetails(android: androidDetails),
-      payload: message.data.toString(),
+      payload: payload,
     );
   }
 }

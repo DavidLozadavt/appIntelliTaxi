@@ -161,6 +161,7 @@ class _PasajeroEsperandoConductorScreenState
 
           setState(() {
             _conductor = {
+              'conductor_id': conductor['id'] ?? conductor['conductor_id'],
               'conductor_nombre': conductor['nombre'] ?? 'Conductor',
               'conductor_telefono': conductor['telefono'] ?? '',
               'conductor_foto': conductor['foto_perfil'],
@@ -223,6 +224,7 @@ class _PasajeroEsperandoConductorScreenState
       onServicioAceptado: (data) {
         print('🎉 Servicio aceptado - Data completa:');
         print('   Keys: ${data.keys}');
+        print('   Conductor ID: ${data['conductor_id']}');
         print('   Conductor: ${data['conductor_nombre']}');
         print('   Foto: ${data['conductor_foto']}');
         print(
@@ -375,6 +377,14 @@ class _PasajeroEsperandoConductorScreenState
     int calificacionSeleccionada = 5;
     final TextEditingController comentarioController = TextEditingController();
 
+    // Mensajes sugeridos genéricos
+    final List<String> mensajesSugeridos = [
+      'Excelente servicio',
+      'Muy amable y puntual',
+      'Viaje cómodo y seguro',
+      'Buen conductor',
+    ];
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -446,12 +456,59 @@ class _PasajeroEsperandoConductorScreenState
 
                 const SizedBox(height: 16),
 
+                // Mensajes sugeridos
+                const Text(
+                  'Mensajes rápidos:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: mensajesSugeridos.map((mensaje) {
+                    return InkWell(
+                      onTap: () {
+                        setDialogState(() {
+                          comentarioController.text = mensaje;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.primary.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Text(
+                          mensaje,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+
+                const SizedBox(height: 16),
+
                 // Campo de comentario opcional
                 TextField(
                   controller: comentarioController,
                   maxLines: 3,
                   decoration: InputDecoration(
-                    hintText: 'Comentarios (opcional)',
+                    hintText: 'Escribe tu comentario (opcional)',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -469,31 +526,55 @@ class _PasajeroEsperandoConductorScreenState
               },
               child: const Text('Omitir', style: TextStyle(color: Colors.grey)),
             ),
-            StandardButton(
-              text: 'Enviar Calificación',
-              icon: Icons.send,
+            ElevatedButton.icon(
+              icon: const Icon(Icons.send, color: Colors.white),
+              label: const Text(
+                'Enviar Calificación',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
               onPressed: () async {
                 print('Calificación: $calificacionSeleccionada');
                 print('Comentario: ${comentarioController.text}');
 
-                // Cerrar diálogo y mostrar loading
-                Navigator.pop(context);
+                // Guardar BuildContext del State antes de operaciones async
+                final scaffoldContext = this.context;
+                
+                // Cerrar diálogo de calificación
+                Navigator.of(context).pop();
 
-                // Mostrar loading
+                // Mostrar loading usando el context del scaffold
                 showDialog(
-                  context: context,
+                  context: scaffoldContext,
                   barrierDismissible: false,
-                  builder: (context) => const Center(
-                    child: Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            CircularProgressIndicator(),
-                            SizedBox(height: 16),
-                            Text('Enviando calificación...'),
-                          ],
+                  builder: (loadingContext) => PopScope(
+                    canPop: false,
+                    child: const Center(
+                      child: Card(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 16),
+                              Text('Enviando calificación...'),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -501,20 +582,24 @@ class _PasajeroEsperandoConductorScreenState
                 );
 
                 try {
-                  // Obtener ID del pasajero desde AuthProvider
+                  // Obtener ID del usuario pasajero desde AuthProvider
                   final authProvider = Provider.of<AuthProvider>(
                     context,
                     listen: false,
                   );
-                  final idPasajero = authProvider.idPersona;
+                  final idPasajero = authProvider.userId;
 
                   if (idPasajero == null) {
                     throw Exception('No se pudo obtener ID del pasajero');
                   }
 
-                  // Obtener ID del conductor
-                  final idConductor = _conductor?['conductor_id'];
+                  // Obtener ID del conductor de forma segura
+                  final conductorData = _conductor;
+                  if (conductorData == null) {
+                    throw Exception('No hay datos del conductor disponibles');
+                  }
 
+                  final idConductor = conductorData['conductor_id'] as int?;
                   if (idConductor == null) {
                     throw Exception('No se pudo obtener ID del conductor');
                   }
@@ -527,56 +612,71 @@ class _PasajeroEsperandoConductorScreenState
                   print('   Comentario: ${comentarioController.text}');
 
                   // Enviar calificación
-                  await _calificacionService.crearCalificacion(
-                    idServicio: widget.servicioId,
-                    idUsuarioCalifica: idPasajero,
-                    idUsuarioCalificado: idConductor,
-                    tipoCalificacion: 'CONDUCTOR',
-                    calificacion: calificacionSeleccionada,
-                    comentario: comentarioController.text.isNotEmpty
-                        ? comentarioController.text
-                        : null,
-                  );
+                  final resultado = await _calificacionService
+                      .crearCalificacion(
+                        idServicio: widget.servicioId,
+                        idUsuarioCalifica: idPasajero,
+                        idUsuarioCalificado: idConductor,
+                        tipoCalificacion: 'CONDUCTOR',
+                        calificacion: calificacionSeleccionada,
+                        comentario: comentarioController.text.trim().isEmpty
+                            ? null
+                            : comentarioController.text.trim(),
+                      );
 
-                  if (!mounted) return;
+                  print('✅ Calificación enviada: ID ${resultado.id}');
 
-                  // Cerrar loading
-                  Navigator.pop(context);
+                  // Cerrar loading de forma segura
+                  if (mounted) {
+                    Navigator.of(scaffoldContext, rootNavigator: true).pop();
+                  }
 
                   // Mostrar mensaje de éxito
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('✅ ¡Gracias por tu calificación!'),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                      const SnackBar(
+                        content: Text('✅ ¡Gracias por tu calificación!'),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+
+                  // Esperar un momento para que se vea el snackbar
+                  await Future.delayed(const Duration(milliseconds: 500));
 
                   // Regresar a home
-                  Navigator.pop(context, true);
+                  if (mounted) {
+                    Navigator.of(scaffoldContext).pop(true);
+                  }
                 } catch (e) {
                   print('❌ Error enviando calificación: $e');
 
-                  if (!mounted) return;
-
-                  // Cerrar loading
-                  Navigator.pop(context);
+                  // Cerrar loading de forma segura
+                  if (mounted) {
+                    Navigator.of(scaffoldContext, rootNavigator: true).pop();
+                  }
 
                   // Mostrar error
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error al enviar calificación: $e'),
-                      backgroundColor: Colors.red,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+                      SnackBar(
+                        content: Text('Error al enviar calificación: $e'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+
+                  // Esperar un momento
+                  await Future.delayed(const Duration(milliseconds: 500));
 
                   // Regresar a home de todas formas
-                  Navigator.pop(context, true);
+                  if (mounted) {
+                    Navigator.of(scaffoldContext).pop(true);
+                  }
                 }
               },
-              height: 45,
-              fontSize: 14,
             ),
           ],
         ),

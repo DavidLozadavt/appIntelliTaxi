@@ -30,6 +30,7 @@ class _HistorialServiciosPasajeroScreenState
   bool _isLoadingMore = false;
   String? _error;
   int _currentPage = 1;
+  String _filtroSeleccionado = 'hoy'; // Filtro por defecto
 
   @override
   void initState() {
@@ -72,10 +73,11 @@ class _HistorialServiciosPasajeroScreenState
         page: loadMore ? _currentPage + 1 : 1,
       );
 
-      // Cargar estadísticas solo la primera vez
-      if (!loadMore && _estadisticas == null) {
+      // Cargar estadísticas solo la primera vez o cuando cambie el filtro
+      if (!loadMore) {
         _estadisticas = await _historialService.obtenerEstadisticasPasajero(
           pasajeroId: pasajeroId,
+          filtro: _filtroSeleccionado,
         );
       }
 
@@ -99,6 +101,41 @@ class _HistorialServiciosPasajeroScreenState
           _error = e.toString().replaceAll('Exception: ', '');
           _isLoading = false;
           _isLoadingMore = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _cambiarFiltro(String nuevoFiltro) async {
+    if (_filtroSeleccionado == nuevoFiltro) return;
+
+    setState(() {
+      _filtroSeleccionado = nuevoFiltro;
+      _isLoading = true;
+      _error = null;
+    });
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final pasajeroId = authProvider.user?.id;
+
+    if (pasajeroId == null) return;
+
+    try {
+      _estadisticas = await _historialService.obtenerEstadisticasPasajero(
+        pasajeroId: pasajeroId,
+        filtro: _filtroSeleccionado,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
         });
       }
     }

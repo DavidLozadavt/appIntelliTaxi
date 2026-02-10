@@ -49,14 +49,30 @@ class HistorialServicioService {
   }
 
   /// 📌 OBTENER ESTADÍSTICAS DEL CONDUCTOR
+  /// 
+  /// [filtro] puede ser: 'hoy', 'semana', 'mes', 'ano', 'personalizado' o null (todas)
+  /// Si [filtro] es 'personalizado', se requieren [fechaInicio] y [fechaFin]
   Future<EstadisticasServicios> obtenerEstadisticasConductor({
     required int conductorId,
+    String? filtro,
+    String? fechaInicio,
+    String? fechaFin,
   }) async {
     try {
-      print('📤 Obteniendo estadísticas del conductor $conductorId');
+      print('📤 Obteniendo estadísticas del conductor $conductorId (filtro: $filtro)');
+
+      final queryParams = <String, dynamic>{};
+      if (filtro != null) {
+        queryParams['filtro'] = filtro;
+        if (filtro == 'personalizado') {
+          if (fechaInicio != null) queryParams['fecha_inicio'] = fechaInicio;
+          if (fechaFin != null) queryParams['fecha_fin'] = fechaFin;
+        }
+      }
 
       final response = await _dio.get(
         'historial-servicios/conductor/$conductorId/estadisticas',
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
       print('✅ Estadísticas del conductor obtenidas');
@@ -68,14 +84,30 @@ class HistorialServicioService {
   }
 
   /// 📌 OBTENER ESTADÍSTICAS DEL PASAJERO
+  /// 
+  /// [filtro] puede ser: 'hoy', 'semana', 'mes', 'ano', 'personalizado' o null (todas)
+  /// Si [filtro] es 'personalizado', se requieren [fechaInicio] y [fechaFin]
   Future<EstadisticasServicios> obtenerEstadisticasPasajero({
     required int pasajeroId,
+    String? filtro,
+    String? fechaInicio,
+    String? fechaFin,
   }) async {
     try {
-      print('📤 Obteniendo estadísticas del pasajero $pasajeroId');
+      print('📤 Obteniendo estadísticas del pasajero $pasajeroId (filtro: $filtro)');
+
+      final queryParams = <String, dynamic>{};
+      if (filtro != null) {
+        queryParams['filtro'] = filtro;
+        if (filtro == 'personalizado') {
+          if (fechaInicio != null) queryParams['fecha_inicio'] = fechaInicio;
+          if (fechaFin != null) queryParams['fecha_fin'] = fechaFin;
+        }
+      }
 
       final response = await _dio.get(
         'historial-servicios/pasajero/$pasajeroId/estadisticas',
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
       print('✅ Estadísticas del pasajero obtenidas');
