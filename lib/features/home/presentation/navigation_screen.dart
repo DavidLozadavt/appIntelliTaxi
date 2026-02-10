@@ -26,13 +26,13 @@ class _HomeScreenState extends State<NavigationScreen> {
         label: "Inicio",
       ),
     ),
-    TabItem(
-      page: const ChatScreen(),
-      navItem: const BottomNavigationBarItem(
-        icon: Icon(Iconsax.messages_copy),
-        label: "Chat",
-      ),
-    ),
+    // TabItem(
+    //   page: const ChatScreen(),
+    //   navItem: const BottomNavigationBarItem(
+    //     icon: Icon(Iconsax.messages_copy),
+    //     label: "Chat",
+    //   ),
+    // ),
     TabItem(
       page: const ProfileTab(),
       navItem: const BottomNavigationBarItem(
