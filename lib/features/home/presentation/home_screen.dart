@@ -27,10 +27,14 @@ class _HomeScreenState extends State<HomeScreen> {
         final user = authProvider.user;
 
         if (user == null) {
+          print('⚠️ HomeScreen: Usuario es NULL');
           return const Center(child: CircularProgressIndicator());
         }
 
         final roles = authProvider.roles;
+        print('👤 HomeScreen: Usuario ID: ${user.id}');
+        print('👤 HomeScreen: Nombre: ${user.nombreCompleto}');
+        print('🎭 HomeScreen: Roles: $roles');
 
         Widget body;
 
@@ -38,16 +42,24 @@ class _HomeScreenState extends State<HomeScreen> {
         if (roles.any(
           (r) => ['CONDUCTOR', 'MOTORISTA', 'DRIVER', 'Admin'].contains(r),
         )) {
+          print('✅ HomeScreen: Mostrando pantalla de CONDUCTOR');
           body = const HomeConductor(stories: []);
         }
         // Verificar rol de pasajero (passenger)
         else if (roles.any(
-          (r) => ['PASAJERO', 'PASSENGER', 'CLIENTE', 'AUXILIAR CONTAB'].contains(r),
+          (r) => [
+            'PASAJERO',
+            'PASSENGER',
+            'CLIENTE',
+            'AUXILIAR CONTAB',
+          ].contains(r),
         )) {
+          print('✅ HomeScreen: Mostrando pantalla de PASAJERO');
           body = const HomePasajero(stories: []);
         }
         // Si no tiene ninguno de estos roles
         else {
+          print('⚠️ HomeScreen: Rol NO reconocido');
           body = const Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

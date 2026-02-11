@@ -205,10 +205,21 @@ class _HomePasajeroState extends State<HomePasajero>
           MaterialPageRoute(
             builder: (context) => ActiveServiceScreen(
               servicio: servicio,
-              onServiceCompleted: () {
+              onServiceCompleted: () async {
                 // Cuando el servicio se complete, volver al home
                 if (mounted) {
                   Navigator.of(context).pop();
+
+                  // Esperar un momento para que el backend actualice el estado del conductor
+                  await Future.delayed(const Duration(seconds: 2));
+
+                  // Recargar conductores disponibles después de completar el servicio
+                  if (mounted) {
+                    print(
+                      '🔄 Recargando conductores disponibles al volver de servicio activo...',
+                    );
+                    _loadAvailableDrivers();
+                  }
                 }
               },
             ),
@@ -239,9 +250,20 @@ class _HomePasajeroState extends State<HomePasajero>
       if (!mounted) return;
 
       // Usar WidgetsBinding para asegurar que se ejecute después del frame actual
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (mounted) {
           Navigator.of(context).popUntil((route) => route.isFirst);
+
+          // Esperar un momento para que el backend actualice el estado del conductor
+          await Future.delayed(const Duration(seconds: 2));
+
+          // Recargar conductores disponibles después de completar el servicio
+          if (mounted) {
+            print(
+              '🔄 Recargando conductores disponibles después de finalizar servicio...',
+            );
+            _loadAvailableDrivers();
+          }
         }
       });
     };
@@ -297,26 +319,38 @@ class _HomePasajeroState extends State<HomePasajero>
 
     try {
       print('🔍 Cargando conductores disponibles...');
+      print(
+        '   📊 Conductores actuales en memoria: ${_conductoresDisponibles.length}',
+      );
 
       final conductores = await _conductoresService.getConductoresDisponibles(
         lat: _currentPosition!.latitude,
         lng: _currentPosition!.longitude,
-        radioKm: 10,
+        radioKm: 15, // Aumentar radio para mejor cobertura
       );
 
       if (!mounted) return;
 
       setState(() {
-        _conductoresDisponibles.clear();
+        // NO limpiar todos los conductores, solo actualizar los que vienen de la API
+        // Esto preserva conductores que llegaron por Pusher pero no están en la consulta
+
+        // Primero, actualizar o agregar conductores de la API
         for (var conductor in conductores) {
           _conductoresDisponibles[conductor.conductorId] = conductor;
         }
+
+        // Opcional: Limpiar conductores que hace mucho no se actualizan
+        // (esto se puede agregar después si es necesario)
       });
 
       // Actualizar marcadores
       _updateAllDriverMarkers();
 
-      print('✅ ${conductores.length} conductores cargados');
+      print('✅ ${conductores.length} conductores desde API');
+      print(
+        '   📍 Total en mapa: ${_conductoresDisponibles.length} conductores',
+      );
     } catch (e) {
       print('❌ Error cargando conductores: $e');
     }
@@ -346,11 +380,19 @@ class _HomePasajeroState extends State<HomePasajero>
 
   /// Actualiza todos los marcadores en el mapa
   void _updateAllDriverMarkers() {
+    print('🔄 _updateAllDriverMarkers llamado');
+    print('   🚗 _showDrivers: $_showDrivers');
+    print('   📊 Conductores en memoria: ${_conductoresDisponibles.length}');
+
     final Set<Marker> newMarkers = {};
 
     // Agregar marcadores de conductores solo si están visibles
     if (_showDrivers) {
+      print('   ✅ Agregando marcadores de conductores...');
       for (var conductor in _conductoresDisponibles.values) {
+        print(
+          '      🚗 Agregando: ${conductor.nombre} en (${conductor.lat}, ${conductor.lng})',
+        );
         newMarkers.add(
           Marker(
             markerId: MarkerId('driver_${conductor.conductorId}'),
@@ -371,6 +413,9 @@ class _HomePasajeroState extends State<HomePasajero>
           ),
         );
       }
+      print('   ✅ ${newMarkers.length} marcadores de conductores agregados');
+    } else {
+      print('   ⚠️ _showDrivers es false, NO se agregan conductores');
     }
 
     // Agregar marcadores existentes que NO sean de conductores (ruta, origen, destino, etc)
@@ -408,6 +453,12 @@ class _HomePasajeroState extends State<HomePasajero>
     print(
       '🗺️ Marcadores actualizados: ${_conductoresDisponibles.length} conductores, ${newMarkers.length} marcadores totales',
     );
+
+    // Debug: Listar todos los marcadores
+    print('   📍 Marcadores en el mapa:');
+    for (var marker in newMarkers) {
+      print('      - ${marker.markerId.value}');
+    }
   }
 
   /// Alterna la visibilidad de los conductores
