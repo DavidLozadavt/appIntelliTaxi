@@ -318,25 +318,33 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
         documento.diasRestantesCalculados ?? documento.diasRestantes;
     final estadoVigencia = documento.estadoVigencia?.toUpperCase() ?? 'VIGENTE';
 
+    // Lógica de colores según el backend:
+    // VENCIDO: dias_restantes < 0 -> ROJO
+    // POR VENCER: dias_restantes <= 15 -> NARANJA
+    // VIGENTE: dias_restantes > 15 -> VERDE
     Color estadoColor;
     IconData estadoIcon;
+    double progreso;
 
-    if (estadoVigencia == 'VENCIDO') {
+    if (estadoVigencia == 'VENCIDO' ||
+        (diasRestantes != null && diasRestantes < 0)) {
       estadoColor = Colors.red;
       estadoIcon = Icons.error;
-    } else if (estadoVigencia == 'POR VENCER') {
+      progreso = 0.0; // Sin progreso cuando está vencido
+    } else if (estadoVigencia == 'POR VENCER' ||
+        (diasRestantes != null && diasRestantes <= 15)) {
       estadoColor = Colors.orange;
       estadoIcon = Icons.warning_amber;
+      // Progreso proporcional de 0 a 15 días
+      progreso = diasRestantes != null
+          ? (diasRestantes / 15).clamp(0.0, 1.0)
+          : 0.5;
     } else {
-      estadoColor = Colors.green;
+      // VIGENTE (más de 15 días)
+      estadoColor = AppColors.green;
       estadoIcon = Icons.check_circle;
+      progreso = 1.0; // Completo cuando está vigente
     }
-
-    // Calcular progreso basado en días restantes (asumiendo 365 días máximo)
-    final maxDias = 365;
-    final progreso = diasRestantes != null
-        ? (diasRestantes / maxDias).clamp(0.0, 1.0)
-        : (estadoVigencia == 'VIGENTE' ? 1.0 : 0.0);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -369,7 +377,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                           height: 60,
                           child: CircularProgressIndicator(
                             value: 1.0,
-                            strokeWidth: 4,
+                            strokeWidth: 5,
                             backgroundColor: Colors.transparent,
                             valueColor: AlwaysStoppedAnimation<Color>(
                               isDark
@@ -378,13 +386,13 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                             ),
                           ),
                         ),
-                        // Círculo de progreso
+                        // Círculo de progreso coloreado
                         SizedBox(
                           width: 60,
                           height: 60,
                           child: CircularProgressIndicator(
                             value: progreso,
-                            strokeWidth: 4,
+                            strokeWidth: 5,
                             backgroundColor: Colors.transparent,
                             valueColor: AlwaysStoppedAnimation<Color>(
                               estadoColor,
