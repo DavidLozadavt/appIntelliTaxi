@@ -106,41 +106,7 @@ class _HistorialServiciosPasajeroScreenState
     }
   }
 
-  Future<void> _cambiarFiltro(String nuevoFiltro) async {
-    if (_filtroSeleccionado == nuevoFiltro) return;
-
-    setState(() {
-      _filtroSeleccionado = nuevoFiltro;
-      _isLoading = true;
-      _error = null;
-    });
-
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final pasajeroId = authProvider.user?.id;
-
-    if (pasajeroId == null) return;
-
-    try {
-      _estadisticas = await _historialService.obtenerEstadisticasPasajero(
-        pasajeroId: pasajeroId,
-        filtro: _filtroSeleccionado,
-      );
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString().replaceAll('Exception: ', '');
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
+ 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
