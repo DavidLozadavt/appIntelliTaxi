@@ -60,6 +60,7 @@ dependencies:
   url_launcher: ^6.3.1
 
   firebase_core: any
+  intl: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

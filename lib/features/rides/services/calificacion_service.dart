@@ -76,7 +76,7 @@ class CalificacionService {
   }) async {
     try {
       final queryParams = <String, dynamic>{
-        if (tipo != null) 'tipo': tipo,
+        'tipo': ?tipo,
         'page': page,
       };
 

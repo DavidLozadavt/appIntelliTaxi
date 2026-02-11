@@ -5,7 +5,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Página para seleccionar el vehículo antes de iniciar turno
 class VehiculoSelectorPage extends StatefulWidget {
-  const VehiculoSelectorPage({Key? key}) : super(key: key);
+  const VehiculoSelectorPage({super.key});
 
   @override
   State<VehiculoSelectorPage> createState() => _VehiculoSelectorPageState();
@@ -237,7 +237,7 @@ class _VehiculoSelectorPageState extends State<VehiculoSelectorPage> {
                           onTap: () => _seleccionarVehiculo(vehiculo),
                         ),
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
     );

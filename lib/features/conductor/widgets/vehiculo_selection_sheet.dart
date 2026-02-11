@@ -8,19 +8,16 @@ class VehiculoSelectionSheet extends StatelessWidget {
   final Function(VehiculoConductor) onVehiculoSelected;
 
   const VehiculoSelectionSheet({
-    Key? key,
+    super.key,
     required this.vehiculos,
     required this.onVehiculoSelected,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDarkMode ? AppColors.darkCard : Colors.white;
     final textColor = isDarkMode ? AppColors.darkOnSurface : Colors.black87;
-    final subtextColor = isDarkMode
-        ? Colors.grey.shade400
-        : Colors.grey.shade600;
 
     return Container(
       decoration: BoxDecoration(
@@ -180,7 +177,6 @@ class VehiculoSelectionSheet extends StatelessWidget {
 
   Widget _buildVehiculoCard(BuildContext context, VehiculoConductor vehiculo) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDarkMode ? AppColors.darkCard : Colors.white;
     final textColor = isDarkMode ? AppColors.darkOnSurface : Colors.black87;
     final subtextColor = isDarkMode
         ? Colors.grey.shade400

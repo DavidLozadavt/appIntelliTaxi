@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/conductor/conductor_status_widget.dart';
 
-/// Página principal del conductor para gestionar su estado online/offline
-/// y envío de ubicación en tiempo real
 class ConductorHomePage extends StatefulWidget {
   final int idVehiculo;
 
-  const ConductorHomePage({Key? key, required this.idVehiculo})
-    : super(key: key);
+  const ConductorHomePage({super.key, required this.idVehiculo});
 
   @override
   State<ConductorHomePage> createState() => _ConductorHomePageState();

@@ -81,10 +81,7 @@ class ConductorLocationService {
         }
       }
 
-      if (_conductorId == null) {
-        // Último intento: usar user_id
-        _conductorId = prefs.getInt('user_id');
-      }
+      _conductorId ??= prefs.getInt('user_id');
 
       if (_conductorId != null) {
         print('✅ Conductor ID cargado: $_conductorId');

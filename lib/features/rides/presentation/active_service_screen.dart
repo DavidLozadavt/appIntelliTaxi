@@ -24,7 +24,7 @@ class ActiveServiceScreen extends StatefulWidget {
 class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
   GoogleMapController? _mapController;
   Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+  final Set<Polyline> _polylines = {};
   final ServicioPersistenciaService _persistencia =
       ServicioPersistenciaService();
   final ServicioNotificacionForeground _notificacionService =

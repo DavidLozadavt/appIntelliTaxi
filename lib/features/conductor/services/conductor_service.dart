@@ -91,8 +91,8 @@ class ConductorService {
       // Preparar datos con ubicación si están disponibles
       final Map<String, dynamic> requestData = {
         'idVehiculo': idVehiculo,
-        if (lat != null) 'lat': lat,
-        if (lng != null) 'lng': lng,
+        'lat': ?lat,
+        'lng': ?lng,
       };
 
       print('🚀 Iniciando turno con datos: $requestData');

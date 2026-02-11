@@ -9,8 +9,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 class ConductorStatusWidget extends StatefulWidget {
   final int idVehiculo;
 
-  const ConductorStatusWidget({Key? key, required this.idVehiculo})
-    : super(key: key);
+  const ConductorStatusWidget({super.key, required this.idVehiculo});
 
   @override
   State<ConductorStatusWidget> createState() => _ConductorStatusWidgetState();

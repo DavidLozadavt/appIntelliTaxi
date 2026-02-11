@@ -1,7 +1,6 @@
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/data/tab_Item.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
-import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
 import 'package:intellitaxi/features/home/presentation/home_screen.dart';
 import 'package:intellitaxi/features/Profile/presentation/profile_screen.dart';
 import 'package:flutter/material.dart';

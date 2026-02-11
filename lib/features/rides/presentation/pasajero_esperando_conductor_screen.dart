@@ -36,8 +36,8 @@ class _PasajeroEsperandoConductorScreenState
   Map<String, dynamic>? _conductor;
   LatLng? _conductorUbicacion;
   String _estadoServicio = 'buscando';
-  Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
   BitmapDescriptor? _carIcon;
 
   // ⏱️ Control de timeout
@@ -54,7 +54,7 @@ class _PasajeroEsperandoConductorScreenState
   @override
   void initState() {
     super.initState();
-    print('\n' + '=' * 80);
+    print('\n${'=' * 80}');
     print('🚀 PASAJERO: Iniciando PasajeroEsperandoConductorScreen');
     print('=' * 80);
     print('   Servicio ID: ${widget.servicioId}');

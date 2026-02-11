@@ -10,12 +10,12 @@ class DriverOfferCard extends StatefulWidget {
   final VoidCallback? onDismiss;
 
   const DriverOfferCard({
-    Key? key,
+    super.key,
     required this.offerData,
     required this.onAccept,
     required this.onReject,
     this.onDismiss,
-  }) : super(key: key);
+  });
 
   @override
   State<DriverOfferCard> createState() => _DriverOfferCardState();

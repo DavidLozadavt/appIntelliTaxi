@@ -46,8 +46,8 @@ class _HomeConductorState extends State<HomeConductor> {
   TurnoActivo? _turnoActivo;
 
   // Solicitudes de servicio
-  List<Map<String, dynamic>> _solicitudesActivas = [];
-  Map<String, Timer> _timersExpiacion = {};
+  final List<Map<String, dynamic>> _solicitudesActivas = [];
+  final Map<String, Timer> _timersExpiacion = {};
   bool _suscritoAPusher = false;
 
   // Audio player para notificaciones

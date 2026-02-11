@@ -39,7 +39,7 @@ class _ConductorServicioActivoScreenState
   LatLng? _miUbicacion;
   LatLng? _destinoActual;
   Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+  final Set<Polyline> _polylines = {};
   bool _isLoading = false;
   BitmapDescriptor? _carIcon;
 
@@ -132,19 +132,19 @@ class _ConductorServicioActivoScreenState
   }
 
   // Método helper para obtener el precio
-  String _getPrecio() {
-    final precioFinal = widget.servicio['precio_final'];
-    final precioEstimado = widget.servicio['precio_estimado'];
+  // String _getPrecio() {
+  //   final precioFinal = widget.servicio['precio_final'];
+  //   final precioEstimado = widget.servicio['precio_estimado'];
     
-    if (precioFinal != null) {
-      return precioFinal.toString().replaceAll('.00', '');
-    }
-    if (precioEstimado != null) {
-      return precioEstimado.toString().replaceAll('.00', '');
-    }
+  //   if (precioFinal != null) {
+  //     return precioFinal.toString().replaceAll('.00', '');
+  //   }
+  //   if (precioEstimado != null) {
+  //     return precioEstimado.toString().replaceAll('.00', '');
+  //   }
     
-    return '0';
-  }
+  //   return '0';
+  // }
 
   // Método helper para obtener la foto del pasajero
   String? _getFotoPasajero() {

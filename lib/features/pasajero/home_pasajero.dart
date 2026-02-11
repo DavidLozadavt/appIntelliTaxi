@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -8,7 +7,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
-import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/constants/map_styles.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
@@ -30,7 +28,6 @@ import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart
 import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/features/pasajero/widgets/ride_confirmation_dialog.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
-import 'package:intellitaxi/shared/widgets/standard_button.dart';
 import 'package:intellitaxi/features/pasajero/widgets/waiting_for_driver_dialog.dart';
 
 class HomePasajero extends StatefulWidget {
@@ -96,7 +93,7 @@ class _HomePasajeroState extends State<HomePasajero>
   // Conductores disponibles
   final ConductoresService _conductoresService = ConductoresService();
   PusherConductoresService? _pusherConductoresService;
-  Map<int, Conductor> _conductoresDisponibles = {};
+  final Map<int, Conductor> _conductoresDisponibles = {};
   BitmapDescriptor? _driverMarkerIcon;
   bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
 

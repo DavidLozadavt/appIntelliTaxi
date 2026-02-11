@@ -14,8 +14,6 @@ import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart
 import 'package:intellitaxi/features/notifications/logic/notification_provider.dart';
 import 'package:intellitaxi/features/notifications/presentation/notification_screen.dart';
 
-import 'package:intellitaxi/features/test/pusher_test_screen.dart';
-import 'package:intellitaxi/test_iconsax_screen.dart';
 import 'package:intellitaxi/firebase_msg.dart' show FirebaseMsg;
 import 'package:intellitaxi/firebase_options.dart' show DefaultFirebaseOptions;
 import 'package:flutter/material.dart';
@@ -171,9 +169,7 @@ class MyApp extends StatelessWidget {
                 );
               },
               '/chat': (_) => const ChatScreen(),
-              '/pusher-test': (_) => const PusherTestScreen(),
               // '/vinculaciones-propietario': (_) => TransportePropietario(),
-              '/test-iconsax': (_) => const TestIconsaxScreen(),
             },
           );
         },

@@ -35,8 +35,8 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
   late AnimationController _animationController;
   late Animation<double> _heightAnimation;
 
-  double _minHeight = 0.35; // 35% de la pantalla
-  double _maxHeight = 0.9; // 90% de la pantalla
+  final double _minHeight = 0.35; // 35% de la pantalla
+  final double _maxHeight = 0.9; // 90% de la pantalla
   bool _isExpanded = false;
 
   @override

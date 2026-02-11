@@ -8,11 +8,11 @@ class DocumentosAlertDialog extends StatelessWidget {
   final VoidCallback? onContinuar;
 
   const DocumentosAlertDialog({
-    Key? key,
+    super.key,
     required this.documentosVencidos,
     required this.documentosPorVencer,
     this.onContinuar,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -16,7 +16,7 @@ class ServicioPusherService {
     try {
       _channelName = 'servicio.$servicioId';
 
-      print('\n' + '=' * 80);
+      print('\n${'=' * 80}');
       print('🔌 PASAJERO: INICIANDO SUSCRIPCIÓN A PUSHER SECONDARY');
       print('=' * 80);
       print('   Canal: $_channelName');
@@ -69,7 +69,7 @@ class ServicioPusherService {
           });
 
       _isConnected = true;
-      print('\n' + '=' * 80);
+      print('\n${'=' * 80}');
       print('✅ PASAJERO: SUSCRIPCIÓN COMPLETADA (SECONDARY)');
       print('=' * 80);
       print('   Esperando eventos en servicio.$servicioId...');

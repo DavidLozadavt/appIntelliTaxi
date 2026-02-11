@@ -78,7 +78,7 @@ class RideRequestService {
   /// 📌 LOGS DETALLADOS EN CONSOLA
   void _logRequestData(Map<String, dynamic> data) {
     if (kDebugMode) {
-      print('\n' + '=' * 80);
+      print('\n${'=' * 80}');
       print('🚖 DATOS DE SOLICITUD DE SERVICIO');
       print('=' * 80);
 
@@ -147,7 +147,7 @@ class RideRequestService {
 
   void _logResponse(dynamic data) {
     if (kDebugMode) {
-      print('\n' + '=' * 80);
+      print('\n${'=' * 80}');
       print('✅ RESPUESTA DEL SERVIDOR');
       print('=' * 80);
       print(JsonEncoder.withIndent('  ').convert(data));
@@ -163,7 +163,7 @@ class RideRequestService {
 
   void _logError(DioException e) {
     if (kDebugMode) {
-      print('\n' + '=' * 80);
+      print('\n${'=' * 80}');
       print('❌ ERROR EN LA SOLICITUD');
       print('=' * 80);
       print('Tipo de error: ${e.type}');

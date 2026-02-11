@@ -676,7 +676,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ],
       ),
       child: DropdownButtonFormField<int>(
-        value: value,
+        initialValue: value,
         decoration: InputDecoration(
           filled: true,
           fillColor: isDark ? AppColors.darkCard : Colors.white,

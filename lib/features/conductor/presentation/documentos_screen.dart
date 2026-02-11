@@ -45,7 +45,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('⚠️ Error cargando documentos: $e');
+      print(' Error cargando documentos: $e');
       setState(() => _isLoading = false);
 
       if (mounted) {

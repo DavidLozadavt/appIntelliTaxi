@@ -651,7 +651,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ],
       ),
       child: DropdownButtonFormField<int>(
-        value: value,
+        initialValue: value,
         decoration: InputDecoration(
           filled: true,
           fillColor: isDark ? AppColors.darkCard : Colors.white,
