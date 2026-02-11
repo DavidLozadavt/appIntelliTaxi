@@ -4,7 +4,7 @@ import 'package:intellitaxi/features/onboarding/presentation/onboarding_screen.d
 import 'package:intellitaxi/features/auth/presentation/splash_screen.dart';
 import 'package:intellitaxi/features/rides/services/servicio_inicializador_manager.dart';
 import 'package:intellitaxi/features/rides/presentation/active_service_screen.dart';
-import 'package:intellitaxi/features/rides/presentation/conductor_servicio_activo_screen.dart';
+import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 

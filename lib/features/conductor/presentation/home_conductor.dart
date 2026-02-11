@@ -18,7 +18,7 @@ import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.
 import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
-import 'package:intellitaxi/features/rides/presentation/conductor_servicio_activo_screen.dart';
+import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 
 class HomeConductor extends StatefulWidget {

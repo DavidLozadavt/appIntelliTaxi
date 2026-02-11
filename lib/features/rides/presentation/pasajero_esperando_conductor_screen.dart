@@ -7,7 +7,6 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
-import 'package:intellitaxi/shared/widgets/standard_button.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:provider/provider.dart';
@@ -46,6 +45,11 @@ class _PasajeroEsperandoConductorScreenState
   static const int _maxWaitingSeconds = 120; // 2 minutos
   int _elapsedSeconds = 0;
   Timer? _countdownTimer;
+
+  // 📏 Control de altura del BottomSheet
+  double _sheetHeight = 0.45; // Altura inicial (45% de la pantalla)
+  final double _minHeight = 0.25; // Altura mínima
+  final double _maxHeight = 0.70; // Altura máxima
 
   @override
   void initState() {
@@ -553,7 +557,7 @@ class _PasajeroEsperandoConductorScreenState
 
                 // Guardar BuildContext del State antes de operaciones async
                 final scaffoldContext = this.context;
-                
+
                 // Cerrar diálogo de calificación
                 Navigator.of(context).pop();
 
@@ -955,10 +959,50 @@ class _PasajeroEsperandoConductorScreenState
     );
   }
 
+  /// 🚫 Muestra confirmación para cancelar servicio activo
+  Future<void> _confirmarCancelarServicioActivo() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Cancelar servicio?'),
+        content: const Text(
+          'Estás a punto de cancelar tu servicio activo. '
+          'El conductor ya está en camino. ¿Estás seguro?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Sí, cancelar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true) {
+      await _cancelarServicio(context);
+    }
+  }
+
   /// 🚫 Cancela el servicio y regresa a la pantalla anterior
   Future<void> _cancelarServicio(BuildContext dialogContext) async {
     try {
       final dio = DioClient.getInstance();
+
+      // Determinar el motivo según el estado
+      String motivo;
+      if (_estadoServicio == 'buscando') {
+        motivo = 'Cancelado por el pasajero - No se encontró conductor';
+      } else {
+        motivo = 'Cancelado por el pasajero';
+      }
 
       // Mostrar loading
       Navigator.pop(dialogContext);
@@ -985,7 +1029,7 @@ class _PasajeroEsperandoConductorScreenState
       // Llamar al backend para cancelar
       await dio.post(
         '/servicios/taxi/${widget.servicioId}/cancelar',
-        data: {'motivo': 'No se encontraron conductores disponibles'},
+        data: {'motivo': motivo},
       );
 
       if (!mounted) return;
@@ -999,7 +1043,7 @@ class _PasajeroEsperandoConductorScreenState
       // Mostrar mensaje de confirmación
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('❌ Solicitud cancelada'),
+          content: Text('❌ Servicio cancelado'),
           backgroundColor: Colors.grey,
           duration: Duration(seconds: 3),
         ),
@@ -1039,7 +1083,7 @@ class _PasajeroEsperandoConductorScreenState
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Servicio Activo'),
+          title: const Text('Servicio Activo', style: TextStyle(fontWeight: FontWeight.bold),),
           automaticallyImplyLeading: false,
         ),
         body: Stack(
@@ -1057,13 +1101,45 @@ class _PasajeroEsperandoConductorScreenState
               },
             ),
 
-            // Panel de información
+            // Panel de información draggable
             if (_estadoServicio != 'buscando')
               Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: _buildPanelInfo(),
+                child: GestureDetector(
+                  onVerticalDragUpdate: (details) {
+                    setState(() {
+                      // Calcular nueva altura basada en el drag
+                      final screenHeight = MediaQuery.of(context).size.height;
+                      final delta = -details.primaryDelta! / screenHeight;
+                      _sheetHeight = (_sheetHeight + delta).clamp(
+                        _minHeight,
+                        _maxHeight,
+                      );
+                    });
+                  },
+                  onVerticalDragEnd: (details) {
+                    // Si se desliza rápido, animar a posición cercana
+                    final velocity = details.primaryVelocity ?? 0;
+                    if (velocity.abs() > 500) {
+                      setState(() {
+                        if (velocity > 0) {
+                          // Deslizar hacia abajo
+                          _sheetHeight = _minHeight;
+                        } else {
+                          // Deslizar hacia arriba
+                          _sheetHeight = _maxHeight;
+                        }
+                      });
+                    }
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    height: MediaQuery.of(context).size.height * _sheetHeight,
+                    child: _buildPanelInfo(),
+                  ),
+                ),
               ),
 
             // Loading mientras busca conductor
@@ -1132,9 +1208,9 @@ class _PasajeroEsperandoConductorScreenState
           const SizedBox(height: 16),
           TextButton.icon(
             onPressed: () => _cancelarServicio(context),
-            icon: const Icon(Icons.close, size: 18),
+            icon: const Icon(Iconsax.close_circle_copy, size: 18),
             label: const Text('Cancelar búsqueda'),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
           ),
         ],
       ),
@@ -1144,33 +1220,36 @@ class _PasajeroEsperandoConductorScreenState
   Widget _buildPanelInfo() {
     final estadosInfo = {
       'aceptado': {
-        'texto': '🚗 Conductor en camino a recogerte',
+        'texto': '🚗 Conductor en camino',
         'color': AppColors.green,
-        'icono': Icons.directions_car,
+        'icono': Iconsax.car_copy,
       },
       'en_camino': {
-        'texto': '🚗 Conductor en camino a recogerte',
+        'texto': '🚗 Conductor en camino',
         'color': AppColors.green,
-        'icono': Icons.directions_car,
+        'icono': Iconsax.car_copy,
       },
       'llegue': {
-        'texto': '📍 Conductor ha llegado - ¡Sal a encontrarlo!',
+        'texto': '📍 Conductor ha llegado',
         'color': AppColors.accent,
-        'icono': Icons.location_on,
+        'icono': Iconsax.location_copy,
       },
       'en_curso': {
-        'texto': '🏁 Viaje en curso - Dirígete al destino',
+        'texto': '🏁 Viaje en curso',
         'color': AppColors.green,
-        'icono': Icons.navigation,
+        'icono': Iconsax.routing_2_copy,
       },
     };
 
     final info =
         estadosInfo[_estadoServicio] ??
-        {'texto': 'Servicio activo', 'color': Colors.grey, 'icono': Icons.info};
+        {
+          'texto': 'Servicio activo',
+          'color': AppColors.grey,
+          'icono': Iconsax.info_circle_copy,
+        };
 
     return Container(
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -1185,176 +1264,211 @@ class _PasajeroEsperandoConductorScreenState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle decorativo
-          Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-
-          // Indicador de estado animado
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: info['color'] as Color,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: (info['color'] as Color).withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+          // Handle draggable más visible
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                // Toggle entre mínimo y máximo
+                _sheetHeight = _sheetHeight < 0.4 ? 0.45 : _minHeight;
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Container(
+                width: 50,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(3),
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(info['icono'] as IconData, color: Colors.white, size: 20),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Text(
-                    info['texto'] as String,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 15),
-
-          // Info del conductor
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.3),
-                width: 1,
               ),
             ),
-            child: Row(
+          ),
+
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Indicador de estado compacto
+                  _buildEstadoRow(info),
+                  const SizedBox(height: 12),
+
+                  // Info del conductor y vehículo
+                  _buildConductorInfo(),
+                  const SizedBox(height: 12),
+
+                  // Botón de cancelar
+                  _buildCancelarButton(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEstadoRow(Map<String, dynamic> info) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (info['color'] as Color).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                info['icono'] as IconData,
+                color: info['color'] as Color,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              info['texto'] as String,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: info['color'] as Color,
+              ),
+            ),
+          ],
+        ),
+        // Botón llamar
+        IconButton(
+          icon: Icon(Iconsax.call, color: AppColors.green, size: 26),
+          onPressed: _llamarConductor,
+          tooltip: 'Llamar conductor',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConductorInfo() {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.2), width: 1),
+      ),
+      child: Row(
+        children: [
+          // Avatar más pequeño
+          _conductor?['conductor_foto'] != null &&
+                  _conductor!['conductor_foto'].toString().isNotEmpty
+              ? CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundImage: NetworkImage(_conductor!['conductor_foto']),
+                  onBackgroundImageError: (exception, stackTrace) {
+                    print('⚠️ Error cargando foto del conductor: $exception');
+                  },
+                )
+              : CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppColors.primary,
+                  child: const Icon(
+                    Iconsax.user_copy,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Avatar con foto o icono por defecto
-                _conductor?['conductor_foto'] != null &&
-                        _conductor!['conductor_foto'].toString().isNotEmpty
-                    ? CircleAvatar(
-                        radius: 30,
-                        backgroundColor: AppColors.primary.withOpacity(0.1),
-                        backgroundImage: NetworkImage(
-                          _conductor!['conductor_foto'],
-                        ),
-                        onBackgroundImageError: (exception, stackTrace) {
-                          print(
-                            '⚠️ Error cargando foto del conductor: $exception',
-                          );
-                        },
-                      )
-                    : CircleAvatar(
-                        radius: 30,
-                        backgroundColor: AppColors.primary,
-                        child: const Icon(
-                          Icons.person,
-                          color: Colors.white,
-                          size: 35,
-                        ),
-                      ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
                         _conductor?['conductor_nombre'] ?? 'Conductor',
                         style: const TextStyle(
-                          fontSize: 18,
+                          fontSize: 15,
                           fontWeight: FontWeight.bold,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 18),
-                          const SizedBox(width: 5),
-                          Text(
-                            '${_conductor?['conductor_calificacion'] ?? 5.0}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Iconsax.call, color: AppColors.green, size: 30),
-                  onPressed: _llamarConductor,
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 15),
-
-          // Info del vehículo
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.accent.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: AppColors.accent.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                Column(
-                  children: [
-                    Text(
-                      '${_conductor?['vehiculo_marca'] ?? ''} ${_conductor?['vehiculo_modelo'] ?? ''}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Iconsax.star_1_copy,
+                      color: AppColors.secondary,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 2),
                     Text(
-                      _conductor?['vehiculo_color'] ?? '',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      '${_conductor?['conductor_calificacion'] ?? 5.0}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 15,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Text(
-                    _conductor?['vehiculo_placa'] ?? '---',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      letterSpacing: 2,
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    Text(
+                      '${_conductor?['vehiculo_marca'] ?? ''} ${_conductor?['vehiculo_modelo'] ?? ''}'
+                          .trim(),
+                      style: TextStyle(fontSize: 12, color: AppColors.grey),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        _conductor?['vehiculo_placa'] ?? '---',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCancelarButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _confirmarCancelarServicioActivo(),
+        icon: const Icon(Iconsax.close_circle_copy, size: 18),
+        label: const Text(
+          'Cancelar servicio',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.error,
+          side: const BorderSide(color: AppColors.error, width: 1.5),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
       ),
     );
   }

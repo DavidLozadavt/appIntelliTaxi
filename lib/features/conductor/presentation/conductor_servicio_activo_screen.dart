@@ -1,23 +1,22 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
+import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
-import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:intellitaxi/shared/widgets/standard_button.dart';
 
-/// Pantalla del conductor durante un servicio activo
 class ConductorServicioActivoScreen extends StatefulWidget {
-  final Map<String, dynamic> servicioData;
+  final Map<String, dynamic> servicio;
   final int conductorId;
 
   const ConductorServicioActivoScreen({
     super.key,
-    required this.servicioData,
+    required this.servicio,
     required this.conductorId,
   });
 
@@ -30,188 +29,349 @@ class _ConductorServicioActivoScreenState
     extends State<ConductorServicioActivoScreen> {
   GoogleMapController? _mapController;
   final ServicioTrackingService _trackingService = ServicioTrackingService();
+  final RoutesService _routesService = RoutesService();
   final ServicioPersistenciaService _persistencia =
       ServicioPersistenciaService();
   final ServicioNotificacionForeground _notificacionService =
       ServicioNotificacionForeground();
 
-  late ServicioActivo servicio;
-  String? pasajeroNombre;
-  String? pasajeroTelefono;
-  String? pasajeroEmail;
-  String? pasajeroFoto;
-
   String _estadoActual = 'aceptado';
-  Position? _miUbicacion;
+  LatLng? _miUbicacion;
   LatLng? _destinoActual;
-  final Set<Marker> _markers = {};
-  Timer? _ubicacionTimer;
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
+  bool _isLoading = false;
+  BitmapDescriptor? _carIcon;
 
   @override
   void initState() {
     super.initState();
-    _parsearDatos();
     _inicializar();
   }
 
-  void _parsearDatos() {
-    // Parsear el servicio desde servicioData
-    final servicioMap =
-        widget.servicioData['servicio'] as Map<String, dynamic>? ??
-        widget.servicioData;
-    servicio = ServicioActivo.fromJson(servicioMap);
+  @override
+  void dispose() {
+    _trackingService.detenerSeguimiento();
+    super.dispose();
+  }
 
-    // Extraer datos del pasajero
-    final pasajeroData =
-        widget.servicioData['pasajero'] as Map<String, dynamic>?;
-    if (pasajeroData != null) {
-      pasajeroNombre = pasajeroData['nombre'];
-      pasajeroTelefono = pasajeroData['celular'];
-      pasajeroEmail = pasajeroData['email'];
-      pasajeroFoto = pasajeroData['foto'];
-    } else {
-      // Fallback: extraer del usuario_pasajero
-      final usuarioPasajero =
-          widget.servicioData['usuario_pasajero'] as Map<String, dynamic>?;
-      if (usuarioPasajero != null) {
-        final persona = usuarioPasajero['persona'] as Map<String, dynamic>?;
-        if (persona != null) {
-          pasajeroNombre =
-              '${persona['nombre1'] ?? ''} ${persona['apellido1'] ?? ''}'
-                  .trim();
-          pasajeroTelefono = persona['celular'];
-          pasajeroEmail = persona['email'];
-          pasajeroFoto = persona['rutaFotoUrl'];
+  double _parseDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  // Método helper para obtener el nombre del pasajero
+  String _getNombrePasajero() {
+    // Intentar obtener de diferentes campos posibles
+    if (widget.servicio['pasajero_nombre'] != null) {
+      return widget.servicio['pasajero_nombre'];
+    }
+    
+    // Buscar en usuario_pasajero.persona
+    if (widget.servicio['usuario_pasajero'] != null) {
+      final usuarioPasajero = widget.servicio['usuario_pasajero'];
+      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
+        final persona = usuarioPasajero['persona'];
+        if (persona is Map) {
+          final nombre1 = persona['nombre1'] ?? '';
+          final nombre2 = persona['nombre2'] ?? '';
+          final apellido1 = persona['apellido1'] ?? '';
+          final apellido2 = persona['apellido2'] ?? '';
+          
+          final nombreCompleto = '$nombre1 ${nombre2.isEmpty ? '' : nombre2} $apellido1 ${apellido2.isEmpty ? '' : apellido2}'.trim();
+          if (nombreCompleto.isNotEmpty) {
+            return nombreCompleto;
+          }
         }
       }
     }
+    
+    // Si hay un objeto pasajero anidado
+    if (widget.servicio['pasajero'] != null) {
+      final pasajero = widget.servicio['pasajero'];
+      if (pasajero is Map) {
+        return pasajero['nombre'] ?? pasajero['name'] ?? 'Pasajero';
+      }
+    }
+    
+    return 'Pasajero';
+  }
 
-    // Si no se encontró nombre, usar "Pasajero"
-    pasajeroNombre ??= 'Pasajero';
+  // Método helper para obtener el teléfono del pasajero
+  String? _getTelefonoPasajero() {
+    // Buscar en usuario_pasajero.persona
+    if (widget.servicio['usuario_pasajero'] != null) {
+      final usuarioPasajero = widget.servicio['usuario_pasajero'];
+      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
+        final persona = usuarioPasajero['persona'];
+        if (persona is Map) {
+          final celular = persona['celular'];
+          if (celular != null && celular.toString().isNotEmpty) {
+            return celular.toString();
+          }
+        }
+      }
+    }
+    
+    // Intentar obtener de diferentes campos posibles
+    if (widget.servicio['pasajero_telefono'] != null) {
+      return widget.servicio['pasajero_telefono'];
+    }
+    
+    // Si hay un objeto pasajero anidado
+    if (widget.servicio['pasajero'] != null) {
+      final pasajero = widget.servicio['pasajero'];
+      if (pasajero is Map) {
+        return pasajero['telefono'] ?? pasajero['phone'] ?? pasajero['celular'];
+      }
+    }
+    
+    return null;
+  }
 
-    print('👥 Datos del pasajero cargados:');
-    print('   Nombre: $pasajeroNombre');
-    print('   Teléfono: $pasajeroTelefono');
-    print('   Email: $pasajeroEmail');
+  // Método helper para obtener el precio
+  String _getPrecio() {
+    final precioFinal = widget.servicio['precio_final'];
+    final precioEstimado = widget.servicio['precio_estimado'];
+    
+    if (precioFinal != null) {
+      return precioFinal.toString().replaceAll('.00', '');
+    }
+    if (precioEstimado != null) {
+      return precioEstimado.toString().replaceAll('.00', '');
+    }
+    
+    return '0';
+  }
+
+  // Método helper para obtener la foto del pasajero
+  String? _getFotoPasajero() {
+    // Buscar en usuario_pasajero.persona.rutaFotoUrl
+    if (widget.servicio['usuario_pasajero'] != null) {
+      final usuarioPasajero = widget.servicio['usuario_pasajero'];
+      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
+        final persona = usuarioPasajero['persona'];
+        if (persona is Map) {
+          final fotoUrl = persona['rutaFotoUrl'];
+          if (fotoUrl != null && fotoUrl.toString().isNotEmpty) {
+            return fotoUrl.toString();
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  Future<void> _cargarIconoCarro() async {
+    try {
+      _carIcon = await BitmapDescriptor.asset(
+        const ImageConfiguration(size: Size(48, 48)),
+        'assets/images/marker.png',
+      );
+      print('✅ CONDUCTOR: Ícono del carro cargado');
+    } catch (e) {
+      print('⚠️ Error cargando ícono del carro: $e');
+    }
   }
 
   Future<void> _inicializar() async {
-    // Inicializar notificaciones
+    // Debug: Ver estructura completa del servicio
+    print('🔍 DATOS DEL SERVICIO RECIBIDOS:');
+    print('   ID: ${widget.servicio['id']}');
+    print('   Pasajero nombre directo: ${widget.servicio['pasajero_nombre']}');
+    print('   Pasajero objeto: ${widget.servicio['pasajero']}');
+    print('   Precio final: ${widget.servicio['precio_final']}');
+    print('   Precio estimado: ${widget.servicio['precio_estimado']}');
+    print('   Origen: ${widget.servicio['origen_address']}');
+    print('   Destino: ${widget.servicio['destino_address']}');
+    print('');
+    
+    // Cargar icono del carro
+    await _cargarIconoCarro();
+
+    // Inicializar servicio de notificaciones
     await _notificacionService.inicializar();
 
-    // Guardar servicio activo
-    await _persistencia.guardarServicioActivo(
-      servicioId: servicio.id,
-      tipo: 'conductor',
-      datosServicio: servicio.toJson(),
-    );
+    // Guardar servicio activo localmente
+    await _guardarServicioActivo();
 
     // Mostrar notificación persistente
-    await _notificacionService.mostrarNotificacionConductor(
-      servicioId: servicio.id,
-      estado: servicio.estado.estado,
-      origen: servicio.origenAddress,
-      destino: servicio.destinoAddress,
-    );
+    await _mostrarNotificacionPersistente();
 
-    // Iniciar seguimiento GPS
+    // Iniciar seguimiento
     await _trackingService.iniciarSeguimiento(
-      servicioId: servicio.id,
+      servicioId: widget.servicio['id'],
       conductorId: widget.conductorId,
     );
 
     // El destino inicial es el punto de recogida
+    // Convertir valores que pueden venir como string
+    final origenLat = _parseDouble(widget.servicio['origen_lat']);
+    final origenLng = _parseDouble(widget.servicio['origen_lng']);
+
     setState(() {
-      _destinoActual = LatLng(servicio.origenLat, servicio.origenLng);
-      _estadoActual = servicio.estado.estado;
+      _destinoActual = LatLng(origenLat, origenLng);
     });
 
     // Obtener ubicación actual
     await _obtenerUbicacionActual();
 
-    // Actualizar ubicación cada 3 segundos para el mapa
-    _ubicacionTimer = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) => _obtenerUbicacionActual(),
-    );
+    // Actualizar marcadores
+    _actualizarMarcadores();
+  }
 
-    _crearMarcadores();
+  Future<void> _guardarServicioActivo() async {
+    try {
+      print('📋 Intentando guardar servicio activo...');
+      print('📦 Datos del servicio: ${widget.servicio}');
+      
+      final servicioId = widget.servicio['id'];
+      if (servicioId == null) {
+        print('❌ Error: servicioId es null');
+        print('📦 Keys disponibles: ${widget.servicio.keys}');
+        return;
+      }
+      
+      await _persistencia.guardarServicioActivo(
+        servicioId: servicioId,
+        tipo: 'conductor',
+        datosServicio: widget.servicio,
+      );
+      print('✅ Servicio activo guardado: $servicioId');
+    } catch (e, stackTrace) {
+      print('❌ Error guardando servicio activo: $e');
+      print('Stack trace: $stackTrace');
+    }
+  }
+
+  Future<void> _mostrarNotificacionPersistente() async {
+    await _notificacionService.mostrarNotificacionConductor(
+      servicioId: widget.servicio['id'],
+      estado: _estadoActual,
+      origen: widget.servicio['origen_address'] ?? 'Origen',
+      destino: widget.servicio['destino_address'] ?? 'Destino',
+    );
   }
 
   Future<void> _obtenerUbicacionActual() async {
     try {
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      final position = await Geolocator.getCurrentPosition();
+      setState(() {
+        _miUbicacion = LatLng(position.latitude, position.longitude);
+      });
 
-      if (mounted) {
-        setState(() {
-          _miUbicacion = position;
-        });
-        _actualizarCamara();
-      }
+      // Actualizar marcadores y ruta
+      _actualizarMarcadores();
+      _dibujarRuta();
+
+      // Centrar cámara
+      _mapController?.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
     } catch (e) {
       print('Error obteniendo ubicación: $e');
     }
   }
 
-  void _crearMarcadores() {
+  void _actualizarMarcadores() {
     setState(() {
-      _markers.clear();
+      _markers = {};
 
-      // Marcador del destino actual (origen o destino final)
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('destino_actual'),
-          position: _destinoActual!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            _estadoActual == 'en_curso'
-                ? BitmapDescriptor.hueGreen
-                : BitmapDescriptor.hueRed,
+      // Marcador de destino actual
+      if (_destinoActual != null) {
+        _markers.add(
+          Marker(
+            markerId: const MarkerId('destino'),
+            position: _destinoActual!,
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              _estadoActual == 'en_curso'
+                  ? BitmapDescriptor.hueGreen
+                  : BitmapDescriptor.hueRed,
+            ),
+            infoWindow: InfoWindow(
+              title: _estadoActual == 'en_curso'
+                  ? 'Destino Final'
+                  : 'Punto de Recogida',
+              snippet: _estadoActual == 'en_curso'
+                  ? widget.servicio['destino_address']
+                  : widget.servicio['origen_address'],
+            ),
           ),
-          infoWindow: InfoWindow(
-            title: _estadoActual == 'en_curso'
-                ? 'Destino Final'
-                : 'Punto de Recogida',
-            snippet: _estadoActual == 'en_curso'
-                ? servicio.destinoAddress
-                : servicio.origenAddress,
+        );
+      }
+
+      // Mi ubicación (conductor) con icono personalizado
+      if (_miUbicacion != null) {
+        _markers.add(
+          Marker(
+            markerId: const MarkerId('mi_ubicacion'),
+            position: _miUbicacion!,
+            icon:
+                _carIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: const InfoWindow(title: 'Mi ubicación'),
+            anchor: const Offset(0.5, 0.5),
           ),
-        ),
-      );
+        );
+      }
     });
   }
 
-  void _actualizarCamara() {
-    if (_mapController == null || _miUbicacion == null) return;
+  Future<void> _dibujarRuta() async {
+    if (_miUbicacion == null || _destinoActual == null) return;
 
-    _mapController!.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: LatLng(_miUbicacion!.latitude, _miUbicacion!.longitude),
-          zoom: 16,
-          bearing: _miUbicacion!.heading,
-        ),
-      ),
-    );
+    try {
+      // Obtener ruta real de Google Maps
+      final routeInfo = await _routesService.getRoute(
+        origin: _miUbicacion!,
+        destination: _destinoActual!,
+      );
+
+      if (routeInfo != null) {
+        setState(() {
+          _polylines.clear();
+
+          // Línea con la ruta real desde mi ubicación hasta el destino actual
+          _polylines.add(
+            Polyline(
+              polylineId: const PolylineId('ruta_actual'),
+              points: routeInfo.polylinePoints,
+              color: _estadoActual == 'en_curso' ? Colors.green : Colors.blue,
+              width: 5,
+            ),
+          );
+        });
+        print('✅ Ruta dibujada: ${routeInfo.distance} - ${routeInfo.duration}');
+      }
+    } catch (e) {
+      print('❌ Error dibujando ruta: $e');
+      // Fallback: línea recta
+      setState(() {
+        _polylines.clear();
+        _polylines.add(
+          Polyline(
+            polylineId: const PolylineId('ruta_actual'),
+            points: [_miUbicacion!, _destinoActual!],
+            color: _estadoActual == 'en_curso' ? Colors.green : Colors.blue,
+            width: 5,
+            patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
-    // Mostrar loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
+    setState(() => _isLoading = true);
 
-    final success = await _trackingService.cambiarEstado(
-      servicioId: servicio.id,
+    final success = await ServicioTrackingService.cambiarEstadoStatic(
+      servicioId: widget.servicio['id'],
       conductorId: widget.conductorId,
       estado: nuevoEstado,
     );
 
-    // Cerrar loading
-    if (mounted) Navigator.pop(context);
+    setState(() => _isLoading = false);
 
     if (success) {
       setState(() {
@@ -219,59 +379,54 @@ class _ConductorServicioActivoScreenState
 
         // Si llegó al punto de recogida, cambiar destino al final
         if (nuevoEstado == 'llegue') {
-          _destinoActual = LatLng(servicio.destinoLat, servicio.destinoLng);
-          _crearMarcadores();
+          final destinoLat = _parseDouble(widget.servicio['destino_lat']);
+          final destinoLng = _parseDouble(widget.servicio['destino_lng']);
+          _destinoActual = LatLng(destinoLat, destinoLng);
+        } else if (nuevoEstado == 'en_curso') {
+          final destinoLat = _parseDouble(widget.servicio['destino_lat']);
+          final destinoLng = _parseDouble(widget.servicio['destino_lng']);
+          _destinoActual = LatLng(destinoLat, destinoLng);
         }
       });
 
-      // Actualizar notificación
+      // Actualizar notificación persistente
       await _notificacionService.actualizarNotificacion(
-        servicioId: servicio.id,
+        servicioId: widget.servicio['id'],
         tipo: 'conductor',
         estado: nuevoEstado,
-        origen: servicio.origenAddress,
-        destino: servicio.destinoAddress,
+        origen: widget.servicio['origen_address'] ?? 'Origen',
+        destino: widget.servicio['destino_address'] ?? 'Destino',
       );
 
-      // Mostrar snackbar de confirmación
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_getMensajeEstado(nuevoEstado)),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      _mostrarMensaje(_getMensajeEstado(nuevoEstado));
+      _actualizarMarcadores();
+      _dibujarRuta();
 
-      // Si finalizó, detener seguimiento y mostrar calificación
+      // Si finalizó el viaje, limpiar y salir
       if (nuevoEstado == 'finalizado') {
-        _trackingService.detenerSeguimiento();
-
-        // Cancelar notificación
-        await _notificacionService.cancelarNotificacion(
-          servicio.id,
-          tipo: 'conductor',
-        );
-
-        // Limpiar persistencia
-        await _persistencia.limpiarServicioActivo();
-
-        // Mostrar diálogo de calificación
-        if (mounted) {
-          await _mostrarDialogoCalificacion();
-          Navigator.pop(context, true); // true indica que finalizó
-        }
+        await Future.delayed(const Duration(seconds: 2));
+        await _finalizarServicio();
       }
     } else {
-      // Error
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al cambiar el estado'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _mostrarError('No se pudo actualizar el estado');
+    }
+  }
+
+  Future<void> _finalizarServicio() async {
+    // Detener seguimiento
+    _trackingService.detenerSeguimiento();
+
+    // Cancelar notificación
+    await _notificacionService.cancelarNotificacion(
+      widget.servicio['id'],
+      tipo: 'conductor',
+    );
+
+    // Limpiar persistencia
+    await _persistencia.limpiarServicioActivo();
+
+    if (mounted) {
+      Navigator.of(context).pop();
     }
   }
 
@@ -280,94 +435,74 @@ class _ConductorServicioActivoScreenState
       case 'en_camino':
         return 'En camino al punto de recogida';
       case 'llegue':
-        return 'Has llegado al punto de recogida';
+        return '¡Has llegado! Esperando al pasajero';
       case 'en_curso':
         return 'Viaje iniciado';
       case 'finalizado':
-        return 'Viaje finalizado exitosamente';
+        return '¡Viaje finalizado exitosamente!';
       default:
         return 'Estado actualizado';
     }
   }
 
-  /// Mostrar diálogo de calificación
-  Future<void> _mostrarDialogoCalificacion() async {
-    // Obtener ID del pasajero (usuario que solicita el servicio)
-    final idUsuarioPasajero = servicio.idActivationCompanyUser;
-
-    if (idUsuarioPasajero == 0) {
-      print('⚠️ No se puede calificar: ID del pasajero no válido');
-      return;
-    }
-
-    // Mostrar diálogo de calificación
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => CalificacionDialog(
-        idServicio: servicio.id,
-        idUsuarioCalifica: widget.conductorId,
-        idUsuarioCalificado: idUsuarioPasajero,
-        tipoCalificacion: 'PASAJERO',
-        nombreCalificado: pasajeroNombre ?? 'Pasajero',
-        fotoCalificado: pasajeroFoto,
+  void _mostrarMensaje(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensaje),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
       ),
     );
   }
 
+  void _mostrarError(String error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _llamarPasajero() async {
+    final telefono = _getTelefonoPasajero();
+    if (telefono != null) {
+      // TODO: Implementar llamada telefónica
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Llamar a: $telefono'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay teléfono disponible'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        // Confirmar antes de salir
-        final confirmar = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('¿Salir del servicio?'),
-            content: const Text(
-              'No puedes salir mientras hay un servicio activo. '
-              'Debes finalizar el viaje primero.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Entendido'),
-              ),
-            ],
-          ),
-        );
-        return confirmar ?? false;
-      },
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Servicio en Curso'),
           automaticallyImplyLeading: false,
-          backgroundColor: AppColors.primary,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.phone),
-              onPressed: () {
-                // TODO: Llamar al pasajero
-              },
-            ),
-          ],
         ),
         body: Stack(
           children: [
             // Mapa
             if (_miUbicacion != null && _destinoActual != null)
-              GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: LatLng(
-                    _miUbicacion!.latitude,
-                    _miUbicacion!.longitude,
-                  ),
-                  zoom: 15,
-                ),
-                myLocationEnabled: true,
-                myLocationButtonEnabled: true,
-                compassEnabled: true,
+              StandardMap(
+                initialPosition: _miUbicacion!,
+                zoom: 15,
                 markers: _markers,
+                polylines: _polylines,
                 onMapCreated: (controller) {
                   _mapController = controller;
                 },
@@ -376,67 +511,90 @@ class _ConductorServicioActivoScreenState
               const Center(child: CircularProgressIndicator()),
 
             // Panel de información y botones
-            Positioned(left: 0, right: 0, bottom: 0, child: _buildPanelInfo()),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 15,
+                      offset: const Offset(0, -3),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Handle decorativo
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+
+                    // Indicador de estado
+                    _buildEstadoIndicator(),
+
+                    const SizedBox(height: 15),
+
+                    // Información del pasajero
+                    _buildInfoPasajero(),
+
+                    const SizedBox(height: 15),
+
+                    // Dirección actual
+                    _buildDireccionActual(),
+
+                    const SizedBox(height: 20),
+
+                    // Botón de acción según estado
+                    _buildBotonAccion(),
+                  ],
+                ),
+              ),
+            ),
+
+            // Loading overlay
+            if (_isLoading)
+              Container(
+                color: Colors.black54,
+                child: const Center(child: CircularProgressIndicator()),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPanelInfo() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade900 : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 10,
-            offset: Offset(0, -2),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Indicador de estado
-          _buildEstadoIndicator(),
-
-          const SizedBox(height: 15),
-
-          // Información del servicio
-          _buildInfoServicio(),
-
-          const SizedBox(height: 15),
-
-          // Dirección actual
-          _buildDireccionActual(),
-
-          const SizedBox(height: 20),
-
-          // Botón de acción según estado
-          _buildBotonAccion(),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEstadoIndicator() {
     final estados = {
-      'aceptado': {'texto': 'YENDO AL PUNTO DE RECOGIDA', 'color': Colors.blue},
+      'aceptado': {
+        'texto': 'YENDO AL PUNTO DE RECOGIDA',
+        'color': AppColors.green,
+      },
       'en_camino': {
         'texto': 'YENDO AL PUNTO DE RECOGIDA',
-        'color': Colors.blue,
+        'color': AppColors.green,
       },
-      'llegue': {'texto': 'ESPERANDO PASAJERO', 'color': Colors.orange},
-      'en_curso': {'texto': 'VIAJE EN CURSO', 'color': Colors.green},
+      'llegue': {'texto': 'ESPERANDO PASAJERO', 'color': AppColors.accent},
+      'en_curso': {'texto': 'VIAJE EN CURSO', 'color': AppColors.green},
     };
 
-    final info = estados[_estadoActual] ?? {'texto': '', 'color': Colors.grey};
+    final info =
+        estados[_estadoActual] ??
+        {'texto': 'SERVICIO ACTIVO', 'color': Colors.grey};
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -447,7 +605,7 @@ class _ConductorServicioActivoScreenState
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.info_outline, color: Colors.white, size: 18),
+          const Icon(Icons.location_on, color: Colors.white, size: 18),
           const SizedBox(width: 8),
           Text(
             info['texto'] as String,
@@ -462,96 +620,93 @@ class _ConductorServicioActivoScreenState
     );
   }
 
-  Widget _buildInfoServicio() {
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 25,
-          backgroundColor: AppColors.accent,
-          backgroundImage: pasajeroFoto != null && pasajeroFoto!.isNotEmpty
-              ? NetworkImage(pasajeroFoto!)
-              : null,
-          child: pasajeroFoto == null || pasajeroFoto!.isEmpty
-              ? const Icon(Icons.person, color: Colors.white, size: 30)
-              : null,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                pasajeroNombre ?? 'Pasajero',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+  Widget _buildInfoPasajero() {
+    final fotoUrl = _getFotoPasajero();
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1),
+      ),
+      child: Row(
+        children: [
+          // Avatar con foto o icono por defecto
+          fotoUrl != null && fotoUrl.isNotEmpty
+              ? CircleAvatar(
+                  radius: 28,
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundImage: NetworkImage(fotoUrl),
+                  onBackgroundImageError: (exception, stackTrace) {
+                    print('⚠️ Error cargando foto del pasajero: $exception');
+                  },
+                  child: null,
+                )
+              : CircleAvatar(
+                  radius: 28,
+                  backgroundColor: AppColors.primary,
+                  child: const Icon(Icons.person, color: Colors.white, size: 32),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (pasajeroTelefono != null) ...[
-                const SizedBox(height: 2),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  pasajeroTelefono!,
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                  _getNombrePasajero(),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+                const SizedBox(height: 4),
+                // Text(
+                //   '\$${_getPrecio()}',
+                //   style: const TextStyle(
+                //     fontSize: 15,
+                //     color: AppColors.green,
+                //     fontWeight: FontWeight.bold,
+                //   ),
+                // ),
               ],
-              // Nota: No se muestra precio porque funciona con taxímetro
-            ],
+            ),
           ),
-        ),
-        if (pasajeroTelefono != null)
           IconButton(
-            icon: const Icon(Icons.phone, color: Colors.green, size: 30),
-            onPressed: () async {
-              // Llamar al pasajero
-              final Uri telUri = Uri(scheme: 'tel', path: pasajeroTelefono);
-              if (await canLaunchUrl(telUri)) {
-                await launchUrl(telUri);
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('No se puede realizar la llamada'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-          )
-        else
-          const SizedBox(width: 48),
-      ],
+            icon: const Icon(Iconsax.call, color: AppColors.green, size: 28),
+            onPressed: _llamarPasajero,
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildDireccionActual() {
     final direccion = _estadoActual == 'en_curso'
-        ? servicio.destinoAddress
-        : servicio.origenAddress;
-
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+        ? widget.servicio['destino_address']
+        : widget.servicio['origen_address'];
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade800 : Colors.grey[100],
+        color: AppColors.accent.withOpacity(0.1),
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.accent.withOpacity(0.3), width: 1),
       ),
       child: Row(
         children: [
           Icon(
             _estadoActual == 'en_curso'
-                ? Icons.location_on
-                : Icons.person_pin_circle,
-            color: _estadoActual == 'en_curso' ? Colors.green : Colors.red,
+                ? Iconsax.location
+                : Iconsax.location_add,
+            color: _estadoActual == 'en_curso'
+                ? AppColors.green
+                : AppColors.accent,
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              direccion,
+              direccion ?? 'Sin dirección',
               style: const TextStyle(fontSize: 13),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -562,59 +717,39 @@ class _ConductorServicioActivoScreenState
     );
   }
 
-  @override
-  void dispose() {
-    _ubicacionTimer?.cancel();
-    _trackingService.detenerSeguimiento();
-    super.dispose();
-  }
-
   Widget _buildBotonAccion() {
     String texto;
     String proximoEstado;
-    Color color;
+    IconData icono;
 
     switch (_estadoActual) {
       case 'aceptado':
       case 'en_camino':
         texto = 'LLEGUÉ AL PUNTO DE RECOGIDA';
         proximoEstado = 'llegue';
-        color = Colors.blue;
+        icono = Iconsax.tick_circle;
         break;
       case 'llegue':
         texto = 'INICIAR VIAJE';
         proximoEstado = 'en_curso';
-        color = Colors.green;
+        icono = Iconsax.play_circle;
         break;
       case 'en_curso':
         texto = 'FINALIZAR VIAJE';
         proximoEstado = 'finalizado';
-        color = Colors.orange;
+        icono = Iconsax.flag;
         break;
       default:
         return const SizedBox();
     }
 
-    return SizedBox(
+    return StandardButton(
+      text: texto,
+      icon: icono,
+      onPressed: () => _cambiarEstado(proximoEstado),
+      isLoading: _isLoading,
       width: double.infinity,
-      child: ElevatedButton(
-        onPressed: () => _cambiarEstado(proximoEstado),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-        child: Text(
-          texto,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-      ),
+      height: 56,
     );
   }
 }

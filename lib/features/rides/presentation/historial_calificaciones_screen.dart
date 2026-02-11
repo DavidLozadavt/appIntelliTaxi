@@ -77,7 +77,21 @@ class _HistorialCalificacionesScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Calificaciones de ${widget.nombreUsuario}'),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Calificaciones', style: TextStyle(fontSize: 18)),
+            Text(
+              widget.nombreUsuario,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.normal,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
         centerTitle: true,
       ),
       body: _isLoading
