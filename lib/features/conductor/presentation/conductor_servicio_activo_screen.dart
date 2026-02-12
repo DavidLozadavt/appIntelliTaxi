@@ -271,6 +271,10 @@ class _ConductorServicioActivoScreenState
   Future<void> _obtenerUbicacionActual() async {
     try {
       final position = await Geolocator.getCurrentPosition();
+
+      // Verificar que el widget siga montado antes de llamar setState
+      if (!mounted) return;
+
       setState(() {
         _miUbicacion = LatLng(position.latitude, position.longitude);
       });
@@ -282,7 +286,7 @@ class _ConductorServicioActivoScreenState
       // Centrar cámara
       _mapController?.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
     } catch (e) {
-      print('Error obteniendo ubicación: $e');
+      print('❌ Error obteniendo ubicación: $e');
     }
   }
 
@@ -442,9 +446,12 @@ class _ConductorServicioActivoScreenState
       await _mostrarDialogoCalificacionPasajero();
     }
 
-    // Cerrar pantalla
+    // Navegar al home (reemplazar todas las rutas)
     if (mounted) {
-      Navigator.of(context).pop();
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+      );
     }
   }
 
@@ -1101,11 +1108,11 @@ class _ConductorServicioActivoScreenState
         throw Exception('ID de servicio no encontrado');
       }
 
+      // Verificar que el context siga montado
+      if (!mounted) return;
+
       // Llamar al servicio de cancelación a través del provider
-      final provider = Provider.of<ConductorHomeProvider>(
-        context,
-        listen: false,
-      );
+      final provider = context.read<ConductorHomeProvider>();
 
       final exitoso = await provider.cancelarServicio(
         servicioId: servicioId is int

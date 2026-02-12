@@ -79,13 +79,34 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// 🗺️ Crea los marcadores iniciales (origen y destino)
   void _crearMarcadores() {
+    print('🗺️ PROVIDER: Creando marcadores iniciales...');
+    print('   Origen lat: ${datosServicio['origen_lat']}');
+    print('   Origen lng: ${datosServicio['origen_lng']}');
+    print('   Destino lat: ${datosServicio['destino_lat']}');
+    print('   Destino lng: ${datosServicio['destino_lng']}');
+
+    final origenLat = _parseDouble(datosServicio['origen_lat']);
+    final origenLng = _parseDouble(datosServicio['origen_lng']);
+    final destinoLat = _parseDouble(datosServicio['destino_lat']);
+    final destinoLng = _parseDouble(datosServicio['destino_lng']);
+
+    // Validar que las coordenadas sean válidas
+    if (origenLat == 0.0 || origenLng == 0.0) {
+      print(
+        '⚠️ PROVIDER: Coordenadas de origen inválidas, usando valores por defecto',
+      );
+    }
+    if (destinoLat == 0.0 || destinoLng == 0.0) {
+      print('⚠️ PROVIDER: Coordenadas de destino inválidas');
+    }
+
     _markers = {
       // Marcador origen
       Marker(
         markerId: const MarkerId('origen'),
         position: LatLng(
-          _parseDouble(datosServicio['origen_lat']),
-          _parseDouble(datosServicio['origen_lng']),
+          origenLat != 0.0 ? origenLat : -12.0464,
+          origenLng != 0.0 ? origenLng : -77.0428,
         ),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
         infoWindow: InfoWindow(
@@ -94,19 +115,19 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         ),
       ),
       // Marcador destino
-      Marker(
-        markerId: const MarkerId('destino'),
-        position: LatLng(
-          _parseDouble(datosServicio['destino_lat']),
-          _parseDouble(datosServicio['destino_lng']),
+      if (destinoLat != 0.0 && destinoLng != 0.0)
+        Marker(
+          markerId: const MarkerId('destino'),
+          position: LatLng(destinoLat, destinoLng),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          infoWindow: InfoWindow(
+            title: 'Destino',
+            snippet: datosServicio['destino_address'],
+          ),
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        infoWindow: InfoWindow(
-          title: 'Destino',
-          snippet: datosServicio['destino_address'],
-        ),
-      ),
     };
+
+    print('✅ PROVIDER: Marcadores creados: ${_markers.length} marcadores');
     notifyListeners();
   }
 

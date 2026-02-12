@@ -38,12 +38,26 @@ class _PasajeroEsperandoConductorScreenState
     // La lógica ahora está en el provider
   }
 
-  void _mostrarDialogoFinalizado(Map<String, dynamic>? conductor) {
-    CalificacionConductorDialog.show(
+  Future<void> _mostrarDialogoFinalizado(Map<String, dynamic>? conductor) async {
+    final resultado = await CalificacionConductorDialog.show(
       context,
       servicioId: widget.servicioId,
       conductor: conductor,
     );
+
+    // Después de calificar, navegar al home
+    if (mounted && resultado == true) {
+      // Esperar un poco para que se procesen las actualizaciones
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (mounted) {
+        // Navegar al home (reemplazar todas las rutas)
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/home',
+          (route) => false,
+        );
+      }
+    }
   }
 
   Future<void> _llamarConductor(String? telefono) async {
@@ -289,10 +303,15 @@ class _PasajeroEsperandoConductorScreenState
               ),
               body: Stack(
                 children: [
+                  // Mapa de Google Maps
                   StandardMap(
                     initialPosition: LatLng(
-                      _parseDouble(widget.datosServicio['origen_lat']),
-                      _parseDouble(widget.datosServicio['origen_lng']),
+                      _parseDouble(widget.datosServicio['origen_lat']) != 0.0
+                          ? _parseDouble(widget.datosServicio['origen_lat'])
+                          : -12.0464, // Lima, Perú como fallback
+                      _parseDouble(widget.datosServicio['origen_lng']) != 0.0
+                          ? _parseDouble(widget.datosServicio['origen_lng'])
+                          : -77.0428,
                     ),
                     zoom: 14,
                     markers: provider.markers,

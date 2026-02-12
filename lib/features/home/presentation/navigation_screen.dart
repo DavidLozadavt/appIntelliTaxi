@@ -3,6 +3,7 @@ import 'package:intellitaxi/features/auth/data/tab_Item.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/features/home/presentation/home_screen.dart';
 import 'package:intellitaxi/features/Profile/presentation/profile_screen.dart';
+import 'package:intellitaxi/core/services/app_lifecycle_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
@@ -61,19 +62,22 @@ class _HomeScreenState extends State<NavigationScreen> {
       _selectedIndex = 0;
     }
 
-    return Scaffold(
-      body: visibleTabs[_selectedIndex].page,
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: AppColors.accent,
-        unselectedItemColor: Colors.grey,
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
-        selectedLabelStyle: const TextStyle(fontSize: 11),
-        unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: visibleTabs.map((tab) => tab.navItem).toList(),
+    // Envolver con AppLifecycleWrapper para gestionar servicios activos
+    return AppLifecycleWrapper(
+      child: Scaffold(
+        body: visibleTabs[_selectedIndex].page,
+        bottomNavigationBar: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          selectedItemColor: AppColors.accent,
+          unselectedItemColor: Colors.grey,
+          showSelectedLabels: true,
+          showUnselectedLabels: true,
+          selectedLabelStyle: const TextStyle(fontSize: 11),
+          unselectedLabelStyle: const TextStyle(fontSize: 11),
+          items: visibleTabs.map((tab) => tab.navItem).toList(),
+        ),
       ),
     );
   }

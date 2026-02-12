@@ -35,6 +35,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   final Map<String, Timer> _timersExpiracion = {};
   bool _suscritoAPusher = false;
 
+  // Control de dispose
+  bool _isDisposed = false;
+
   // Getters
   Position? get currentPosition => _currentPosition;
   bool get isLoadingLocation => _isLoadingLocation;
@@ -55,6 +58,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _audioPlayer.dispose();
     // Cancelar todos los timers
     for (var timer in _timersExpiracion.values) {
@@ -136,7 +140,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Configurar timer de expiración
       _configurarTimerExpiracion(solicitud['id'].toString());
 
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     } catch (e) {
       print('❌ Error procesando solicitud: $e');
     }
@@ -158,7 +162,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       (s) => s['solicitud_id']?.toString() == solicitudId,
     );
     _timersExpiracion.remove(solicitudId);
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
   }
 
   /// Reproduce el sonido de notificación
@@ -180,7 +184,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     );
     _timersExpiracion[solicitudId]?.cancel();
     _timersExpiracion.remove(solicitudId);
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
   }
 
   /// Acepta una solicitud de servicio
@@ -211,7 +215,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         (s) => s['solicitud_id']?.toString() == solicitudId,
       );
 
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
       return response;
     } catch (e) {
       print('❌ Error aceptando solicitud: $e');
@@ -225,14 +229,14 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> initializeLocation() async {
     _isLoadingLocation = true;
     _locationMessage = 'Estableciendo conexión satelital...';
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
 
     bool permissionGranted = await _checkAndRequestPermissions();
 
     if (!permissionGranted) {
       _isLoadingLocation = false;
       _locationMessage = 'Permisos de ubicación denegados';
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
       return;
     }
 
@@ -245,7 +249,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       _locationMessage = 'El servicio de ubicación está deshabilitado';
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
       return false;
     }
 
@@ -256,14 +260,14 @@ class ConductorHomeProvider extends ChangeNotifier {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         _locationMessage = 'Permisos de ubicación denegados';
-        notifyListeners();
+        if (!_isDisposed) notifyListeners();
         return false;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
       _locationMessage = 'Permisos de ubicación denegados permanentemente';
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
       return false;
     }
 
@@ -274,26 +278,31 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> _getCurrentLocation() async {
     try {
       _locationMessage = 'Obteniendo ubicación GPS...';
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
 
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
       );
 
+      if (_isDisposed) return;
+
       _currentPosition = position;
       _isLoadingLocation = false;
       _locationMessage = 'Ubicación obtenida';
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
 
       print(
         '📍 Ubicación obtenida: ${position.latitude}, ${position.longitude}',
       );
     } catch (e) {
       print('❌ Error obteniendo ubicación: $e');
+
+      if (_isDisposed) return;
+
       _isLoadingLocation = false;
       _locationMessage = 'Error obteniendo ubicación: ${e.toString()}';
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }
   }
 
@@ -303,8 +312,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> cargarVehiculos() async {
     try {
       final vehiculos = await _conductorService.getVehiculosConductor();
+      if (_isDisposed) return;
       _vehiculosDisponibles = vehiculos;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     } catch (e) {
       print('❌ Error cargando vehículos: $e');
     }
@@ -313,7 +323,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Selecciona un vehículo
   void seleccionarVehiculo(VehiculoConductor vehiculo) {
     _vehiculoSeleccionado = vehiculo;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
   }
 
   // ==================== TURNOS ====================
@@ -337,7 +347,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         await prefs.setString('turno_fecha', turno.fechaTurno);
         await prefs.setString('turno_hora_inicio', turno.horaInicio);
 
-        notifyListeners();
+        if (!_isDisposed) notifyListeners();
       }
     } catch (e) {
       print('❌ Error cargando turno: $e');
@@ -382,7 +392,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Conectar a Pusher después de iniciar el turno
       await conectarPusher();
 
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
       print('❌ Error iniciando turno: $e');
@@ -426,7 +436,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _isOnline = false;
       _solicitudesActivas.clear();
 
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
       print('❌ Error finalizando turno: $e');
@@ -477,7 +487,7 @@ class ConductorHomeProvider extends ChangeNotifier {
             s['id']?.toString() == servicioId.toString(),
       );
 
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
       print('❌ Error cancelando servicio: $e');

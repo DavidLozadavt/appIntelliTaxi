@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/onboarding/services/onboarding_service.dart';
 import 'package:intellitaxi/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:intellitaxi/features/auth/presentation/splash_screen.dart';
-import 'package:intellitaxi/features/rides/services/servicio_inicializador_manager.dart';
-import 'package:intellitaxi/features/rides/presentation/active_service_screen.dart';
-import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
+import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
+import 'package:intellitaxi/core/services/service_navigation_helper.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 
@@ -18,8 +17,8 @@ class InitialScreen extends StatefulWidget {
 
 class _InitialScreenState extends State<InitialScreen> {
   final OnboardingService _onboardingService = OnboardingService();
-  final ServicioInicializadorManager _inicializadorManager =
-      ServicioInicializadorManager();
+  final ActiveServiceRestorationService _restorationService =
+      ActiveServiceRestorationService();
   bool _isLoading = true;
   bool _shouldShowOnboarding = false;
 
@@ -65,46 +64,45 @@ class _InitialScreenState extends State<InitialScreen> {
 
       // Solo verificar si el usuario está autenticado
       if (authProvider.user == null) {
+        print('ℹ️ [InitialScreen] Usuario no autenticado, saltando verificación');
         return;
       }
 
-      final resultado = await _inicializadorManager
-          .verificarYCargarServicioActivo();
+      print('🔍 [InitialScreen] Verificando servicio activo al iniciar...');
 
-      if (resultado != null && mounted) {
-        final servicio = resultado['servicio'];
-        final tipo = resultado['tipo'];
+      // Usar el nuevo servicio de restauración
+      final servicioActivo = await _restorationService
+          .verificarServicioActivoSegunRol(authProvider);
 
-        print('🔄 Restaurando servicio activo: Tipo=$tipo');
-
-        // Navegar a la pantalla correspondiente
-        if (tipo == 'pasajero') {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => ActiveServiceScreen(
-                servicio: servicio,
-                onServiceCompleted: () {
-                  Navigator.of(context).pop();
-                },
-              ),
-            ),
-          );
-        } else if (tipo == 'conductor') {
-          final conductorId = authProvider.user?.id;
-          if (conductorId != null) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => ConductorServicioActivoScreen(
-                  servicio: servicio,
-                  conductorId: conductorId,
-                ),
-              ),
-            );
-          }
-        }
+      if (servicioActivo == null) {
+        print('ℹ️ [InitialScreen] No hay servicio activo');
+        return;
       }
-    } catch (e) {
+
+      // Verificar que el servicio esté activo
+      if (!_restorationService.esServicioActivo(servicioActivo['servicio'])) {
+        print('ℹ️ [InitialScreen] El servicio ya no está activo');
+        return;
+      }
+
+      // Verificar que debemos mostrar la pantalla
+      if (!ServiceNavigationHelper.shouldShowActiveService(servicioActivo)) {
+        print('ℹ️ [InitialScreen] No se debe mostrar la pantalla de servicio');
+        return;
+      }
+
+      print('✅ [InitialScreen] Servicio activo encontrado, navegando...');
+
+      if (mounted) {
+        await ServiceNavigationHelper.navigateToActiveService(
+          context,
+          servicioActivo,
+          authProvider,
+        );
+      }
+    } catch (e, stackTrace) {
       debugPrint('⚠️ Error verificando servicio activo: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
   }
 

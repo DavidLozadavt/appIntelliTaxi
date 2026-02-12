@@ -405,6 +405,7 @@ class _CalificacionConductorDialogState
                 child: Column(
                   children: [
                     Row(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(5, (index) {
                         final starValue = index + 1;

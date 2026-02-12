@@ -179,6 +179,7 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
 
               // Estrellas
               Row(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(5, (index) {
                   final estrella = index + 1;
