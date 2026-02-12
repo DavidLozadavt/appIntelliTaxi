@@ -19,7 +19,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   // Estado de ubicación
   Position? _currentPosition;
   bool _isLoadingLocation = true;
-  String _locationMessage = 'Estableciendo conexión satelital para rastreo en tiempo real...';
+  String _locationMessage =
+      'Estableciendo conexión satelital para rastreo en tiempo real...';
 
   // Estado online/offline
   bool _isOnline = false;
@@ -118,7 +119,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       print('📩 Solicitud decodificada: ${solicitud['id']}');
 
       // Verificar si ya existe la solicitud
-      final yaExiste = _solicitudesActivas.any((s) => s['id'] == solicitud['id']);
+      final yaExiste = _solicitudesActivas.any(
+        (s) => s['id'] == solicitud['id'],
+      );
       if (yaExiste) {
         print('⚠️ Solicitud ya existe: ${solicitud['id']}');
         return;
@@ -151,7 +154,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Expira una solicitud después del tiempo límite
   void _expirarSolicitud(String solicitudId) {
     print('⏱️ Solicitud expirada: $solicitudId');
-    _solicitudesActivas.removeWhere((s) => s['id'].toString() == solicitudId);
+    _solicitudesActivas.removeWhere(
+      (s) => s['solicitud_id']?.toString() == solicitudId,
+    );
     _timersExpiracion.remove(solicitudId);
     notifyListeners();
   }
@@ -170,7 +175,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Rechaza una solicitud
   void rechazarSolicitud(String solicitudId) {
     print('❌ Rechazando solicitud: $solicitudId');
-    _solicitudesActivas.removeWhere((s) => s['id'].toString() == solicitudId);
+    _solicitudesActivas.removeWhere(
+      (s) => s['solicitud_id']?.toString() == solicitudId,
+    );
     _timersExpiracion[solicitudId]?.cancel();
     _timersExpiracion.remove(solicitudId);
     notifyListeners();
@@ -184,6 +191,11 @@ class ConductorHomeProvider extends ChangeNotifier {
     try {
       print('✅ Aceptando solicitud: $solicitudId');
 
+      // Validar que el ID no sea nulo o inválido
+      if (solicitudId.isEmpty || solicitudId == 'null') {
+        throw Exception('ID de servicio inválido: $solicitudId');
+      }
+
       // Cancelar el timer de expiración
       _timersExpiracion[solicitudId]?.cancel();
       _timersExpiracion.remove(solicitudId);
@@ -195,7 +207,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
 
       // Remover de la lista de solicitudes activas
-      _solicitudesActivas.removeWhere((s) => s['id'].toString() == solicitudId);
+      _solicitudesActivas.removeWhere(
+        (s) => s['solicitud_id']?.toString() == solicitudId,
+      );
 
       notifyListeners();
       return response;
@@ -272,7 +286,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       _locationMessage = 'Ubicación obtenida';
       notifyListeners();
 
-      print('📍 Ubicación obtenida: ${position.latitude}, ${position.longitude}');
+      print(
+        '📍 Ubicación obtenida: ${position.latitude}, ${position.longitude}',
+      );
     } catch (e) {
       print('❌ Error obteniendo ubicación: $e');
       _isLoadingLocation = false;
@@ -428,6 +444,16 @@ class ConductorHomeProvider extends ChangeNotifier {
     } else {
       // Desactivándose: finalizar turno
       await finalizarTurno();
+    }
+  }
+
+  /// Verifica documentos del conductor
+  Future<Map<String, dynamic>> verificarDocumentos(int userId) async {
+    try {
+      return await _conductorService.verificarDocumentos(userId);
+    } catch (e) {
+      print('❌ Error verificando documentos: $e');
+      return {'vencidos': [], 'porVencer': []};
     }
   }
 }
