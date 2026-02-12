@@ -96,13 +96,13 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
   String get _tituloDialog {
     return widget.tipoCalificacion == 'CONDUCTOR'
         ? 'Califica a tu conductor'
-        : 'Califica a tu pasajero';
+        : 'Califica a ${widget.nombreCalificado}';
   }
 
   String get _subtituloDialog {
     return widget.tipoCalificacion == 'CONDUCTOR'
         ? '¿Cómo fue tu experiencia con ${widget.nombreCalificado}?'
-        : '¿Cómo fue tu experiencia con el pasajero?';
+        : '¿Cómo fue tu experiencia con ${widget.nombreCalificado}?';
   }
 
   String _obtenerTextoCalificacion(int calificacion) {
@@ -188,12 +188,12 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
                       setState(() => _calificacion = estrella);
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
                       child: Icon(
                         _calificacion >= estrella
                             ? Icons.star
                             : Icons.star_border,
-                        size: 45,
+                        size: 36,
                         color: _calificacion >= estrella
                             ? Colors.amber
                             : Colors.grey.shade400,
