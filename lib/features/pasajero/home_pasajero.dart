@@ -493,64 +493,6 @@ class _HomePasajeroState extends State<HomePasajero>
     }
   }
 
-  /// Crea un marcador personalizado con un icono
-  Future<BitmapDescriptor?> _createCustomMarkerIcon({
-    required IconData icon,
-    required Color color,
-    double size = 100,
-  }) async {
-    try {
-      final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
-      final Canvas canvas = Canvas(pictureRecorder);
-
-      // Dibujar círculo de fondo
-      final Paint circlePaint = Paint()
-        ..color = color
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(Offset(size / 2, size / 2), size / 2, circlePaint);
-
-      // Dibujar borde blanco
-      final Paint borderPaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4;
-      canvas.drawCircle(Offset(size / 2, size / 2), size / 2 - 2, borderPaint);
-
-      // Dibujar icono
-      final textPainter = TextPainter(textDirection: TextDirection.ltr);
-      textPainter.text = TextSpan(
-        text: String.fromCharCode(icon.codePoint),
-        style: TextStyle(
-          fontSize: size * 0.5,
-          fontFamily: icon.fontFamily,
-          color: Colors.white,
-        ),
-      );
-      textPainter.layout();
-      textPainter.paint(
-        canvas,
-        Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
-      );
-
-      // Convertir a imagen
-      final ui.Image markerImage = await pictureRecorder.endRecording().toImage(
-        size.toInt(),
-        size.toInt(),
-      );
-      final ByteData? byteData = await markerImage.toByteData(
-        format: ui.ImageByteFormat.png,
-      );
-      final Uint8List? pngBytes = byteData?.buffer.asUint8List();
-
-      if (pngBytes != null) {
-        return BitmapDescriptor.fromBytes(pngBytes);
-      }
-    } catch (e) {
-      print('Error creando icono personalizado: $e');
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;

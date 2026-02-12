@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
+import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/standard_button.dart';
+import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
   final Map<String, dynamic> servicio;
@@ -68,7 +71,7 @@ class _ConductorServicioActivoScreenState
     if (widget.servicio['pasajero_nombre'] != null) {
       return widget.servicio['pasajero_nombre'];
     }
-    
+
     // Buscar en usuario_pasajero.persona
     if (widget.servicio['usuario_pasajero'] != null) {
       final usuarioPasajero = widget.servicio['usuario_pasajero'];
@@ -79,15 +82,17 @@ class _ConductorServicioActivoScreenState
           final nombre2 = persona['nombre2'] ?? '';
           final apellido1 = persona['apellido1'] ?? '';
           final apellido2 = persona['apellido2'] ?? '';
-          
-          final nombreCompleto = '$nombre1 ${nombre2.isEmpty ? '' : nombre2} $apellido1 ${apellido2.isEmpty ? '' : apellido2}'.trim();
+
+          final nombreCompleto =
+              '$nombre1 ${nombre2.isEmpty ? '' : nombre2} $apellido1 ${apellido2.isEmpty ? '' : apellido2}'
+                  .trim();
           if (nombreCompleto.isNotEmpty) {
             return nombreCompleto;
           }
         }
       }
     }
-    
+
     // Si hay un objeto pasajero anidado
     if (widget.servicio['pasajero'] != null) {
       final pasajero = widget.servicio['pasajero'];
@@ -95,7 +100,7 @@ class _ConductorServicioActivoScreenState
         return pasajero['nombre'] ?? pasajero['name'] ?? 'Pasajero';
       }
     }
-    
+
     return 'Pasajero';
   }
 
@@ -114,12 +119,12 @@ class _ConductorServicioActivoScreenState
         }
       }
     }
-    
+
     // Intentar obtener de diferentes campos posibles
     if (widget.servicio['pasajero_telefono'] != null) {
       return widget.servicio['pasajero_telefono'];
     }
-    
+
     // Si hay un objeto pasajero anidado
     if (widget.servicio['pasajero'] != null) {
       final pasajero = widget.servicio['pasajero'];
@@ -127,7 +132,7 @@ class _ConductorServicioActivoScreenState
         return pasajero['telefono'] ?? pasajero['phone'] ?? pasajero['celular'];
       }
     }
-    
+
     return null;
   }
 
@@ -135,14 +140,14 @@ class _ConductorServicioActivoScreenState
   // String _getPrecio() {
   //   final precioFinal = widget.servicio['precio_final'];
   //   final precioEstimado = widget.servicio['precio_estimado'];
-    
+
   //   if (precioFinal != null) {
   //     return precioFinal.toString().replaceAll('.00', '');
   //   }
   //   if (precioEstimado != null) {
   //     return precioEstimado.toString().replaceAll('.00', '');
   //   }
-    
+
   //   return '0';
   // }
 
@@ -161,7 +166,7 @@ class _ConductorServicioActivoScreenState
         }
       }
     }
-    
+
     return null;
   }
 
@@ -188,7 +193,7 @@ class _ConductorServicioActivoScreenState
     print('   Origen: ${widget.servicio['origen_address']}');
     print('   Destino: ${widget.servicio['destino_address']}');
     print('');
-    
+
     // Cargar icono del carro
     await _cargarIconoCarro();
 
@@ -227,14 +232,14 @@ class _ConductorServicioActivoScreenState
     try {
       print('📋 Intentando guardar servicio activo...');
       print('📦 Datos del servicio: ${widget.servicio}');
-      
+
       final servicioId = widget.servicio['id'];
       if (servicioId == null) {
         print('❌ Error: servicioId es null');
         print('📦 Keys disponibles: ${widget.servicio.keys}');
         return;
       }
-      
+
       await _persistencia.guardarServicioActivo(
         servicioId: servicioId,
         tipo: 'conductor',
@@ -561,6 +566,13 @@ class _ConductorServicioActivoScreenState
 
                     // Botón de acción según estado
                     _buildBotonAccion(),
+
+                    // Botón de cancelar (solo si el servicio no ha iniciado)
+                    if (_estadoActual != 'en_curso' &&
+                        _estadoActual != 'finalizado') ...[
+                      const SizedBox(height: 12),
+                      _buildBotonCancelar(),
+                    ],
                   ],
                 ),
               ),
@@ -622,7 +634,7 @@ class _ConductorServicioActivoScreenState
 
   Widget _buildInfoPasajero() {
     final fotoUrl = _getFotoPasajero();
-    
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -646,7 +658,11 @@ class _ConductorServicioActivoScreenState
               : CircleAvatar(
                   radius: 28,
                   backgroundColor: AppColors.primary,
-                  child: const Icon(Icons.person, color: Colors.white, size: 32),
+                  child: const Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 32,
+                  ),
                 ),
           const SizedBox(width: 12),
           Expanded(
@@ -751,5 +767,131 @@ class _ConductorServicioActivoScreenState
       width: double.infinity,
       height: 56,
     );
+  }
+
+  Widget _buildBotonCancelar() {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _mostrarDialogoCancelacion,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.red.shade50, Colors.red.shade100],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.red.shade300, width: 1.5),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Iconsax.close_circle,
+                  color: Colors.red.shade700,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Cancelar servicio',
+                  style: TextStyle(
+                    color: Colors.red.shade700,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _mostrarDialogoCancelacion() async {
+    final resultado = await CancelacionServicioDialog.mostrar(
+      context,
+      tipoUsuario: 'conductor',
+    );
+
+    if (resultado != null && resultado.isNotEmpty) {
+      await _cancelarServicio(resultado);
+    }
+  }
+
+  Future<void> _cancelarServicio(String motivo) async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Obtener el servicio ID
+      final servicioId = widget.servicio['id'];
+      if (servicioId == null) {
+        throw Exception('ID de servicio no encontrado');
+      }
+
+      // Llamar al servicio de cancelación a través del provider
+      final provider = Provider.of<ConductorHomeProvider>(
+        context,
+        listen: false,
+      );
+
+      final exitoso = await provider.cancelarServicio(
+        servicioId: servicioId is int
+            ? servicioId
+            : int.parse(servicioId.toString()),
+        motivo: motivo,
+      );
+
+      if (exitoso) {
+        // Detener tracking
+        _trackingService.detenerSeguimiento();
+
+        // Cancelar notificación
+        await _notificacionService.cancelarNotificacion(
+          servicioId,
+          tipo: 'conductor',
+        );
+
+        // Limpiar persistencia
+        await _persistencia.limpiarServicioActivo();
+
+        if (!mounted) return;
+
+        // Mostrar mensaje de éxito
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Servicio cancelado exitosamente'),
+            backgroundColor: AppColors.green,
+          ),
+        );
+
+        // Cerrar pantalla
+        Navigator.of(context).pop();
+      } else {
+        throw Exception('No se pudo cancelar el servicio');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _mostrarError('Error al cancelar: ${e.toString()}');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 }

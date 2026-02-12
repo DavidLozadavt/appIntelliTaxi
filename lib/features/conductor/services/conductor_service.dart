@@ -270,4 +270,29 @@ class ConductorService {
       rethrow;
     }
   }
+
+  /// Cancelar servicio activo
+  Future<Map<String, dynamic>> cancelarServicio({
+    required int servicioId,
+    required String motivo,
+  }) async {
+    try {
+      print('📤 Cancelando servicio:');
+      print('   servicio_id: $servicioId');
+      print('   motivo: $motivo');
+
+      final response = await _dio.post(
+        'taxi/servicio/cancelar',
+        data: {'servicio_id': servicioId, 'motivo': motivo},
+      );
+
+      print('✅ Servicio cancelado exitosamente');
+      return response.data is Map<String, dynamic>
+          ? response.data
+          : {'success': true};
+    } catch (e) {
+      print('❌ Error cancelando servicio: $e');
+      rethrow;
+    }
+  }
 }

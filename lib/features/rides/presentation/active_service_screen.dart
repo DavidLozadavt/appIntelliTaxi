@@ -3,9 +3,11 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
+import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 
 class ActiveServiceScreen extends StatefulWidget {
   final ServicioActivo servicio;
@@ -307,6 +309,14 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
                     const SizedBox(height: 16),
                     _buildTripInfo(),
 
+                    // Botón de cancelar (solo si el servicio está activo y no está en curso o finalizado)
+                    if (isServiceActive &&
+                        widget.servicio.idEstado != 5 &&
+                        widget.servicio.idEstado != 6) ...[
+                      const SizedBox(height: 16),
+                      _buildCancelButton(),
+                    ],
+
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -588,5 +598,124 @@ class _ActiveServiceScreenState extends State<ActiveServiceScreen> {
         ),
       ],
     );
+  }
+
+  Widget _buildCancelButton() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _mostrarDialogoCancelacion,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.red.shade50, Colors.red.shade100],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.red.shade300, width: 1.5),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Iconsax.close_circle_copy,
+                  color: Colors.red.shade700,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Cancelar servicio',
+                  style: TextStyle(
+                    color: Colors.red.shade700,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _mostrarDialogoCancelacion() async {
+    final resultado = await CancelacionServicioDialog.mostrar(
+      context,
+      tipoUsuario: 'pasajero',
+    );
+
+    if (resultado != null && resultado.isNotEmpty) {
+      await _cancelarServicio(resultado);
+    }
+  }
+
+  Future<void> _cancelarServicio(String motivo) async {
+    try {
+      // Mostrar loading
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Crear instancia del servicio
+      final rideService = RideRequestService();
+
+      // Llamar al servicio de cancelación
+      await rideService.cancelarServicio(
+        servicioId: widget.servicio.id,
+        motivo: motivo,
+      );
+
+      // Cerrar loading
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      // Limpiar servicio
+      await _limpiarServicio();
+
+      // Mostrar mensaje de éxito
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Servicio cancelado exitosamente'),
+          backgroundColor: AppColors.green,
+        ),
+      );
+
+      // Cerrar pantalla
+      Navigator.pop(context);
+      widget.onServiceCompleted?.call();
+    } catch (e) {
+      // Cerrar loading si está abierto
+      if (mounted) Navigator.pop(context);
+
+      // Mostrar error
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al cancelar: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

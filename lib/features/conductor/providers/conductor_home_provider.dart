@@ -456,4 +456,32 @@ class ConductorHomeProvider extends ChangeNotifier {
       return {'vencidos': [], 'porVencer': []};
     }
   }
+
+  /// Cancelar servicio activo
+  Future<bool> cancelarServicio({
+    required int servicioId,
+    required String motivo,
+  }) async {
+    try {
+      print('🚫 Cancelando servicio: $servicioId');
+
+      await _conductorService.cancelarServicio(
+        servicioId: servicioId,
+        motivo: motivo,
+      );
+
+      // Limpiar solicitudes activas si es necesario
+      _solicitudesActivas.removeWhere(
+        (s) =>
+            s['servicio_id']?.toString() == servicioId.toString() ||
+            s['id']?.toString() == servicioId.toString(),
+      );
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      print('❌ Error cancelando servicio: $e');
+      return false;
+    }
+  }
 }
