@@ -1,14 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
-import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/rides/logic/pasajero_servicio_activo_provider.dart';
 import 'package:provider/provider.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
@@ -29,355 +27,20 @@ class PasajeroEsperandoConductorScreen extends StatefulWidget {
 class _PasajeroEsperandoConductorScreenState
     extends State<PasajeroEsperandoConductorScreen> {
   GoogleMapController? _mapController;
-  final ServicioPusherService _pusherService = ServicioPusherService();
-  final RoutesService _routesService = RoutesService();
   final CalificacionService _calificacionService = CalificacionService();
 
-  Map<String, dynamic>? _conductor;
-  LatLng? _conductorUbicacion;
-  String _estadoServicio = 'buscando';
-  final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
-  BitmapDescriptor? _carIcon;
-
-  // ⏱️ Control de timeout
-  Timer? _timeoutTimer;
-  static const int _maxWaitingSeconds = 120; // 2 minutos
-  int _elapsedSeconds = 0;
-  Timer? _countdownTimer;
-
   // 📏 Control de altura del BottomSheet
-  double _sheetHeight = 0.45; // Altura inicial (45% de la pantalla)
-  final double _minHeight = 0.25; // Altura mínima
-  final double _maxHeight = 0.70; // Altura máxima
+  double _sheetHeight = 0.45;
+  final double _minHeight = 0.25;
+  final double _maxHeight = 0.70;
 
   @override
   void initState() {
     super.initState();
-    print('\n${'=' * 80}');
-    print('🚀 PASAJERO: Iniciando PasajeroEsperandoConductorScreen');
-    print('=' * 80);
-    print('   Servicio ID: ${widget.servicioId}');
-    print('   Origen: ${widget.datosServicio['origen_address']}');
-    print('   Destino: ${widget.datosServicio['destino_address']}');
-    print('   Canal Pusher que escuchará: servicio.${widget.servicioId}');
-    print('=' * 80 + '\n');
-
-    print('🎨 PASAJERO: Creando marcadores...');
-    _cargarIconoCarro();
-    _crearMarcadores();
-    print('✅ PASAJERO: Marcadores creados');
-
-    print('⏰ PASAJERO: Programando suscripción a Pusher...');
-    // Suscribir a eventos SIN bloquear la UI
-    Future.microtask(() {
-      print('🚀 PASAJERO: Ejecutando microtask de suscripción');
-      _suscribirEventos();
-    });
-
-    // Verificar estado del servicio después de 3 segundos
-    Future.delayed(const Duration(seconds: 3), () {
-      _verificarEstadoServicio();
-    });
-
-    // ⏱️ Iniciar timer de timeout
-    _iniciarTimeout();
-
-    print('✅ PASAJERO: initState completado, continuando con build...\n');
+    // La lógica ahora está en el provider
   }
 
-  /// ⏱️ Inicia el temporizador de timeout para búsqueda de conductor
-  void _iniciarTimeout() {
-    _elapsedSeconds = 0;
-
-    // Timer para contar segundos
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_estadoServicio == 'buscando') {
-        setState(() {
-          _elapsedSeconds++;
-        });
-      } else {
-        timer.cancel();
-      }
-    });
-
-    // Timer de timeout
-    _timeoutTimer = Timer(Duration(seconds: _maxWaitingSeconds), () {
-      if (_estadoServicio == 'buscando' && mounted) {
-        print(
-          '⏰ TIMEOUT: No se encontró conductor en $_maxWaitingSeconds segundos',
-        );
-        _mostrarDialogoTimeout();
-      }
-    });
-
-    print('⏱️ Timer de timeout iniciado ($_maxWaitingSeconds segundos)');
-  }
-
-  /// 🚫 Cancela los timers de timeout
-  void _cancelarTimeout() {
-    _timeoutTimer?.cancel();
-    _countdownTimer?.cancel();
-    _timeoutTimer = null;
-    _countdownTimer = null;
-    print('✅ Timers de timeout cancelados');
-  }
-
-  Future<void> _verificarEstadoServicio() async {
-    if (_conductor == null) {
-      print(
-        '⚠️ PASAJERO: No se recibió evento de aceptación, consultando API...',
-      );
-      await _obtenerInfoServicio();
-    }
-  }
-
-  Future<void> _obtenerInfoServicio() async {
-    try {
-      final dio = DioClient.getInstance();
-      print(
-        '🔍 PASAJERO: Consultando servicio en /servicios/${widget.servicioId}',
-      );
-
-      final response = await dio.get('/servicios/taxi/${widget.servicioId}');
-      print('📥 PASAJERO: Respuesta recibida: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = response.data;
-        print('📦 PASAJERO: Data: $data');
-
-        // El servicio puede estar directamente en data o en data['servicio']
-        final servicio =
-            data is Map<String, dynamic> && data.containsKey('servicio')
-            ? data['servicio'] as Map<String, dynamic>
-            : data as Map<String, dynamic>;
-
-        if (servicio['conductor_id'] != null && servicio['conductor'] != null) {
-          print('✅ PASAJERO: Info del servicio obtenida desde API');
-          final conductor = servicio['conductor'] as Map<String, dynamic>;
-          final vehiculo = conductor['vehiculo'] as Map<String, dynamic>?;
-
-          // Parsear calificación (puede venir como String o double)
-          final calificacion = conductor['calificacion_promedio'];
-          final calificacionDouble = calificacion is String
-              ? double.tryParse(calificacion) ?? 5.0
-              : (calificacion as num?)?.toDouble() ?? 5.0;
-
-          setState(() {
-            _conductor = {
-              'conductor_id': conductor['id'] ?? conductor['conductor_id'],
-              'conductor_nombre': conductor['nombre'] ?? 'Conductor',
-              'conductor_telefono': conductor['telefono'] ?? '',
-              'conductor_foto': conductor['foto_perfil'],
-              'vehiculo_placa': vehiculo?['placa'] ?? '',
-              'vehiculo_marca': vehiculo?['marca'] ?? '',
-              'vehiculo_modelo': vehiculo?['modelo'] ?? '',
-              'vehiculo_color': vehiculo?['color'] ?? '',
-              'conductor_calificacion': calificacionDouble,
-            };
-            _estadoServicio = 'aceptado';
-          });
-
-          // Si el servicio ya tiene ubicación del conductor, actualizarla
-          if (servicio['conductor_lat'] != null &&
-              servicio['conductor_lng'] != null) {
-            setState(() {
-              _conductorUbicacion = LatLng(
-                _parseDouble(servicio['conductor_lat']),
-                _parseDouble(servicio['conductor_lng']),
-              );
-            });
-            _actualizarMarcadores();
-            _centrarMapa();
-          }
-        } else {
-          print('⚠️ PASAJERO: Servicio aún no tiene conductor asignado');
-        }
-      }
-    } catch (e) {
-      print('❌ Error obteniendo info del servicio: $e');
-    }
-  }
-
-  Future<void> _cargarIconoCarro() async {
-    try {
-      _carIcon = await BitmapDescriptor.asset(
-        const ImageConfiguration(size: Size(48, 48)),
-        'assets/images/marker.png',
-      );
-      print('✅ PASAJERO: Ícono del carro cargado');
-    } catch (e) {
-      print('⚠️ Error cargando ícono del carro: $e');
-    }
-  }
-
-  double _parseDouble(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
-  }
-
-  Future<void> _suscribirEventos() async {
-    print(
-      '🔌 PASAJERO: Iniciando suscripción a eventos del servicio ${widget.servicioId}',
-    );
-    // NO usar await para que no bloquee
-    _pusherService.suscribirServicio(
-      servicioId: widget.servicioId,
-      onServicioAceptado: (data) {
-        print('🎉 Servicio aceptado - Data completa:');
-        print('   Keys: ${data.keys}');
-        print('   Conductor ID: ${data['conductor_id']}');
-        print('   Conductor: ${data['conductor_nombre']}');
-        print('   Foto: ${data['conductor_foto']}');
-        print(
-          '   Lat: ${data['conductor_lat']}, Lng: ${data['conductor_lng']}',
-        );
-        print('   Vehículo: ${data['vehiculo_placa']}');
-
-        // ✅ Cancelar timeout
-        _cancelarTimeout();
-
-        setState(() {
-          _conductor = data;
-          if (data['conductor_lat'] != null && data['conductor_lng'] != null) {
-            _conductorUbicacion = LatLng(
-              _parseDouble(data['conductor_lat']),
-              _parseDouble(data['conductor_lng']),
-            );
-          }
-          _estadoServicio = 'aceptado';
-        });
-        _actualizarMarcadores();
-        _centrarMapa();
-      },
-      onUbicacionActualizada: (data) {
-        print('📍 Ubicación del conductor actualizada: $data');
-        // Backend envía conductor_lat y conductor_lng
-        final lat = data['conductor_lat'] ?? data['lat'];
-        final lng = data['conductor_lng'] ?? data['lng'];
-
-        if (lat != null && lng != null) {
-          setState(() {
-            _conductorUbicacion = LatLng(_parseDouble(lat), _parseDouble(lng));
-
-            // Si recibo ubicación del conductor y aún está "buscando",
-            // significa que ya fue aceptado (cambiar estado automáticamente)
-            if (_estadoServicio == 'buscando') {
-              print(
-                '✅ PASAJERO: Conductor ubicado, cambiando estado a aceptado',
-              );
-              _estadoServicio = 'aceptado';
-
-              // Si no tengo info del conductor, solicitarla inmediatamente
-              if (_conductor == null) {
-                _obtenerInfoServicio();
-              }
-            }
-          });
-          print(
-            '🚗 Nueva ubicación conductor: ${_conductorUbicacion?.latitude}, ${_conductorUbicacion?.longitude}',
-          );
-          _actualizarMarcadores();
-          _centrarMapa();
-        } else {
-          print('⚠️ Datos de ubicación incompletos');
-        }
-      },
-      onEstadoCambiado: (data) {
-        print('🔄 Estado cambiado: ${data['estado']}');
-        print('   Data completa del cambio: $data');
-
-        final nuevoEstado = data['estado'] as String;
-
-        setState(() {
-          _estadoServicio = nuevoEstado;
-        });
-
-        // Redibujar ruta según el nuevo estado
-        if (nuevoEstado == 'en_curso') {
-          // En curso: cambiar destino a punto final
-          print('🏁 Viaje iniciado, ruta ahora es conductor → destino');
-          _dibujarRuta();
-        } else {
-          _dibujarRuta();
-        }
-
-        // Mostrar notificación visual
-        _mostrarMensajeEstado(nuevoEstado);
-
-        if (nuevoEstado == 'finalizado') {
-          // Mostrar diálogo de viaje finalizado
-          _mostrarDialogoFinalizado();
-        }
-      },
-    );
-  }
-
-  void _mostrarMensajeEstado(String estado) {
-    String mensaje;
-    Color color = Colors.blue;
-    IconData icono = Icons.info;
-
-    switch (estado) {
-      case 'aceptado':
-        mensaje = '✅ Conductor aceptó tu solicitud';
-        color = Colors.green;
-        icono = Icons.check_circle;
-        break;
-      case 'en_camino':
-        mensaje = '🚗 Conductor en camino a recogerte';
-        color = Colors.blue;
-        icono = Icons.directions_car;
-        break;
-      case 'llegue':
-        mensaje = '📍 ¡El conductor ha llegado!';
-        color = Colors.orange;
-        icono = Icons.location_on;
-        break;
-      case 'en_curso':
-        mensaje = '🏁 Viaje iniciado - En camino al destino';
-        color = Colors.green;
-        icono = Icons.navigation;
-        break;
-      case 'finalizado':
-        mensaje = '✓ Viaje finalizado';
-        color = Colors.grey;
-        icono = Icons.flag;
-        break;
-      default:
-        return;
-    }
-
-    // SnackBar más visible
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(icono, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                mensaje,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: color,
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-  }
-
-  void _mostrarDialogoFinalizado() {
+  void _mostrarDialogoFinalizado(Map<String, dynamic>? conductor) {
     int calificacionSeleccionada = 5;
     final TextEditingController comentarioController = TextEditingController();
 
@@ -415,7 +78,7 @@ class _PasajeroEsperandoConductorScreenState
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Califica a ${_conductor?['conductor_nombre'] ?? 'tu conductor'}',
+                  'Califica a ${conductor?['conductor_nombre'] ?? 'tu conductor'}',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
@@ -598,7 +261,7 @@ class _PasajeroEsperandoConductorScreenState
                   }
 
                   // Obtener ID del conductor de forma segura
-                  final conductorData = _conductor;
+                  final conductorData = conductor;
                   if (conductorData == null) {
                     throw Exception('No hay datos del conductor disponibles');
                   }
@@ -705,161 +368,7 @@ class _PasajeroEsperandoConductorScreenState
     }
   }
 
-  void _crearMarcadores() {
-    // Marcador origen (punto de recogida)
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('origen'),
-        position: LatLng(
-          _parseDouble(widget.datosServicio['origen_lat']),
-          _parseDouble(widget.datosServicio['origen_lng']),
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        infoWindow: InfoWindow(
-          title: 'Punto de Recogida',
-          snippet: widget.datosServicio['origen_address'],
-        ),
-      ),
-    );
-
-    // Marcador destino
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('destino'),
-        position: LatLng(
-          _parseDouble(widget.datosServicio['destino_lat']),
-          _parseDouble(widget.datosServicio['destino_lng']),
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        infoWindow: InfoWindow(
-          title: 'Destino',
-          snippet: widget.datosServicio['destino_address'],
-        ),
-      ),
-    );
-  }
-
-  void _actualizarMarcadores() {
-    if (_conductorUbicacion == null) {
-      print(
-        '⚠️ No se puede actualizar marcador: ubicación del conductor es null',
-      );
-      return;
-    }
-
-    print('🗺️ Actualizando marcadores:');
-    print(
-      '   Conductor en: ${_conductorUbicacion!.latitude}, ${_conductorUbicacion!.longitude}',
-    );
-
-    setState(() {
-      _markers.removeWhere((m) => m.markerId.value == 'conductor');
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('conductor'),
-          position: _conductorUbicacion!,
-          icon:
-              _carIcon ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          infoWindow: InfoWindow(
-            title: _conductor?['conductor_nombre'] ?? 'Conductor',
-            snippet: '${_conductor?['vehiculo_placa'] ?? ''}',
-          ),
-          rotation: 0.0,
-          anchor: const Offset(0.5, 0.5),
-        ),
-      );
-
-      // Dibujar línea entre conductor y punto de recogida
-      _dibujarRuta();
-    });
-
-    print('✅ Marcador del conductor actualizado');
-  }
-
-  void _centrarMapa() {
-    if (_mapController == null || _conductorUbicacion == null) return;
-
-    // Calcular bounds para mostrar conductor y punto de recogida
-    final bounds = _calcularBounds();
-    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
-  }
-
-  LatLngBounds _calcularBounds() {
-    final origenLat = _parseDouble(widget.datosServicio['origen_lat']);
-    final origenLng = _parseDouble(widget.datosServicio['origen_lng']);
-
-    final lats = [_conductorUbicacion?.latitude ?? origenLat, origenLat];
-    final lngs = [_conductorUbicacion?.longitude ?? origenLng, origenLng];
-
-    return LatLngBounds(
-      southwest: LatLng(
-        lats.reduce((a, b) => a < b ? a : b),
-        lngs.reduce((a, b) => a < b ? a : b),
-      ),
-      northeast: LatLng(
-        lats.reduce((a, b) => a > b ? a : b),
-        lngs.reduce((a, b) => a > b ? a : b),
-      ),
-    );
-  }
-
-  Future<void> _dibujarRuta() async {
-    final origenLat = _parseDouble(widget.datosServicio['origen_lat']);
-    final origenLng = _parseDouble(widget.datosServicio['origen_lng']);
-    final destinoLat = _parseDouble(widget.datosServicio['destino_lat']);
-    final destinoLng = _parseDouble(widget.datosServicio['destino_lng']);
-
-    try {
-      _polylines.clear();
-
-      // Línea del conductor al punto de recogida (solo si está yendo a recoger)
-      if (_conductorUbicacion != null &&
-          (_estadoServicio == 'aceptado' || _estadoServicio == 'en_camino')) {
-        final rutaConductorOrigen = await _routesService.getRoute(
-          origin: _conductorUbicacion!,
-          destination: LatLng(origenLat, origenLng),
-        );
-
-        if (rutaConductorOrigen != null) {
-          _polylines.add(
-            Polyline(
-              polylineId: const PolylineId('conductor_origen'),
-              points: rutaConductorOrigen.polylinePoints,
-              color: Colors.blue,
-              width: 4,
-            ),
-          );
-        }
-      }
-
-      // Línea del origen al destino (ruta del viaje)
-      final rutaOrigenDestino = await _routesService.getRoute(
-        origin: LatLng(origenLat, origenLng),
-        destination: LatLng(destinoLat, destinoLng),
-      );
-
-      if (rutaOrigenDestino != null) {
-        _polylines.add(
-          Polyline(
-            polylineId: const PolylineId('origen_destino'),
-            points: rutaOrigenDestino.polylinePoints,
-            color: AppColors.primary,
-            width: 3,
-            patterns: [PatternItem.dash(15), PatternItem.gap(10)],
-          ),
-        );
-      }
-
-      setState(() {});
-      print('✅ Polylines con rutas reales dibujadas');
-    } catch (e) {
-      print('❌ Error dibujando rutas: $e');
-    }
-  }
-
-  Future<void> _llamarConductor() async {
-    final telefono = _conductor?['conductor_telefono'];
+  Future<void> _llamarConductor(String? telefono) async {
     if (telefono != null) {
       // TODO: Implementar llamada telefónica
       ScaffoldMessenger.of(context).showSnackBar(
@@ -872,9 +381,10 @@ class _PasajeroEsperandoConductorScreenState
   }
 
   /// ⏰ Muestra diálogo cuando se agota el tiempo de espera
-  Future<void> _mostrarDialogoTimeout() async {
-    _cancelarTimeout();
-
+  Future<void> _mostrarDialogoTimeout(
+    BuildContext context,
+    PasajeroServicioActivoProvider provider,
+  ) async {
     return showDialog(
       context: context,
       barrierDismissible: false,
@@ -921,7 +431,7 @@ class _PasajeroEsperandoConductorScreenState
         ),
         actions: [
           TextButton(
-            onPressed: () => _cancelarServicio(context),
+            onPressed: () => _cancelarServicio(context, provider),
             child: const Text(
               'Cancelar solicitud',
               style: TextStyle(color: Colors.red),
@@ -930,7 +440,14 @@ class _PasajeroEsperandoConductorScreenState
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _reintentar();
+              provider.reintentar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('🔄 Buscando conductor nuevamente...'),
+                  backgroundColor: Colors.blue,
+                  duration: Duration(seconds: 2),
+                ),
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.accent,
@@ -943,23 +460,6 @@ class _PasajeroEsperandoConductorScreenState
     );
   }
 
-  /// 🔄 Reinicia la búsqueda de conductor
-  void _reintentar() {
-    setState(() {
-      _estadoServicio = 'buscando';
-    });
-    _iniciarTimeout();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🔄 Buscando conductor nuevamente...'),
-        backgroundColor: Colors.blue,
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  /// 🚫 Muestra confirmación para cancelar servicio activo
   Future<void> _confirmarCancelarServicioActivo() async {
     final confirmar = await showDialog<bool>(
       context: context,
@@ -986,19 +486,24 @@ class _PasajeroEsperandoConductorScreenState
       ),
     );
 
-    if (confirmar == true) {
-      await _cancelarServicio(context);
+    if (confirmar == true && mounted) {
+      final provider = Provider.of<PasajeroServicioActivoProvider>(
+        context,
+        listen: false,
+      );
+      await _cancelarServicio(context, provider);
     }
   }
 
   /// 🚫 Cancela el servicio y regresa a la pantalla anterior
-  Future<void> _cancelarServicio(BuildContext dialogContext) async {
+  Future<void> _cancelarServicio(
+    BuildContext dialogContext,
+    PasajeroServicioActivoProvider provider,
+  ) async {
     try {
-      final dio = DioClient.getInstance();
-
       // Determinar el motivo según el estado
       String motivo;
-      if (_estadoServicio == 'buscando') {
+      if (provider.estadoServicio == 'buscando') {
         motivo = 'Cancelado por el pasajero - No se encontró conductor';
       } else {
         motivo = 'Cancelado por el pasajero';
@@ -1026,11 +531,8 @@ class _PasajeroEsperandoConductorScreenState
         ),
       );
 
-      // Llamar al backend para cancelar
-      await dio.post(
-        '/servicios/taxi/${widget.servicioId}/cancelar',
-        data: {'motivo': motivo},
-      );
+      // Llamar al provider para cancelar
+      await provider.cancelarServicio(motivo: motivo);
 
       if (!mounted) return;
 
@@ -1068,96 +570,126 @@ class _PasajeroEsperandoConductorScreenState
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvoked: (didPop) {
-        if (!didPop) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No puedes salir hasta que el servicio termine'),
-              backgroundColor: AppColors.accent,
-              duration: Duration(seconds: 2),
+    return ChangeNotifierProvider(
+      create: (_) => PasajeroServicioActivoProvider(
+        servicioId: widget.servicioId,
+        datosServicio: widget.datosServicio,
+      ),
+      child: Consumer<PasajeroServicioActivoProvider>(
+        builder: (context, provider, _) {
+          // Listener para mostrar diálogos según el estado
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (provider.estadoServicio == 'timeout' && mounted) {
+              _mostrarDialogoTimeout(context, provider);
+            } else if (provider.estadoServicio == 'finalizado' && mounted) {
+              _mostrarDialogoFinalizado(provider.conductor);
+            }
+          });
+
+          return PopScope(
+            canPop: false,
+            onPopInvoked: (didPop) {
+              if (!didPop) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'No puedes salir hasta que el servicio termine',
+                    ),
+                    backgroundColor: AppColors.accent,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            child: Scaffold(
+              appBar: AppBar(
+                title: const Text(
+                  'Servicio Activo',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                automaticallyImplyLeading: false,
+              ),
+              body: Stack(
+                children: [
+                  StandardMap(
+                    initialPosition: LatLng(
+                      _parseDouble(widget.datosServicio['origen_lat']),
+                      _parseDouble(widget.datosServicio['origen_lng']),
+                    ),
+                    zoom: 14,
+                    markers: provider.markers,
+                    polylines: provider.polylines,
+                    onMapCreated: (controller) {
+                      _mapController = controller;
+                      // Centrar mapa si hay ubicación del conductor
+                      if (provider.conductorUbicacion != null) {
+                        final bounds = provider.calcularBounds();
+                        controller.animateCamera(
+                          CameraUpdate.newLatLngBounds(bounds, 100),
+                        );
+                      }
+                    },
+                  ),
+
+                  // Panel de información draggable
+                  if (!provider.isBuscando)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: GestureDetector(
+                        onVerticalDragUpdate: (details) {
+                          setState(() {
+                            final screenHeight = MediaQuery.of(
+                              context,
+                            ).size.height;
+                            final delta = -details.primaryDelta! / screenHeight;
+                            _sheetHeight = (_sheetHeight + delta).clamp(
+                              _minHeight,
+                              _maxHeight,
+                            );
+                          });
+                        },
+                        onVerticalDragEnd: (details) {
+                          final velocity = details.primaryVelocity ?? 0;
+                          if (velocity.abs() > 500) {
+                            setState(() {
+                              if (velocity > 0) {
+                                _sheetHeight = _minHeight;
+                              } else {
+                                _sheetHeight = _maxHeight;
+                              }
+                            });
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          height:
+                              MediaQuery.of(context).size.height * _sheetHeight,
+                          child: _buildPanelInfo(provider),
+                        ),
+                      ),
+                    ),
+
+                  // Loading mientras busca conductor
+                  if (provider.isBuscando)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _buildBuscandoConductor(provider),
+                    ),
+                ],
+              ),
             ),
           );
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Servicio Activo', style: TextStyle(fontWeight: FontWeight.bold),),
-          automaticallyImplyLeading: false,
-        ),
-        body: Stack(
-          children: [
-            StandardMap(
-              initialPosition: LatLng(
-                _parseDouble(widget.datosServicio['origen_lat']),
-                _parseDouble(widget.datosServicio['origen_lng']),
-              ),
-              zoom: 14,
-              markers: _markers,
-              polylines: _polylines,
-              onMapCreated: (controller) {
-                _mapController = controller;
-              },
-            ),
-
-            // Panel de información draggable
-            if (_estadoServicio != 'buscando')
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: GestureDetector(
-                  onVerticalDragUpdate: (details) {
-                    setState(() {
-                      // Calcular nueva altura basada en el drag
-                      final screenHeight = MediaQuery.of(context).size.height;
-                      final delta = -details.primaryDelta! / screenHeight;
-                      _sheetHeight = (_sheetHeight + delta).clamp(
-                        _minHeight,
-                        _maxHeight,
-                      );
-                    });
-                  },
-                  onVerticalDragEnd: (details) {
-                    // Si se desliza rápido, animar a posición cercana
-                    final velocity = details.primaryVelocity ?? 0;
-                    if (velocity.abs() > 500) {
-                      setState(() {
-                        if (velocity > 0) {
-                          // Deslizar hacia abajo
-                          _sheetHeight = _minHeight;
-                        } else {
-                          // Deslizar hacia arriba
-                          _sheetHeight = _maxHeight;
-                        }
-                      });
-                    }
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    height: MediaQuery.of(context).size.height * _sheetHeight,
-                    child: _buildPanelInfo(),
-                  ),
-                ),
-              ),
-
-            // Loading mientras busca conductor
-            if (_estadoServicio == 'buscando')
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildBuscandoConductor(),
-              ),
-          ],
-        ),
+        },
       ),
     );
   }
 
-  Widget _buildBuscandoConductor() {
-    final remainingSeconds = _maxWaitingSeconds - _elapsedSeconds;
+  Widget _buildBuscandoConductor(PasajeroServicioActivoProvider provider) {
+    final remainingSeconds = provider.remainingSeconds;
     final minutes = remainingSeconds ~/ 60;
     final seconds = remainingSeconds % 60;
 
@@ -1177,7 +709,7 @@ class _PasajeroEsperandoConductorScreenState
                 width: 60,
                 height: 60,
                 child: CircularProgressIndicator(
-                  value: _elapsedSeconds / _maxWaitingSeconds,
+                  value: provider.elapsedSeconds / 120,
                   strokeWidth: 4,
                   backgroundColor: Colors.grey.shade300,
                   valueColor: AlwaysStoppedAnimation<Color>(
@@ -1207,7 +739,7 @@ class _PasajeroEsperandoConductorScreenState
           ),
           const SizedBox(height: 16),
           TextButton.icon(
-            onPressed: () => _cancelarServicio(context),
+            onPressed: () => _cancelarServicio(context, provider),
             icon: const Icon(Iconsax.close_circle_copy, size: 18),
             label: const Text('Cancelar búsqueda'),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
@@ -1217,7 +749,7 @@ class _PasajeroEsperandoConductorScreenState
     );
   }
 
-  Widget _buildPanelInfo() {
+  Widget _buildPanelInfo(PasajeroServicioActivoProvider provider) {
     final estadosInfo = {
       'aceptado': {
         'texto': '🚗 Conductor en camino',
@@ -1242,7 +774,7 @@ class _PasajeroEsperandoConductorScreenState
     };
 
     final info =
-        estadosInfo[_estadoServicio] ??
+        estadosInfo[provider.estadoServicio] ??
         {
           'texto': 'Servicio activo',
           'color': AppColors.grey,
@@ -1264,11 +796,10 @@ class _PasajeroEsperandoConductorScreenState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle draggable más visible
+          // Handle draggable
           GestureDetector(
             onTap: () {
               setState(() {
-                // Toggle entre mínimo y máximo
                 _sheetHeight = _sheetHeight < 0.4 ? 0.45 : _minHeight;
               });
             },
@@ -1291,16 +822,11 @@ class _PasajeroEsperandoConductorScreenState
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Indicador de estado compacto
-                  _buildEstadoRow(info),
+                  _buildEstadoRow(info, provider),
                   const SizedBox(height: 12),
-
-                  // Info del conductor y vehículo
-                  _buildConductorInfo(),
+                  _buildConductorInfo(provider),
                   const SizedBox(height: 12),
-
-                  // Botón de cancelar
-                  _buildCancelarButton(),
+                  _buildCancelarButton(provider),
                 ],
               ),
             ),
@@ -1310,7 +836,10 @@ class _PasajeroEsperandoConductorScreenState
     );
   }
 
-  Widget _buildEstadoRow(Map<String, dynamic> info) {
+  Widget _buildEstadoRow(
+    Map<String, dynamic> info,
+    PasajeroServicioActivoProvider provider,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1339,17 +868,18 @@ class _PasajeroEsperandoConductorScreenState
             ),
           ],
         ),
-        // Botón llamar
         IconButton(
           icon: Icon(Iconsax.call, color: AppColors.green, size: 26),
-          onPressed: _llamarConductor,
+          onPressed: () =>
+              _llamarConductor(provider.conductor?['conductor_telefono']),
           tooltip: 'Llamar conductor',
         ),
       ],
     );
   }
 
-  Widget _buildConductorInfo() {
+  Widget _buildConductorInfo(PasajeroServicioActivoProvider provider) {
+    final conductor = provider.conductor;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -1359,13 +889,13 @@ class _PasajeroEsperandoConductorScreenState
       ),
       child: Row(
         children: [
-          // Avatar más pequeño
-          _conductor?['conductor_foto'] != null &&
-                  _conductor!['conductor_foto'].toString().isNotEmpty
+          // Avatar
+          conductor?['conductor_foto'] != null &&
+                  conductor!['conductor_foto'].toString().isNotEmpty
               ? CircleAvatar(
                   radius: 22,
                   backgroundColor: AppColors.primary.withOpacity(0.1),
-                  backgroundImage: NetworkImage(_conductor!['conductor_foto']),
+                  backgroundImage: NetworkImage(conductor['conductor_foto']),
                   onBackgroundImageError: (exception, stackTrace) {
                     print('⚠️ Error cargando foto del conductor: $exception');
                   },
@@ -1388,7 +918,7 @@ class _PasajeroEsperandoConductorScreenState
                   children: [
                     Flexible(
                       child: Text(
-                        _conductor?['conductor_nombre'] ?? 'Conductor',
+                        conductor?['conductor_nombre'] ?? 'Conductor',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -1404,7 +934,7 @@ class _PasajeroEsperandoConductorScreenState
                     ),
                     const SizedBox(width: 2),
                     Text(
-                      '${_conductor?['conductor_calificacion'] ?? 5.0}',
+                      '${conductor?['conductor_calificacion'] ?? 5.0}',
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -1416,7 +946,7 @@ class _PasajeroEsperandoConductorScreenState
                 Row(
                   children: [
                     Text(
-                      '${_conductor?['vehiculo_marca'] ?? ''} ${_conductor?['vehiculo_modelo'] ?? ''}'
+                      '${conductor?['vehiculo_marca'] ?? ''} ${conductor?['vehiculo_modelo'] ?? ''}'
                           .trim(),
                       style: TextStyle(fontSize: 12, color: AppColors.grey),
                       overflow: TextOverflow.ellipsis,
@@ -1432,7 +962,7 @@ class _PasajeroEsperandoConductorScreenState
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        _conductor?['vehiculo_placa'] ?? '---',
+                        conductor?['vehiculo_placa'] ?? '---',
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -1451,7 +981,7 @@ class _PasajeroEsperandoConductorScreenState
     );
   }
 
-  Widget _buildCancelarButton() {
+  Widget _buildCancelarButton(PasajeroServicioActivoProvider provider) {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
@@ -1473,10 +1003,15 @@ class _PasajeroEsperandoConductorScreenState
     );
   }
 
+  double _parseDouble(dynamic value) {
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
   @override
   void dispose() {
-    _cancelarTimeout();
-    _pusherService.desconectar();
     _mapController?.dispose();
     super.dispose();
   }

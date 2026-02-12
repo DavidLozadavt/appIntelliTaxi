@@ -1,22 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
-import 'package:intellitaxi/config/app_config.dart';
-import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/places_service.dart';
 import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
 import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 import 'package:intellitaxi/features/rides/services/conductores_service.dart';
 import 'package:intellitaxi/features/rides/services/pusher_conductores_service.dart';
-import 'package:intellitaxi/features/rides/data/trip_location.dart';
-import 'package:intellitaxi/features/rides/data/conductor_model.dart';
-import 'package:intellitaxi/config/pusher_config.dart';
+
 
 /// Provider para gestionar toda la lógica del home del pasajero
 /// Incluye: ubicación, búsqueda, rutas, solicitudes, Pusher, conductores
