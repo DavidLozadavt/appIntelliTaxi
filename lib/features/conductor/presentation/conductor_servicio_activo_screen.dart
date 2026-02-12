@@ -12,6 +12,8 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/standard_button.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
+import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
+import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
   final Map<String, dynamic> servicio;
@@ -45,6 +47,11 @@ class _ConductorServicioActivoScreenState
   final Set<Polyline> _polylines = {};
   bool _isLoading = false;
   BitmapDescriptor? _carIcon;
+
+  // 📏 Control de altura del BottomSheet
+  double _sheetHeight = 0.40;
+  final double _minHeight = 0.30;
+  final double _maxHeight = 0.75;
 
   @override
   void initState() {
@@ -430,8 +437,78 @@ class _ConductorServicioActivoScreenState
     // Limpiar persistencia
     await _persistencia.limpiarServicioActivo();
 
+    // Mostrar diálogo de calificación del pasajero
+    if (mounted) {
+      await _mostrarDialogoCalificacionPasajero();
+    }
+
+    // Cerrar pantalla
     if (mounted) {
       Navigator.of(context).pop();
+    }
+  }
+
+  /// Muestra el diálogo para calificar al pasajero
+  Future<void> _mostrarDialogoCalificacionPasajero() async {
+    try {
+      // Obtener IDs necesarios
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final conductorId = authProvider.user?.id;
+
+      if (conductorId == null) {
+        print('⚠️ No se pudo obtener ID del conductor');
+        return;
+      }
+
+      // Obtener ID del pasajero
+      int? pasajeroId;
+      String nombrePasajero = _getNombrePasajero();
+      String? fotoPasajero;
+
+      // Intentar obtener el ID del pasajero de diferentes fuentes
+      if (widget.servicio['usuario_pasajero'] != null) {
+        final usuarioPasajero = widget.servicio['usuario_pasajero'];
+        if (usuarioPasajero is Map) {
+          pasajeroId = usuarioPasajero['id'] ?? usuarioPasajero['usuario_id'];
+
+          // Obtener foto del pasajero
+          if (usuarioPasajero['persona'] != null) {
+            final persona = usuarioPasajero['persona'];
+            if (persona is Map) {
+              fotoPasajero = persona['foto'];
+            }
+          }
+        }
+      } else if (widget.servicio['pasajero_id'] != null) {
+        pasajeroId = widget.servicio['pasajero_id'] is int
+            ? widget.servicio['pasajero_id']
+            : int.tryParse(widget.servicio['pasajero_id'].toString());
+      }
+
+      if (pasajeroId == null) {
+        print('⚠️ No se pudo obtener ID del pasajero');
+        return;
+      }
+
+      // Mostrar diálogo de calificación
+      final resultado = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => CalificacionDialog(
+          idServicio: widget.servicio['id'],
+          idUsuarioCalifica: conductorId,
+          idUsuarioCalificado: pasajeroId!,
+          tipoCalificacion: 'PASAJERO',
+          nombreCalificado: nombrePasajero,
+          fotoCalificado: fotoPasajero,
+        ),
+      );
+
+      if (resultado == true) {
+        print('✅ Calificación del pasajero registrada');
+      }
+    } catch (e) {
+      print('❌ Error al mostrar diálogo de calificación: $e');
     }
   }
 
@@ -515,65 +592,112 @@ class _ConductorServicioActivoScreenState
             else
               const Center(child: CircularProgressIndicator()),
 
-            // Panel de información y botones
+            // Panel de información y botones (draggable)
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 15,
-                      offset: const Offset(0, -3),
+              child: GestureDetector(
+                onVerticalDragUpdate: (details) {
+                  setState(() {
+                    final screenHeight = MediaQuery.of(context).size.height;
+                    final delta = -details.primaryDelta! / screenHeight;
+                    _sheetHeight = (_sheetHeight + delta).clamp(
+                      _minHeight,
+                      _maxHeight,
+                    );
+                  });
+                },
+                onVerticalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity.abs() > 500) {
+                    setState(() {
+                      if (velocity > 0) {
+                        _sheetHeight = _minHeight;
+                      } else {
+                        _sheetHeight = _maxHeight;
+                      }
+                    });
+                  }
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  height: MediaQuery.of(context).size.height * _sheetHeight,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
                     ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle decorativo
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 15,
+                        offset: const Offset(0, -3),
                       ),
-                    ),
-
-                    // Indicador de estado
-                    _buildEstadoIndicator(),
-
-                    const SizedBox(height: 15),
-
-                    // Información del pasajero
-                    _buildInfoPasajero(),
-
-                    const SizedBox(height: 15),
-
-                    // Dirección actual
-                    _buildDireccionActual(),
-
-                    const SizedBox(height: 20),
-
-                    // Botón de acción según estado
-                    _buildBotonAccion(),
-
-                    // Botón de cancelar (solo si el servicio no ha iniciado)
-                    if (_estadoActual != 'en_curso' &&
-                        _estadoActual != 'finalizado') ...[
-                      const SizedBox(height: 12),
-                      _buildBotonCancelar(),
                     ],
-                  ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Handle draggable
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _sheetHeight = _sheetHeight < 0.5
+                                ? 0.55
+                                : _minHeight;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Container(
+                            width: 50,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Contenido scrolleable
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Indicador de estado
+                              _buildEstadoIndicator(),
+
+                              const SizedBox(height: 15),
+
+                              // Información del pasajero
+                              _buildInfoPasajero(),
+
+                              const SizedBox(height: 15),
+
+                              // Dirección actual
+                              _buildDireccionActual(),
+
+                              const SizedBox(height: 20),
+
+                              // Botón de acción según estado
+                              _buildBotonAccion(),
+
+                              // Botón de cancelar (solo si el servicio no ha iniciado)
+                              if (_estadoActual != 'en_curso' &&
+                                  _estadoActual != 'finalizado') ...[
+                                const SizedBox(height: 12),
+                                _buildBotonCancelar(),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -677,14 +801,6 @@ class _ConductorServicioActivoScreenState
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Text(
-                //   '\$${_getPrecio()}',
-                //   style: const TextStyle(
-                //     fontSize: 15,
-                //     color: AppColors.green,
-                //     fontWeight: FontWeight.bold,
-                //   ),
-                // ),
               ],
             ),
           ),
@@ -698,38 +814,179 @@ class _ConductorServicioActivoScreenState
   }
 
   Widget _buildDireccionActual() {
-    final direccion = _estadoActual == 'en_curso'
-        ? widget.servicio['destino_address']
-        : widget.servicio['origen_address'];
+    final origenAddress = widget.servicio['origenAddress'];
+    final destinoAddress = widget.servicio['destinoAddress'];
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.accent.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.accent.withOpacity(0.3), width: 1),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            _estadoActual == 'en_curso'
-                ? Iconsax.location
-                : Iconsax.location_add,
+    return Column(
+      children: [
+        // Dirección de origen (recogida)
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
             color: _estadoActual == 'en_curso'
-                ? AppColors.green
-                : AppColors.accent,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              direccion ?? 'Sin dirección',
-              style: const TextStyle(fontSize: 13),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+                ? Colors.grey.withOpacity(0.05)
+                : AppColors.accent.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _estadoActual == 'en_curso'
+                  ? Colors.grey.withOpacity(0.2)
+                  : AppColors.accent.withOpacity(0.3),
+              width: _estadoActual == 'en_curso' ? 1 : 1.5,
             ),
           ),
-        ],
-      ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: _estadoActual == 'en_curso'
+                      ? Colors.grey.withOpacity(0.2)
+                      : AppColors.accent.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Iconsax.location_add,
+                  color: _estadoActual == 'en_curso'
+                      ? Colors.grey
+                      : AppColors.accent,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Punto de recogida',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _estadoActual == 'en_curso'
+                            ? Colors.grey
+                            : AppColors.accent,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      origenAddress ?? 'Sin dirección',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _estadoActual == 'en_curso'
+                            ? Colors.grey.shade600
+                            : Colors.grey.shade600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (_estadoActual == 'en_curso')
+                const Icon(
+                  Iconsax.tick_circle,
+                  color: AppColors.green,
+                  size: 20,
+                ),
+            ],
+          ),
+        ),
+
+        // Conector visual
+        Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              const SizedBox(width: 18),
+              Container(
+                width: 2,
+                height: 16,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      _estadoActual == 'en_curso'
+                          ? AppColors.green
+                          : Colors.grey.shade400,
+                      _estadoActual == 'en_curso'
+                          ? AppColors.green
+                          : Colors.grey.shade400,
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Dirección de destino
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _estadoActual == 'en_curso'
+                ? AppColors.green.withOpacity(0.1)
+                : Colors.grey.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _estadoActual == 'en_curso'
+                  ? AppColors.green.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.2),
+              width: _estadoActual == 'en_curso' ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: _estadoActual == 'en_curso'
+                      ? AppColors.green.withOpacity(0.2)
+                      : Colors.grey.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Iconsax.location,
+                  color: _estadoActual == 'en_curso'
+                      ? AppColors.green
+                      : Colors.grey,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Destino final',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _estadoActual == 'en_curso'
+                            ? AppColors.green
+                            : Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      destinoAddress ?? 'Sin dirección',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _estadoActual == 'en_curso'
+                            ? Colors.grey.shade600
+                            : Colors.grey.shade600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

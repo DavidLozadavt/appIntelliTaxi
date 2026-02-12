@@ -47,6 +47,10 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
       return;
     }
 
+    // Guardar contexto y scaffoldMessenger antes de operaciones async
+    final ctx = context;
+    final scaffoldMessenger = ScaffoldMessenger.of(ctx);
+
     setState(() => _isLoading = true);
 
     try {
@@ -59,10 +63,14 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
         comentario: _comentarioController.text.trim(),
       );
 
-      if (mounted) {
-        Navigator.pop(context, true); // Retornar true indicando éxito
+      // Cerrar diálogo
+      if (mounted && ctx.mounted) {
+        Navigator.of(ctx).pop(true); // Retornar true indicando éxito
+      }
 
-        ScaffoldMessenger.of(context).showSnackBar(
+      // Mostrar mensaje de éxito
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
           const SnackBar(
             content: Text('¡Gracias por tu calificación!'),
             backgroundColor: Colors.green,
@@ -74,7 +82,7 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
       if (mounted) {
         setState(() => _isLoading = false);
 
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(e.toString().replaceAll('Exception: ', '')),
             backgroundColor: Colors.red,
