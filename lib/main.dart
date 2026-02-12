@@ -7,8 +7,13 @@ import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/documentos_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/historial_servicios_conductor_screen.dart';
+import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/conductor/providers/documentos_provider.dart';
+// import 'package:intellitaxi/features/conductor/providers/historial_servicios_provider.dart';
+import 'package:intellitaxi/features/conductor/providers/servicio_activo_provider.dart';
 import 'package:intellitaxi/features/pasajero/presentation/historial_servicios_pasajero_screen.dart';
 import 'package:intellitaxi/features/rides/presentation/historial_calificaciones_screen.dart';
+// import 'package:intellitaxi/features/rides/providers/pasajero_home_provider.dart';
 import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart';
 
 import 'package:intellitaxi/features/notifications/logic/notification_provider.dart';
@@ -68,16 +73,46 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Providers globales
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ConnectivityProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        
+        // Providers lazy (se cargan cuando se necesitan)
         ChangeNotifierProvider(
           create: (_) => NotificationProvider(),
-          lazy: true, // Optimizado: solo se carga cuando se necesita
+          lazy: true,
+        ),
+        ChangeNotifierProvider(
+          create: (_) => ChatProvider(),
+          lazy: true,
         ),
 
-        ChangeNotifierProvider(create: (_) => ChatProvider(), lazy: true),
+        // Providers del conductor
+        ChangeNotifierProvider(
+          create: (_) => ConductorHomeProvider(),
+          lazy: true,
+        ),
+        ChangeNotifierProvider(
+          create: (_) => DocumentosProvider(),
+          lazy: true,
+        ),
+        // TODO: Descomentar cuando se creen los modelos necesarios
+        // ChangeNotifierProvider(
+        //   create: (_) => HistorialServiciosProvider(),
+        //   lazy: true,
+        // ),
+        ChangeNotifierProvider(
+          create: (_) => ServicioActivoProvider(),
+          lazy: true,
+        ),
 
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        // Providers del pasajero
+        // TODO: Descomentar cuando se implementen métodos en RoutesService
+        // ChangeNotifierProvider(
+        //   create: (_) => PasajeroHomeProvider(),
+        //   lazy: true,
+        // ),
       ],
 
       child: Consumer2<ConnectivityProvider, ThemeProvider>(
