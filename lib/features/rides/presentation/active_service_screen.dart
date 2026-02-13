@@ -7,6 +7,9 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
+import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
+import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'dart:async';
 
 class ActiveServiceScreen extends StatelessWidget {
   final ServicioActivo servicio;
@@ -70,6 +73,23 @@ class ActiveServiceScreen extends StatelessWidget {
               appBar: AppBar(
                 title: Text('Servicio #${servicio.id}'),
                 automaticallyImplyLeading: !isServiceActive,
+                actions: [
+                  // Botón de chat - solo si el servicio está activo
+                  if (isServiceActive)
+                    Builder(
+                      builder: (context) {
+                        final authProvider = Provider.of<AuthProvider>(
+                          context,
+                          listen: false,
+                        );
+                        return ChatHelper.botonAppBarChat(
+                          context: context,
+                          servicioId: servicio.id,
+                          miUserId: authProvider.userId ?? 0,
+                        );
+                      },
+                    ),
+                ],
               ),
               body: Stack(
                 children: [

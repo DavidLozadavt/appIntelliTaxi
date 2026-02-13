@@ -13,6 +13,7 @@ import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/standard_button.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
+import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
@@ -143,20 +144,7 @@ class _ConductorServicioActivoScreenState
     return null;
   }
 
-  // Método helper para obtener el precio
-  // String _getPrecio() {
-  //   final precioFinal = widget.servicio['precio_final'];
-  //   final precioEstimado = widget.servicio['precio_estimado'];
 
-  //   if (precioFinal != null) {
-  //     return precioFinal.toString().replaceAll('.00', '');
-  //   }
-  //   if (precioEstimado != null) {
-  //     return precioEstimado.toString().replaceAll('.00', '');
-  //   }
-
-  //   return '0';
-  // }
 
   // Método helper para obtener la foto del pasajero
   String? _getFotoPasajero() {
@@ -448,10 +436,7 @@ class _ConductorServicioActivoScreenState
 
     // Navegar al home (reemplazar todas las rutas)
     if (mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/home',
-        (route) => false,
-      );
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
     }
   }
 
@@ -582,6 +567,26 @@ class _ConductorServicioActivoScreenState
         appBar: AppBar(
           title: const Text('Servicio en Curso'),
           automaticallyImplyLeading: false,
+          actions: [
+            // Botón de chat
+            Builder(
+              builder: (context) {
+                final authProvider = Provider.of<AuthProvider>(
+                  context,
+                  listen: false,
+                );
+                final servicioId = widget.servicio['id'] is int
+                    ? widget.servicio['id'] as int
+                    : int.tryParse(widget.servicio['id'].toString()) ?? 0;
+
+                return ChatHelper.botonAppBarChat(
+                  context: context,
+                  servicioId: servicioId,
+                  miUserId: authProvider.userId ?? 0,
+                );
+              },
+            ),
+          ],
         ),
         body: Stack(
           children: [

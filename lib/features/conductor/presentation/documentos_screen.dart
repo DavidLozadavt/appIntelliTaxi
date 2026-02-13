@@ -573,11 +573,16 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
   }
 
   Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final initialDate = _selectedDate != null && _selectedDate!.isAfter(now) 
+        ? _selectedDate! 
+        : now;
+    
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 3650)),
+      initialDate: initialDate,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 3650)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(

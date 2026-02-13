@@ -6,6 +6,8 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_conductor_dialog.dart';
 import 'package:intellitaxi/features/rides/logic/pasajero_servicio_activo_provider.dart';
+import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
+import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:provider/provider.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
@@ -38,7 +40,9 @@ class _PasajeroEsperandoConductorScreenState
     // La lógica ahora está en el provider
   }
 
-  Future<void> _mostrarDialogoFinalizado(Map<String, dynamic>? conductor) async {
+  Future<void> _mostrarDialogoFinalizado(
+    Map<String, dynamic>? conductor,
+  ) async {
     final resultado = await CalificacionConductorDialog.show(
       context,
       servicioId: widget.servicioId,
@@ -49,13 +53,12 @@ class _PasajeroEsperandoConductorScreenState
     if (mounted && resultado == true) {
       // Esperar un poco para que se procesen las actualizaciones
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       if (mounted) {
         // Navegar al home (reemplazar todas las rutas)
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil('/home', (route) => false);
       }
     }
   }
@@ -300,6 +303,24 @@ class _PasajeroEsperandoConductorScreenState
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 automaticallyImplyLeading: false,
+                actions: [
+                  // Botón de chat - solo mostrar si hay conductor asignado
+                  if (provider.estadoServicio != 'buscando' &&
+                      provider.estadoServicio != 'pendiente')
+                    Builder(
+                      builder: (context) {
+                        final authProvider = Provider.of<AuthProvider>(
+                          context,
+                          listen: false,
+                        );
+                        return ChatHelper.botonAppBarChat(
+                          context: context,
+                          servicioId: widget.servicioId,
+                          miUserId: authProvider.userId ?? 0,
+                        );
+                      },
+                    ),
+                ],
               ),
               body: Stack(
                 children: [
