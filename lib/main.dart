@@ -9,6 +9,8 @@ import 'package:intellitaxi/features/conductor/presentation/documentos_screen.da
 import 'package:intellitaxi/features/conductor/presentation/historial_servicios_conductor_screen.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/documentos_provider.dart';
+import 'package:intellitaxi/features/sanciones/logic/sancion_provider.dart';
+import 'package:intellitaxi/features/sanciones/presentation/sanciones_screen.dart';
 // import 'package:intellitaxi/features/conductor/providers/historial_servicios_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/servicio_activo_provider.dart';
 import 'package:intellitaxi/features/pasajero/presentation/historial_servicios_pasajero_screen.dart';
@@ -104,6 +106,10 @@ class MyApp extends StatelessWidget {
         // ),
         ChangeNotifierProvider(
           create: (_) => ServicioActivoProvider(),
+          lazy: true,
+        ),
+        ChangeNotifierProvider(
+          create: (_) => SancionProvider(),
           lazy: true,
         ),
 
@@ -204,6 +210,7 @@ class MyApp extends StatelessWidget {
                 );
               },
               '/chat': (_) => const ChatScreen(),
+              '/mis-sanciones': (_) => const SancionesScreen(),
               // '/vinculaciones-propietario': (_) => TransportePropietario(),
             },
           );

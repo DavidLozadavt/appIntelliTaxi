@@ -11,6 +11,8 @@ import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.d
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
+import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -26,11 +28,53 @@ class _HomeConductorState extends State<HomeConductor> {
   Brightness? _lastBrightness;
   late ConductorHomeProvider _provider;
 
+  // Sanciones
+  final SancionService _sancionService = SancionService();
+  List<Sancion> _sanciones = [];
+  bool _bannerVisible = true;
+
   @override
   void initState() {
     super.initState();
     _provider = ConductorHomeProvider();
     _provider.initialize();
+    _cargarSanciones();
+  }
+
+  Future<void> _cargarSanciones() async {
+    try {
+      final sanciones = await _sancionService.getMisSanciones();
+      if (mounted) {
+        setState(() {
+          _sanciones = sanciones;
+        });
+      }
+    } catch (_) {
+      // Silencioso - no bloquear el home si falla
+    }
+  }
+
+  List<Sancion> get _sancionesActivas =>
+      _sanciones.where((s) => s.estaActiva).toList();
+
+  double get _porcentajeRiesgo {
+    final activas = _sancionesActivas;
+    if (activas.isEmpty) return 0.0;
+    double puntos = 0;
+    for (final s in activas) {
+      switch (s.gravedad.toUpperCase()) {
+        case 'GRAVE':
+          puntos += 4;
+          break;
+        case 'ALTO':
+          puntos += 2;
+          break;
+        default:
+          puntos += 1;
+          break;
+      }
+    }
+    return (puntos / 10).clamp(0.0, 1.0);
   }
 
   @override
@@ -579,6 +623,109 @@ class _HomeConductorState extends State<HomeConductor> {
     }
   }
 
+  Widget _buildSancionesBanner() {
+    final activas = _sancionesActivas;
+    final p = _porcentajeRiesgo;
+
+    // Colores según nivel
+    final Color color;
+    final IconData icono;
+    final String titulo;
+    final String subtitulo;
+
+    if (p >= 0.5) {
+      color = Colors.red;
+      icono = Iconsax.danger_copy;
+      titulo = 'Peligro de bloqueo';
+      subtitulo = 'Tienes ${activas.length} sanción(es) graves. Mejora tu comportamiento.';
+    } else if (p > 0.2) {
+      color = Colors.orange;
+      icono = Iconsax.warning_2_copy;
+      titulo = 'Advertencia';
+      subtitulo = 'Tienes ${activas.length} sanción(es) activa(s). Cuida tu conducta.';
+    } else {
+      color = Colors.amber.shade700;
+      icono = Iconsax.info_circle_copy;
+      titulo = 'Precaución';
+      subtitulo = 'Tienes ${activas.length} sanción(es) activa(s).';
+    }
+
+    return Material(
+      elevation: 6,
+      borderRadius: BorderRadius.circular(14),
+      shadowColor: color.withOpacity(0.3),
+      child: InkWell(
+        onTap: () => Navigator.pushNamed(context, '/mis-sanciones'),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              colors: [color, color.withOpacity(0.85)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              // Icono
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icono, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              // Texto
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      titulo,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitulo,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 11,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Botón cerrar
+              GestureDetector(
+                onTap: () => setState(() => _bannerVisible = false),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 16),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
@@ -854,6 +1001,15 @@ class _HomeConductorState extends State<HomeConductor> {
                     ),
                   ),
                 ),
+              ),
+
+            // Banner de sanciones
+            if (_sancionesActivas.isNotEmpty && _bannerVisible)
+              Positioned(
+                top: 8,
+                left: 16,
+                right: 56,
+                child: _buildSancionesBanner(),
               ),
 
             // Botón de recarga de ubicación

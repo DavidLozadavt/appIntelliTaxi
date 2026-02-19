@@ -183,8 +183,7 @@ class _PasajeroEsperandoConductorScreenState
 
     if (confirmar == true && mounted) {
       final provider = Provider.of<PasajeroServicioActivoProvider>(
-        context,
-        listen: false,
+        context, listen: false,
       );
       await _cancelarServicio(context, provider);
     }

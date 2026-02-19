@@ -58,6 +58,12 @@ class CustomDrawer extends StatelessWidget {
       //   allowedRoles: ["MOTORISTA", "CONDUCTOR", "ADMINISTRADOR"],
       // ),
       DrawerItem(
+        title: 'Mis Sanciones',
+        icon: Iconsax.warning_2_copy,
+        route: '/mis-sanciones',
+        allowedRoles: ["CONDUCTOR"],
+      ),
+      DrawerItem(
         title: 'Mis Documentos',
         icon: Iconsax.document_text_copy,
         route: '/mis-documentos',
