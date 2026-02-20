@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
@@ -32,6 +33,7 @@ class _HomeConductorState extends State<HomeConductor> {
   final SancionService _sancionService = SancionService();
   List<Sancion> _sanciones = [];
   bool _bannerVisible = true;
+  Timer? _bannerTimer;
 
   @override
   void initState() {
@@ -48,6 +50,12 @@ class _HomeConductorState extends State<HomeConductor> {
         setState(() {
           _sanciones = sanciones;
         });
+        if (_sancionesActivas.isNotEmpty) {
+          _bannerTimer?.cancel();
+          _bannerTimer = Timer(const Duration(seconds: 5), () {
+            if (mounted) setState(() => _bannerVisible = false);
+          });
+        }
       }
     } catch (_) {
       // Silencioso - no bloquear el home si falla
@@ -94,6 +102,7 @@ class _HomeConductorState extends State<HomeConductor> {
 
   @override
   void dispose() {
+    _bannerTimer?.cancel();
     _mapController?.dispose();
     _provider.dispose();
     super.dispose();

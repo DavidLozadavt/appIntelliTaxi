@@ -36,7 +36,7 @@ class StandardMap extends StatelessWidget {
   Widget build(BuildContext context) {
     return GoogleMap(
       onMapCreated: (GoogleMapController controller) {
-        _setMapStyle(controller);
+        _setMapStyle(context, controller);
         onMapCreated(controller);
       },
       initialCameraPosition: CameraPosition(
@@ -56,11 +56,12 @@ class StandardMap extends StatelessWidget {
     );
   }
 
-  Future<void> _setMapStyle(GoogleMapController controller) async {
+  Future<void> _setMapStyle(
+    BuildContext context,
+    GoogleMapController controller,
+  ) async {
     try {
-      final isDark =
-          WidgetsBinding.instance.platformDispatcher.platformBrightness ==
-          Brightness.dark;
+      final isDark = Theme.of(context).brightness == Brightness.dark;
       await controller.setMapStyle(
         isDark ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
       );
