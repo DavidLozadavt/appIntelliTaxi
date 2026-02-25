@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/pasajero_servicio_mapper.dart';
+import 'package:intellitaxi/features/rides/services/servicio_conductor_location_cache_service.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 
 /// 🎯 Provider que maneja toda la lógica del servicio activo del pasajero
@@ -11,6 +12,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   // ===== SERVICIOS =====
   final ServicioPusherService _pusherService = ServicioPusherService();
   final RoutesService _routesService = RoutesService();
+  final ServicioConductorLocationCacheService _locationCacheService =
+      ServicioConductorLocationCacheService();
 
   // ===== DATOS DEL SERVICIO =====
   final int servicioId;
@@ -63,6 +66,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     await _cargarIconoCarro();
     _crearMarcadores();
     _hidratarConductorDesdePayloadInicial();
+    await _restaurarUbicacionConductorPersistida();
     _suscribirEventos();
     if (_estadoServicio == 'buscando') {
       _iniciarTimeout();
@@ -80,6 +84,23 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     Future.delayed(const Duration(seconds: 3), _verificarEstadoServicio);
   }
 
+  Future<void> _restaurarUbicacionConductorPersistida() async {
+    if (_conductorUbicacion != null) return;
+    final cached = await _locationCacheService.read(servicioId);
+    if (cached != null) {
+      _conductorUbicacion = cached;
+      _lastConductorLocationCache[servicioId] = cached;
+      _actualizarMarcadores();
+    }
+  }
+
+  void _setConductorUbicacion(LatLng value) {
+    _conductorUbicacion = value;
+    _lastConductorLocationCache[servicioId] = value;
+    // Persistencia best-effort para sobrevivir reconstrucciones/hot reload.
+    _locationCacheService.save(servicioId, value);
+  }
+
   void _hidratarConductorDesdePayloadInicial() {
     _conductor = PasajeroServicioMapper.conductorResumen(datosServicio);
     _conductorUbicacion = PasajeroServicioMapper.conductorUbicacion(
@@ -87,7 +108,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     );
 
     if (_conductorUbicacion != null) {
-      _lastConductorLocationCache[servicioId] = _conductorUbicacion!;
+      _setConductorUbicacion(_conductorUbicacion!);
     } else if (_lastConductorLocationCache.containsKey(servicioId)) {
       _conductorUbicacion = _lastConductorLocationCache[servicioId];
     }
@@ -225,11 +246,12 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
         _conductor = data;
         if (data['conductor_lat'] != null && data['conductor_lng'] != null) {
-          _conductorUbicacion = LatLng(
-            PasajeroServicioMapper.parseDouble(data['conductor_lat']),
-            PasajeroServicioMapper.parseDouble(data['conductor_lng']),
+          _setConductorUbicacion(
+            LatLng(
+              PasajeroServicioMapper.parseDouble(data['conductor_lat']),
+              PasajeroServicioMapper.parseDouble(data['conductor_lng']),
+            ),
           );
-          _lastConductorLocationCache[servicioId] = _conductorUbicacion!;
         }
         _estadoServicio = 'aceptado';
         _actualizarMarcadores();
@@ -241,11 +263,12 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         final lng = data['conductor_lng'] ?? data['lng'];
 
         if (lat != null && lng != null) {
-          _conductorUbicacion = LatLng(
-            PasajeroServicioMapper.parseDouble(lat),
-            PasajeroServicioMapper.parseDouble(lng),
+          _setConductorUbicacion(
+            LatLng(
+              PasajeroServicioMapper.parseDouble(lat),
+              PasajeroServicioMapper.parseDouble(lng),
+            ),
           );
-          _lastConductorLocationCache[servicioId] = _conductorUbicacion!;
 
           if (_estadoServicio == 'buscando') {
             print('✅ PROVIDER: Conductor ubicado, cambiando estado a aceptado');
@@ -316,19 +339,22 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
           if ((servicio['conductor_lat'] ?? servicio['conductorLat']) != null &&
               (servicio['conductor_lng'] ?? servicio['conductorLng']) != null) {
-            _conductorUbicacion = LatLng(
-              PasajeroServicioMapper.parseDouble(
-                servicio['conductor_lat'] ?? servicio['conductorLat'],
-              ),
-              PasajeroServicioMapper.parseDouble(
-                servicio['conductor_lng'] ?? servicio['conductorLng'],
+            _setConductorUbicacion(
+              LatLng(
+                PasajeroServicioMapper.parseDouble(
+                  servicio['conductor_lat'] ?? servicio['conductorLat'],
+                ),
+                PasajeroServicioMapper.parseDouble(
+                  servicio['conductor_lng'] ?? servicio['conductorLng'],
+                ),
               ),
             );
-            _lastConductorLocationCache[servicioId] = _conductorUbicacion!;
             _actualizarMarcadores();
           } else if (_lastConductorLocationCache.containsKey(servicioId)) {
             _conductorUbicacion = _lastConductorLocationCache[servicioId];
             _actualizarMarcadores();
+          } else {
+            await _restaurarUbicacionConductorPersistida();
           }
 
           notifyListeners();
@@ -474,6 +500,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   void dispose() {
     _cancelarTimeout();
     _refreshTimer?.cancel();
+    if (_estadoServicio == 'finalizado' || _estadoServicio == 'cancelado') {
+      _locationCacheService.clear(servicioId);
+      _lastConductorLocationCache.remove(servicioId);
+    }
     _pusherService.desconectar();
     super.dispose();
   }
