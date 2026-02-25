@@ -6,12 +6,16 @@ class SolicitudServicioCard extends StatefulWidget {
   final Map<String, dynamic> solicitud;
   final VoidCallback onAceptar;
   final VoidCallback onRechazar;
+  final int? segundosRestantes;
+  final bool destacada;
 
   const SolicitudServicioCard({
     super.key,
     required this.solicitud,
     required this.onAceptar,
     required this.onRechazar,
+    this.segundosRestantes,
+    this.destacada = false,
   });
 
   @override
@@ -64,6 +68,8 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     final destino = widget.solicitud['destino'] ?? 'Destino no especificado';
     // Nota: No se usa precio porque funciona con taxímetro
     final claseVehiculo = widget.solicitud['clase_vehiculo'] ?? 'taxi';
+    final segundosRestantes = widget.segundosRestantes ?? 0;
+    final enRiesgo = segundosRestantes <= 7;
 
     return SlideTransition(
       position: _slideAnimation,
@@ -136,6 +142,27 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                         ],
                       ),
                     ),
+                    if (segundosRestantes > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: enRiesgo
+                              ? Colors.red.withOpacity(0.9)
+                              : Colors.black.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${segundosRestantes}s',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -181,7 +208,9 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                                 ),
                               ),
                               Text(
-                                pasajeroNombre,
+                                widget.destacada
+                                    ? '$pasajeroNombre  •  Recomendada'
+                                    : pasajeroNombre,
                                 style: const TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.bold,

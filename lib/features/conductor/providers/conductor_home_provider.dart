@@ -33,6 +33,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   // Solicitudes de servicio
   final List<Map<String, dynamic>> _solicitudesActivas = [];
   final Map<String, Timer> _timersExpiracion = {};
+  final Map<String, DateTime> _expiracionPorSolicitud = {};
+  Timer? _tickerExpiracionUI;
   bool _suscritoAPusher = false;
 
   // Control de dispose
@@ -47,6 +49,14 @@ class ConductorHomeProvider extends ChangeNotifier {
   List<VehiculoConductor> get vehiculosDisponibles => _vehiculosDisponibles;
   TurnoActivo? get turnoActivo => _turnoActivo;
   List<Map<String, dynamic>> get solicitudesActivas => _solicitudesActivas;
+  List<Map<String, dynamic>> get solicitudesOrdenadas {
+    final solicitudes = List<Map<String, dynamic>>.from(_solicitudesActivas);
+    solicitudes.sort((a, b) => _calcularScore(b).compareTo(_calcularScore(a)));
+    return solicitudes;
+  }
+
+  Map<String, dynamic>? get solicitudPrincipal =>
+      solicitudesOrdenadas.isEmpty ? null : solicitudesOrdenadas.first;
   bool get tieneTurnoActivo => _turnoActivo != null;
 
   /// Inicializar el provider
@@ -65,6 +75,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       timer.cancel();
     }
     _timersExpiracion.clear();
+    _tickerExpiracionUI?.cancel();
+    _tickerExpiracionUI = null;
     desconectarPusher();
     super.dispose();
   }
@@ -120,14 +132,20 @@ class ConductorHomeProvider extends ChangeNotifier {
   void _procesarNuevaSolicitud(String data) {
     try {
       final solicitud = json.decode(data) as Map<String, dynamic>;
-      print('📩 Solicitud decodificada: ${solicitud['id']}');
+      final solicitudId = _obtenerSolicitudId(solicitud);
+      print('📩 Solicitud decodificada: $solicitudId');
 
       // Verificar si ya existe la solicitud
       final yaExiste = _solicitudesActivas.any(
-        (s) => s['id'] == solicitud['id'],
+        (s) => _obtenerSolicitudId(s) == solicitudId,
       );
       if (yaExiste) {
-        print('⚠️ Solicitud ya existe: ${solicitud['id']}');
+        print('⚠️ Solicitud ya existe: $solicitudId');
+        return;
+      }
+
+      if (solicitudId == null || solicitudId.isEmpty) {
+        print('⚠️ Solicitud descartada: no contiene id válido');
         return;
       }
 
@@ -137,8 +155,14 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Reproducir sonido de notificación
       _reproducirSonidoNotificacion();
 
+      final ttlSegundos = _resolverTtlSegundos(solicitud);
+      _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
+        Duration(seconds: ttlSegundos),
+      );
+
       // Configurar timer de expiración
-      _configurarTimerExpiracion(solicitud['id'].toString());
+      _configurarTimerExpiracion(solicitudId, ttlSegundos: ttlSegundos);
+      _iniciarTickerExpiracionUI();
 
       if (!_isDisposed) notifyListeners();
     } catch (e) {
@@ -147,10 +171,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Configurar timer de expiración para una solicitud
-  void _configurarTimerExpiracion(String solicitudId) {
+  void _configurarTimerExpiracion(String solicitudId, {int ttlSegundos = 20}) {
     _timersExpiracion[solicitudId]?.cancel();
 
-    _timersExpiracion[solicitudId] = Timer(const Duration(seconds: 20), () {
+    _timersExpiracion[solicitudId] = Timer(Duration(seconds: ttlSegundos), () {
       _expirarSolicitud(solicitudId);
     });
   }
@@ -159,9 +183,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   void _expirarSolicitud(String solicitudId) {
     print('⏱️ Solicitud expirada: $solicitudId');
     _solicitudesActivas.removeWhere(
-      (s) => s['solicitud_id']?.toString() == solicitudId,
+      (s) => _obtenerSolicitudId(s) == solicitudId,
     );
+    _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion.remove(solicitudId);
+    _detenerTickerSiNoHaySolicitudes();
     if (!_isDisposed) notifyListeners();
   }
 
@@ -180,10 +206,12 @@ class ConductorHomeProvider extends ChangeNotifier {
   void rechazarSolicitud(String solicitudId) {
     print('❌ Rechazando solicitud: $solicitudId');
     _solicitudesActivas.removeWhere(
-      (s) => s['solicitud_id']?.toString() == solicitudId,
+      (s) => _obtenerSolicitudId(s) == solicitudId,
     );
+    _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion[solicitudId]?.cancel();
     _timersExpiracion.remove(solicitudId);
+    _detenerTickerSiNoHaySolicitudes();
     if (!_isDisposed) notifyListeners();
   }
 
@@ -212,8 +240,10 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       // Remover de la lista de solicitudes activas
       _solicitudesActivas.removeWhere(
-        (s) => s['solicitud_id']?.toString() == solicitudId,
+        (s) => _obtenerSolicitudId(s) == solicitudId,
       );
+      _expiracionPorSolicitud.remove(solicitudId);
+      _detenerTickerSiNoHaySolicitudes();
 
       if (!_isDisposed) notifyListeners();
       return response;
@@ -435,6 +465,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       _turnoActivo = null;
       _isOnline = false;
       _solicitudesActivas.clear();
+      _expiracionPorSolicitud.clear();
+      _tickerExpiracionUI?.cancel();
+      _tickerExpiracionUI = null;
 
       if (!_isDisposed) notifyListeners();
       return true;
@@ -483,9 +516,11 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Limpiar solicitudes activas si es necesario
       _solicitudesActivas.removeWhere(
         (s) =>
-            s['servicio_id']?.toString() == servicioId.toString() ||
-            s['id']?.toString() == servicioId.toString(),
+            _obtenerSolicitudId(s) == servicioId.toString() ||
+            s['servicio_id']?.toString() == servicioId.toString(),
       );
+      _expiracionPorSolicitud.remove(servicioId.toString());
+      _detenerTickerSiNoHaySolicitudes();
 
       if (!_isDisposed) notifyListeners();
       return true;
@@ -493,5 +528,96 @@ class ConductorHomeProvider extends ChangeNotifier {
       print('❌ Error cancelando servicio: $e');
       return false;
     }
+  }
+
+  int obtenerSegundosRestantes(String solicitudId) {
+    final expiracion = _expiracionPorSolicitud[solicitudId];
+    if (expiracion == null) return 0;
+    final restantes = expiracion.difference(DateTime.now()).inSeconds;
+    return restantes < 0 ? 0 : restantes;
+  }
+
+  int _resolverTtlSegundos(Map<String, dynamic> solicitud) {
+    final ttlRaw =
+        solicitud['ttl_segundos'] ??
+        solicitud['ttl'] ??
+        solicitud['tiempo_restante'];
+    final ttl = int.tryParse(ttlRaw?.toString() ?? '');
+    if (ttl == null || ttl <= 0) return 20;
+    return ttl > 90 ? 90 : ttl;
+  }
+
+  void _iniciarTickerExpiracionUI() {
+    if (_tickerExpiracionUI != null) return;
+    _tickerExpiracionUI = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_isDisposed) return;
+      _detenerTickerSiNoHaySolicitudes();
+      if (_tickerExpiracionUI != null) {
+        notifyListeners();
+      }
+    });
+  }
+
+  void _detenerTickerSiNoHaySolicitudes() {
+    if (_solicitudesActivas.isEmpty && _tickerExpiracionUI != null) {
+      _tickerExpiracionUI?.cancel();
+      _tickerExpiracionUI = null;
+    }
+  }
+
+  String? _obtenerSolicitudId(Map<String, dynamic> solicitud) {
+    final rawId =
+        solicitud['solicitud_id'] ??
+        solicitud['servicio_id'] ??
+        solicitud['id'] ??
+        solicitud['request_id'];
+    return rawId?.toString();
+  }
+
+  double _parseDouble(dynamic value, {double fallback = 0.0}) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value.replaceAll(',', '.')) ?? fallback;
+    }
+    return fallback;
+  }
+
+  double _calcularScore(Map<String, dynamic> solicitud) {
+    // Ranking simple y estable para priorizar: menor distancia + mayor tarifa + reciente
+    final distanciaMetros =
+        solicitud['distanciaMetros'] ?? solicitud['distancia_metros'];
+    final distanciaValor =
+        solicitud['distancia_km'] ??
+        solicitud['distancia'] ??
+        (distanciaMetros != null
+            ? (_parseDouble(distanciaMetros) / 1000.0)
+            : null);
+    final distanciaKm = _parseDouble(distanciaValor, fallback: 999.0);
+
+    final precio = _parseDouble(
+      solicitud['precio_estimado'] ??
+          solicitud['precioEstimado'] ??
+          solicitud['precio'] ??
+          solicitud['precio_ofertado'],
+    );
+
+    final createdAtRaw =
+        solicitud['created_at'] ??
+        solicitud['createdAt'] ??
+        solicitud['fechaServicio'] ??
+        solicitud['timestamp'];
+    final createdAt = DateTime.tryParse(createdAtRaw?.toString() ?? '');
+    final segundosDesdeCreacion = createdAt == null
+        ? 0
+        : DateTime.now().difference(createdAt).inSeconds.clamp(0, 300);
+    final scoreDistancia = (100 - (distanciaKm * 10)).clamp(0, 100);
+    final scorePrecio = (precio / 1000).clamp(0, 100);
+    final scoreRecencia = (300 - segundosDesdeCreacion).toDouble() / 10.0;
+
+    return (scoreDistancia * 0.55) +
+        (scorePrecio * 0.35) +
+        (scoreRecencia * 0.10);
   }
 }

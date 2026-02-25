@@ -152,10 +152,19 @@ class _HomeConductorState extends State<HomeConductor> {
     super.dispose();
   }
 
+  String _getSolicitudId(Map<String, dynamic> solicitud) {
+    return (solicitud['solicitud_id'] ??
+            solicitud['servicio_id'] ??
+            solicitud['id'] ??
+            solicitud['request_id'] ??
+            '')
+        .toString();
+  }
+
   /// Acepta la solicitud de servicio
   void _aceptarSolicitud(String solicitudId) async {
-    final solicitud = _provider.solicitudesActivas.firstWhere(
-      (s) => s['solicitud_id']?.toString() == solicitudId,
+    final solicitud = _provider.solicitudesOrdenadas.firstWhere(
+      (s) => _getSolicitudId(s) == solicitudId,
       orElse: () => {},
     );
 
@@ -1088,75 +1097,110 @@ class _HomeConductorState extends State<HomeConductor> {
                 child: _buildSancionesBanner(),
               ),
 
-            // Tarjetas flotantes de solicitudes de servicio (scrolleable)
-            if (provider.solicitudesActivas.isNotEmpty)
+            // Vista híbrida tipo inDriver: solicitud principal + cola scrolleable
+            if (provider.solicitudesOrdenadas.isNotEmpty)
               Positioned(
                 top: 100,
                 left: 0,
                 right: 0,
                 bottom: 20,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: provider.solicitudesActivas.length,
-                  itemBuilder: (context, index) {
-                    final solicitud = provider.solicitudesActivas[index];
-                    final solicitudId =
-                        solicitud['solicitud_id']?.toString() ?? '';
+                child: Builder(
+                  builder: (context) {
+                    final solicitudes = provider.solicitudesOrdenadas;
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: solicitudes.length,
+                      itemBuilder: (context, index) {
+                        final solicitud = solicitudes[index];
+                        final solicitudId = _getSolicitudId(solicitud);
 
-                    // Validar que el ID existe
-                    if (solicitudId.isEmpty) {
-                      print('⚠️ Solicitud sin ID válido en índice $index');
-                      return const SizedBox.shrink();
-                    }
+                        if (solicitudId.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
 
-                    return Dismissible(
-                      key: Key(solicitudId),
-                      direction: DismissDirection.horizontal,
-                      onDismissed: (direction) {
-                        provider.rechazarSolicitud(solicitudId);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Solicitud descartada'),
-                            duration: Duration(seconds: 1),
-                          ),
+                        final esPrincipal = index == 0;
+                        final segundosRestantes = provider
+                            .obtenerSegundosRestantes(solicitudId);
+
+                        return Column(
+                          children: [
+                            if (esPrincipal)
+                              Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withOpacity(0.95),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  'Solicitud recomendada',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.black,
+                                  ),
+                                ),
+                              ),
+                            Dismissible(
+                              key: Key('solicitud_$solicitudId'),
+                              direction: DismissDirection.horizontal,
+                              onDismissed: (direction) {
+                                provider.rechazarSolicitud(solicitudId);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Solicitud descartada'),
+                                    duration: Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                              background: Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                alignment: Alignment.centerLeft,
+                                padding: const EdgeInsets.only(left: 20),
+                                child: const Icon(
+                                  Icons.delete,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              ),
+                              secondaryBackground: Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.only(right: 20),
+                                child: const Icon(
+                                  Icons.delete,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: SolicitudServicioCard(
+                                  solicitud: solicitud,
+                                  segundosRestantes: segundosRestantes,
+                                  destacada: esPrincipal,
+                                  onAceptar: () =>
+                                      _aceptarSolicitud(solicitudId),
+                                  onRechazar: () =>
+                                      _rechazarSolicitud(solicitudId),
+                                ),
+                              ),
+                            ),
+                          ],
                         );
                       },
-                      background: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        alignment: Alignment.centerLeft,
-                        padding: const EdgeInsets.only(left: 20),
-                        child: const Icon(
-                          Icons.delete,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                      secondaryBackground: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        child: const Icon(
-                          Icons.delete,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: SolicitudServicioCard(
-                          solicitud: solicitud,
-                          onAceptar: () => _aceptarSolicitud(solicitudId),
-                          onRechazar: () => _rechazarSolicitud(solicitudId),
-                        ),
-                      ),
                     );
                   },
                 ),
