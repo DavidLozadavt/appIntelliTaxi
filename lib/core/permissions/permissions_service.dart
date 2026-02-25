@@ -17,15 +17,24 @@ class PermissionsService {
   }
 
   Future<bool> requestCameraPermission() async {
-  final status = await Permission.camera.request();
-  return status.isGranted;
-}
+    final status = await Permission.camera.request();
+    return status.isGranted;
+  }
 
-Future<bool> requestGalleryPermission() async {
-  final status = await Permission.photos.request();
-  return status.isGranted;
-}
+  Future<bool> requestGalleryPermission() async {
+    final status = await Permission.photos.request();
+    return status.isGranted;
+  }
 
+  Future<bool> requestLocationWhenInUsePermission() async {
+    final status = await Permission.locationWhenInUse.request();
+    return status.isGranted;
+  }
+
+  Future<bool> requestLocationAlwaysPermission() async {
+    final status = await Permission.locationAlways.request();
+    return status.isGranted;
+  }
 
   Future<Map<String, bool>> requestAll() async {
     final statuses = await [

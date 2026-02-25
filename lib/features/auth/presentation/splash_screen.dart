@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 import 'login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -22,6 +23,9 @@ class _SplashScreenState extends State<SplashScreen>
 
   String _displayedText = "";
   final String _fullText = "Bienvenido a IntelliTaxi";
+  Timer? _typewriterStartTimer;
+  Timer? _typewriterTimer;
+  int _currentTypewriterIndex = 0;
 
   @override
   void initState() {
@@ -59,7 +63,8 @@ class _SplashScreenState extends State<SplashScreen>
     _controller.forward();
 
     // Iniciar animación de texto después del logo
-    Future.delayed(const Duration(milliseconds: 800), () {
+    _typewriterStartTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
       _startTypewriter();
     });
 
@@ -67,30 +72,43 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   void _startTypewriter() {
-    _typewriterController.forward();
-    int currentIndex = 0;
+    if (!mounted) return;
 
-    void typeNextChar() {
-      if (currentIndex < _fullText.length && mounted) {
-        setState(() {
-          _displayedText += _fullText[currentIndex];
-        });
-        currentIndex++;
-        Future.delayed(const Duration(milliseconds: 100), typeNextChar);
-      }
+    if (!_typewriterController.isAnimating &&
+        _typewriterController.status == AnimationStatus.dismissed) {
+      _typewriterController.forward();
     }
 
-    typeNextChar();
+    _typewriterTimer?.cancel();
+    _currentTypewriterIndex = 0;
+    _displayedText = "";
+
+    _typewriterTimer = Timer.periodic(const Duration(milliseconds: 100), (
+      timer,
+    ) {
+      if (!mounted || _currentTypewriterIndex >= _fullText.length) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        _displayedText += _fullText[_currentTypewriterIndex];
+      });
+      _currentTypewriterIndex++;
+    });
   }
 
   Future<void> _checkLogin() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final token = await authProvider.getSavedToken();
     await Future.delayed(const Duration(seconds: 4));
+    if (!mounted) return;
     if (token != null) {
       await authProvider.loadUserFromStorage();
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
     } else {
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -100,6 +118,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _typewriterStartTimer?.cancel();
+    _typewriterTimer?.cancel();
     _controller.dispose();
     _typewriterController.dispose();
     _glowController.dispose();

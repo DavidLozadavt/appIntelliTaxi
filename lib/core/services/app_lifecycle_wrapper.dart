@@ -8,10 +8,7 @@ import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 class AppLifecycleWrapper extends StatefulWidget {
   final Widget child;
 
-  const AppLifecycleWrapper({
-    super.key,
-    required this.child,
-  });
+  const AppLifecycleWrapper({super.key, required this.child});
 
   @override
   State<AppLifecycleWrapper> createState() => _AppLifecycleWrapperState();
@@ -19,11 +16,13 @@ class AppLifecycleWrapper extends StatefulWidget {
 
 class _AppLifecycleWrapperState extends State<AppLifecycleWrapper> {
   AppLifecycleManager? _lifecycleManager;
+  AuthProvider? _authProvider;
+  bool _didAuthTriggeredCheck = false;
 
   @override
   void initState() {
     super.initState();
-    
+
     // Inicializar el lifecycle manager después del primer frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeLifecycleManager();
@@ -33,21 +32,33 @@ class _AppLifecycleWrapperState extends State<AppLifecycleWrapper> {
   void _initializeLifecycleManager() {
     if (!mounted) return;
 
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    _authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     _lifecycleManager = AppLifecycleManager(
       context: context,
-      authProvider: authProvider,
+      authProvider: _authProvider!,
     );
 
     _lifecycleManager!.initialize();
+    _authProvider!.addListener(_onAuthChanged);
 
     // Verificar si hay un servicio activo al iniciar
     _lifecycleManager!.checkActiveService();
   }
 
+  void _onAuthChanged() {
+    if (!mounted || _lifecycleManager == null || _authProvider == null) return;
+    if (_didAuthTriggeredCheck) return;
+
+    if (_authProvider!.user != null) {
+      _didAuthTriggeredCheck = true;
+      _lifecycleManager!.checkActiveService();
+    }
+  }
+
   @override
   void dispose() {
+    _authProvider?.removeListener(_onAuthChanged);
     _lifecycleManager?.dispose();
     super.dispose();
   }

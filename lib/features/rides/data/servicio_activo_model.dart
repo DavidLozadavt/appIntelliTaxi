@@ -61,27 +61,52 @@ class ServicioActivo {
       idEmpresa: json['idEmpresa'] ?? 0,
       idEstado: json['idEstado'] ?? 0,
       origenServicio: json['origenServicio'] ?? '',
-      origenLat: double.tryParse(json['origen_lat']?.toString() ?? '0') ?? 0.0,
-      origenLng: double.tryParse(json['origen_lng']?.toString() ?? '0') ?? 0.0,
-      origenAddress: json['origen_address'] ?? '',
-      origenName: json['origen_name'],
+      origenLat:
+          double.tryParse(
+            (json['origen_lat'] ?? json['origenLat'])?.toString() ?? '0',
+          ) ??
+          0.0,
+      origenLng:
+          double.tryParse(
+            (json['origen_lng'] ?? json['origenLng'])?.toString() ?? '0',
+          ) ??
+          0.0,
+      origenAddress: (json['origen_address'] ?? json['origenAddress'] ?? '')
+          .toString(),
+      origenName: (json['origen_name'] ?? json['origenName'])?.toString(),
       destinoLat:
-          double.tryParse(json['destino_lat']?.toString() ?? '0') ?? 0.0,
+          double.tryParse(
+            (json['destino_lat'] ?? json['destinoLat'])?.toString() ?? '0',
+          ) ??
+          0.0,
       destinoLng:
-          double.tryParse(json['destino_lng']?.toString() ?? '0') ?? 0.0,
-      destinoAddress: json['destino_address'] ?? '',
-      destinoName: json['destino_name'],
-      distanciaMetros: json['distancia_metros'],
-      distanciaTexto: json['distancia_texto'],
-      duracionSegundos: json['duracion_segundos'],
-      duracionTexto: json['duracion_texto'],
+          double.tryParse(
+            (json['destino_lng'] ?? json['destinoLng'])?.toString() ?? '0',
+          ) ??
+          0.0,
+      destinoAddress: (json['destino_address'] ?? json['destinoAddress'] ?? '')
+          .toString(),
+      destinoName: (json['destino_name'] ?? json['destinoName'])?.toString(),
+      distanciaMetros: json['distancia_metros'] ?? json['distanciaMetros'],
+      distanciaTexto: (json['distancia_texto'] ?? json['distanciaTexto'])
+          ?.toString(),
+      duracionSegundos: json['duracion_segundos'] ?? json['duracionSegundos'],
+      duracionTexto: (json['duracion_texto'] ?? json['duracionTexto'])
+          ?.toString(),
       precioEstimado:
-          double.tryParse(json['precio_estimado']?.toString() ?? '0') ?? 0.0,
-      precioFinal: json['precio_final'] != null
-          ? double.tryParse(json['precio_final'].toString())
+          double.tryParse(
+            (json['precio_estimado'] ?? json['precioEstimado'])?.toString() ??
+                '0',
+          ) ??
+          0.0,
+      precioFinal: (json['precio_final'] ?? json['precioFinal']) != null
+          ? double.tryParse(
+              (json['precio_final'] ?? json['precioFinal']).toString(),
+            )
           : null,
-      tipoServicio: json['tipo_servicio'] ?? 'taxi',
-      conductorId: json['conductor_id'],
+      tipoServicio: (json['tipo_servicio'] ?? json['tipoServicio'] ?? 'taxi')
+          .toString(),
+      conductorId: json['conductor_id'] ?? json['idConductor'],
       estado: EstadoServicio.fromJson(json['estado'] ?? {}),
       conductor: json['conductor'] != null
           ? ConductorInfo.fromJson(json['conductor'])

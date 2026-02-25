@@ -57,14 +57,19 @@ class _InitialScreenState extends State<InitialScreen> {
 
   Future<void> _verificarServicioActivo() async {
     try {
-      // Esperar un poco para que el AuthProvider se inicialice
-      await Future.delayed(const Duration(milliseconds: 500));
-
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final token = await authProvider.getSavedToken();
+
+      // Cargar usuario desde storage si aún no está en memoria
+      if (authProvider.user == null && token != null) {
+        await authProvider.loadUserFromStorage();
+      }
 
       // Solo verificar si el usuario está autenticado
       if (authProvider.user == null) {
-        print('ℹ️ [InitialScreen] Usuario no autenticado, saltando verificación');
+        print(
+          'ℹ️ [InitialScreen] Usuario no autenticado, saltando verificación',
+        );
         return;
       }
 

@@ -96,6 +96,7 @@ class _HomePasajeroState extends State<HomePasajero>
   final Map<int, Conductor> _conductoresDisponibles = {};
   BitmapDescriptor? _driverMarkerIcon;
   bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -148,6 +149,8 @@ class _HomePasajeroState extends State<HomePasajero>
 
   @override
   void dispose() {
+    _isDisposed = true;
+
     // Limpiar callbacks PRIMERO para evitar llamadas con context inválido
     _activeServiceManager.onServiceUpdated = null;
     _activeServiceManager.onServiceCompleted = null;
@@ -176,9 +179,17 @@ class _HomePasajeroState extends State<HomePasajero>
     // Desconectar servicio de conductores
     _pusherConductoresService?.disconnect();
 
+    _mapController?.dispose();
+    _animationController.dispose();
+    _originController.dispose();
     _destinationController.dispose();
 
     super.dispose();
+  }
+
+  void _setStateSafe(VoidCallback fn) {
+    if (_isDisposed || !mounted) return;
+    setState(fn);
   }
 
   // ========== MÉTODOS DE SERVICIO ACTIVO ==========
@@ -328,7 +339,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
       if (!mounted) return;
 
-      setState(() {
+      _setStateSafe(() {
         // NO limpiar todos los conductores, solo actualizar los que vienen de la API
         // Esto preserva conductores que llegaron por Pusher pero no están en la consulta
 
@@ -357,7 +368,7 @@ class _HomePasajeroState extends State<HomePasajero>
   void _updateDriverMarker(Conductor conductor) {
     if (!_showDrivers) return;
 
-    setState(() {
+    _setStateSafe(() {
       _conductoresDisponibles[conductor.conductorId] = conductor;
       _updateAllDriverMarkers();
     });
@@ -367,7 +378,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
   /// Elimina el marcador de un conductor
   void _removeDriverMarker(int conductorId) {
-    setState(() {
+    _setStateSafe(() {
       _conductoresDisponibles.remove(conductorId);
       _updateAllDriverMarkers();
     });
@@ -443,7 +454,7 @@ class _HomePasajeroState extends State<HomePasajero>
       );
     }
 
-    setState(() {
+    _setStateSafe(() {
       _markers = newMarkers;
     });
 
@@ -460,7 +471,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
   /// Alterna la visibilidad de los conductores
   void _toggleDriversVisibility() {
-    setState(() {
+    _setStateSafe(() {
       _showDrivers = !_showDrivers;
       if (_showDrivers) {
         _updateAllDriverMarkers();
@@ -482,10 +493,10 @@ class _HomePasajeroState extends State<HomePasajero>
         'assets/images/marker.png',
       );
 
-      setState(() => _driverMarkerIcon = icon);
+      _setStateSafe(() => _driverMarkerIcon = icon);
     } catch (e) {
       print('Error creando icono de conductor: $e');
-      setState(
+      _setStateSafe(
         () => _driverMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
           BitmapDescriptor.hueGreen,
         ),
@@ -918,7 +929,7 @@ class _HomePasajeroState extends State<HomePasajero>
         ServiceTypeSelector(
           selectedType: _serviceType,
           onTypeChanged: (type) {
-            setState(() {
+            _setStateSafe(() {
               _serviceType = type;
               _clearRoute();
             });
@@ -942,7 +953,7 @@ class _HomePasajeroState extends State<HomePasajero>
           isSearching: _isSearchingOrigin,
           onSelectPrediction: _selectOrigin,
           onClear: () {
-            setState(() {
+            _setStateSafe(() {
               _originController.clear();
               _selectedOrigin = null;
               _originPredictions = [];
@@ -962,7 +973,7 @@ class _HomePasajeroState extends State<HomePasajero>
           isSearching: _isSearchingDestination,
           onSelectPrediction: _selectDestination,
           onClear: () {
-            setState(() {
+            _setStateSafe(() {
               _destinationController.clear();
               _selectedDestination = null;
               _destinationPredictions = [];
@@ -1075,20 +1086,20 @@ class _HomePasajeroState extends State<HomePasajero>
         // Intentar cargar la foto desde la URL
         final icon = await _getMarkerIconFromUrl(userPhotoUrl);
         if (icon != null) {
-          setState(() => _userMarkerIcon = icon);
+          _setStateSafe(() => _userMarkerIcon = icon);
           return;
         }
       }
 
       // Si no hay foto o falla la carga, usar icono por defecto
-      setState(
+      _setStateSafe(
         () => _userMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
           BitmapDescriptor.hueAzure,
         ),
       );
     } catch (e) {
       // En caso de error, usar marcador por defecto
-      setState(
+      _setStateSafe(
         () => _userMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
           BitmapDescriptor.hueAzure,
         ),
@@ -1221,7 +1232,7 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _initializeLocation() async {
-    setState(() {
+    _setStateSafe(() {
       _isLoadingLocation = true;
       _locationMessage = 'Verificando permisos...';
     });
@@ -1229,7 +1240,7 @@ class _HomePasajeroState extends State<HomePasajero>
     bool permissionGranted = await _checkAndRequestPermissions();
 
     if (!permissionGranted) {
-      setState(() {
+      _setStateSafe(() {
         _isLoadingLocation = false;
         _locationMessage = 'Permisos de ubicación denegados';
       });
@@ -1255,7 +1266,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
   Future<void> _getCurrentLocation() async {
     try {
-      setState(
+      _setStateSafe(
         () => _locationMessage =
             'Verificando tu ubicación actual con GPS de alta precisión...',
       );
@@ -1271,7 +1282,7 @@ class _HomePasajeroState extends State<HomePasajero>
           position.longitude,
         );
 
-        setState(() {
+        _setStateSafe(() {
           _currentPosition = position;
           _isLoadingLocation = false;
           _locationMessage =
@@ -1317,7 +1328,7 @@ class _HomePasajeroState extends State<HomePasajero>
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        _setStateSafe(() {
           _isLoadingLocation = false;
           _locationMessage = 'Error al obtener ubicación';
         });
@@ -1338,7 +1349,7 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   void _toggleSheet() {
-    setState(() {
+    _setStateSafe(() {
       _isExpanded = !_isExpanded;
       if (_isExpanded) {
         _animationController.forward();
@@ -1352,20 +1363,20 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!mounted) return;
 
     if (_originController.text.isEmpty) {
-      setState(() {
+      _setStateSafe(() {
         _originPredictions = [];
         _isSearchingOrigin = false;
       });
       return;
     }
 
-    setState(() => _isSearchingOrigin = true);
+    _setStateSafe(() => _isSearchingOrigin = true);
 
     _placesService.getAutocompletePredictions(_originController.text).then((
       predictions,
     ) {
       if (mounted) {
-        setState(() {
+        _setStateSafe(() {
           _originPredictions = predictions;
           _isSearchingOrigin = false;
         });
@@ -1377,19 +1388,19 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!mounted) return;
 
     if (_destinationController.text.isEmpty) {
-      setState(() {
+      _setStateSafe(() {
         _destinationPredictions = [];
         _isSearchingDestination = false;
       });
       return;
     }
 
-    setState(() => _isSearchingDestination = true);
+    _setStateSafe(() => _isSearchingDestination = true);
 
     _placesService.getAutocompletePredictions(_destinationController.text).then(
       (predictions) {
         if (mounted) {
-          setState(() {
+          _setStateSafe(() {
             _destinationPredictions = predictions;
             _isSearchingDestination = false;
           });
@@ -1405,7 +1416,7 @@ class _HomePasajeroState extends State<HomePasajero>
     final details = await _placesService.getPlaceDetails(prediction.placeId);
 
     if (details != null && mounted) {
-      setState(() {
+      _setStateSafe(() {
         _selectedOrigin = TripLocation.fromPlaceDetails(
           placeId: prediction.placeId,
           name: details.name,
@@ -1430,7 +1441,7 @@ class _HomePasajeroState extends State<HomePasajero>
     final details = await _placesService.getPlaceDetails(prediction.placeId);
 
     if (details != null && mounted) {
-      setState(() {
+      _setStateSafe(() {
         _selectedDestination = TripLocation.fromPlaceDetails(
           placeId: prediction.placeId,
           name: details.name,
@@ -1486,7 +1497,7 @@ class _HomePasajeroState extends State<HomePasajero>
     );
 
     if (routeInfo != null && mounted) {
-      setState(() {
+      _setStateSafe(() {
         _routeInfo = routeInfo;
 
         // Crear polilínea
@@ -1627,7 +1638,7 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   void _clearRoute() {
-    setState(() {
+    _setStateSafe(() {
       _routeInfo = null;
       _polylines = {};
       _markers = {};
@@ -1751,7 +1762,7 @@ class _HomePasajeroState extends State<HomePasajero>
           ).then((result) {
             // Cuando regrese, limpiar selección
             if (mounted) {
-              setState(() {
+              _setStateSafe(() {
                 _selectedOrigin = null;
                 _selectedDestination = null;
                 _routeInfo = null;
@@ -1945,7 +1956,7 @@ class _HomePasajeroState extends State<HomePasajero>
       if (currentUserId == offerPassengerId) {
         if (!mounted) return;
 
-        setState(() {
+        _setStateSafe(() {
           _currentOffer = offerData;
           _showOffer = true;
         });
@@ -1997,7 +2008,7 @@ class _HomePasajeroState extends State<HomePasajero>
       );
     }
 
-    setState(() {
+    _setStateSafe(() {
       _showOffer = false;
       _currentOffer = null;
     });
@@ -2024,7 +2035,7 @@ class _HomePasajeroState extends State<HomePasajero>
       );
     }
 
-    setState(() {
+    _setStateSafe(() {
       _showOffer = false;
       _currentOffer = null;
     });
@@ -2032,7 +2043,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
   /// Cierra la oferta sin aceptar ni rechazar
   void _dismissOffer() {
-    setState(() {
+    _setStateSafe(() {
       _showOffer = false;
       _currentOffer = null;
     });

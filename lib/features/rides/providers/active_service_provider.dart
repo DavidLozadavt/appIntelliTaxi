@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
@@ -22,6 +23,11 @@ class ActiveServiceProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
+  // Dot markers cacheados
+  BitmapDescriptor? _origenDot;
+  BitmapDescriptor? _destinoDot;
+  BitmapDescriptor? _conductorDot;
+
   ActiveServiceProvider({required this.servicio, this.onServiceCompleted}) {
     _initialize();
   }
@@ -36,13 +42,51 @@ class ActiveServiceProvider extends ChangeNotifier {
 
   // Inicialización
   Future<void> _initialize() async {
-    _initializeMap();
+    // Crear dot markers primero
+    _origenDot = await _createDotMarker(const Color(0xFF4CAF50));
+    _destinoDot = await _createDotMarker(const Color(0xFFFF6B35));
+    _conductorDot = await _createDotMarker(Colors.blue);
+
+    // Inicializar mapa con dots ya listos
+    _actualizarMarkers();
     await _inicializarPersistencia();
   }
 
-  void _initializeMap() {
+  static Future<BitmapDescriptor> _createDotMarker(Color color, {double size = 28}) async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final s = size;
+
+    // Sombra
+    canvas.drawCircle(
+      Offset(s / 2, s / 2 + 1),
+      s / 3,
+      Paint()
+        ..color = color.withOpacity(0.3)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
+    // Círculo exterior (borde blanco)
+    canvas.drawCircle(
+      Offset(s / 2, s / 2),
+      s / 3,
+      Paint()..color = Colors.white,
+    );
+    // Círculo interior (color)
+    canvas.drawCircle(
+      Offset(s / 2, s / 2),
+      s / 4,
+      Paint()..color = color,
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(s.toInt(), s.toInt());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
+  void _actualizarMarkers() {
     _markers = {
-      // Marcador de origen
       Marker(
         markerId: const MarkerId('origen'),
         position: LatLng(servicio.origenLat, servicio.origenLng),
@@ -50,9 +94,9 @@ class ActiveServiceProvider extends ChangeNotifier {
           title: 'Origen',
           snippet: servicio.origenAddress,
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        icon: _origenDot ?? BitmapDescriptor.defaultMarker,
+        anchor: const Offset(0.5, 0.5),
       ),
-      // Marcador de destino
       Marker(
         markerId: const MarkerId('destino'),
         position: LatLng(servicio.destinoLat, servicio.destinoLng),
@@ -60,11 +104,11 @@ class ActiveServiceProvider extends ChangeNotifier {
           title: 'Destino',
           snippet: servicio.destinoAddress,
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        icon: _destinoDot ?? BitmapDescriptor.defaultMarker,
+        anchor: const Offset(0.5, 0.5),
       ),
     };
 
-    // Si hay conductor, agregar su marcador
     if (servicio.conductor != null &&
         servicio.conductor!.lat != null &&
         servicio.conductor!.lng != null) {
@@ -76,7 +120,8 @@ class ActiveServiceProvider extends ChangeNotifier {
             title: servicio.conductor!.nombre,
             snippet: 'Conductor',
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          icon: _conductorDot ?? BitmapDescriptor.defaultMarker,
+          anchor: const Offset(0.5, 0.5),
         ),
       );
     }

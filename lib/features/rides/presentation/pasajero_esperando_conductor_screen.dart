@@ -8,7 +8,9 @@ import 'package:intellitaxi/features/rides/widgets/calificacion_conductor_dialog
 import 'package:intellitaxi/features/rides/logic/pasajero_servicio_activo_provider.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -37,6 +39,10 @@ class _PasajeroEsperandoConductorScreenState
   @override
   void initState() {
     super.initState();
+    ActiveServiceScreenRegistry.markVisible(
+      type: 'pasajero',
+      serviceId: widget.servicioId,
+    );
     // La lógica ahora está en el provider
   }
 
@@ -64,12 +70,26 @@ class _PasajeroEsperandoConductorScreenState
   }
 
   Future<void> _llamarConductor(String? telefono) async {
-    if (telefono != null) {
-      // TODO: Implementar llamada telefónica
+    if (telefono == null || telefono.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Llamar a: $telefono'),
-          duration: const Duration(seconds: 2),
+        const SnackBar(
+          content: Text('No hay teléfono del conductor disponible'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final limpio = telefono.replaceAll(RegExp(r'[^0-9+]'), '');
+    final telUri = Uri.parse('tel:$limpio');
+
+    if (await canLaunchUrl(telUri)) {
+      await launchUrl(telUri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo abrir la aplicación de llamadas'),
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -183,7 +203,8 @@ class _PasajeroEsperandoConductorScreenState
 
     if (confirmar == true && mounted) {
       final provider = Provider.of<PasajeroServicioActivoProvider>(
-        context, listen: false,
+        context,
+        listen: false,
       );
       await _cancelarServicio(context, provider);
     }
@@ -729,6 +750,10 @@ class _PasajeroEsperandoConductorScreenState
 
   @override
   void dispose() {
+    ActiveServiceScreenRegistry.markHidden(
+      type: 'pasajero',
+      serviceId: widget.servicioId,
+    );
     _mapController?.dispose();
     super.dispose();
   }

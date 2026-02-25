@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,7 @@ import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.
 import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
+import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
@@ -35,12 +37,54 @@ class _HomeConductorState extends State<HomeConductor> {
   bool _bannerVisible = true;
   Timer? _bannerTimer;
 
+  // Marcador personalizado
+  BitmapDescriptor? _dotMarker;
+
   @override
   void initState() {
     super.initState();
     _provider = ConductorHomeProvider();
     _provider.initialize();
     _cargarSanciones();
+    _crearDotMarker();
+  }
+
+  Future<void> _crearDotMarker() async {
+    const double s = 36;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const color = Color(0xFFFF6B35); // Naranja
+
+    // Sombra
+    canvas.drawCircle(
+      const Offset(s / 2, s / 2 + 1),
+      s / 3,
+      Paint()
+        ..color = color.withOpacity(0.3)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    // Borde blanco
+    canvas.drawCircle(
+      const Offset(s / 2, s / 2),
+      s / 3,
+      Paint()..color = Colors.white,
+    );
+    // Círculo interior naranja
+    canvas.drawCircle(
+      const Offset(s / 2, s / 2),
+      s / 4,
+      Paint()..color = color,
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(s.toInt(), s.toInt());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+
+    if (mounted) {
+      setState(() {
+        _dotMarker = BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+      });
+    }
   }
 
   Future<void> _cargarSanciones() async {
@@ -473,12 +517,25 @@ class _HomeConductorState extends State<HomeConductor> {
           );
           final conductorId = authProvider.user?.id ?? 0;
 
+          final servicioNormalizado = ServicioPayloadAdapter.normalize(
+            servicio: Map<String, dynamic>.from(response['servicio']),
+            pasajero: response['pasajero'] != null
+                ? Map<String, dynamic>.from(response['pasajero'])
+                : null,
+            conductor: response['conductor'] != null
+                ? Map<String, dynamic>.from(response['conductor'])
+                : null,
+            vehiculo: response['vehiculo'] != null
+                ? Map<String, dynamic>.from(response['vehiculo'])
+                : null,
+          );
+
           // Navegar a ConductorServicioActivoScreen pasando el objeto servicio
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => ConductorServicioActivoScreen(
-                servicio: response['servicio'],
+                servicio: servicioNormalizado,
                 conductorId: conductorId,
               ),
             ),
@@ -646,12 +703,14 @@ class _HomeConductorState extends State<HomeConductor> {
       color = Colors.red;
       icono = Iconsax.danger_copy;
       titulo = 'Peligro de bloqueo';
-      subtitulo = 'Tienes ${activas.length} sanción(es) graves. Mejora tu comportamiento.';
+      subtitulo =
+          'Tienes ${activas.length} sanción(es) graves. Mejora tu comportamiento.';
     } else if (p > 0.2) {
       color = Colors.orange;
       icono = Iconsax.warning_2_copy;
       titulo = 'Advertencia';
-      subtitulo = 'Tienes ${activas.length} sanción(es) activa(s). Cuida tu conducta.';
+      subtitulo =
+          'Tienes ${activas.length} sanción(es) activa(s). Cuida tu conducta.';
     } else {
       color = Colors.amber.shade700;
       icono = Iconsax.info_circle_copy;
@@ -924,6 +983,8 @@ class _HomeConductorState extends State<HomeConductor> {
                           title: 'Tu ubicación',
                           snippet: 'Estás aquí',
                         ),
+                        icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
+                        anchor: const Offset(0.5, 0.5),
                       ),
                     },
                     onMapCreated: (controller) {
@@ -931,22 +992,24 @@ class _HomeConductorState extends State<HomeConductor> {
                     },
                   ),
 
-            // Botón de estado del conductor (inferior centro)
+            // Chip de estado del conductor (superior izquierda)
             if (provider.currentPosition != null)
               Positioned(
-                bottom: 24,
-                left: 20,
-                right: 20,
+                top: 16,
+                left: 16,
                 child: Material(
-                  elevation: 8,
-                  borderRadius: BorderRadius.circular(30),
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(20),
+                  shadowColor: provider.isOnline
+                      ? AppColors.accent.withOpacity(0.3)
+                      : Colors.grey.withOpacity(0.3),
                   child: InkWell(
                     onTap: _cambiarEstadoConductor,
-                    borderRadius: BorderRadius.circular(30),
+                    borderRadius: BorderRadius.circular(20),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 14,
+                        horizontal: 14,
+                        vertical: 8,
                       ),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -954,71 +1017,53 @@ class _HomeConductorState extends State<HomeConductor> {
                               ? [AppColors.accent, Colors.orangeAccent]
                               : [Colors.grey.shade400, Colors.grey.shade600],
                         ),
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          BoxShadow(
-                            color: provider.isOnline
-                                ? AppColors.accent.withOpacity(0.4)
-                                : Colors.grey.withOpacity(0.4),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
                             provider.isOnline
                                 ? Icons.check_circle
                                 : Icons.cancel,
                             color: Colors.white,
-                            size: 24,
+                            size: 18,
                           ),
-                          const SizedBox(width: 10),
-                          Flexible(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  provider.isOnline
-                                      ? 'En Línea'
-                                      : 'Desconectado',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                if (provider.vehiculoSeleccionado != null) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    provider.vehiculoSeleccionado!.placa,
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.9),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ],
+                          const SizedBox(width: 6),
+                          Text(
+                            provider.isOnline ? 'En Línea' : 'Desconectado',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
+                          if (provider.vehiculoSeleccionado != null) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.25),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                provider.vehiculoSeleccionado!.placa,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
                   ),
                 ),
-              ),
-
-            // Banner de sanciones
-            if (_sancionesActivas.isNotEmpty && _bannerVisible)
-              Positioned(
-                top: 8,
-                left: 16,
-                right: 56,
-                child: _buildSancionesBanner(),
               ),
 
             // Botón de recarga de ubicación
@@ -1034,13 +1079,22 @@ class _HomeConductorState extends State<HomeConductor> {
                 ),
               ),
 
+            // Banner de sanciones
+            if (_sancionesActivas.isNotEmpty && _bannerVisible)
+              Positioned(
+                top: 60,
+                left: 16,
+                right: 16,
+                child: _buildSancionesBanner(),
+              ),
+
             // Tarjetas flotantes de solicitudes de servicio (scrolleable)
             if (provider.solicitudesActivas.isNotEmpty)
               Positioned(
-                top: 80,
+                top: 100,
                 left: 0,
                 right: 0,
-                bottom: 100,
+                bottom: 20,
                 child: ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: provider.solicitudesActivas.length,

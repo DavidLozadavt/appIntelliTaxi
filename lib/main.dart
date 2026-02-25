@@ -1,4 +1,5 @@
 import 'package:intellitaxi/core/services/connectivity_provider.dart';
+import 'package:intellitaxi/core/services/background_location_service.dart';
 import 'package:intellitaxi/core/theme/theme_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
@@ -52,6 +53,9 @@ Future<void> main() async {
   // Inicializar Pusher (ambas conexiones)
   await PusherService.initialize();
 
+  // Inicializar servicio de ubicacion en segundo plano (Android)
+  await BackgroundLocationService.initialize();
+
   // Optimizaciones de rendimiento
   _setupPerformanceOptimizations();
 
@@ -79,26 +83,20 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ConnectivityProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        
+
         // Providers lazy (se cargan cuando se necesitan)
         ChangeNotifierProvider(
           create: (_) => NotificationProvider(),
           lazy: true,
         ),
-        ChangeNotifierProvider(
-          create: (_) => ChatProvider(),
-          lazy: true,
-        ),
+        ChangeNotifierProvider(create: (_) => ChatProvider(), lazy: true),
 
         // Providers del conductor
         ChangeNotifierProvider(
           create: (_) => ConductorHomeProvider(),
           lazy: true,
         ),
-        ChangeNotifierProvider(
-          create: (_) => DocumentosProvider(),
-          lazy: true,
-        ),
+        ChangeNotifierProvider(create: (_) => DocumentosProvider(), lazy: true),
         // TODO: Descomentar cuando se creen los modelos necesarios
         // ChangeNotifierProvider(
         //   create: (_) => HistorialServiciosProvider(),
@@ -108,10 +106,7 @@ class MyApp extends StatelessWidget {
           create: (_) => ServicioActivoProvider(),
           lazy: true,
         ),
-        ChangeNotifierProvider(
-          create: (_) => SancionProvider(),
-          lazy: true,
-        ),
+        ChangeNotifierProvider(create: (_) => SancionProvider(), lazy: true),
 
         // Providers del pasajero
         // TODO: Descomentar cuando se implementen métodos en RoutesService

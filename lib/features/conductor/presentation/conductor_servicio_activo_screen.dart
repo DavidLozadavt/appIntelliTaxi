@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,6 +17,8 @@ import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
   final Map<String, dynamic> servicio;
@@ -48,6 +52,7 @@ class _ConductorServicioActivoScreenState
   final Set<Polyline> _polylines = {};
   bool _isLoading = false;
   BitmapDescriptor? _carIcon;
+  StreamSubscription<Position>? _locationSubscription;
 
   // 📏 Control de altura del BottomSheet
   double _sheetHeight = 0.40;
@@ -57,13 +62,135 @@ class _ConductorServicioActivoScreenState
   @override
   void initState() {
     super.initState();
+    _estadoActual = _resolverEstadoInicial(widget.servicio);
+    ActiveServiceScreenRegistry.markVisible(
+      type: 'conductor',
+      serviceId: _safeServiceId(),
+    );
     _inicializar();
   }
 
   @override
   void dispose() {
+    ActiveServiceScreenRegistry.markHidden(
+      type: 'conductor',
+      serviceId: _safeServiceId(),
+    );
+    _locationSubscription?.cancel();
     _trackingService.detenerSeguimiento();
     super.dispose();
+  }
+
+  int _safeServiceId() {
+    final rawId = widget.servicio['id'];
+    if (rawId is int) return rawId;
+    return int.tryParse(rawId?.toString() ?? '') ?? 0;
+  }
+
+  String _resolverEstadoInicial(Map<String, dynamic> servicio) {
+    final estadoRaw = servicio['estado'];
+    final estadoDesdeCampo = _normalizarEstadoBackend(estadoRaw);
+    if (estadoDesdeCampo != null) return estadoDesdeCampo;
+
+    final idEstadoRaw = servicio['idEstado'] ?? servicio['id_estado'];
+    final idEstado = idEstadoRaw is int
+        ? idEstadoRaw
+        : int.tryParse(idEstadoRaw?.toString() ?? '');
+
+    switch (idEstado) {
+      case 1:
+      case 2:
+        return 'aceptado';
+      case 3:
+      case 20:
+        return 'llegue';
+      case 4:
+      case 21:
+        return 'en_curso';
+      case 5:
+      case 6:
+      case 7:
+      case 22:
+      case 23:
+        return 'finalizado';
+      default:
+        return 'aceptado';
+    }
+  }
+
+  String? _normalizarEstadoBackend(dynamic estadoRaw) {
+    String? estado;
+    if (estadoRaw is String) {
+      estado = estadoRaw;
+    } else if (estadoRaw is Map && estadoRaw['estado'] is String) {
+      estado = estadoRaw['estado'] as String;
+    }
+
+    if (estado == null || estado.trim().isEmpty) return null;
+
+    final e = estado
+        .trim()
+        .toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('-', '_')
+        .replaceAll(' ', '_');
+
+    if (e.contains('en_curso') || e.contains('curso')) return 'en_curso';
+    if (e.contains('llegue') || e.contains('llego')) return 'llegue';
+    if (e.contains('en_camino') || e.contains('camino')) return 'en_camino';
+    if (e.contains('acept')) return 'aceptado';
+    if (e.contains('final') || e.contains('complet')) return 'finalizado';
+    if (e.contains('cancel')) return 'finalizado';
+
+    return null;
+  }
+
+  int? get _idEstadoServicio {
+    final estadoObj = widget.servicio['estado'];
+    final raw =
+        widget.servicio['idEstado'] ??
+        widget.servicio['id_estado'] ??
+        (estadoObj is Map ? estadoObj['id'] : null);
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  String? _estadoDesdeId(int? idEstado) {
+    switch (idEstado) {
+      case 1:
+      case 2:
+      case 20:
+        return 'aceptado';
+      case 3:
+        return 'llegue';
+      case 4:
+      case 21:
+        return 'en_curso';
+      case 5:
+      case 6:
+      case 7:
+      case 22:
+      case 23:
+        return 'finalizado';
+      default:
+        return null;
+    }
+  }
+
+  String get _estadoUi {
+    return _estadoDesdeId(_idEstadoServicio) ??
+        _normalizarEstadoBackend(_estadoActual) ??
+        _resolverEstadoInicial(widget.servicio);
+  }
+
+  String get _estadoUiEfectivo {
+    return _estadoDesdeId(_idEstadoServicio) ??
+        _normalizarEstadoBackend(widget.servicio['estado']) ??
+        _estadoUi;
   }
 
   double _parseDouble(dynamic value) {
@@ -144,8 +271,6 @@ class _ConductorServicioActivoScreenState
     return null;
   }
 
-
-
   // Método helper para obtener la foto del pasajero
   String? _getFotoPasajero() {
     // Buscar en usuario_pasajero.persona.rutaFotoUrl
@@ -178,6 +303,8 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _inicializar() async {
+    _estadoActual = _estadoUiEfectivo;
+
     // Debug: Ver estructura completa del servicio
     print('🔍 DATOS DEL SERVICIO RECIBIDOS:');
     print('   ID: ${widget.servicio['id']}');
@@ -189,8 +316,9 @@ class _ConductorServicioActivoScreenState
     print('   Destino: ${widget.servicio['destino_address']}');
     print('');
 
-    // Cargar icono del carro
+    // Cargar iconos personalizados
     await _cargarIconoCarro();
+    await _crearDotMarkers();
 
     // Inicializar servicio de notificaciones
     await _notificacionService.inicializar();
@@ -207,13 +335,16 @@ class _ConductorServicioActivoScreenState
       conductorId: widget.conductorId,
     );
 
-    // El destino inicial es el punto de recogida
-    // Convertir valores que pueden venir como string
+    // Destino inicial según estado restaurado.
     final origenLat = _parseDouble(widget.servicio['origen_lat']);
     final origenLng = _parseDouble(widget.servicio['origen_lng']);
+    final destinoLat = _parseDouble(widget.servicio['destino_lat']);
+    final destinoLng = _parseDouble(widget.servicio['destino_lng']);
 
     setState(() {
-      _destinoActual = LatLng(origenLat, origenLng);
+      _destinoActual = _estadoUiEfectivo == 'en_curso'
+          ? LatLng(destinoLat, destinoLng)
+          : LatLng(origenLat, origenLng);
     });
 
     // Obtener ubicación actual
@@ -250,7 +381,7 @@ class _ConductorServicioActivoScreenState
   Future<void> _mostrarNotificacionPersistente() async {
     await _notificacionService.mostrarNotificacionConductor(
       servicioId: widget.servicio['id'],
-      estado: _estadoActual,
+      estado: _estadoUiEfectivo,
       origen: widget.servicio['origen_address'] ?? 'Origen',
       destino: widget.servicio['destino_address'] ?? 'Destino',
     );
@@ -273,39 +404,115 @@ class _ConductorServicioActivoScreenState
 
       // Centrar cámara
       _mapController?.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
+
+      // Iniciar escucha continua de ubicación
+      _iniciarStreamUbicacion();
     } catch (e) {
       print('❌ Error obteniendo ubicación: $e');
     }
   }
 
+  DateTime _ultimoRedibujoRuta = DateTime.now();
+
+  void _iniciarStreamUbicacion() {
+    _locationSubscription?.cancel();
+    _locationSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10,
+          ),
+        ).listen((position) {
+          if (!mounted) return;
+
+          setState(() {
+            _miUbicacion = LatLng(position.latitude, position.longitude);
+          });
+
+          _actualizarMarcadores();
+
+          // Redibujar ruta máximo cada 30 segundos para no abusar de la API
+          final ahora = DateTime.now();
+          if (ahora.difference(_ultimoRedibujoRuta).inSeconds >= 30) {
+            _ultimoRedibujoRuta = ahora;
+            _dibujarRuta();
+          }
+
+          // Seguir al conductor en el mapa
+          _mapController?.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
+        });
+  }
+
+  BitmapDescriptor? _recogidaDot;
+  BitmapDescriptor? _destinoFinalDot;
+
+  Future<void> _crearDotMarkers() async {
+    const double s = 28;
+
+    Future<BitmapDescriptor> crearDot(Color color) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawCircle(
+        Offset(s / 2, s / 2 + 1),
+        s / 3,
+        Paint()
+          ..color = color.withOpacity(0.3)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+      );
+      canvas.drawCircle(
+        Offset(s / 2, s / 2),
+        s / 3,
+        Paint()..color = Colors.white,
+      );
+      canvas.drawCircle(Offset(s / 2, s / 2), s / 4, Paint()..color = color);
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(s.toInt(), s.toInt());
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    }
+
+    _recogidaDot = await crearDot(Colors.blue);
+    _destinoFinalDot = await crearDot(const Color(0xFFFF6B35));
+  }
+
   void _actualizarMarcadores() {
+    final origenLat = _parseDouble(widget.servicio['origen_lat']);
+    final origenLng = _parseDouble(widget.servicio['origen_lng']);
+    final destinoLat = _parseDouble(widget.servicio['destino_lat']);
+    final destinoLng = _parseDouble(widget.servicio['destino_lng']);
+
     setState(() {
       _markers = {};
 
-      // Marcador de destino actual
-      if (_destinoActual != null) {
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('destino'),
-            position: _destinoActual!,
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              _estadoActual == 'en_curso'
-                  ? BitmapDescriptor.hueGreen
-                  : BitmapDescriptor.hueRed,
-            ),
-            infoWindow: InfoWindow(
-              title: _estadoActual == 'en_curso'
-                  ? 'Destino Final'
-                  : 'Punto de Recogida',
-              snippet: _estadoActual == 'en_curso'
-                  ? widget.servicio['destino_address']
-                  : widget.servicio['origen_address'],
-            ),
+      // Punto de recogida (siempre visible)
+      _markers.add(
+        Marker(
+          markerId: const MarkerId('recogida'),
+          position: LatLng(origenLat, origenLng),
+          icon: _recogidaDot ?? BitmapDescriptor.defaultMarker,
+          infoWindow: InfoWindow(
+            title: 'Punto de Recogida',
+            snippet: widget.servicio['origen_address'],
           ),
-        );
-      }
+          anchor: const Offset(0.5, 0.5),
+        ),
+      );
 
-      // Mi ubicación (conductor) con icono personalizado
+      // Destino final (siempre visible)
+      _markers.add(
+        Marker(
+          markerId: const MarkerId('destino_final'),
+          position: LatLng(destinoLat, destinoLng),
+          icon: _destinoFinalDot ?? BitmapDescriptor.defaultMarker,
+          infoWindow: InfoWindow(
+            title: 'Destino Final',
+            snippet: widget.servicio['destino_address'],
+          ),
+          anchor: const Offset(0.5, 0.5),
+        ),
+      );
+
+      // Mi ubicación (conductor) con icono del carro
       if (_miUbicacion != null) {
         _markers.add(
           Marker(
@@ -325,44 +532,38 @@ class _ConductorServicioActivoScreenState
   Future<void> _dibujarRuta() async {
     if (_miUbicacion == null || _destinoActual == null) return;
 
+    final color = _estadoUiEfectivo == 'en_curso' ? Colors.green : Colors.blue;
+
     try {
-      // Obtener ruta real de Google Maps
       final routeInfo = await _routesService.getRoute(
         origin: _miUbicacion!,
         destination: _destinoActual!,
       );
 
-      if (routeInfo != null) {
+      if (!mounted) return;
+
+      if (routeInfo != null && routeInfo.polylinePoints.isNotEmpty) {
         setState(() {
           _polylines.clear();
-
-          // Línea con la ruta real desde mi ubicación hasta el destino actual
           _polylines.add(
             Polyline(
               polylineId: const PolylineId('ruta_actual'),
               points: routeInfo.polylinePoints,
-              color: _estadoActual == 'en_curso' ? Colors.green : Colors.blue,
+              color: color,
               width: 5,
             ),
           );
         });
         print('✅ Ruta dibujada: ${routeInfo.distance} - ${routeInfo.duration}');
+      } else {
+        // Si la API no devuelve ruta, conservar la última polilínea válida.
+        print(
+          '⚠️ No se recibió polilínea válida; se conserva la ruta anterior',
+        );
       }
     } catch (e) {
       print('❌ Error dibujando ruta: $e');
-      // Fallback: línea recta
-      setState(() {
-        _polylines.clear();
-        _polylines.add(
-          Polyline(
-            polylineId: const PolylineId('ruta_actual'),
-            points: [_miUbicacion!, _destinoActual!],
-            color: _estadoActual == 'en_curso' ? Colors.green : Colors.blue,
-            width: 5,
-            patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-          ),
-        );
-      });
+      // En caso de error temporal, conservar la última polilínea válida.
     }
   }
 
@@ -380,6 +581,13 @@ class _ConductorServicioActivoScreenState
     if (success) {
       setState(() {
         _estadoActual = nuevoEstado;
+        if (nuevoEstado == 'llegue') {
+          widget.servicio['idEstado'] = 3;
+        } else if (nuevoEstado == 'en_curso') {
+          widget.servicio['idEstado'] = 21;
+        } else if (nuevoEstado == 'finalizado') {
+          widget.servicio['idEstado'] = 22;
+        }
 
         // Si llegó al punto de recogida, cambiar destino al final
         if (nuevoEstado == 'llegue') {
@@ -541,22 +749,56 @@ class _ConductorServicioActivoScreenState
 
   Future<void> _llamarPasajero() async {
     final telefono = _getTelefonoPasajero();
-    if (telefono != null) {
-      // TODO: Implementar llamada telefónica
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Llamar a: $telefono'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } else {
+    if (telefono == null || telefono.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No hay teléfono disponible'),
           duration: Duration(seconds: 2),
         ),
       );
+      return;
     }
+
+    final limpio = telefono.replaceAll(RegExp(r'[^0-9+]'), '');
+    final telUri = Uri.parse('tel:$limpio');
+
+    if (await canLaunchUrl(telUri)) {
+      await launchUrl(telUri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo abrir la aplicación de llamadas'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _abrirNavegacion() async {
+    if (_destinoActual == null) return;
+
+    final lat = _destinoActual!.latitude;
+    final lng = _destinoActual!.longitude;
+
+    // Intentar abrir Waze primero
+    final wazeUrl = Uri.parse('waze://?ll=$lat,$lng&navigate=yes');
+    if (await canLaunchUrl(wazeUrl)) {
+      await launchUrl(wazeUrl, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    // Fallback: abrir Google Maps
+    final gmapsUrl = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+    if (await canLaunchUrl(gmapsUrl)) {
+      await launchUrl(gmapsUrl, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    // Fallback final: abrir en navegador
+    final webUrl = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving',
+    );
+    await launchUrl(webUrl, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -568,6 +810,12 @@ class _ConductorServicioActivoScreenState
           title: const Text('Servicio en Curso'),
           automaticallyImplyLeading: false,
           actions: [
+            // Botón de navegación (Waze / Google Maps)
+            IconButton(
+              onPressed: _abrirNavegacion,
+              icon: const Icon(Iconsax.routing_2_copy),
+              tooltip: 'Navegar',
+            ),
             // Botón de chat
             Builder(
               builder: (context) {
@@ -699,8 +947,8 @@ class _ConductorServicioActivoScreenState
                               _buildBotonAccion(),
 
                               // Botón de cancelar (solo si el servicio no ha iniciado)
-                              if (_estadoActual != 'en_curso' &&
-                                  _estadoActual != 'finalizado') ...[
+                              if (_estadoUiEfectivo != 'en_curso' &&
+                                  _estadoUiEfectivo != 'finalizado') ...[
                                 const SizedBox(height: 12),
                                 _buildBotonCancelar(),
                               ],
@@ -741,7 +989,7 @@ class _ConductorServicioActivoScreenState
     };
 
     final info =
-        estados[_estadoActual] ??
+        estados[_estadoUiEfectivo] ??
         {'texto': 'SERVICIO ACTIVO', 'color': Colors.grey};
 
     return Container(
@@ -826,8 +1074,22 @@ class _ConductorServicioActivoScreenState
   }
 
   Widget _buildDireccionActual() {
-    final origenAddress = widget.servicio['origenAddress'];
-    final destinoAddress = widget.servicio['destinoAddress'];
+    final enCurso = _estadoUiEfectivo == 'en_curso';
+    final origenName =
+        widget.servicio['origen_name'] ?? widget.servicio['origenName'];
+    final destinoName =
+        widget.servicio['destino_name'] ?? widget.servicio['destinoName'];
+    final origenAddress =
+        widget.servicio['origen_address'] ?? widget.servicio['origenAddress'];
+    final destinoAddress =
+        widget.servicio['destino_address'] ?? widget.servicio['destinoAddress'];
+    final origenPrincipal = (origenName?.toString().trim().isNotEmpty ?? false)
+        ? origenName.toString()
+        : (origenAddress ?? 'Sin lugar');
+    final destinoPrincipal =
+        (destinoName?.toString().trim().isNotEmpty ?? false)
+        ? destinoName.toString()
+        : (destinoAddress ?? 'Sin lugar');
 
     return Column(
       children: [
@@ -835,15 +1097,15 @@ class _ConductorServicioActivoScreenState
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: _estadoActual == 'en_curso'
+            color: enCurso
                 ? Colors.grey.withOpacity(0.05)
                 : AppColors.accent.withOpacity(0.1),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: _estadoActual == 'en_curso'
+              color: enCurso
                   ? Colors.grey.withOpacity(0.2)
                   : AppColors.accent.withOpacity(0.3),
-              width: _estadoActual == 'en_curso' ? 1 : 1.5,
+              width: enCurso ? 1 : 1.5,
             ),
           ),
           child: Row(
@@ -851,16 +1113,14 @@ class _ConductorServicioActivoScreenState
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: _estadoActual == 'en_curso'
+                  color: enCurso
                       ? Colors.grey.withOpacity(0.2)
                       : AppColors.accent.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Iconsax.location_add,
-                  color: _estadoActual == 'en_curso'
-                      ? Colors.grey
-                      : AppColors.accent,
+                  color: enCurso ? Colors.grey : AppColors.accent,
                   size: 20,
                 ),
               ),
@@ -874,27 +1134,37 @@ class _ConductorServicioActivoScreenState
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: _estadoActual == 'en_curso'
-                            ? Colors.grey
-                            : AppColors.accent,
+                        color: enCurso ? Colors.grey : AppColors.accent,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      origenAddress ?? 'Sin dirección',
+                      origenPrincipal,
                       style: TextStyle(
                         fontSize: 13,
-                        color: _estadoActual == 'en_curso'
+                        color: enCurso
                             ? Colors.grey.shade600
                             : Colors.grey.shade600,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (origenAddress != null &&
+                        origenAddress.toString().trim().isNotEmpty &&
+                        origenAddress.toString() != origenPrincipal)
+                      Text(
+                        origenAddress.toString(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                   ],
                 ),
               ),
-              if (_estadoActual == 'en_curso')
+              if (enCurso)
                 const Icon(
                   Iconsax.tick_circle,
                   color: AppColors.green,
@@ -918,12 +1188,8 @@ class _ConductorServicioActivoScreenState
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      _estadoActual == 'en_curso'
-                          ? AppColors.green
-                          : Colors.grey.shade400,
-                      _estadoActual == 'en_curso'
-                          ? AppColors.green
-                          : Colors.grey.shade400,
+                      enCurso ? AppColors.green : Colors.grey.shade400,
+                      enCurso ? AppColors.green : Colors.grey.shade400,
                     ],
                   ),
                 ),
@@ -936,15 +1202,15 @@ class _ConductorServicioActivoScreenState
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: _estadoActual == 'en_curso'
+            color: enCurso
                 ? AppColors.green.withOpacity(0.1)
                 : Colors.grey.withOpacity(0.05),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: _estadoActual == 'en_curso'
+              color: enCurso
                   ? AppColors.green.withOpacity(0.3)
                   : Colors.grey.withOpacity(0.2),
-              width: _estadoActual == 'en_curso' ? 1.5 : 1,
+              width: enCurso ? 1.5 : 1,
             ),
           ),
           child: Row(
@@ -952,16 +1218,14 @@ class _ConductorServicioActivoScreenState
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: _estadoActual == 'en_curso'
+                  color: enCurso
                       ? AppColors.green.withOpacity(0.2)
                       : Colors.grey.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Iconsax.location,
-                  color: _estadoActual == 'en_curso'
-                      ? AppColors.green
-                      : Colors.grey,
+                  color: enCurso ? AppColors.green : Colors.grey,
                   size: 20,
                 ),
               ),
@@ -975,23 +1239,33 @@ class _ConductorServicioActivoScreenState
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: _estadoActual == 'en_curso'
-                            ? AppColors.green
-                            : Colors.grey,
+                        color: enCurso ? AppColors.green : Colors.grey,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      destinoAddress ?? 'Sin dirección',
+                      destinoPrincipal,
                       style: TextStyle(
                         fontSize: 13,
-                        color: _estadoActual == 'en_curso'
+                        color: enCurso
                             ? Colors.grey.shade600
                             : Colors.grey.shade600,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (destinoAddress != null &&
+                        destinoAddress.toString().trim().isNotEmpty &&
+                        destinoAddress.toString() != destinoPrincipal)
+                      Text(
+                        destinoAddress.toString(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                   ],
                 ),
               ),
@@ -1003,11 +1277,12 @@ class _ConductorServicioActivoScreenState
   }
 
   Widget _buildBotonAccion() {
+    final estado = _estadoUiEfectivo;
     String texto;
     String proximoEstado;
     IconData icono;
 
-    switch (_estadoActual) {
+    switch (estado) {
       case 'aceptado':
       case 'en_camino':
         texto = 'LLEGUÉ AL PUNTO DE RECOGIDA';
@@ -1149,8 +1424,10 @@ class _ConductorServicioActivoScreenState
           ),
         );
 
-        // Cerrar pantalla
-        Navigator.of(context).pop();
+        // Volver de forma robusta al home para evitar pantalla negra
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil('/home', (route) => false);
       } else {
         throw Exception('No se pudo cancelar el servicio');
       }

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
+import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/features/rides/presentation/pasajero_esperando_conductor_screen.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
@@ -13,6 +15,23 @@ class ServiceNavigationHelper {
     AuthProvider authProvider,
   ) async {
     final tipo = servicioData['tipo'];
+    final servicio = servicioData['servicio'];
+    final servicioIdRaw = servicio?['id'];
+    final servicioId = servicioIdRaw is int
+        ? servicioIdRaw
+        : int.tryParse(servicioIdRaw?.toString() ?? '');
+
+    if (tipo is String && servicioId != null) {
+      if (ActiveServiceScreenRegistry.isShowing(
+        type: tipo,
+        serviceId: servicioId,
+      )) {
+        print(
+          'ℹ️ [Navigation] La pantalla activa ya está visible. Se omite navegación.',
+        );
+        return;
+      }
+    }
 
     if (tipo == 'conductor') {
       await _navigateToConductorService(context, servicioData, authProvider);
@@ -40,35 +59,11 @@ class ServiceNavigationHelper {
     print('📱 [Navigation] Navegando a pantalla de conductor...');
     print('📊 [Navigation] Estado del servicio: ${servicio['idEstado']}');
 
-    // Construir el objeto completo del servicio con datos necesarios
-    final servicioCompleto = <String, dynamic>{
-      'id': servicio['id'],
-      'idEstado': servicio['idEstado'],
-      'origen_lat': servicio['origen_lat'],
-      'origen_lng': servicio['origen_lng'],
-      'destino_lat': servicio['destino_lat'],
-      'destino_lng': servicio['destino_lng'],
-      'origen_address': servicio['origen_address'],
-      'destino_address': servicio['destino_address'],
-      'precio_final': servicio['precio_final'],
-      'distancia': servicio['distancia'],
-      'duracion': servicio['duracion'],
-      'usuario_pasajero': pasajero != null
-          ? {
-              'id': pasajero['id'],
-              'persona': {
-                'nombre1': pasajero['nombre']?.split(' ').first ?? '',
-                'apellido1':
-                    pasajero['nombre']?.split(' ').skip(1).join(' ') ?? '',
-                'celular': pasajero['telefono'],
-                'foto': pasajero['foto'],
-              },
-            }
-          : null,
-      'vehiculo': vehiculo,
-      'estado': servicio['estado'],
-      ...?servicio, // Incluir cualquier otro dato del servicio
-    };
+    final servicioCompleto = ServicioPayloadAdapter.normalize(
+      servicio: Map<String, dynamic>.from(servicio),
+      pasajero: pasajero != null ? Map<String, dynamic>.from(pasajero) : null,
+      vehiculo: vehiculo != null ? Map<String, dynamic>.from(vehiculo) : null,
+    );
 
     print('📍 [Navigation] Coordenadas normalizadas:');
     print(
@@ -105,25 +100,13 @@ class ServiceNavigationHelper {
     print('📱 [Navigation] Navegando a pantalla de pasajero...');
     print('📊 [Navigation] Estado del servicio: ${servicio['idEstado']}');
 
-    // Construir el objeto completo del servicio
-    final servicioCompleto = <String, dynamic>{
-      'id': servicio['id'],
-      'idEstado': servicio['idEstado'],
-      'origen_lat': servicio['origen_lat'],
-      'origen_lng': servicio['origen_lng'],
-      'destino_lat': servicio['destino_lat'],
-      'destino_lng': servicio['destino_lng'],
-      'origen_address': servicio['origen_address'],
-      'destino_address': servicio['destino_address'],
-      'precio_final': servicio['precio_final'],
-      'distancia': servicio['distancia'],
-      'duracion': servicio['duracion'],
-      'conductor': conductor,
-      'vehiculo': vehiculo,
-      'conductor_id': conductor?['id'],
-      'estado': servicio['estado'],
-      ...?servicio, // Incluir cualquier otro dato del servicio
-    };
+    final servicioCompleto = ServicioPayloadAdapter.normalize(
+      servicio: Map<String, dynamic>.from(servicio),
+      conductor: conductor != null
+          ? Map<String, dynamic>.from(conductor)
+          : null,
+      vehiculo: vehiculo != null ? Map<String, dynamic>.from(vehiculo) : null,
+    )..['conductor_id'] = conductor?['id'];
 
     print('📍 [Navigation] Coordenadas normalizadas:');
     print(

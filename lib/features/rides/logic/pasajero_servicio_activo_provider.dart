@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
+import 'package:intellitaxi/features/rides/services/pasajero_servicio_mapper.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 
 /// 🎯 Provider que maneja toda la lógica del servicio activo del pasajero
@@ -28,6 +29,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   Timer? _countdownTimer;
   static const int _maxWaitingSeconds = 120;
   int _elapsedSeconds = 0;
+  Timer? _refreshTimer;
+  bool _isFetchingService = false;
+  static final Map<int, LatLng> _lastConductorLocationCache = {};
 
   // ===== GETTERS =====
   Map<String, dynamic>? get conductor => _conductor;
@@ -43,6 +47,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     required this.servicioId,
     required this.datosServicio,
   }) {
+    _estadoServicio = PasajeroServicioMapper.estadoInicial(datosServicio);
     _inicializar();
   }
 
@@ -57,11 +62,44 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
     await _cargarIconoCarro();
     _crearMarcadores();
+    _hidratarConductorDesdePayloadInicial();
     _suscribirEventos();
-    _iniciarTimeout();
+    if (_estadoServicio == 'buscando') {
+      _iniciarTimeout();
+    } else {
+      _cancelarTimeout();
+      if (_conductor == null) {
+        _obtenerInfoServicio();
+      }
+    }
+
+    // Refresco periódico para no perder ubicación del conductor tras hot reload
+    _iniciarRefreshUbicacion();
 
     // Verificar estado después de 3 segundos
     Future.delayed(const Duration(seconds: 3), _verificarEstadoServicio);
+  }
+
+  void _hidratarConductorDesdePayloadInicial() {
+    _conductor = PasajeroServicioMapper.conductorResumen(datosServicio);
+    _conductorUbicacion = PasajeroServicioMapper.conductorUbicacion(
+      datosServicio,
+    );
+
+    if (_conductorUbicacion != null) {
+      _lastConductorLocationCache[servicioId] = _conductorUbicacion!;
+    } else if (_lastConductorLocationCache.containsKey(servicioId)) {
+      _conductorUbicacion = _lastConductorLocationCache[servicioId];
+    }
+
+    if (PasajeroServicioMapper.hasConductorAsignado(datosServicio) &&
+        _estadoServicio == 'buscando') {
+      _estadoServicio = 'aceptado';
+    }
+
+    if (_conductorUbicacion != null) {
+      _actualizarMarcadores();
+    }
   }
 
   /// 🎨 Carga el ícono del carro
@@ -85,18 +123,16 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     print('   Destino lat: ${datosServicio['destino_lat']}');
     print('   Destino lng: ${datosServicio['destino_lng']}');
 
-    final origenLat = _parseDouble(datosServicio['origen_lat']);
-    final origenLng = _parseDouble(datosServicio['origen_lng']);
-    final destinoLat = _parseDouble(datosServicio['destino_lat']);
-    final destinoLng = _parseDouble(datosServicio['destino_lng']);
+    final origen = PasajeroServicioMapper.origen(datosServicio);
+    final destino = PasajeroServicioMapper.destino(datosServicio);
 
     // Validar que las coordenadas sean válidas
-    if (origenLat == 0.0 || origenLng == 0.0) {
+    if (origen.latitude == 0.0 || origen.longitude == 0.0) {
       print(
         '⚠️ PROVIDER: Coordenadas de origen inválidas, usando valores por defecto',
       );
     }
-    if (destinoLat == 0.0 || destinoLng == 0.0) {
+    if (destino == null) {
       print('⚠️ PROVIDER: Coordenadas de destino inválidas');
     }
 
@@ -105,8 +141,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       Marker(
         markerId: const MarkerId('origen'),
         position: LatLng(
-          origenLat != 0.0 ? origenLat : -12.0464,
-          origenLng != 0.0 ? origenLng : -77.0428,
+          origen.latitude != 0.0 ? origen.latitude : -12.0464,
+          origen.longitude != 0.0 ? origen.longitude : -77.0428,
         ),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
         infoWindow: InfoWindow(
@@ -115,10 +151,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         ),
       ),
       // Marcador destino
-      if (destinoLat != 0.0 && destinoLng != 0.0)
+      if (destino != null)
         Marker(
           markerId: const MarkerId('destino'),
-          position: LatLng(destinoLat, destinoLng),
+          position: destino,
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
           infoWindow: InfoWindow(
             title: 'Destino',
@@ -167,6 +203,16 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     print('✅ Timers de timeout cancelados');
   }
 
+  void _iniciarRefreshUbicacion() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (_estadoServicio == 'finalizado' || _estadoServicio == 'cancelado') {
+        return;
+      }
+      _obtenerInfoServicio();
+    });
+  }
+
   /// 🔌 Suscribe a eventos de Pusher
   Future<void> _suscribirEventos() async {
     print('🔌 PROVIDER: Suscribiendo a eventos Pusher...');
@@ -180,9 +226,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         _conductor = data;
         if (data['conductor_lat'] != null && data['conductor_lng'] != null) {
           _conductorUbicacion = LatLng(
-            _parseDouble(data['conductor_lat']),
-            _parseDouble(data['conductor_lng']),
+            PasajeroServicioMapper.parseDouble(data['conductor_lat']),
+            PasajeroServicioMapper.parseDouble(data['conductor_lng']),
           );
+          _lastConductorLocationCache[servicioId] = _conductorUbicacion!;
         }
         _estadoServicio = 'aceptado';
         _actualizarMarcadores();
@@ -194,7 +241,11 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         final lng = data['conductor_lng'] ?? data['lng'];
 
         if (lat != null && lng != null) {
-          _conductorUbicacion = LatLng(_parseDouble(lat), _parseDouble(lng));
+          _conductorUbicacion = LatLng(
+            PasajeroServicioMapper.parseDouble(lat),
+            PasajeroServicioMapper.parseDouble(lng),
+          );
+          _lastConductorLocationCache[servicioId] = _conductorUbicacion!;
 
           if (_estadoServicio == 'buscando') {
             print('✅ PROVIDER: Conductor ubicado, cambiando estado a aceptado');
@@ -209,7 +260,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       },
       onEstadoCambiado: (data) {
         print('🔄 Estado cambiado: ${data['estado']}');
-        _estadoServicio = data['estado'] as String;
+        _estadoServicio = PasajeroServicioMapper.normalizeEstado(
+          data['estado'],
+        );
         _dibujarRuta();
         notifyListeners();
       },
@@ -226,6 +279,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// 📡 Obtiene información del servicio desde la API
   Future<void> _obtenerInfoServicio() async {
+    if (_isFetchingService) return;
+    _isFetchingService = true;
     try {
       final dio = DioClient.getInstance();
       print('🔍 PROVIDER: Consultando servicio en /servicios/$servicioId');
@@ -234,40 +289,45 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         final data = response.data;
-        final servicio =
-            data is Map<String, dynamic> && data.containsKey('servicio')
-            ? data['servicio'] as Map<String, dynamic>
-            : data as Map<String, dynamic>;
+        final root = data is Map<String, dynamic> ? data : <String, dynamic>{};
+        final servicio = root.containsKey('servicio')
+            ? root['servicio'] as Map<String, dynamic>
+            : root;
 
-        if (servicio['conductor_id'] != null && servicio['conductor'] != null) {
+        final conductorId =
+            servicio['conductor_id'] ??
+            servicio['idConductor'] ??
+            servicio['conductorId'];
+        final conductorData =
+            (servicio['conductor'] as Map<String, dynamic>?) ??
+            root['conductor'] as Map<String, dynamic>?;
+        final vehiculoData =
+            (servicio['vehiculo'] as Map<String, dynamic>?) ??
+            root['vehiculo'] as Map<String, dynamic>?;
+
+        if (conductorId != null && conductorData != null) {
           print('✅ PROVIDER: Info del servicio obtenida desde API');
-          final conductor = servicio['conductor'] as Map<String, dynamic>;
-          final vehiculo = conductor['vehiculo'] as Map<String, dynamic>?;
-
-          final calificacion = conductor['calificacion_promedio'];
-          final calificacionDouble = calificacion is String
-              ? double.tryParse(calificacion) ?? 5.0
-              : (calificacion as num?)?.toDouble() ?? 5.0;
-
-          _conductor = {
-            'conductor_id': conductor['id'] ?? conductor['conductor_id'],
-            'conductor_nombre': conductor['nombre'] ?? 'Conductor',
-            'conductor_telefono': conductor['telefono'] ?? '',
-            'conductor_foto': conductor['foto_perfil'],
-            'vehiculo_placa': vehiculo?['placa'] ?? '',
-            'vehiculo_marca': vehiculo?['marca'] ?? '',
-            'vehiculo_modelo': vehiculo?['modelo'] ?? '',
-            'vehiculo_color': vehiculo?['color'] ?? '',
-            'conductor_calificacion': calificacionDouble,
-          };
+          _conductor = PasajeroServicioMapper.conductorResumen(
+            servicio,
+            conductor: conductorData,
+            vehiculo: vehiculoData,
+          );
           _estadoServicio = 'aceptado';
 
-          if (servicio['conductor_lat'] != null &&
-              servicio['conductor_lng'] != null) {
+          if ((servicio['conductor_lat'] ?? servicio['conductorLat']) != null &&
+              (servicio['conductor_lng'] ?? servicio['conductorLng']) != null) {
             _conductorUbicacion = LatLng(
-              _parseDouble(servicio['conductor_lat']),
-              _parseDouble(servicio['conductor_lng']),
+              PasajeroServicioMapper.parseDouble(
+                servicio['conductor_lat'] ?? servicio['conductorLat'],
+              ),
+              PasajeroServicioMapper.parseDouble(
+                servicio['conductor_lng'] ?? servicio['conductorLng'],
+              ),
             );
+            _lastConductorLocationCache[servicioId] = _conductorUbicacion!;
+            _actualizarMarcadores();
+          } else if (_lastConductorLocationCache.containsKey(servicioId)) {
+            _conductorUbicacion = _lastConductorLocationCache[servicioId];
             _actualizarMarcadores();
           }
 
@@ -276,6 +336,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ Error obteniendo info del servicio: $e');
+    } finally {
+      _isFetchingService = false;
     }
   }
 
@@ -308,10 +370,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// 🛣️ Dibuja la ruta en el mapa
   Future<void> _dibujarRuta() async {
-    final origenLat = _parseDouble(datosServicio['origen_lat']);
-    final origenLng = _parseDouble(datosServicio['origen_lng']);
-    final destinoLat = _parseDouble(datosServicio['destino_lat']);
-    final destinoLng = _parseDouble(datosServicio['destino_lng']);
+    final origen = PasajeroServicioMapper.origen(datosServicio);
+    final destino = PasajeroServicioMapper.destino(datosServicio);
+    if (destino == null) return;
 
     try {
       _polylines.clear();
@@ -321,7 +382,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
           (_estadoServicio == 'aceptado' || _estadoServicio == 'en_camino')) {
         final rutaConductorOrigen = await _routesService.getRoute(
           origin: _conductorUbicacion!,
-          destination: LatLng(origenLat, origenLng),
+          destination: origen,
         );
 
         if (rutaConductorOrigen != null) {
@@ -338,8 +399,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
       // Ruta origen → destino
       final rutaOrigenDestino = await _routesService.getRoute(
-        origin: LatLng(origenLat, origenLng),
-        destination: LatLng(destinoLat, destinoLng),
+        origin: origen,
+        destination: destino,
       );
 
       if (rutaOrigenDestino != null) {
@@ -363,11 +424,16 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// 📏 Calcula los límites del mapa para centrar
   LatLngBounds calcularBounds() {
-    final origenLat = _parseDouble(datosServicio['origen_lat']);
-    final origenLng = _parseDouble(datosServicio['origen_lng']);
+    final origen = PasajeroServicioMapper.origen(datosServicio);
 
-    final lats = [_conductorUbicacion?.latitude ?? origenLat, origenLat];
-    final lngs = [_conductorUbicacion?.longitude ?? origenLng, origenLng];
+    final lats = [
+      _conductorUbicacion?.latitude ?? origen.latitude,
+      origen.latitude,
+    ];
+    final lngs = [
+      _conductorUbicacion?.longitude ?? origen.longitude,
+      origen.longitude,
+    ];
 
     return LatLngBounds(
       southwest: LatLng(
@@ -403,18 +469,11 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     }
   }
 
-  /// 🔧 Helper para parsear doubles
-  double _parseDouble(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
-  }
-
   /// 🧹 Limpieza de recursos
   @override
   void dispose() {
     _cancelarTimeout();
+    _refreshTimer?.cancel();
     _pusherService.desconectar();
     super.dispose();
   }

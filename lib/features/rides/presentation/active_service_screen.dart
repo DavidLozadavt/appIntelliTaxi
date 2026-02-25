@@ -10,6 +10,7 @@ import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'dart:async';
+import 'package:url_launcher/url_launcher.dart';
 
 class ActiveServiceScreen extends StatelessWidget {
   final ServicioActivo servicio;
@@ -147,7 +148,7 @@ class ActiveServiceScreen extends StatelessWidget {
 
                           if (servicio.conductor != null) ...[
                             const SizedBox(height: 16),
-                            _buildConductorInfo(),
+                            _buildConductorInfo(context),
                           ],
 
                           const SizedBox(height: 16),
@@ -216,7 +217,7 @@ class ActiveServiceScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildConductorInfo() {
+  Widget _buildConductorInfo(BuildContext context) {
     final conductor = servicio.conductor!;
     final vehiculo = servicio.vehiculo;
 
@@ -287,9 +288,8 @@ class ActiveServiceScreen extends StatelessWidget {
               ),
               if (conductor.telefono != null)
                 IconButton(
-                  onPressed: () {
-                    // TODO: Llamar al conductor
-                  },
+                  onPressed: () =>
+                      _llamarConductor(context, conductor.telefono!),
                   icon: const Icon(Iconsax.call_copy, color: AppColors.accent),
                 ),
             ],
@@ -334,7 +334,38 @@ class ActiveServiceScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _llamarConductor(BuildContext context, String telefono) async {
+    final limpio = telefono.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (limpio.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay teléfono válido del conductor')),
+      );
+      return;
+    }
+
+    final telUri = Uri.parse('tel:$limpio');
+    if (await canLaunchUrl(telUri)) {
+      await launchUrl(telUri, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo abrir la aplicación de llamadas'),
+        ),
+      );
+    }
+  }
+
   Widget _buildTripInfo() {
+    final origenPrincipal =
+        (servicio.origenName != null && servicio.origenName!.trim().isNotEmpty)
+        ? servicio.origenName!
+        : servicio.origenAddress;
+    final destinoPrincipal =
+        (servicio.destinoName != null &&
+            servicio.destinoName!.trim().isNotEmpty)
+        ? servicio.destinoName!
+        : servicio.destinoAddress;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
       padding: const EdgeInsets.all(16),
@@ -368,12 +399,24 @@ class ActiveServiceScreen extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     Text(
-                      servicio.origenAddress,
+                      origenPrincipal,
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (servicio.origenAddress.trim().isNotEmpty &&
+                        servicio.origenAddress != origenPrincipal)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          servicio.origenAddress,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -410,12 +453,24 @@ class ActiveServiceScreen extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     Text(
-                      servicio.destinoAddress,
+                      destinoPrincipal,
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (servicio.destinoAddress.trim().isNotEmpty &&
+                        servicio.destinoAddress != destinoPrincipal)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          servicio.destinoAddress,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
