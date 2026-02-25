@@ -18,6 +18,7 @@ import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
+import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
@@ -36,7 +37,8 @@ class ConductorServicioActivoScreen extends StatefulWidget {
 }
 
 class _ConductorServicioActivoScreenState
-    extends State<ConductorServicioActivoScreen> {
+    extends State<ConductorServicioActivoScreen>
+    with WidgetsBindingObserver {
   GoogleMapController? _mapController;
   final ServicioTrackingService _trackingService = ServicioTrackingService();
   final RoutesService _routesService = RoutesService();
@@ -44,6 +46,8 @@ class _ConductorServicioActivoScreenState
       ServicioPersistenciaService();
   final ServicioNotificacionForeground _notificacionService =
       ServicioNotificacionForeground();
+  final DriverOverlayService _driverOverlayService =
+      DriverOverlayService.instance;
 
   String _estadoActual = 'aceptado';
   LatLng? _miUbicacion;
@@ -62,6 +66,8 @@ class _ConductorServicioActivoScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _requestOverlayPermissionSafely();
     _estadoActual = _resolverEstadoInicial(widget.servicio);
     ActiveServiceScreenRegistry.markVisible(
       type: 'conductor',
@@ -72,6 +78,8 @@ class _ConductorServicioActivoScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _driverOverlayService.hide();
     ActiveServiceScreenRegistry.markHidden(
       type: 'conductor',
       serviceId: _safeServiceId(),
@@ -79,6 +87,25 @@ class _ConductorServicioActivoScreenState
     _locationSubscription?.cancel();
     _trackingService.detenerSeguimiento();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _driverOverlayService.hide();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      if (!_driverOverlayService.isRequestingPermission) {
+        _driverOverlayService.show(servicioId: _safeServiceId());
+      }
+    }
+  }
+
+  Future<void> _requestOverlayPermissionSafely() async {
+    // Evita pelear con el primer frame y transiciones de Android.
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    await _driverOverlayService.requestPermissionIfNeeded();
   }
 
   int _safeServiceId() {

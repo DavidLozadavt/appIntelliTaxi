@@ -12,9 +12,11 @@ class ServicioNotificacionForeground {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
+  bool _enabled = false;
 
   /// Inicializa el servicio de notificaciones
   Future<void> inicializar() async {
+    if (!_enabled) return;
     if (_initialized) return;
 
     try {
@@ -49,6 +51,7 @@ class ServicioNotificacionForeground {
     required String origen,
     required String destino,
   }) async {
+    if (!_enabled) return;
     if (!_initialized) await inicializar();
 
     try {
@@ -106,6 +109,7 @@ class ServicioNotificacionForeground {
     String? vehiculoInfo,
     required String destino,
   }) async {
+    if (!_enabled) return;
     if (!_initialized) await inicializar();
 
     try {
@@ -171,6 +175,7 @@ class ServicioNotificacionForeground {
     required String origen,
     required String destino,
   }) async {
+    if (!_enabled) return;
     if (tipo == 'conductor') {
       await mostrarNotificacionConductor(
         servicioId: servicioId,
@@ -194,6 +199,7 @@ class ServicioNotificacionForeground {
     int servicioId, {
     String tipo = 'conductor',
   }) async {
+    if (!_enabled) return;
     try {
       final notificationId = tipo == 'conductor'
           ? servicioId
@@ -207,6 +213,7 @@ class ServicioNotificacionForeground {
 
   /// Cancela todas las notificaciones
   Future<void> cancelarTodasLasNotificaciones() async {
+    if (!_enabled) return;
     try {
       await _notificationsPlugin.cancelAll();
       print('✅ Todas las notificaciones canceladas');

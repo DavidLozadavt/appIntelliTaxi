@@ -30,6 +30,7 @@ class PasajeroEsperandoConductorScreen extends StatefulWidget {
 class _PasajeroEsperandoConductorScreenState
     extends State<PasajeroEsperandoConductorScreen> {
   GoogleMapController? _mapController;
+  bool _driverCameraCentered = false;
 
   // 📏 Control de altura del BottomSheet
   double _sheetHeight = 0.45;
@@ -292,6 +293,8 @@ class _PasajeroEsperandoConductorScreenState
       ),
       child: Consumer<PasajeroServicioActivoProvider>(
         builder: (context, provider, _) {
+          _tryCenterToDriver(provider);
+
           // Listener para mostrar diálogos según el estado
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (provider.estadoServicio == 'timeout' && mounted) {
@@ -365,6 +368,7 @@ class _PasajeroEsperandoConductorScreenState
                         controller.animateCamera(
                           CameraUpdate.newLatLngBounds(bounds, 100),
                         );
+                        _driverCameraCentered = true;
                       }
                     },
                   ),
@@ -424,6 +428,29 @@ class _PasajeroEsperandoConductorScreenState
         },
       ),
     );
+  }
+
+  void _tryCenterToDriver(PasajeroServicioActivoProvider provider) {
+    if (_driverCameraCentered) return;
+    if (_mapController == null) return;
+    if (provider.conductorUbicacion == null) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _mapController == null ||
+          provider.conductorUbicacion == null) {
+        return;
+      }
+      try {
+        final bounds = provider.calcularBounds();
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLngBounds(bounds, 100),
+        );
+        _driverCameraCentered = true;
+      } catch (_) {
+        // Ignorar errores de cámara intermitentes durante reconstrucción del mapa.
+      }
+    });
   }
 
   Widget _buildBuscandoConductor(PasajeroServicioActivoProvider provider) {
