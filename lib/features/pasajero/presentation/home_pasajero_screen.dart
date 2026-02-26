@@ -112,13 +112,11 @@ class _HomePasajeroState extends State<HomePasajero> {
   PusherConductoresService? _pusherConductoresService;
   final Map<int, Conductor> _conductoresDisponibles = {};
   BitmapDescriptor? _driverMarkerIcon;
-  bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
+  final bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
   bool _isDisposed = false;
   String _currentLocationName = 'Mi ubicación';
   String _currentLocationAddress = 'Mi ubicación actual';
   bool _prefsLoaded = false;
-  TripLocation? _savedHome;
-  TripLocation? _savedWork;
   List<TripLocation> _recentDestinations = [];
 
   bool get _isExpanded => _sheetVisualState != _SheetVisualState.compact;
@@ -1434,24 +1432,10 @@ class _HomePasajeroState extends State<HomePasajero> {
   Future<void> _loadSavedPassengerLocations() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final homeRaw = prefs.getString(_prefKey('home'));
-      final workRaw = prefs.getString(_prefKey('work'));
       final recentRaw = prefs.getString(_prefKey('recent_destinations'));
 
-      TripLocation? home;
-      TripLocation? work;
       List<TripLocation> recent = [];
 
-      if (homeRaw != null && homeRaw.isNotEmpty) {
-        home = _tripLocationFromMap(
-          (jsonDecode(homeRaw) as Map).cast<String, dynamic>(),
-        );
-      }
-      if (workRaw != null && workRaw.isNotEmpty) {
-        work = _tripLocationFromMap(
-          (jsonDecode(workRaw) as Map).cast<String, dynamic>(),
-        );
-      }
       if (recentRaw != null && recentRaw.isNotEmpty) {
         final list = (jsonDecode(recentRaw) as List)
             .map(
@@ -1464,8 +1448,6 @@ class _HomePasajeroState extends State<HomePasajero> {
 
       if (!mounted) return;
       _setStateSafe(() {
-        _savedHome = home;
-        _savedWork = work;
         _recentDestinations = recent;
       });
     } catch (e) {
@@ -1483,13 +1465,6 @@ class _HomePasajeroState extends State<HomePasajero> {
         jsonEncode(_tripLocationToMap(selected)),
       );
       if (!mounted) return;
-      _setStateSafe(() {
-        if (type == 'home') {
-          _savedHome = selected;
-        } else if (type == 'work') {
-          _savedWork = selected;
-        }
-      });
       _scaffoldMessenger?.showSnackBar(
         SnackBar(
           content: Text(
