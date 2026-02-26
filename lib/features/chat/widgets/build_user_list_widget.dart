@@ -2,7 +2,7 @@ import 'package:intellitaxi/features/chat/widgets/build_user_shimmer.dart';
 import 'package:intellitaxi/features/chat/widgets/user_avatar_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/chat/data/activacion_chat_model.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_detail_screen.dart';
 

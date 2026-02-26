@@ -1,8 +1,8 @@
 import 'package:intellitaxi/core/theme/app_colors.dart';
-import 'package:intellitaxi/features/auth/data/tab_Item.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/data/tab_item.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/home/presentation/home_screen.dart';
-import 'package:intellitaxi/features/Profile/presentation/profile_screen.dart';
+import 'package:intellitaxi/features/profile/presentation/profile_screen.dart';
 import 'package:intellitaxi/core/services/app_lifecycle_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

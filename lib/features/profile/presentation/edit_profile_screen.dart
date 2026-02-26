@@ -4,7 +4,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/data/auth_model.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 
 class EditProfileScreen extends StatefulWidget {

@@ -1,4 +1,4 @@
-// lib/features/chat/logic/chat_taxi_controller.dart
+// lib/features/chat/controllers/chat_taxi_controller.dart
 
 import 'package:flutter/material.dart';
 import '../data/mensaje_taxi_model.dart';

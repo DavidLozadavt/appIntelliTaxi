@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'dart:ui' as ui;
 
 class PerformanceMonitorService {
   static bool _initialized = false;
@@ -31,6 +32,17 @@ class PerformanceMonitorService {
 
   static void initialize() {
     if (_initialized) return;
+
+    // Evita assertion de SchedulerBinding cuando otra librería tomó onReportTimings.
+    final currentCallback = ui.PlatformDispatcher.instance.onReportTimings;
+    if (currentCallback != null) {
+      AppLogger.w(
+        'Frame timings desactivado: onReportTimings ya está en uso por otra integración.',
+        tag: 'Perf',
+      );
+      return;
+    }
+
     _initialized = true;
     SchedulerBinding.instance.addTimingsCallback(_handleTimings);
   }

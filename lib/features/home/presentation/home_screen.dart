@@ -1,10 +1,10 @@
 import 'package:intellitaxi/features/home/presentation/custom_drawer.dart';
 import 'package:intellitaxi/features/conductor/presentation/home_conductor.dart';
-import 'package:intellitaxi/features/pasajero/home_pasajero.dart';
-import 'package:intellitaxi/features/Profile/presentation/profile_screen.dart';
+import 'package:intellitaxi/features/pasajero/presentation/home_pasajero_screen.dart';
+import 'package:intellitaxi/features/profile/presentation/profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../auth/logic/auth_provider.dart';
+import '../../auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class HomeScreen extends StatefulWidget {

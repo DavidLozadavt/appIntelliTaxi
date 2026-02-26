@@ -1,7 +1,7 @@
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/data/auth_model.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
-import 'package:intellitaxi/features/Profile/presentation/edit_profile_screen.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
+import 'package:intellitaxi/features/profile/presentation/edit_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:provider/provider.dart';

@@ -239,8 +239,7 @@ class VehiculoSelectionSheet extends StatelessWidget {
                           child: Image.network(
                             vehiculo.rutaUrl!,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                _buildCarPlaceholder(),
+                            errorBuilder: (_, _, _) => _buildCarPlaceholder(),
                           ),
                         )
                       : _buildCarPlaceholder(),

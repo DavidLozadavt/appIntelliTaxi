@@ -17,7 +17,7 @@ import 'package:intellitaxi/shared/widgets/standard_button.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/config/pusher_config.dart';

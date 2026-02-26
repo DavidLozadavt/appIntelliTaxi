@@ -1,4 +1,5 @@
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
 class NoConnectionScreen extends StatelessWidget {
@@ -54,8 +55,10 @@ class NoConnectionScreen extends StatelessWidget {
 
                 const SizedBox(height: 32),
 
-                const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+                const AppLoadingIndicator(
+                  size: 26,
+                  strokeWidth: 2.8,
+                  color: AppColors.accent,
                 ),
 
                 const SizedBox(height: 24),

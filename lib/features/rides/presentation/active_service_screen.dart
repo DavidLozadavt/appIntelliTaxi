@@ -8,7 +8,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'dart:async';
 import 'package:url_launcher/url_launcher.dart';
 

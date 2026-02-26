@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 

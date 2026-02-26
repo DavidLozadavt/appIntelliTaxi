@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 
 /// Servicio centralizado para verificar y restaurar servicios activos
 /// Este servicio consulta el backend para obtener el servicio activo según el rol

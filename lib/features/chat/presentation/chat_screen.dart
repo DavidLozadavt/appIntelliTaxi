@@ -2,7 +2,7 @@ import 'package:intellitaxi/features/chat/widgets/build_user_list_widget.dart';
 import 'package:intellitaxi/shared/loading_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
+import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
 class ChatScreen extends StatefulWidget {

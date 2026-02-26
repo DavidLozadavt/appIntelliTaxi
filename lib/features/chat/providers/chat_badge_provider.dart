@@ -1,4 +1,4 @@
-// lib/features/chat/logic/chat_badge_provider.dart
+// lib/features/chat/providers/chat_badge_provider.dart
 
 import 'package:flutter/foundation.dart';
 import '../services/chat_taxi_service.dart';

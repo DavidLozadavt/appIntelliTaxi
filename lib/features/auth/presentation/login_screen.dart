@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -178,7 +179,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       child: authProvider.isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
+                          ? const AppLoadingIndicator(
+                              size: 22,
+                              strokeWidth: 2.4,
+                              color: Colors.white,
+                            )
                           : const Text(
                               "Login",
                               style: TextStyle(

@@ -13,7 +13,7 @@ import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/places_service.dart';
 import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/rides/widgets/driver_offer_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';

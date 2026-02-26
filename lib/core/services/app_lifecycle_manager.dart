@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/service_navigation_helper.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 
 /// Observador del ciclo de vida de la aplicación
 /// Detecta cuando la app vuelve del background y restaura servicios activos

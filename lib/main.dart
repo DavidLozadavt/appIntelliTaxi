@@ -7,13 +7,13 @@ import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/performance_monitor_service.dart';
 
-import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
+import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/documentos_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/historial_servicios_conductor_screen.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/documentos_provider.dart';
-import 'package:intellitaxi/features/sanciones/logic/sancion_provider.dart';
+import 'package:intellitaxi/features/sanciones/providers/sancion_provider.dart';
 import 'package:intellitaxi/features/sanciones/presentation/sanciones_screen.dart';
 // import 'package:intellitaxi/features/conductor/providers/historial_servicios_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/servicio_activo_provider.dart';
@@ -22,7 +22,7 @@ import 'package:intellitaxi/features/rides/presentation/historial_calificaciones
 // import 'package:intellitaxi/features/rides/providers/pasajero_home_provider.dart';
 import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart';
 
-import 'package:intellitaxi/features/notifications/logic/notification_provider.dart';
+import 'package:intellitaxi/features/notifications/providers/notification_provider.dart';
 import 'package:intellitaxi/features/notifications/presentation/notification_screen.dart';
 
 import 'package:intellitaxi/firebase_msg.dart' show FirebaseMsg;
@@ -35,7 +35,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
-import 'features/auth/logic/auth_provider.dart';
+import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/auth/presentation/register_screen.dart';
 import 'features/home/presentation/navigation_screen.dart';
@@ -68,7 +68,12 @@ Future<void> main() async {
     },
     (error, stackTrace) {
       if (kDebugMode) {
-        debugPrint('Uncaught zone error: $error\n$stackTrace');
+        AppLogger.e(
+          'Uncaught zone error',
+          tag: 'Main',
+          error: error,
+          stackTrace: stackTrace,
+        );
       }
     },
     zoneSpecification: ZoneSpecification(

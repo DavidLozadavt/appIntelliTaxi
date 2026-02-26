@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../logic/chat_taxi_controller.dart';
+import '../controllers/chat_taxi_controller.dart';
 import '../services/chat_taxi_service.dart';
 import '../widgets/mensaje_burbuja_widget.dart';
 import '../../../core/theme/app_colors.dart';

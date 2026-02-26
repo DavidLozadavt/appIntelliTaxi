@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/services/app_lifecycle_manager.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 
 /// Widget que envuelve la navegación principal y gestiona el lifecycle
 /// Restaura automáticamente servicios activos al volver del background

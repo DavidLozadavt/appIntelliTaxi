@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
@@ -94,11 +93,12 @@ class FirebaseMsg {
       if (Platform.isIOS) {
         final apnsToken = await msgService.getAPNSToken();
         if (apnsToken == null) {
-          debugPrint(
-            '⚠️ No hay APNs token (simulador iOS). Continuando sin APNs.',
+          AppLogger.w(
+            'No hay APNs token (simulador iOS). Continuando sin APNs.',
+            tag: 'FCM',
           );
           // 👉 Asignamos token simulado directamente
-          debugPrint("✅ Token FCM: SIMULATOR_FAKE_TOKEN");
+          AppLogger.i('Token FCM: SIMULATOR_FAKE_TOKEN', tag: 'FCM');
           return;
         }
       }
@@ -106,20 +106,28 @@ class FirebaseMsg {
       // ✅ Android o dispositivo físico iOS
       final token = await msgService.getToken();
       if (token != null) {
-        debugPrint("✅ Token FCM: $token");
+        AppLogger.i('Token FCM: $token', tag: 'FCM');
       } else {
-        debugPrint(
-          "⚠️ No se pudo obtener el token FCM, asignando token simulado",
+        AppLogger.w(
+          'No se pudo obtener el token FCM, asignando token simulado',
+          tag: 'FCM',
         );
-        debugPrint("✅ Token FCM: SIMULATOR_FAKE_TOKEN");
+        AppLogger.i('Token FCM: SIMULATOR_FAKE_TOKEN', tag: 'FCM');
       }
     } catch (e) {
       // ⚠️ En simulador puede lanzar apns-token-not-set: lo manejamos y seguimos
       if (e.toString().contains('apns-token-not-set')) {
-        debugPrint("⚠️ Simulador iOS sin APNs. Usando token simulado.");
-        debugPrint("✅ Token FCM: SIMULATOR_FAKE_TOKEN");
+        AppLogger.w(
+          'Simulador iOS sin APNs. Usando token simulado.',
+          tag: 'FCM',
+        );
+        AppLogger.i('Token FCM: SIMULATOR_FAKE_TOKEN', tag: 'FCM');
       } else {
-        debugPrint('🔥 Error inesperado obteniendo token FCM: $e');
+        AppLogger.e(
+          'Error inesperado obteniendo token FCM',
+          tag: 'FCM',
+          error: e,
+        );
       }
     }
   }

@@ -1,16 +1,32 @@
-# intellitaxi
+# IntelliTaxi
 
-A new Flutter project.
+Aplicación móvil de transporte (pasajero/conductor) con tiempo real, mapas y gestión de servicios activos.
 
-## Getting Started
+## Setup rápido
 
-This project is a starting point for a Flutter application.
+1. Instalar dependencias:
+   - `flutter pub get`
+2. Copiar configuración local:
+   - `.env.example` -> `.env`
+3. Ejecutar:
+   - `flutter run`
 
-A few resources to get you started if this is your first Flutter project:
+## Calidad local
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- `make format-check`
+- `make analyze`
+- `make test`
+- `make quality`
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Documentación interna
+
+- Arquitectura: `docs/ARCHITECTURE.md`
+- Rendimiento: `docs/PERFORMANCE_PLAYBOOK.md`
+- Contribución: `CONTRIBUTING.md`
+
+## CI
+
+El workflow `.github/workflows/quality.yml` valida automáticamente:
+- formato,
+- análisis estático,
+- tests.

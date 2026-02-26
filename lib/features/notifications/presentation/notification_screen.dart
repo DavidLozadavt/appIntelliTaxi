@@ -1,5 +1,5 @@
 import 'package:intellitaxi/core/permissions/permissions_service.dart';
-import 'package:intellitaxi/features/notifications/logic/notification_provider.dart';
+import 'package:intellitaxi/features/notifications/providers/notification_provider.dart';
 import 'package:intellitaxi/shared/empty_state_widget.dart';
 import 'package:intellitaxi/shared/loading_screen.dart';
 import 'package:flutter/material.dart';

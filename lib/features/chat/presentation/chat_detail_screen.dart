@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:intellitaxi/core/permissions/permissions_service.dart';
-import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
+import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/features/chat/widgets/build_message_bubble_widget.dart';
 import 'package:intellitaxi/features/chat/widgets/user_avatar_widget.dart';
 import 'package:flutter/material.dart';

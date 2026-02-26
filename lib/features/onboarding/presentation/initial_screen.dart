@@ -4,8 +4,9 @@ import 'package:intellitaxi/features/onboarding/presentation/onboarding_screen.d
 import 'package:intellitaxi/features/auth/presentation/splash_screen.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/service_navigation_helper.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:provider/provider.dart';
-import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
+import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Wrapper que decide si mostrar onboarding o ir directo al splash
@@ -55,7 +56,7 @@ class _InitialScreenState extends State<InitialScreen> {
         '✅ [InitialScreen] Inicialización completa en ${sw.elapsedMilliseconds}ms',
       );
     } catch (e) {
-      debugPrint('⚠️ Error en inicialización: $e');
+      AppLogger.e('Error en inicialización', tag: 'InitialScreen', error: e);
       if (mounted) {
         setState(() {
           _shouldShowOnboarding = false;
@@ -127,8 +128,12 @@ class _InitialScreenState extends State<InitialScreen> {
         );
       }
     } catch (e, stackTrace) {
-      debugPrint('⚠️ Error verificando servicio activo: $e');
-      debugPrint('Stack trace: $stackTrace');
+      AppLogger.e(
+        'Error verificando servicio activo',
+        tag: 'InitialScreen',
+        error: e,
+        stackTrace: stackTrace,
+      );
     }
   }
 
@@ -137,7 +142,11 @@ class _InitialScreenState extends State<InitialScreen> {
     if (_isLoading) {
       return const Scaffold(
         body: Center(
-          child: CircularProgressIndicator(color: Color(0xFFFFC502)),
+          child: AppLoadingIndicator(
+            size: 30,
+            strokeWidth: 3.2,
+            color: Color(0xFFFFC502),
+          ),
         ),
       );
     }
