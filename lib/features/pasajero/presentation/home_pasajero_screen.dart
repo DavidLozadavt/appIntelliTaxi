@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -60,11 +61,12 @@ class _HomePasajeroState extends State<HomePasajero> {
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
   static const double _sheetMinSize = 0.18;
-  static const double _sheetMidSize = 0.45;
-  static const double _sheetMaxSize = 0.86;
+  static const double _sheetMidSize = 0.50;
+  static const double _sheetMaxSize = 0.88;
   double _sheetSize = _sheetMinSize;
   _SheetVisualState _sheetVisualState = _SheetVisualState.compact;
   _SheetVisualState? _lastHapticSnap;
+  DateTime _lastSheetFrameUpdateAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Para las búsquedas
   final PlacesService _placesService = PlacesService();
@@ -82,6 +84,10 @@ class _HomePasajeroState extends State<HomePasajero> {
   List<PlacePrediction> _destinationPredictions = [];
   bool _isSearchingOrigin = false;
   bool _isSearchingDestination = false;
+  Timer? _originSearchDebounce;
+  Timer? _destinationSearchDebounce;
+  int _originSearchRequestId = 0;
+  int _destinationSearchRequestId = 0;
 
   // Tipo de servicio: 'taxi' o 'domicilio'
   String _serviceType = 'taxi';
@@ -115,7 +121,7 @@ class _HomePasajeroState extends State<HomePasajero> {
   TripLocation? _savedWork;
   List<TripLocation> _recentDestinations = [];
 
-  bool get _isExpanded => _sheetSize >= 0.40;
+  bool get _isExpanded => _sheetVisualState != _SheetVisualState.compact;
 
   double get _sheetProgress {
     final raw = (_sheetSize - _sheetMinSize) / (_sheetMaxSize - _sheetMinSize);
@@ -189,6 +195,9 @@ class _HomePasajeroState extends State<HomePasajero> {
     _originController.dispose();
     _destinationController.dispose();
     _destinationFocusNode.dispose();
+    _originSearchDebounce?.cancel();
+    _destinationSearchDebounce?.cancel();
+    _placesService.clearAutocompleteSession();
 
     super.dispose();
   }
@@ -479,21 +488,6 @@ class _HomePasajeroState extends State<HomePasajero> {
     }
   }
 
-  /// Alterna la visibilidad de los conductores
-  void _toggleDriversVisibility() {
-    _setStateSafe(() {
-      _showDrivers = !_showDrivers;
-      if (_showDrivers) {
-        _updateAllDriverMarkers();
-      } else {
-        // Mantener solo marcadores de ruta
-        _markers.removeWhere(
-          (marker) => marker.markerId.value.startsWith('driver_'),
-        );
-      }
-    });
-  }
-
   /// Crea el icono del marcador para conductores
   Future<void> _createDriverMarkerIcon() async {
     try {
@@ -540,22 +534,14 @@ class _HomePasajeroState extends State<HomePasajero> {
                 },
               ),
 
-        // Blur dinámico de fondo según altura del sheet
+        // Overlay ligero: mejora legibilidad sin costo alto de blur en tiempo real
         if (_currentPosition != null)
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 120),
-                opacity: (_sheetProgress * 0.45).clamp(0.0, 0.45),
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(
-                      sigmaX: 8 * _sheetProgress,
-                      sigmaY: 8 * _sheetProgress,
-                    ),
-                    child: Container(color: Colors.transparent),
-                  ),
-                ),
+                duration: const Duration(milliseconds: 150),
+                opacity: (_sheetProgress * 0.18).clamp(0.0, 0.18),
+                child: Container(color: Colors.black),
               ),
             ),
           ),
@@ -567,7 +553,7 @@ class _HomePasajeroState extends State<HomePasajero> {
               onNotification: (notification) {
                 if (!mounted) return false;
                 final nextSize = notification.extent;
-                if ((nextSize - _sheetSize).abs() > 0.01) {
+                if (_shouldApplySheetFrameUpdate(nextSize)) {
                   _setStateSafe(() => _sheetSize = nextSize);
                 }
                 final nextVisualState = _sheetStateFromExtent(nextSize);
@@ -582,7 +568,9 @@ class _HomePasajeroState extends State<HomePasajero> {
                 initialChildSize: _sheetMinSize,
                 minChildSize: _sheetMinSize,
                 maxChildSize: _sheetMaxSize,
+                expand: false,
                 snap: true,
+                snapAnimationDuration: const Duration(milliseconds: 220),
                 snapSizes: const [_sheetMinSize, _sheetMidSize, _sheetMaxSize],
                 builder: (context, scrollController) {
                   return Container(
@@ -631,95 +619,6 @@ class _HomePasajeroState extends State<HomePasajero> {
                   );
                 },
               ),
-            ),
-          ),
-
-        // Botón de centrar ubicación
-        if (_currentPosition != null)
-          Positioned(
-            top: 16,
-            right: 16,
-            child: FloatingActionButton.small(
-              heroTag: 'center_location',
-              onPressed: _centerToCurrentLocation,
-              backgroundColor: Colors.white,
-              child: const Icon(Icons.my_location, color: Colors.deepOrange),
-            ),
-          ),
-
-        // Botón de limpiar ruta
-        if (_routeInfo != null)
-          Positioned(
-            top: 70,
-            right: 16,
-            child: FloatingActionButton.small(
-              heroTag: 'clear_route',
-              onPressed: _clearRoute,
-              backgroundColor: Colors.white,
-              child: const Icon(Icons.clear, color: Colors.red),
-            ),
-          ),
-
-        // Botones de control de conductores
-        if (_currentPosition != null && _routeInfo == null)
-          Positioned(
-            top: 70,
-            right: 16,
-            child: Column(
-              children: [
-                // Toggle mostrar/ocultar conductores
-                FloatingActionButton.small(
-                  onPressed: _toggleDriversVisibility,
-                  backgroundColor: _showDrivers ? Colors.green : Colors.grey,
-                  heroTag: 'toggle_drivers',
-                  child: Icon(
-                    _showDrivers ? Icons.visibility : Icons.visibility_off,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Recargar conductores
-                FloatingActionButton.small(
-                  onPressed: _loadAvailableDrivers,
-                  backgroundColor: Colors.white,
-                  heroTag: 'reload_drivers',
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Image.asset(
-                        'assets/images/marker.png',
-                        width: 24,
-                        height: 24,
-                      ),
-                      if (_conductoresDisponibles.isNotEmpty)
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 16,
-                              minHeight: 16,
-                            ),
-                            child: Text(
-                              '${_conductoresDisponibles.length}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
 
@@ -857,9 +756,15 @@ class _HomePasajeroState extends State<HomePasajero> {
       controller: scrollController,
       physics: const BouncingScrollPhysics(),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
       children: [
-        // Selector de tipo de servicio
+        Text(
+          _serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+
+        // Selector de tipo de servicio (primero)
         ServiceTypeSelector(
           selectedType: _serviceType,
           onTypeChanged: (type) {
@@ -869,20 +774,8 @@ class _HomePasajeroState extends State<HomePasajero> {
             });
           },
         ),
-        const SizedBox(height: 16),
 
-        Text(
-          _serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?',
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 20),
-
-        _buildQuickDestinationChips(),
-        if (_recentDestinations.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _buildRecentDestinationChips(),
-        ],
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
 
         // Campo de origen
         LocationSearchField(
@@ -902,7 +795,7 @@ class _HomePasajeroState extends State<HomePasajero> {
           },
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // Campo de destino
         LocationSearchField(
@@ -946,6 +839,10 @@ class _HomePasajeroState extends State<HomePasajero> {
             ],
           ),
         ],
+
+        const SizedBox(height: 14),
+
+        if (_recentDestinations.isNotEmpty) ...[_buildRecentDestinationChips()],
 
         const SizedBox(height: 24),
 
@@ -1040,7 +937,7 @@ class _HomePasajeroState extends State<HomePasajero> {
 
   Widget _buildFixedCta() {
     // En estado compacto no hay espacio vertical suficiente para un CTA fijo.
-    if (_sheetSize < _sheetMidSize - 0.01) {
+    if (_sheetVisualState == _SheetVisualState.compact) {
       return const SizedBox.shrink();
     }
 
@@ -1123,57 +1020,6 @@ class _HomePasajeroState extends State<HomePasajero> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildQuickDestinationChips() {
-    final quickItems = <Map<String, dynamic>>[
-      {
-        'label': _savedHome?.name.isNotEmpty == true
-            ? _savedHome!.name
-            : 'Casa',
-        'query': 'Casa',
-        'icon': Icons.home_outlined,
-      },
-      {
-        'label': _savedWork?.name.isNotEmpty == true
-            ? _savedWork!.name
-            : 'Trabajo',
-        'query': 'Trabajo',
-        'icon': Icons.work_outline,
-      },
-      {'label': 'Centro', 'query': 'Centro', 'icon': Icons.location_city},
-      {'label': 'Terminal', 'query': 'Terminal', 'icon': Icons.directions_bus},
-      {
-        'label': 'Aeropuerto',
-        'query': 'Aeropuerto',
-        'icon': Icons.flight_takeoff,
-      },
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Destinos rápidos',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: quickItems
-              .map(
-                (item) => ActionChip(
-                  label: Text(item['label'] as String),
-                  avatar: Icon(item['icon'] as IconData, size: 16),
-                  onPressed: () =>
-                      _applyQuickDestination(item['query'] as String),
-                ),
-              )
-              .toList(),
-        ),
-      ],
     );
   }
 
@@ -1687,58 +1533,6 @@ class _HomePasajeroState extends State<HomePasajero> {
     }
   }
 
-  Future<void> _applyQuickDestination(String query) async {
-    if (!mounted) return;
-
-    if (query == 'Casa' && _savedHome != null) {
-      await _applyDestinationLocation(_savedHome!);
-      return;
-    }
-    if (query == 'Trabajo' && _savedWork != null) {
-      await _applyDestinationLocation(_savedWork!);
-      return;
-    }
-
-    _setStateSafe(() {
-      _destinationController.text = query;
-      _isSearchingDestination = true;
-      _destinationPredictions = [];
-    });
-
-    final results = await _placesService.searchPlaces(query);
-    if (!mounted) return;
-
-    if (results.isEmpty) {
-      _setStateSafe(() => _isSearchingDestination = false);
-      _scaffoldMessenger?.showSnackBar(
-        const SnackBar(
-          content: Text('No se encontraron lugares para ese destino rápido'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    final best = results.first;
-    _setStateSafe(() {
-      _selectedDestination = TripLocation.fromPlaceDetails(
-        placeId: best.placeId,
-        name: best.name,
-        address: best.address,
-        lat: best.lat,
-        lng: best.lng,
-      );
-      _destinationController.text = best.name.isNotEmpty ? best.name : query;
-      _isSearchingDestination = false;
-      _destinationPredictions = [];
-    });
-    await _saveRecentDestination(_selectedDestination!);
-
-    if (_selectedOrigin != null) {
-      await _drawRoute();
-    }
-  }
-
   Future<void> _applyDestinationLocation(TripLocation destination) async {
     _setStateSafe(() {
       _selectedDestination = destination;
@@ -1787,52 +1581,77 @@ class _HomePasajeroState extends State<HomePasajero> {
     }
   }
 
+  bool _shouldApplySheetFrameUpdate(double nextSize) {
+    final delta = (nextSize - _sheetSize).abs();
+    if (delta <= 0.02) return false;
+
+    final now = DateTime.now();
+    final elapsedMs = now.difference(_lastSheetFrameUpdateAt).inMilliseconds;
+    if (elapsedMs < 33) return false;
+
+    _lastSheetFrameUpdateAt = now;
+    return true;
+  }
+
   void _onOriginChanged() {
     if (!mounted) return;
+    final query = _originController.text.trim();
+    _originSearchDebounce?.cancel();
 
-    if (_originController.text.isEmpty) {
+    if (query.isEmpty) {
       _setStateSafe(() {
         _originPredictions = [];
         _isSearchingOrigin = false;
       });
+      if (_destinationController.text.trim().isEmpty) {
+        _placesService.clearAutocompleteSession();
+      }
       return;
     }
 
     _setStateSafe(() => _isSearchingOrigin = true);
-
-    _placesService.getAutocompletePredictions(_originController.text).then((
-      predictions,
-    ) {
-      if (mounted) {
-        _setStateSafe(() {
-          _originPredictions = predictions;
-          _isSearchingOrigin = false;
-        });
-      }
+    final requestId = ++_originSearchRequestId;
+    _originSearchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      final predictions = await _placesService.getAutocompletePredictions(
+        query,
+      );
+      if (!mounted || requestId != _originSearchRequestId) return;
+      _setStateSafe(() {
+        _originPredictions = predictions;
+        _isSearchingOrigin = false;
+      });
     });
   }
 
   void _onDestinationChanged() {
     if (!mounted) return;
+    final query = _destinationController.text.trim();
+    _destinationSearchDebounce?.cancel();
 
-    if (_destinationController.text.isEmpty) {
+    if (query.isEmpty) {
       _setStateSafe(() {
         _destinationPredictions = [];
         _isSearchingDestination = false;
       });
+      if (_originController.text.trim().isEmpty) {
+        _placesService.clearAutocompleteSession();
+      }
       return;
     }
 
     _setStateSafe(() => _isSearchingDestination = true);
-
-    _placesService.getAutocompletePredictions(_destinationController.text).then(
-      (predictions) {
-        if (mounted) {
-          _setStateSafe(() {
-            _destinationPredictions = predictions;
-            _isSearchingDestination = false;
-          });
-        }
+    final requestId = ++_destinationSearchRequestId;
+    _destinationSearchDebounce = Timer(
+      const Duration(milliseconds: 350),
+      () async {
+        final predictions = await _placesService.getAutocompletePredictions(
+          query,
+        );
+        if (!mounted || requestId != _destinationSearchRequestId) return;
+        _setStateSafe(() {
+          _destinationPredictions = predictions;
+          _isSearchingDestination = false;
+        });
       },
     );
   }
@@ -1841,7 +1660,10 @@ class _HomePasajeroState extends State<HomePasajero> {
     // Remover listener temporalmente
     _originController.removeListener(_onOriginChanged);
 
-    final details = await _placesService.getPlaceDetails(prediction.placeId);
+    final details = await _placesService.getPlaceDetails(
+      prediction.placeId,
+      sessionToken: _placesService.currentAutocompleteSessionToken,
+    );
 
     if (details != null && mounted) {
       _setStateSafe(() {
@@ -1866,7 +1688,10 @@ class _HomePasajeroState extends State<HomePasajero> {
     // Remover listener temporalmente
     _destinationController.removeListener(_onDestinationChanged);
 
-    final details = await _placesService.getPlaceDetails(prediction.placeId);
+    final details = await _placesService.getPlaceDetails(
+      prediction.placeId,
+      sessionToken: _placesService.currentAutocompleteSessionToken,
+    );
 
     if (details != null && mounted) {
       _setStateSafe(() {

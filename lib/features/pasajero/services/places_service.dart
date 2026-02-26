@@ -3,9 +3,22 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:uuid/uuid.dart';
 
 class PlacesService {
   static const String _baseUrl = 'https://maps.googleapis.com/maps/api';
+  static const Duration _cacheTtl = Duration(minutes: 10);
+  static const Duration _sessionTtl = Duration(minutes: 3);
+  static const int _minAutocompleteChars = 2;
+  static const Uuid _uuid = Uuid();
+
+  final Map<String, _CacheEntry<List<PlaceResult>>> _searchCache = {};
+  final Map<String, _CacheEntry<List<PlacePrediction>>> _autocompleteCache = {};
+  final Map<String, _CacheEntry<PlaceDetails>> _detailsCache = {};
+  final _PlacesMetrics _metrics = _PlacesMetrics();
+
+  String? _autocompleteSessionToken;
+  DateTime? _autocompleteSessionStartedAt;
 
   // Coordenadas de Popayán, Cauca
   static const double popyanLat = 2.4419;
@@ -14,14 +27,22 @@ class PlacesService {
 
   /// Busca lugares cercanos limitados a Popayán
   Future<List<PlaceResult>> searchPlaces(String query) async {
-    if (query.trim().isEmpty) return [];
+    final normalized = query.trim();
+    if (normalized.isEmpty) return [];
+    final cacheKey = normalized.toLowerCase();
+    final cached = _getCached(_searchCache, cacheKey);
+    if (cached != null) {
+      _metrics.searchCacheHits++;
+      _metrics.logIfNeeded();
+      return cached;
+    }
 
     try {
-      AppLogger.d('🔍 Buscando lugares: "$query"');
+      AppLogger.d('🔍 Buscando lugares: "$normalized"');
 
       final url = Uri.parse(
         '$_baseUrl/place/textsearch/json?'
-        'query=${Uri.encodeComponent(query)}'
+        'query=${Uri.encodeComponent(normalized)}'
         '&location=$popyanLat,$popyanLng'
         '&radius=${searchRadiusKm * 1000}' // Convertir a metros
         '&key=${AppConfig.googleMapsApiKey}'
@@ -31,6 +52,8 @@ class PlacesService {
       AppLogger.d('🌐 URL: $url');
 
       final response = await http.get(url);
+      _metrics.searchApiCalls++;
+      _metrics.logIfNeeded();
       AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -42,6 +65,10 @@ class PlacesService {
               .map((place) => PlaceResult.fromJson(place))
               .where((place) => _isNearPopayan(place.lat, place.lng))
               .toList();
+          _searchCache[cacheKey] = _CacheEntry(
+            value: results,
+            expiresAt: DateTime.now().add(_cacheTtl),
+          );
           AppLogger.d('✅ Encontrados ${results.length} lugares');
           return results;
         } else if (data['status'] == 'ZERO_RESULTS') {
@@ -68,19 +95,53 @@ class PlacesService {
   }
 
   /// Autocomplete de lugares limitado a Popayán
-  Future<List<PlacePrediction>> getAutocompletePredictions(String input) async {
-    if (input.trim().isEmpty) return [];
+  String? get currentAutocompleteSessionToken => _autocompleteSessionToken;
+
+  void startAutocompleteSession() {
+    final now = DateTime.now();
+    final isExpired =
+        _autocompleteSessionStartedAt == null ||
+        now.difference(_autocompleteSessionStartedAt!) > _sessionTtl;
+    if (_autocompleteSessionToken == null || isExpired) {
+      _autocompleteSessionToken = _uuid.v4();
+      _autocompleteSessionStartedAt = now;
+    }
+  }
+
+  void clearAutocompleteSession() {
+    _autocompleteSessionToken = null;
+    _autocompleteSessionStartedAt = null;
+  }
+
+  Future<List<PlacePrediction>> getAutocompletePredictions(
+    String input, {
+    String? sessionToken,
+  }) async {
+    final normalized = input.trim();
+    if (normalized.length < _minAutocompleteChars) return [];
+    startAutocompleteSession();
+
+    final activeSessionToken = sessionToken ?? _autocompleteSessionToken;
+    final cacheKey =
+        '${normalized.toLowerCase()}::${activeSessionToken ?? "no-session"}';
+    final cached = _getCached(_autocompleteCache, cacheKey);
+    if (cached != null) {
+      _metrics.autocompleteCacheHits++;
+      _metrics.logIfNeeded();
+      return cached;
+    }
 
     try {
-      AppLogger.d('🔍 Buscando: "$input"');
+      AppLogger.d('🔍 Buscando: "$normalized"');
 
       final url = Uri.parse(
         '$_baseUrl/place/autocomplete/json?'
-        'input=${Uri.encodeComponent(input)}'
+        'input=${Uri.encodeComponent(normalized)}'
         '&location=$popyanLat,$popyanLng'
         '&radius=${searchRadiusKm * 1000}'
         '&strictbounds=true' // Limitar estrictamente al radio
         '&components=country:co' // Solo Colombia
+        '${activeSessionToken == null ? '' : '&sessiontoken=$activeSessionToken'}'
         '&key=${AppConfig.googleMapsApiKey}'
         '&language=es',
       );
@@ -88,6 +149,8 @@ class PlacesService {
       AppLogger.d('🌐 URL: $url');
 
       final response = await http.get(url);
+      _metrics.autocompleteApiCalls++;
+      _metrics.logIfNeeded();
       AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -98,6 +161,10 @@ class PlacesService {
           final predictions = (data['predictions'] as List)
               .map((pred) => PlacePrediction.fromJson(pred))
               .toList();
+          _autocompleteCache[cacheKey] = _CacheEntry(
+            value: predictions,
+            expiresAt: DateTime.now().add(_cacheTtl),
+          );
           AppLogger.d('✅ Encontrados ${predictions.length} resultados');
           return predictions;
         } else if (data['status'] == 'ZERO_RESULTS') {
@@ -124,19 +191,35 @@ class PlacesService {
   }
 
   /// Obtiene los detalles de un lugar por su placeId
-  Future<PlaceDetails?> getPlaceDetails(String placeId) async {
+  Future<PlaceDetails?> getPlaceDetails(
+    String placeId, {
+    String? sessionToken,
+  }) async {
+    final normalizedPlaceId = placeId.trim();
+    if (normalizedPlaceId.isEmpty) return null;
+    final cached = _getCached(_detailsCache, normalizedPlaceId);
+    if (cached != null) {
+      _metrics.detailsCacheHits++;
+      _metrics.logIfNeeded();
+      return cached;
+    }
+
     try {
-      AppLogger.d('📍 Obteniendo detalles del lugar: $placeId');
+      AppLogger.d('📍 Obteniendo detalles del lugar: $normalizedPlaceId');
+      final activeSessionToken = sessionToken ?? _autocompleteSessionToken;
 
       final url = Uri.parse(
         '$_baseUrl/place/details/json?'
-        'place_id=$placeId'
+        'place_id=$normalizedPlaceId'
         '&fields=name,formatted_address,geometry'
+        '${activeSessionToken == null ? '' : '&sessiontoken=$activeSessionToken'}'
         '&key=${AppConfig.googleMapsApiKey}'
         '&language=es',
       );
 
       final response = await http.get(url);
+      _metrics.detailsApiCalls++;
+      _metrics.logIfNeeded();
       AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -145,6 +228,11 @@ class PlacesService {
 
         if (data['status'] == 'OK') {
           final placeDetails = PlaceDetails.fromJson(data['result']);
+          _detailsCache[normalizedPlaceId] = _CacheEntry(
+            value: placeDetails,
+            expiresAt: DateTime.now().add(_cacheTtl),
+          );
+          clearAutocompleteSession();
           AppLogger.d('✅ Detalles obtenidos: ${placeDetails.name}');
           return placeDetails;
         } else {
@@ -197,6 +285,54 @@ class PlacesService {
   }
 
   double _toRadians(double degrees) => degrees * (math.pi / 180);
+
+  T? _getCached<T>(Map<String, _CacheEntry<T>> cache, String key) {
+    final entry = cache[key];
+    if (entry == null) return null;
+    if (DateTime.now().isAfter(entry.expiresAt)) {
+      cache.remove(key);
+      return null;
+    }
+    return entry.value;
+  }
+}
+
+class _CacheEntry<T> {
+  final T value;
+  final DateTime expiresAt;
+
+  const _CacheEntry({required this.value, required this.expiresAt});
+}
+
+class _PlacesMetrics {
+  int searchApiCalls = 0;
+  int searchCacheHits = 0;
+  int autocompleteApiCalls = 0;
+  int autocompleteCacheHits = 0;
+  int detailsApiCalls = 0;
+  int detailsCacheHits = 0;
+  int _lastLoggedTotal = 0;
+
+  void logIfNeeded() {
+    final total = totalApiCalls + totalCacheHits;
+    if (total - _lastLoggedTotal < 15) return;
+    _lastLoggedTotal = total;
+    AppLogger.i(
+      '📊 MAPS Places ahorro | api=$totalApiCalls cache_hits=$totalCacheHits ahorro=${cacheHitRate.toStringAsFixed(1)}%',
+      tag: 'MapsMetrics',
+    );
+  }
+
+  int get totalApiCalls =>
+      searchApiCalls + autocompleteApiCalls + detailsApiCalls;
+  int get totalCacheHits =>
+      searchCacheHits + autocompleteCacheHits + detailsCacheHits;
+
+  double get cacheHitRate {
+    final denominator = totalApiCalls + totalCacheHits;
+    if (denominator == 0) return 0;
+    return (totalCacheHits / denominator) * 100;
+  }
 }
 
 /// Modelo para resultado de búsqueda de lugares

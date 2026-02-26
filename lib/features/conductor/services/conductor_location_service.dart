@@ -12,9 +12,14 @@ enum EstadoConductor { disponible, ocupado, desconectado }
 /// Servicio para enviar la ubicación del conductor en tiempo real
 class ConductorLocationService {
   final Dio _dio = DioClient.getInstance();
+  static const double _minDistanceMeters = 20;
+  static const Duration _minSendInterval = Duration(seconds: 5);
+  final _LocationMetrics _metrics = _LocationMetrics();
   Timer? _locationTimer;
   bool _isActive = false;
   Position? _lastPosition;
+  Position? _lastSentPosition;
+  DateTime? _lastSentAt;
   EstadoConductor _estado = EstadoConductor.disponible;
   int? _conductorId;
 
@@ -47,7 +52,7 @@ class ConductorLocationService {
     _estado = EstadoConductor.disponible;
 
     // Enviar ubicación inmediatamente al iniciar
-    await _sendCurrentLocation();
+    await _sendCurrentLocation(force: true);
 
     // Configurar timer para envío periódico
     _locationTimer = Timer.periodic(Duration(seconds: intervalSeconds), (
@@ -97,7 +102,7 @@ class ConductorLocationService {
   }
 
   /// Envía la ubicación actual al backend
-  Future<bool> _sendCurrentLocation() async {
+  Future<bool> _sendCurrentLocation({bool force = false}) async {
     try {
       if (_conductorId == null) {
         AppLogger.d('⚠️ No hay conductor_id, no se puede enviar ubicación');
@@ -113,6 +118,12 @@ class ConductorLocationService {
       );
 
       _lastPosition = position;
+
+      if (!force && _shouldSkipLocationUpdate(position)) {
+        _metrics.skippedByThrottle++;
+        _metrics.logIfNeeded();
+        return true;
+      }
 
       // Convertir estado a string
       final estadoString = _estado == EstadoConductor.disponible
@@ -140,6 +151,10 @@ class ConductorLocationService {
       if (response.statusCode == 200) {
         final data = response.data;
         if (data['success'] == true) {
+          _metrics.sentToServer++;
+          _metrics.logIfNeeded();
+          _lastSentAt = DateTime.now();
+          _lastSentPosition = position;
           AppLogger.d('✅ Ubicación enviada exitosamente');
           return true;
         } else {
@@ -176,7 +191,7 @@ class ConductorLocationService {
 
       // Enviar actualización inmediata
       if (_isActive) {
-        _sendCurrentLocation();
+        _sendCurrentLocation(force: true);
       }
     }
   }
@@ -192,7 +207,7 @@ class ConductorLocationService {
     if (!_isActive) {
       AppLogger.d('⚠️ El servicio no está activo. Enviando ubicación única...');
     }
-    return await _sendCurrentLocation();
+    return await _sendCurrentLocation(force: true);
   }
 
   /// Detiene el envío periódico de ubicación y notifica desconexión
@@ -204,7 +219,7 @@ class ConductorLocationService {
 
     // Cambiar estado a desconectado y enviar última actualización
     _estado = EstadoConductor.desconectado;
-    await _sendCurrentLocation();
+    await _sendCurrentLocation(force: true);
 
     _locationTimer?.cancel();
     _locationTimer = null;
@@ -229,5 +244,57 @@ class ConductorLocationService {
   /// Limpia recursos
   Future<void> dispose() async {
     await stopSendingLocation();
+  }
+
+  bool _shouldSkipLocationUpdate(Position position) {
+    final now = DateTime.now();
+    final lastSentAt = _lastSentAt;
+    final lastSentPosition = _lastSentPosition;
+
+    if (lastSentAt == null || lastSentPosition == null) {
+      return false;
+    }
+
+    final elapsed = now.difference(lastSentAt);
+    if (elapsed >= _minSendInterval) {
+      return false;
+    }
+
+    final movedMeters = Geolocator.distanceBetween(
+      lastSentPosition.latitude,
+      lastSentPosition.longitude,
+      position.latitude,
+      position.longitude,
+    );
+
+    final shouldSkip = movedMeters < _minDistanceMeters;
+    if (shouldSkip) {
+      AppLogger.d(
+        '⏭️ Ubicación omitida para ahorrar red (distancia ${movedMeters.toStringAsFixed(1)}m, intervalo ${elapsed.inSeconds}s)',
+      );
+    }
+    return shouldSkip;
+  }
+}
+
+class _LocationMetrics {
+  int sentToServer = 0;
+  int skippedByThrottle = 0;
+  int _lastLoggedTotal = 0;
+
+  void logIfNeeded() {
+    final total = sentToServer + skippedByThrottle;
+    if (total - _lastLoggedTotal < 10) return;
+    _lastLoggedTotal = total;
+    AppLogger.i(
+      '📊 ConductorLocation ahorro | enviados=$sentToServer omitidos=$skippedByThrottle ahorro=${skipRate.toStringAsFixed(1)}%',
+      tag: 'MapsMetrics',
+    );
+  }
+
+  double get skipRate {
+    final denominator = sentToServer + skippedByThrottle;
+    if (denominator == 0) return 0;
+    return (skippedByThrottle / denominator) * 100;
   }
 }

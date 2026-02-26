@@ -20,46 +20,31 @@ class ActiveServiceManager {
     try {
       AppLogger.d('🔍 Consultando servicio activo...');
 
-      final response = await _dio.get('taxi/servicio-activo');
+      // Endpoints válidos actuales (el endpoint legacy /taxi/servicio-activo
+      // ya no se usa y puede responder HTML del panel web).
+      const endpoints = [
+        'taxi/servicio-activo-pasajero',
+        'taxi/servicio-activo-conductor',
+      ];
 
-      if (response.statusCode == 200 && response.data != null) {
-        final data = response.data;
-
-        if (data['success'] == true && data['data'] != null) {
-          AppLogger.d('✅ Servicio activo encontrado');
-
-          final servicioData = data['data']['servicio'];
-
-          // Agregar conductor y vehículo al servicio
-          if (data['data']['conductor'] != null) {
-            servicioData['conductor'] = data['data']['conductor'];
-          }
-          if (data['data']['vehiculo'] != null) {
-            servicioData['vehiculo'] = data['data']['vehiculo'];
-          }
-
-          final servicio = ServicioActivo.fromJson(servicioData);
-
-          // Guardar el ID del servicio activo
+      for (final endpoint in endpoints) {
+        final servicio = await _getActiveServiceFromEndpoint(endpoint);
+        if (servicio != null) {
           await saveActiveServiceId(servicio.id);
           _activeServiceId = servicio.id;
 
+          AppLogger.d('✅ Servicio activo encontrado en $endpoint');
           AppLogger.d('📋 Servicio ID: ${servicio.id}');
           AppLogger.d(
             '📊 Estado: ${servicio.estado.estado} (${servicio.idEstado})',
           );
-
           return servicio;
-        } else {
-          AppLogger.d('ℹ️ No hay servicios activos');
-          await clearActiveServiceId();
-          return null;
         }
-      } else if (response.statusCode == 404) {
-        AppLogger.d('ℹ️ No hay servicios activos (404)');
-        await clearActiveServiceId();
-        return null;
       }
+
+      AppLogger.d('ℹ️ No hay servicios activos');
+      await clearActiveServiceId();
+      return null;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
         AppLogger.d('ℹ️ No hay servicios activos');
@@ -71,6 +56,79 @@ class ActiveServiceManager {
       AppLogger.d('⚠️ Error obteniendo servicio activo: $e');
     }
     return null;
+  }
+
+  Future<ServicioActivo?> _getActiveServiceFromEndpoint(String endpoint) async {
+    try {
+      final response = await _dio.get(endpoint);
+      if (response.statusCode != 200 || response.data == null) {
+        return null;
+      }
+
+      final dynamic raw = response.data;
+      if (raw is! Map<String, dynamic>) {
+        AppLogger.w(
+          'Respuesta inválida en $endpoint (tipo: ${raw.runtimeType})',
+        );
+        return null;
+      }
+
+      final payload = raw['data'];
+      if (raw['success'] != true || payload is! Map<String, dynamic>) {
+        return null;
+      }
+
+      final servicioRaw = payload['servicio'];
+      if (servicioRaw is! Map<String, dynamic>) {
+        return null;
+      }
+
+      final servicioData = _normalizarServicio(
+        Map<String, dynamic>.from(servicioRaw),
+      );
+
+      if (payload['conductor'] is Map<String, dynamic>) {
+        servicioData['conductor'] = payload['conductor'];
+      }
+      if (payload['vehiculo'] is Map<String, dynamic>) {
+        servicioData['vehiculo'] = payload['vehiculo'];
+      }
+
+      return ServicioActivo.fromJson(servicioData);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      AppLogger.w('Error consultando $endpoint: ${e.message}');
+      return null;
+    } catch (e) {
+      AppLogger.w('Error parseando $endpoint: $e');
+      return null;
+    }
+  }
+
+  Map<String, dynamic> _normalizarServicio(Map<String, dynamic> servicio) {
+    return {
+      ...servicio,
+      'origen_lat': servicio['origenLat'] ?? servicio['origen_lat'],
+      'origen_lng': servicio['origenLng'] ?? servicio['origen_lng'],
+      'destino_lat': servicio['destinoLat'] ?? servicio['destino_lat'],
+      'destino_lng': servicio['destinoLng'] ?? servicio['destino_lng'],
+      'origen_address':
+          servicio['origenAddress'] ?? servicio['origen_address'] ?? 'Origen',
+      'destino_address':
+          servicio['destinoAddress'] ??
+          servicio['destino_address'] ??
+          'Destino',
+      'precio_final':
+          servicio['precioFinal'] ?? servicio['precio_final'] ?? '0.00',
+      'precio_estimado':
+          servicio['precioEstimado'] ?? servicio['precio_estimado'] ?? '0.00',
+      'distancia_texto':
+          servicio['distanciaTexto'] ?? servicio['distancia_texto'],
+      'duracion_texto': servicio['duracionTexto'] ?? servicio['duracion_texto'],
+      'conductor_id': servicio['idConductor'] ?? servicio['conductor_id'],
+      'tipo_servicio':
+          servicio['tipoServicio'] ?? servicio['tipo_servicio'] ?? 'taxi',
+    };
   }
 
   /// Inicia el polling para actualizar el estado del servicio
