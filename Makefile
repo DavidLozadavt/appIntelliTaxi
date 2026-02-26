@@ -1,4 +1,4 @@
-.PHONY: deps format format-check analyze test quality
+.PHONY: deps format format-check analyze test quality apk-release aab-release
 
 deps:
 	flutter pub get
@@ -16,3 +16,9 @@ test:
 	flutter test
 
 quality: format-check analyze test
+
+apk-release:
+	flutter build apk --release
+
+aab-release:
+	flutter build appbundle --release

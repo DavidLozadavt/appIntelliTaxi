@@ -1,0 +1,5 @@
+storeFile=../keystore/upload-keystore.jks
+storePassword=CHANGE_ME
+keyAlias=upload
+keyPassword=CHANGE_ME
+MAPS_API_KEY=CHANGE_ME

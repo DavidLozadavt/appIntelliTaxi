@@ -30,3 +30,10 @@
 
 ## Preserve annotations
 -keepattributes *Annotation*,Signature,Exception
+
+## Play Core / deferred components
+-keep class com.google.android.play.core.** { *; }
+-dontwarn com.google.android.play.core.**
+
+## SLF4J
+-dontwarn org.slf4j.**
