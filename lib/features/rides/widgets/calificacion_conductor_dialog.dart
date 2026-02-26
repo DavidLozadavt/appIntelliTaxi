@@ -407,36 +407,41 @@ class _CalificacionConductorDialogState
                 ),
                 child: Column(
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(5, (index) {
-                        final starValue = index + 1;
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _calificacionSeleccionada = starValue;
-                            });
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              child: Icon(
-                                starValue <= _calificacionSeleccionada
-                                    ? Icons.star_rounded
-                                    : Icons.star_outline_rounded,
-                                color: starValue <= _calificacionSeleccionada
-                                    ? Colors.amber.shade600
-                                    : colorScheme.outline.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                size: 36,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(5, (index) {
+                          final starValue = index + 1;
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _calificacionSeleccionada = starValue;
+                              });
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                child: Icon(
+                                  starValue <= _calificacionSeleccionada
+                                      ? Icons.star_rounded
+                                      : Icons.star_outline_rounded,
+                                  color: starValue <= _calificacionSeleccionada
+                                      ? Colors.amber.shade600
+                                      : colorScheme.outline.withValues(
+                                          alpha: 0.3,
+                                        ),
+                                  size: 36,
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      }),
+                          );
+                        }),
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Container(
