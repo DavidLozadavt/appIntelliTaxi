@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/onboarding/data/onboarding_page_model.dart';
 import 'package:intellitaxi/features/onboarding/widgets/onboarding_page_widget.dart';
 import 'package:intellitaxi/features/onboarding/services/onboarding_service.dart';
@@ -81,7 +82,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: TextButton(
                   onPressed: _skipOnboarding,
                   style: TextButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.2),
+                    backgroundColor: Colors.black.withValues(alpha: 0.16),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 18,
                       vertical: 8,
@@ -93,9 +94,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: const Text(
                     'Saltar',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: Color(0xFFADB4C2),
                       fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0.2,
                     ),
                   ),
@@ -126,8 +127,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           height: 8,
                           decoration: BoxDecoration(
                             color: _currentPage == index
-                                ? Colors.white
-                                : Colors.white.withValues(alpha: 0.3),
+                                ? AppColors.accent
+                                : const Color(0xFF384A6A),
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -143,12 +144,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       child: ElevatedButton(
                         onPressed: _nextPage,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.grey.shade800,
-                          elevation: 4,
-                          shadowColor: Colors.black.withValues(alpha: 0.2),
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: const Color(0xFF111111),
+                          elevation: 8,
+                          shadowColor: AppColors.accent.withValues(alpha: 0.35),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
                         child: Row(
@@ -175,6 +176,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    if (_currentPage < onboardingPages.length - 1)
+                      TextButton(
+                        onPressed: _completeOnboarding,
+                        child: const Text(
+                          'Omitir introducción',
+                          style: TextStyle(
+                            color: Color(0xFF8F98AA),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

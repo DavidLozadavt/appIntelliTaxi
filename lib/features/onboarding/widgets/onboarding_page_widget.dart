@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/onboarding/data/onboarding_page_model.dart';
 
 class OnboardingPageWidget extends StatelessWidget {
@@ -13,132 +14,101 @@ class OnboardingPageWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
+
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: page.gradientColors,
-        ),
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 50),
-          child: Column(
-            children: [
-              const Spacer(flex: 2),
-
-              // Ícono principal minimalista
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.3),
-                    width: 2,
-                  ),
-                ),
-                child: Icon(page.icon, size: 50, color: Colors.white),
-              ),
-
-              const SizedBox(height: 40),
-
-              // Título
-              Text(
-                page.title,
-                style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                  letterSpacing: 0.3,
-                  height: 1.2,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              if (page.subtitle != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  page.subtitle!,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.white.withValues(alpha: 0.85),
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.2,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-
-              const SizedBox(height: 35),
-
-              // Descripción con estilo sobrio
-              Container(
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  page.description,
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.6,
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontWeight: FontWeight.w400,
-                    letterSpacing: 0.2,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-
-              const Spacer(flex: 3),
-
-              // Badge corporativo
-              if (isLastPage)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      width: 1,
+      color: const Color(0xFF17130D),
+      child: Column(
+        children: [
+          Expanded(
+            flex: 47,
+            child: Padding(
+              padding: EdgeInsets.only(top: topInset + 20),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const ColoredBox(color: Color(0xFF17130D)),
+                  Align(
+                    alignment: const Alignment(0, 0.34),
+                    child: FractionallySizedBox(
+                      widthFactor: 0.99,
+                      heightFactor: 0.95,
+                      child: Image.asset(
+                        page.imagePath,
+                        fit: BoxFit.contain,
+                        alignment: page.imageAlignment,
+                      ),
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.verified_rounded,
-                        color: Colors.white.withValues(alpha: 0.9),
-                        size: 18,
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.18),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Powered by Virtual Technology',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
-        ),
+          Expanded(
+            flex: 56,
+            child: Container(
+              width: double.infinity,
+              color: const Color(0xFF17130D),
+              padding: const EdgeInsets.fromLTRB(28, 52, 28, 0),
+              child: Column(
+                children: [
+                  if (page.highlightedText != null)
+                    RichText(
+                      textAlign: TextAlign.center,
+                      text: TextSpan(
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 28,
+                          height: 1.18,
+                        ),
+                        children: [
+                          TextSpan(text: '${page.title}\n'),
+                          TextSpan(
+                            text: page.highlightedText!,
+                            style: const TextStyle(color: AppColors.accent),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Text(
+                      page.title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 28,
+                        height: 1.18,
+                      ),
+                    ),
+                  const SizedBox(height: 20),
+                  Text(
+                    page.description,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: const Color(0xFFA3ADBF),
+                      fontSize: 14,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
