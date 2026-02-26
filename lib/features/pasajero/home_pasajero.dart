@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
@@ -25,7 +26,6 @@ import 'package:intellitaxi/features/rides/services/pusher_conductores_service.d
 import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart';
 import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
 import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
-import 'package:intellitaxi/features/pasajero/widgets/ride_confirmation_dialog.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/pasajero/widgets/waiting_for_driver_dialog.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -39,20 +39,31 @@ class HomePasajero extends StatefulWidget {
   State<HomePasajero> createState() => _HomePasajeroState();
 }
 
-class _HomePasajeroState extends State<HomePasajero>
-    with SingleTickerProviderStateMixin {
+class _CurrentLocationData {
+  final String name;
+  final String address;
+
+  const _CurrentLocationData({required this.name, required this.address});
+}
+
+enum _SheetVisualState { compact, middle, expanded }
+
+class _HomePasajeroState extends State<HomePasajero> {
   GoogleMapController? _mapController;
   Position? _currentPosition;
   bool _isLoadingLocation = true;
   String _locationMessage =
       'Verificando tu ubicación actual con GPS de alta precisión...';
 
-  // Para el bottom sheet animado
-  late AnimationController _animationController;
-  late Animation<double> _heightAnimation;
-  bool _isExpanded = false;
-  final double _minHeight = 0.15; // 15% para modo minimizado
-  final double _maxHeight = 0.7; // 60% para modo expandido
+  // Para el bottom sheet con snap
+  final DraggableScrollableController _sheetController =
+      DraggableScrollableController();
+  static const double _sheetMinSize = 0.18;
+  static const double _sheetMidSize = 0.45;
+  static const double _sheetMaxSize = 0.86;
+  double _sheetSize = _sheetMinSize;
+  _SheetVisualState _sheetVisualState = _SheetVisualState.compact;
+  _SheetVisualState? _lastHapticSnap;
 
   // Para las búsquedas
   final PlacesService _placesService = PlacesService();
@@ -60,6 +71,7 @@ class _HomePasajeroState extends State<HomePasajero>
   final RideRequestService _rideRequestService = RideRequestService();
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
+  final FocusNode _destinationFocusNode = FocusNode();
 
   TripLocation? _selectedOrigin;
   TripLocation? _selectedDestination;
@@ -95,6 +107,19 @@ class _HomePasajeroState extends State<HomePasajero>
   BitmapDescriptor? _driverMarkerIcon;
   bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
   bool _isDisposed = false;
+  String _currentLocationName = 'Mi ubicación';
+  String _currentLocationAddress = 'Mi ubicación actual';
+  bool _prefsLoaded = false;
+  TripLocation? _savedHome;
+  TripLocation? _savedWork;
+  List<TripLocation> _recentDestinations = [];
+
+  bool get _isExpanded => _sheetSize >= 0.40;
+
+  double get _sheetProgress {
+    final raw = (_sheetSize - _sheetMinSize) / (_sheetMaxSize - _sheetMinSize);
+    return raw.clamp(0.0, 1.0);
+  }
 
   @override
   void initState() {
@@ -106,20 +131,6 @@ class _HomePasajeroState extends State<HomePasajero>
     _setupPusherRequestConfirmation();
     _checkActiveService(); // Verificar servicio activo al iniciar
     _setupPusherConductores(); // Configurar Pusher para conductores
-
-    // Animación
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-
-    _heightAnimation = Tween<double>(begin: _minHeight, end: _maxHeight)
-        .animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeInOut,
-          ),
-        );
 
     // Listeners
     _originController.addListener(_onOriginChanged);
@@ -133,6 +144,11 @@ class _HomePasajeroState extends State<HomePasajero>
 
     // Guardar referencia segura al ScaffoldMessenger
     _scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    if (!_prefsLoaded) {
+      _prefsLoaded = true;
+      _loadSavedPassengerLocations();
+    }
   }
 
   @override
@@ -168,9 +184,10 @@ class _HomePasajeroState extends State<HomePasajero>
     _pusherConductoresService?.disconnect();
 
     _mapController?.dispose();
-    _animationController.dispose();
+    _sheetController.dispose();
     _originController.dispose();
     _destinationController.dispose();
+    _destinationFocusNode.dispose();
 
     super.dispose();
   }
@@ -437,9 +454,9 @@ class _HomePasajeroState extends State<HomePasajero>
             _currentPosition!.longitude,
           ),
           icon: _userMarkerIcon!,
-          infoWindow: const InfoWindow(
-            title: 'Tú',
-            snippet: 'Tu ubicación actual',
+          infoWindow: InfoWindow(
+            title: _currentLocationName,
+            snippet: _currentLocationAddress,
           ),
           zIndexInt: 10, // Encima de todos
         ),
@@ -498,8 +515,6 @@ class _HomePasajeroState extends State<HomePasajero>
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-
     return Stack(
       children: [
         // Mapa de Google Maps
@@ -683,25 +698,52 @@ class _HomePasajeroState extends State<HomePasajero>
                 },
               ),
 
-        // Bottom Sheet Persistente
+        // Blur dinámico de fondo según altura del sheet
         if (_currentPosition != null)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: AnimatedBuilder(
-              animation: _heightAnimation,
-              builder: (context, child) {
-                return GestureDetector(
-                  onVerticalDragUpdate: (details) {
-                    if (details.primaryDelta! < -5 && !_isExpanded) {
-                      _toggleSheet();
-                    } else if (details.primaryDelta! > 5 && _isExpanded) {
-                      _toggleSheet();
-                    }
-                  },
-                  child: Container(
-                    height: screenHeight * _heightAnimation.value,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 120),
+                opacity: (_sheetProgress * 0.45).clamp(0.0, 0.45),
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(
+                      sigmaX: 8 * _sheetProgress,
+                      sigmaY: 8 * _sheetProgress,
+                    ),
+                    child: Container(color: Colors.transparent),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+        // Bottom Sheet Persistente (snap)
+        if (_currentPosition != null)
+          Positioned.fill(
+            child: NotificationListener<DraggableScrollableNotification>(
+              onNotification: (notification) {
+                if (!mounted) return false;
+                final nextSize = notification.extent;
+                if ((nextSize - _sheetSize).abs() > 0.01) {
+                  _setStateSafe(() => _sheetSize = nextSize);
+                }
+                final nextVisualState = _sheetStateFromExtent(nextSize);
+                if (nextVisualState != _sheetVisualState) {
+                  _setStateSafe(() => _sheetVisualState = nextVisualState);
+                }
+                _emitSnapHapticIfNeeded(nextSize, nextVisualState);
+                return false;
+              },
+              child: DraggableScrollableSheet(
+                controller: _sheetController,
+                initialChildSize: _sheetMinSize,
+                minChildSize: _sheetMinSize,
+                maxChildSize: _sheetMaxSize,
+                snap: true,
+                snapSizes: const [_sheetMinSize, _sheetMidSize, _sheetMaxSize],
+                builder: (context, scrollController) {
+                  return Container(
                     decoration: BoxDecoration(
                       color: Theme.of(context).scaffoldBackgroundColor,
                       borderRadius: const BorderRadius.vertical(
@@ -717,7 +759,6 @@ class _HomePasajeroState extends State<HomePasajero>
                     ),
                     child: Column(
                       children: [
-                        // Handle
                         GestureDetector(
                           onTap: _toggleSheet,
                           child: Container(
@@ -730,17 +771,24 @@ class _HomePasajeroState extends State<HomePasajero>
                             ),
                           ),
                         ),
-
-                        // Contenido
-                        if (!_isExpanded)
-                          _buildMinimizedContent()
-                        else
-                          Expanded(child: _buildExpandedContent()),
+                        Expanded(
+                          child: _isExpanded
+                              ? _buildExpandedContent(
+                                  scrollController: scrollController,
+                                  showInlineActions: false,
+                                )
+                              : ListView(
+                                  controller: scrollController,
+                                  physics: const ClampingScrollPhysics(),
+                                  children: [_buildMinimizedContent()],
+                                ),
+                        ),
+                        _buildFixedCta(),
                       ],
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
 
@@ -853,70 +901,120 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Widget _buildMinimizedContent() {
+    final compact = _sheetVisualState == _SheetVisualState.compact;
+    final title = _serviceType == 'taxi' ? '¿A dónde vas?' : 'Enviar domicilio';
+    final subtitle = _routeInfo != null
+        ? '${_routeInfo!.distance} • Cobro por taxímetro'
+        : (_selectedOrigin != null
+              ? 'Desde ${_selectedOrigin!.name}'
+              : 'Toca para seleccionar destino');
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: _serviceType == 'taxi'
-                        ? [Colors.deepOrange, Colors.orangeAccent]
-                        : [Colors.green.shade600, Colors.green.shade400],
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _openQuickRequestFlow,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  width: compact ? 50 : 46,
+                  height: compact ? 50 : 46,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: _serviceType == 'taxi'
+                          ? [Colors.deepOrange, Colors.orangeAccent]
+                          : [Colors.green.shade600, Colors.green.shade400],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  borderRadius: BorderRadius.circular(12),
+                  child: Icon(
+                    _serviceType == 'taxi'
+                        ? Icons.local_taxi
+                        : Icons.shopping_bag,
+                    color: Colors.white,
+                    size: compact ? 28 : 24,
+                  ),
                 ),
-                child: Icon(
-                  _serviceType == 'taxi'
-                      ? Icons.local_taxi
-                      : Icons.shopping_bag,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _serviceType == 'taxi'
-                          ? '¿A dónde vas?'
-                          : 'Enviar domicilio',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        transitionBuilder: (child, animation) {
+                          final offset = Tween<Offset>(
+                            begin: const Offset(0, 0.18),
+                            end: Offset.zero,
+                          ).animate(animation);
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: offset,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Text(
+                          title,
+                          key: ValueKey<String>('title_$title'),
+                          style: TextStyle(
+                            fontSize: compact ? 18 : 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _routeInfo != null
-                          ? '${_routeInfo!.distance} • Cobro por taxímetro'
-                          : 'Toca para seleccionar destino',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade600,
+                      const SizedBox(height: 4),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        transitionBuilder: (child, animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          );
+                        },
+                        child: Text(
+                          subtitle,
+                          key: ValueKey<String>('subtitle_$subtitle'),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.keyboard_arrow_up, color: Colors.grey),
-            ],
-          ),
-        ],
+                AnimatedRotation(
+                  duration: const Duration(milliseconds: 220),
+                  turns: _isExpanded ? 0.5 : 0.0,
+                  child: const Icon(
+                    Icons.keyboard_arrow_up,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildExpandedContent() {
+  Widget _buildExpandedContent({
+    ScrollController? scrollController,
+    bool showInlineActions = true,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListView(
+      controller: scrollController,
+      physics: const BouncingScrollPhysics(),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.all(20),
       children: [
         // Selector de tipo de servicio
@@ -936,6 +1034,13 @@ class _HomePasajeroState extends State<HomePasajero>
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 20),
+
+        _buildQuickDestinationChips(),
+        if (_recentDestinations.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _buildRecentDestinationChips(),
+        ],
+        const SizedBox(height: 16),
 
         // Campo de origen
         LocationSearchField(
@@ -963,6 +1068,7 @@ class _HomePasajeroState extends State<HomePasajero>
           label: 'Destino',
           icon: Icons.location_on,
           iconColor: Colors.red,
+          focusNode: _destinationFocusNode,
           predictions: _destinationPredictions,
           isSearching: _isSearchingDestination,
           onSelectPrediction: _selectDestination,
@@ -976,10 +1082,33 @@ class _HomePasajeroState extends State<HomePasajero>
           },
         ),
 
+        if (_selectedDestination != null) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _saveFavoriteDestination('home'),
+                  icon: const Icon(Icons.home_outlined, size: 18),
+                  label: const Text('Guardar Casa'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _saveFavoriteDestination('work'),
+                  icon: const Icon(Icons.work_outline, size: 18),
+                  label: const Text('Guardar Trabajo'),
+                ),
+              ),
+            ],
+          ),
+        ],
+
         const SizedBox(height: 24),
 
-        // Botón de trazar ruta
-        if (_selectedOrigin != null &&
+        if (showInlineActions &&
+            _selectedOrigin != null &&
             _selectedDestination != null &&
             _routeInfo == null)
           SizedBox(
@@ -1002,37 +1131,36 @@ class _HomePasajeroState extends State<HomePasajero>
             ),
           ),
 
-        // Información de la ruta
         if (_routeInfo != null) ...[
           RouteInfoCard(routeInfo: _routeInfo!),
-          const SizedBox(height: 16),
-
-          // Botón de solicitar viaje
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: _requestRide,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _serviceType == 'taxi'
-                    ? Colors.green.shade600
-                    : Colors.orange.shade600,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          if (showInlineActions) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _requestRide,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _serviceType == 'taxi'
+                      ? Colors.green.shade600
+                      : Colors.orange.shade600,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
-              ),
-              child: Text(
-                _serviceType == 'taxi'
-                    ? 'Solicitar viaje'
-                    : 'Solicitar domicilio',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                child: Text(
+                  _serviceType == 'taxi'
+                      ? 'Solicitar viaje'
+                      : 'Solicitar domicilio',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
 
         const SizedBox(height: 16),
@@ -1062,6 +1190,175 @@ class _HomePasajeroState extends State<HomePasajero>
                 ),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFixedCta() {
+    // En estado compacto no hay espacio vertical suficiente para un CTA fijo.
+    if (_sheetSize < _sheetMidSize - 0.01) {
+      return const SizedBox.shrink();
+    }
+
+    String label;
+    VoidCallback? onPressed;
+    Color color;
+
+    if (_selectedOrigin != null &&
+        _selectedDestination != null &&
+        _routeInfo == null) {
+      label = 'Ver ruta en el mapa';
+      onPressed = _drawRoute;
+      color = Colors.deepOrange;
+    } else if (_routeInfo != null) {
+      label = _serviceType == 'taxi'
+          ? 'Solicitar viaje'
+          : 'Solicitar domicilio';
+      onPressed = _requestRide;
+      color = _serviceType == 'taxi'
+          ? Colors.green.shade600
+          : Colors.orange.shade600;
+    } else {
+      label = 'Selecciona origen y destino';
+      onPressed = null;
+      color = Colors.grey;
+    }
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: color,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: Colors.grey.shade400,
+              disabledForegroundColor: Colors.white70,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              transitionBuilder: (child, animation) {
+                final offset = Tween<Offset>(
+                  begin: const Offset(0, 0.25),
+                  end: Offset.zero,
+                ).animate(animation);
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(position: offset, child: child),
+                );
+              },
+              child: Row(
+                key: ValueKey<String>('cta_$label'),
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _routeInfo != null
+                        ? Icons.check_circle_outline
+                        : Icons.keyboard_arrow_up,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickDestinationChips() {
+    final quickItems = <Map<String, dynamic>>[
+      {
+        'label': _savedHome?.name.isNotEmpty == true
+            ? _savedHome!.name
+            : 'Casa',
+        'query': 'Casa',
+        'icon': Icons.home_outlined,
+      },
+      {
+        'label': _savedWork?.name.isNotEmpty == true
+            ? _savedWork!.name
+            : 'Trabajo',
+        'query': 'Trabajo',
+        'icon': Icons.work_outline,
+      },
+      {'label': 'Centro', 'query': 'Centro', 'icon': Icons.location_city},
+      {'label': 'Terminal', 'query': 'Terminal', 'icon': Icons.directions_bus},
+      {
+        'label': 'Aeropuerto',
+        'query': 'Aeropuerto',
+        'icon': Icons.flight_takeoff,
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Destinos rápidos',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: quickItems
+              .map(
+                (item) => ActionChip(
+                  label: Text(item['label'] as String),
+                  avatar: Icon(item['icon'] as IconData, size: 16),
+                  onPressed: () =>
+                      _applyQuickDestination(item['query'] as String),
+                ),
+              )
+              .toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentDestinationChips() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Recientes',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: _recentDestinations
+                .map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ActionChip(
+                      label: Text(item.name),
+                      avatar: const Icon(Icons.history, size: 16),
+                      onPressed: () => _applyDestinationLocation(item),
+                    ),
+                  ),
+                )
+                .toList(),
           ),
         ),
       ],
@@ -1103,6 +1400,12 @@ class _HomePasajeroState extends State<HomePasajero>
 
   Future<BitmapDescriptor?> _getMarkerIconFromUrl(String imageUrl) async {
     try {
+      const double markerSize = 64.0;
+      const double shadowOffset = 1.0;
+      const double outerInset = 2.0;
+      const double imageInset = 4.0;
+      const double borderWidth = 2.5;
+
       // Descargar la imagen
       final response = await http.get(Uri.parse(imageUrl));
       if (response.statusCode != 200) return null;
@@ -1111,23 +1414,23 @@ class _HomePasajeroState extends State<HomePasajero>
       final Uint8List imageData = response.bodyBytes;
       final ui.Codec codec = await ui.instantiateImageCodec(
         imageData,
-        targetWidth: 150,
-        targetHeight: 150,
+        targetWidth: markerSize.toInt(),
+        targetHeight: markerSize.toInt(),
       );
       final ui.FrameInfo frameInfo = await codec.getNextFrame();
 
       // Crear un canvas para dibujar el marcador circular
       final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
       final Canvas canvas = Canvas(pictureRecorder);
-      final double size = 150.0;
+      final double size = markerSize;
 
       // Dibujar sombra exterior
       final Paint shadowPaint = Paint()
         ..color = Colors.black.withValues(alpha: 0.4)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
       canvas.drawCircle(
-        Offset(size / 2 + 2, size / 2 + 2),
-        (size / 2) - 2,
+        Offset(size / 2 + shadowOffset, size / 2 + shadowOffset),
+        (size / 2) - outerInset,
         shadowPaint,
       );
 
@@ -1137,7 +1440,7 @@ class _HomePasajeroState extends State<HomePasajero>
         ..style = PaintingStyle.fill;
       canvas.drawCircle(
         Offset(size / 2, size / 2),
-        (size / 2) - 2,
+        (size / 2) - outerInset,
         borderPaint,
       );
 
@@ -1149,7 +1452,7 @@ class _HomePasajeroState extends State<HomePasajero>
         ..addOval(
           Rect.fromCircle(
             center: Offset(size / 2, size / 2),
-            radius: (size / 2) - 8,
+            radius: (size / 2) - imageInset,
           ),
         );
       canvas.clipPath(clipPath);
@@ -1163,7 +1466,12 @@ class _HomePasajeroState extends State<HomePasajero>
           frameInfo.image.width.toDouble(),
           frameInfo.image.height.toDouble(),
         ),
-        Rect.fromLTWH(8, 8, size - 16, size - 16),
+        Rect.fromLTWH(
+          imageInset,
+          imageInset,
+          size - (imageInset * 2),
+          size - (imageInset * 2),
+        ),
         Paint()..filterQuality = FilterQuality.high,
       );
 
@@ -1174,10 +1482,10 @@ class _HomePasajeroState extends State<HomePasajero>
       final Paint accentBorderPaint = Paint()
         ..color = AppColors.accent
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 5;
+        ..strokeWidth = borderWidth;
       canvas.drawCircle(
         Offset(size / 2, size / 2),
-        (size / 2) - 5,
+        (size / 2) - borderWidth,
         accentBorderPaint,
       );
 
@@ -1200,8 +1508,13 @@ class _HomePasajeroState extends State<HomePasajero>
     return null;
   }
 
-  // Obtener dirección desde coordenadas (Geocoding reverso)
-  Future<String> _getAddressFromCoordinates(double lat, double lng) async {
+  // Obtener nombre y dirección desde coordenadas (Geocoding reverso)
+  Future<_CurrentLocationData> _getAddressFromCoordinates(
+    double lat,
+    double lng,
+  ) async {
+    final fallbackAddress =
+        'Lat ${lat.toStringAsFixed(5)}, Lng ${lng.toStringAsFixed(5)}';
     try {
       final url = Uri.parse(
         'https://maps.googleapis.com/maps/api/geocode/json?'
@@ -1216,13 +1529,38 @@ class _HomePasajeroState extends State<HomePasajero>
         final data = json.decode(response.body);
 
         if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-          return data['results'][0]['formatted_address'];
+          final results = data['results'] as List<dynamic>;
+          final first = results.first as Map<String, dynamic>;
+          final formattedAddress =
+              first['formatted_address']?.toString().trim() ?? '';
+
+          String? bestName;
+          for (final item in results) {
+            if (item is! Map<String, dynamic>) continue;
+            final value = item['formatted_address']?.toString().trim();
+            if (value == null || value.isEmpty) continue;
+
+            final firstSegment = value.split(',').first.trim();
+            if (firstSegment.isNotEmpty && firstSegment.length >= 3) {
+              bestName = firstSegment;
+              break;
+            }
+          }
+
+          return _CurrentLocationData(
+            name: (bestName == null || bestName.isEmpty)
+                ? 'Mi ubicación'
+                : bestName,
+            address: formattedAddress.isEmpty
+                ? fallbackAddress
+                : formattedAddress,
+          );
         }
       }
     } catch (e) {
       debugPrint('Error obteniendo dirección: $e');
     }
-    return 'Mi ubicación actual';
+    return _CurrentLocationData(name: 'Mi ubicación', address: fallbackAddress);
   }
 
   Future<void> _initializeLocation() async {
@@ -1272,8 +1610,8 @@ class _HomePasajeroState extends State<HomePasajero>
       );
 
       if (mounted) {
-        // Obtener dirección real
-        final address = await _getAddressFromCoordinates(
+        // Obtener nombre y dirección real
+        final locationData = await _getAddressFromCoordinates(
           position.latitude,
           position.longitude,
         );
@@ -1284,13 +1622,19 @@ class _HomePasajeroState extends State<HomePasajero>
           _locationMessage =
               'Perfecto. Tu ubicación ha sido verificada y está lista para solicitar servicio';
 
-          // Configurar origen por defecto con dirección real
+          _currentLocationName = locationData.name;
+          _currentLocationAddress = locationData.address;
+
+          // Configurar origen por defecto con nombre + dirección real
           _selectedOrigin = TripLocation.currentLocation(
             lat: position.latitude,
             lng: position.longitude,
-            address: address,
+            name: _currentLocationName,
+            address: _currentLocationAddress,
           );
-          _originController.text = address;
+          _originController.removeListener(_onOriginChanged);
+          _originController.text = _currentLocationName;
+          _originController.addListener(_onOriginChanged);
 
           // Agregar marcador de ubicación del usuario si no hay ruta
           if (_markers.isEmpty && _userMarkerIcon != null) {
@@ -1299,9 +1643,9 @@ class _HomePasajeroState extends State<HomePasajero>
                 markerId: const MarkerId('user_location'),
                 position: LatLng(position.latitude, position.longitude),
                 icon: _userMarkerIcon!,
-                infoWindow: const InfoWindow(
-                  title: 'Tú',
-                  snippet: 'Tu ubicación actual',
+                infoWindow: InfoWindow(
+                  title: _currentLocationName,
+                  snippet: _currentLocationAddress,
                 ),
               ),
             };
@@ -1333,14 +1677,272 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   void _toggleSheet() {
-    _setStateSafe(() {
-      _isExpanded = !_isExpanded;
-      if (_isExpanded) {
-        _animationController.forward();
-      } else {
-        _animationController.reverse();
+    if (_isExpanded) {
+      _minimizeSheet();
+    } else {
+      _expandSheet();
+    }
+  }
+
+  Future<void> _expandSheet() async {
+    if (!_sheetController.isAttached) return;
+    await _sheetController.animateTo(
+      _sheetMidSize,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 90));
+    if (!mounted) return;
+    _destinationFocusNode.requestFocus();
+  }
+
+  Future<void> _minimizeSheet() async {
+    if (!_sheetController.isAttached) return;
+    await _sheetController.animateTo(
+      _sheetMinSize,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _openQuickRequestFlow() async {
+    await _expandSheet();
+  }
+
+  String _prefKey(String suffix) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final uid = auth.user?.id ?? 0;
+    return 'pasajero_${uid}_$suffix';
+  }
+
+  Map<String, dynamic> _tripLocationToMap(TripLocation loc) {
+    return {
+      'placeId': loc.placeId,
+      'name': loc.name,
+      'address': loc.address,
+      'lat': loc.lat,
+      'lng': loc.lng,
+      'isCurrentLocation': loc.isCurrentLocation,
+    };
+  }
+
+  TripLocation? _tripLocationFromMap(Map<String, dynamic>? map) {
+    if (map == null) return null;
+    final lat = (map['lat'] as num?)?.toDouble();
+    final lng = (map['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return null;
+
+    return TripLocation(
+      placeId: map['placeId']?.toString(),
+      name: map['name']?.toString() ?? 'Destino',
+      address: map['address']?.toString() ?? '',
+      lat: lat,
+      lng: lng,
+      isCurrentLocation: map['isCurrentLocation'] == true,
+    );
+  }
+
+  Future<void> _loadSavedPassengerLocations() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final homeRaw = prefs.getString(_prefKey('home'));
+      final workRaw = prefs.getString(_prefKey('work'));
+      final recentRaw = prefs.getString(_prefKey('recent_destinations'));
+
+      TripLocation? home;
+      TripLocation? work;
+      List<TripLocation> recent = [];
+
+      if (homeRaw != null && homeRaw.isNotEmpty) {
+        home = _tripLocationFromMap(
+          (jsonDecode(homeRaw) as Map).cast<String, dynamic>(),
+        );
       }
+      if (workRaw != null && workRaw.isNotEmpty) {
+        work = _tripLocationFromMap(
+          (jsonDecode(workRaw) as Map).cast<String, dynamic>(),
+        );
+      }
+      if (recentRaw != null && recentRaw.isNotEmpty) {
+        final list = (jsonDecode(recentRaw) as List)
+            .map(
+              (e) => _tripLocationFromMap((e as Map).cast<String, dynamic>()),
+            )
+            .whereType<TripLocation>()
+            .toList();
+        recent = list;
+      }
+
+      if (!mounted) return;
+      _setStateSafe(() {
+        _savedHome = home;
+        _savedWork = work;
+        _recentDestinations = recent;
+      });
+    } catch (e) {
+      AppLogger.w('No se pudieron cargar ubicaciones guardadas: $e');
+    }
+  }
+
+  Future<void> _saveFavoriteDestination(String type) async {
+    final selected = _selectedDestination;
+    if (selected == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefKey(type),
+        jsonEncode(_tripLocationToMap(selected)),
+      );
+      if (!mounted) return;
+      _setStateSafe(() {
+        if (type == 'home') {
+          _savedHome = selected;
+        } else if (type == 'work') {
+          _savedWork = selected;
+        }
+      });
+      _scaffoldMessenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            type == 'home'
+                ? 'Casa guardada correctamente'
+                : 'Trabajo guardado correctamente',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      AppLogger.w('No se pudo guardar favorito $type: $e');
+    }
+  }
+
+  Future<void> _saveRecentDestination(TripLocation destination) async {
+    try {
+      final next = <TripLocation>[destination];
+      for (final item in _recentDestinations) {
+        final samePlace =
+            item.placeId != null &&
+            destination.placeId != null &&
+            item.placeId == destination.placeId;
+        final sameCoords =
+            (item.lat - destination.lat).abs() < 0.00001 &&
+            (item.lng - destination.lng).abs() < 0.00001;
+        if (samePlace || sameCoords) continue;
+        next.add(item);
+      }
+
+      final capped = next.take(6).toList();
+      _setStateSafe(() => _recentDestinations = capped);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _prefKey('recent_destinations'),
+        jsonEncode(capped.map(_tripLocationToMap).toList()),
+      );
+    } catch (e) {
+      AppLogger.w('No se pudo guardar reciente: $e');
+    }
+  }
+
+  Future<void> _applyQuickDestination(String query) async {
+    if (!mounted) return;
+
+    if (query == 'Casa' && _savedHome != null) {
+      await _applyDestinationLocation(_savedHome!);
+      return;
+    }
+    if (query == 'Trabajo' && _savedWork != null) {
+      await _applyDestinationLocation(_savedWork!);
+      return;
+    }
+
+    _setStateSafe(() {
+      _destinationController.text = query;
+      _isSearchingDestination = true;
+      _destinationPredictions = [];
     });
+
+    final results = await _placesService.searchPlaces(query);
+    if (!mounted) return;
+
+    if (results.isEmpty) {
+      _setStateSafe(() => _isSearchingDestination = false);
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('No se encontraron lugares para ese destino rápido'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final best = results.first;
+    _setStateSafe(() {
+      _selectedDestination = TripLocation.fromPlaceDetails(
+        placeId: best.placeId,
+        name: best.name,
+        address: best.address,
+        lat: best.lat,
+        lng: best.lng,
+      );
+      _destinationController.text = best.name.isNotEmpty ? best.name : query;
+      _isSearchingDestination = false;
+      _destinationPredictions = [];
+    });
+    await _saveRecentDestination(_selectedDestination!);
+
+    if (_selectedOrigin != null) {
+      await _drawRoute();
+    }
+  }
+
+  Future<void> _applyDestinationLocation(TripLocation destination) async {
+    _setStateSafe(() {
+      _selectedDestination = destination;
+      _destinationController.text = destination.name;
+      _isSearchingDestination = false;
+      _destinationPredictions = [];
+    });
+    await _saveRecentDestination(destination);
+    if (_selectedOrigin != null) {
+      await _drawRoute();
+    }
+  }
+
+  _SheetVisualState _sheetStateFromExtent(double extent) {
+    final distMin = (extent - _sheetMinSize).abs();
+    final distMid = (extent - _sheetMidSize).abs();
+    final distMax = (extent - _sheetMaxSize).abs();
+
+    if (distMin <= distMid && distMin <= distMax) {
+      return _SheetVisualState.compact;
+    }
+    if (distMid <= distMin && distMid <= distMax) {
+      return _SheetVisualState.middle;
+    }
+    return _SheetVisualState.expanded;
+  }
+
+  void _emitSnapHapticIfNeeded(double extent, _SheetVisualState visualState) {
+    const epsilon = 0.015;
+    final isAtSnap =
+        (extent - _sheetMinSize).abs() <= epsilon ||
+        (extent - _sheetMidSize).abs() <= epsilon ||
+        (extent - _sheetMaxSize).abs() <= epsilon;
+    if (!isAtSnap) return;
+    if (_lastHapticSnap == visualState) return;
+
+    _lastHapticSnap = visualState;
+    switch (visualState) {
+      case _SheetVisualState.compact:
+      case _SheetVisualState.middle:
+        HapticFeedback.selectionClick();
+        break;
+      case _SheetVisualState.expanded:
+        HapticFeedback.lightImpact();
+        break;
+    }
   }
 
   void _onOriginChanged() {
@@ -1437,6 +2039,7 @@ class _HomePasajeroState extends State<HomePasajero>
         _destinationPredictions = [];
         _isSearchingDestination = false;
       });
+      await _saveRecentDestination(_selectedDestination!);
 
       // Restaurar listener
       _destinationController.addListener(_onDestinationChanged);
@@ -1593,7 +2196,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
       // Minimizar el bottom sheet
       if (_isExpanded) {
-        _toggleSheet();
+        _minimizeSheet();
       }
     }
   }
@@ -1653,27 +2256,11 @@ class _HomePasajeroState extends State<HomePasajero>
 
   void _requestRide() {
     if (_routeInfo == null) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => RideConfirmationDialog(
-        serviceType: _serviceType,
-        origin: _selectedOrigin!,
-        destination: _selectedDestination!,
-        routeInfo: _routeInfo!,
-        onConfirm: () => _handleRideConfirmation(),
-      ),
-    );
+    _handleRideConfirmation();
   }
 
   Future<void> _handleRideConfirmation() async {
     final isDelivery = _serviceType == 'domicilio';
-
-    // Cerrar el diálogo de confirmación
-    Navigator.pop(context);
-
-    // Esperar un momento para que se complete la animación del cierre
-    await Future.delayed(const Duration(milliseconds: 300));
 
     if (!mounted) return;
 

@@ -21,6 +21,8 @@ class HistorialServicio {
   final double precioEstimado;
   final double? precioFinal;
   final String estado;
+  final int? estadoId;
+  final String estadoNombre;
   final PersonaServicio? persona; // Conductor o Pasajero según el contexto
   final VehiculoServicio? vehiculo;
   final CalificacionServicioHistorial? calificacion;
@@ -36,19 +38,33 @@ class HistorialServicio {
     required this.precioEstimado,
     this.precioFinal,
     required this.estado,
+    this.estadoId,
+    required this.estadoNombre,
     this.persona,
     this.vehiculo,
     this.calificacion,
   });
 
   factory HistorialServicio.fromJson(Map<String, dynamic> json) {
+    final estadoRaw = json['estado'];
+    final estadoId = estadoRaw is Map
+        ? (estadoRaw['id'] is int
+              ? estadoRaw['id'] as int
+              : int.tryParse(estadoRaw['id']?.toString() ?? ''))
+        : null;
+    final estadoNombre = estadoRaw is Map
+        ? (estadoRaw['nombre']?.toString() ??
+              estadoRaw['estado']?.toString() ??
+              '')
+        : (estadoRaw?.toString() ?? '');
+
     return HistorialServicio(
       id: json['id'] ?? 0,
       fechaServicio: json['fecha_servicio'] != null
-          ? DateTime.parse(json['fecha_servicio'])
+          ? DateTime.parse(json['fecha_servicio']).toLocal()
           : DateTime.now(),
       finServicio: json['fin_servicio'] != null
-          ? DateTime.parse(json['fin_servicio'])
+          ? DateTime.parse(json['fin_servicio']).toLocal()
           : null,
       duracionMinutos: json['duracion_minutos'],
       origen: UbicacionServicio.fromJson(json['origen'] ?? {}),
@@ -58,7 +74,9 @@ class HistorialServicio {
       precioFinal: json['precio_final'] != null
           ? _parseDouble(json['precio_final'])
           : null,
-      estado: json['estado'] ?? '',
+      estado: estadoNombre,
+      estadoId: estadoId,
+      estadoNombre: estadoNombre,
       persona: json['pasajero'] != null
           ? PersonaServicio.fromJson(json['pasajero'])
           : (json['conductor'] != null
@@ -89,6 +107,11 @@ class HistorialServicio {
     final precio = precioFinal ?? precioEstimado;
     return '\$${precio.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
   }
+
+  bool get isCancelado => estadoId == 6;
+  bool get isFinalizado =>
+      estadoId == 22 ||
+      (!isCancelado && estadoNombre.toLowerCase().contains('final'));
 }
 
 /// Ubicación (origen o destino) de un servicio
@@ -183,7 +206,9 @@ class CalificacionServicioHistorial {
     return CalificacionServicioHistorial(
       puntuacion: json['puntuacion'] ?? json['calificacion'] ?? 0,
       comentario: json['comentario'],
-      fecha: json['fecha'] != null ? DateTime.parse(json['fecha']) : null,
+      fecha: json['fecha'] != null
+          ? DateTime.parse(json['fecha']).toLocal()
+          : null,
     );
   }
 }

@@ -492,8 +492,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     try {
       final dio = DioClient.getInstance();
       await dio.post(
-        '/servicios/taxi/$servicioId/cancelar',
-        data: {'motivo': motivo},
+        'taxi/servicio/cancelar',
+        data: {'servicio_id': servicioId, 'motivo': motivo},
       );
       AppLogger.d('✅ PROVIDER: Servicio cancelado');
     } catch (e) {

@@ -18,10 +18,11 @@ class TripLocation {
   factory TripLocation.currentLocation({
     required double lat,
     required double lng,
+    String name = 'Mi ubicación',
     String address = 'Mi ubicación actual',
   }) {
     return TripLocation(
-      name: 'Mi ubicación',
+      name: name,
       address: address,
       lat: lat,
       lng: lng,

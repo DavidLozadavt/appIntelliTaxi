@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -19,6 +20,7 @@ import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
+import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
@@ -58,6 +60,7 @@ class _ConductorServicioActivoScreenState
   bool _isLoading = false;
   BitmapDescriptor? _carIcon;
   StreamSubscription<Position>? _locationSubscription;
+  bool _terminalNavigationInProgress = false;
 
   // 📏 Control de altura del BottomSheet
   double _sheetHeight = 0.40;
@@ -80,6 +83,7 @@ class _ConductorServicioActivoScreenState
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _desuscribirEventosServicio();
     _driverOverlayService.hide();
     ActiveServiceScreenRegistry.markHidden(
       type: 'conductor',
@@ -135,8 +139,9 @@ class _ConductorServicioActivoScreenState
       case 4:
       case 21:
         return 'en_curso';
-      case 5:
       case 6:
+        return 'cancelado';
+      case 5:
       case 7:
       case 22:
       case 23:
@@ -171,8 +176,8 @@ class _ConductorServicioActivoScreenState
     if (e.contains('llegue') || e.contains('llego')) return 'llegue';
     if (e.contains('en_camino') || e.contains('camino')) return 'en_camino';
     if (e.contains('acept')) return 'aceptado';
+    if (e.contains('cancel')) return 'cancelado';
     if (e.contains('final') || e.contains('complet')) return 'finalizado';
-    if (e.contains('cancel')) return 'finalizado';
 
     return null;
   }
@@ -198,8 +203,9 @@ class _ConductorServicioActivoScreenState
       case 4:
       case 21:
         return 'en_curso';
-      case 5:
       case 6:
+        return 'cancelado';
+      case 5:
       case 7:
       case 22:
       case 23:
@@ -332,6 +338,10 @@ class _ConductorServicioActivoScreenState
 
   Future<void> _inicializar() async {
     _estadoActual = _estadoUiEfectivo;
+    if (_estadoUiEfectivo == 'cancelado') {
+      await _salirPorServicioCancelado();
+      return;
+    }
 
     // Debug: Ver estructura completa del servicio
     AppLogger.d('🔍 DATOS DEL SERVICIO RECIBIDOS:');
@@ -382,6 +392,49 @@ class _ConductorServicioActivoScreenState
 
     // Actualizar marcadores
     _actualizarMarcadores();
+
+    // Escuchar cancelación/finalización remota del servicio.
+    await _suscribirEventosServicio();
+  }
+
+  Future<void> _suscribirEventosServicio() async {
+    final channelName = 'servicio.${_safeServiceId()}';
+    final eventKey = '$channelName:servicio.estado.cambiado';
+
+    PusherService.registerEventHandlerSecondary(eventKey, (event) {
+      if (!mounted || _terminalNavigationInProgress) return;
+      _manejarEventoEstadoServicio(event);
+    });
+
+    await PusherService.subscribeSecondary(channelName);
+  }
+
+  void _desuscribirEventosServicio() {
+    final channelName = 'servicio.${_safeServiceId()}';
+    final eventKey = '$channelName:servicio.estado.cambiado';
+    PusherService.unregisterEventHandlerSecondary(eventKey);
+    PusherService.unsubscribeSecondary(channelName);
+  }
+
+  void _manejarEventoEstadoServicio(dynamic event) {
+    try {
+      final Map<String, dynamic> data = event is String
+          ? Map<String, dynamic>.from(jsonDecode(event))
+          : Map<String, dynamic>.from(event as Map);
+
+      final estado = _normalizarEstadoBackend(data['estado']);
+      final estadoIdRaw = data['estado_id'];
+      final estadoId = estadoIdRaw is int
+          ? estadoIdRaw
+          : int.tryParse(estadoIdRaw?.toString() ?? '');
+
+      if (estado == 'cancelado' || estadoId == 6) {
+        _terminalNavigationInProgress = true;
+        _salirPorServicioCancelado();
+      }
+    } catch (e) {
+      AppLogger.d('⚠️ Error procesando servicio.estado.cambiado: $e');
+    }
   }
 
   Future<void> _guardarServicioActivo() async {
@@ -678,6 +731,28 @@ class _ConductorServicioActivoScreenState
     if (mounted) {
       Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
     }
+  }
+
+  Future<void> _salirPorServicioCancelado() async {
+    try {
+      _trackingService.detenerSeguimiento();
+      await _notificacionService.cancelarNotificacion(
+        widget.servicio['id'],
+        tipo: 'conductor',
+      );
+      await _persistencia.limpiarServicioActivo();
+    } catch (_) {
+      // Ignorar errores de limpieza para priorizar salida de pantalla.
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('❌ El servicio fue cancelado'),
+        backgroundColor: Colors.grey,
+      ),
+    );
+    Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
   }
 
   /// Muestra el diálogo para calificar al pasajero
@@ -980,7 +1055,8 @@ class _ConductorServicioActivoScreenState
 
                               // Botón de cancelar (solo si el servicio no ha iniciado)
                               if (_estadoUiEfectivo != 'en_curso' &&
-                                  _estadoUiEfectivo != 'finalizado') ...[
+                                  _estadoUiEfectivo != 'finalizado' &&
+                                  _estadoUiEfectivo != 'cancelado') ...[
                                 const SizedBox(height: 12),
                                 _buildBotonCancelar(),
                               ],
@@ -1018,6 +1094,7 @@ class _ConductorServicioActivoScreenState
       },
       'llegue': {'texto': 'ESPERANDO PASAJERO', 'color': AppColors.accent},
       'en_curso': {'texto': 'VIAJE EN CURSO', 'color': AppColors.green},
+      'cancelado': {'texto': 'SERVICIO CANCELADO', 'color': Colors.grey},
     };
 
     final info =

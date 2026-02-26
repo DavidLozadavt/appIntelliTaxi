@@ -32,6 +32,8 @@ class _PasajeroEsperandoConductorScreenState
     extends State<PasajeroEsperandoConductorScreen> {
   GoogleMapController? _mapController;
   bool _driverCameraCentered = false;
+  bool _terminalFlowStarted = false;
+  bool _timeoutDialogShown = false;
 
   // 📏 Control de altura del BottomSheet
   double _sheetHeight = 0.45;
@@ -69,6 +71,18 @@ class _PasajeroEsperandoConductorScreenState
         ).pushNamedAndRemoveUntil('/home', (route) => false);
       }
     }
+  }
+
+  Future<void> _manejarServicioCancelado() async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('❌ El servicio fue cancelado'),
+        backgroundColor: Colors.grey,
+        duration: Duration(seconds: 2),
+      ),
+    );
+    Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
   }
 
   Future<void> _llamarConductor(String? telefono) async {
@@ -148,7 +162,10 @@ class _PasajeroEsperandoConductorScreenState
         ),
         actions: [
           TextButton(
-            onPressed: () => _cancelarServicio(context, provider),
+            onPressed: () {
+              Navigator.pop(context);
+              _cancelarServicio(provider);
+            },
             child: const Text(
               'Cancelar solicitud',
               style: TextStyle(color: Colors.red),
@@ -177,44 +194,8 @@ class _PasajeroEsperandoConductorScreenState
     );
   }
 
-  Future<void> _confirmarCancelarServicioActivo() async {
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('¿Cancelar servicio?'),
-        content: const Text(
-          'Estás a punto de cancelar tu servicio activo. '
-          'El conductor ya está en camino. ¿Estás seguro?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('No'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Sí, cancelar'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmar == true && mounted) {
-      final provider = Provider.of<PasajeroServicioActivoProvider>(
-        context,
-        listen: false,
-      );
-      await _cancelarServicio(context, provider);
-    }
-  }
-
   /// 🚫 Cancela el servicio y regresa a la pantalla anterior
   Future<void> _cancelarServicio(
-    BuildContext dialogContext,
     PasajeroServicioActivoProvider provider,
   ) async {
     try {
@@ -227,18 +208,17 @@ class _PasajeroEsperandoConductorScreenState
       }
 
       // Mostrar loading
-      Navigator.pop(dialogContext);
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
+        builder: (context) => Center(
           child: Card(
             child: Padding(
               padding: EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(),
+                  _buildCustomLoader(size: 54),
                   SizedBox(height: 16),
                   Text('Cancelando solicitud...'),
                 ],
@@ -254,26 +234,20 @@ class _PasajeroEsperandoConductorScreenState
       if (!mounted) return;
 
       // Cerrar loading
-      Navigator.pop(context);
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
 
-      // Volver a la pantalla anterior
-      Navigator.pop(context);
-
-      // Mostrar mensaje de confirmación
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('❌ Servicio cancelado'),
-          backgroundColor: Colors.grey,
-          duration: Duration(seconds: 3),
-        ),
-      );
+      // Volver de forma robusta al home (mapa inicial del pasajero)
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
     } catch (e) {
       AppLogger.d('❌ Error cancelando servicio: $e');
 
       if (!mounted) return;
 
-      Navigator.pop(context); // Cerrar loading
-      Navigator.pop(context); // Volver a home
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context); // Cerrar loading
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -298,9 +272,23 @@ class _PasajeroEsperandoConductorScreenState
 
           // Listener para mostrar diálogos según el estado
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (provider.estadoServicio == 'timeout' && mounted) {
-              _mostrarDialogoTimeout(context, provider);
-            } else if (provider.estadoServicio == 'finalizado' && mounted) {
+            if (!mounted) return;
+
+            if (provider.estadoServicio == 'timeout' && !_timeoutDialogShown) {
+              _timeoutDialogShown = true;
+              _mostrarDialogoTimeout(context, provider).whenComplete(() {
+                _timeoutDialogShown = false;
+              });
+              return;
+            }
+
+            if (_terminalFlowStarted) return;
+
+            if (provider.estadoServicio == 'cancelado') {
+              _terminalFlowStarted = true;
+              _manejarServicioCancelado();
+            } else if (provider.estadoServicio == 'finalizado') {
+              _terminalFlowStarted = true;
               _mostrarDialogoFinalizado(provider.conductor);
             }
           });
@@ -458,57 +446,58 @@ class _PasajeroEsperandoConductorScreenState
     final remainingSeconds = provider.remainingSeconds;
     final minutes = remainingSeconds ~/ 60;
     final seconds = remainingSeconds % 60;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
 
     return Container(
       padding: const EdgeInsets.all(30),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, -3),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 60,
-                height: 60,
-                child: CircularProgressIndicator(
-                  value: provider.elapsedSeconds / 120,
-                  strokeWidth: 4,
-                  backgroundColor: Colors.grey.shade300,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    remainingSeconds > 30 ? AppColors.accent : Colors.orange,
-                  ),
-                ),
-              ),
-              Text(
-                '$minutes:${seconds.toString().padLeft(2, '0')}',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+          _buildCustomLoader(
+            size: 60,
+            progress: provider.elapsedSeconds / 120,
+            color: remainingSeconds > 30 ? AppColors.accent : Colors.orange,
           ),
-          const SizedBox(height: 20),
-          const Text(
+          const SizedBox(height: 10),
+          Text(
+            '$minutes:${seconds.toString().padLeft(2, '0')}',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
             'Buscando conductor disponible...',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 10),
           Text(
             'Por favor espera mientras encontramos un conductor cerca de ti',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey[600]),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.78),
+            ),
           ),
           const SizedBox(height: 16),
           TextButton.icon(
-            onPressed: () => _cancelarServicio(context, provider),
+            onPressed: () => _cancelarServicio(provider),
             icon: const Icon(Iconsax.close_circle_copy, size: 18),
             label: const Text('Cancelar búsqueda'),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            style: TextButton.styleFrom(foregroundColor: cs.error),
           ),
         ],
       ),
@@ -756,7 +745,7 @@ class _PasajeroEsperandoConductorScreenState
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton.icon(
-        onPressed: () => _confirmarCancelarServicioActivo(),
+        onPressed: () => _cancelarServicio(provider),
         icon: const Icon(Iconsax.close_circle_copy, size: 18),
         label: const Text(
           'Cancelar servicio',
@@ -770,6 +759,43 @@ class _PasajeroEsperandoConductorScreenState
             borderRadius: BorderRadius.circular(10),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildCustomLoader({
+    double size = 44,
+    double? progress,
+    Color color = AppColors.accent,
+  }) {
+    final logoSize = size * 0.48;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: size,
+            height: size,
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+              backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+            ),
+          ),
+          Container(
+            width: logoSize,
+            height: logoSize,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Image.asset('assets/images/intellitaxi.png'),
+          ),
+        ],
       ),
     );
   }

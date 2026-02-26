@@ -12,6 +12,8 @@ class LocationSearchField extends StatelessWidget {
   final bool isSearching;
   final Function(PlacePrediction) onSelectPrediction;
   final VoidCallback onClear;
+  final FocusNode? focusNode;
+  final VoidCallback? onTap;
 
   const LocationSearchField({
     super.key,
@@ -23,6 +25,8 @@ class LocationSearchField extends StatelessWidget {
     required this.isSearching,
     required this.onSelectPrediction,
     required this.onClear,
+    this.focusNode,
+    this.onTap,
   });
 
   @override
@@ -44,6 +48,8 @@ class LocationSearchField extends StatelessWidget {
           ),
           child: TextField(
             controller: controller,
+            focusNode: focusNode,
+            onTap: onTap,
             style: TextStyle(color: theme.textTheme.bodyLarge?.color),
             decoration: InputDecoration(
               hintText: label,

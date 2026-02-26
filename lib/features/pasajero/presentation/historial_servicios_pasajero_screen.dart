@@ -844,13 +844,13 @@ class _HistorialServiciosPasajeroScreenState
     final diferencia = ahora.difference(fecha);
 
     if (diferencia.inDays == 0) {
-      return 'Hoy ${DateFormat('HH:mm').format(fecha)}';
+      return 'Hoy ${DateFormat('h:mm a', 'es').format(fecha)}';
     } else if (diferencia.inDays == 1) {
-      return 'Ayer ${DateFormat('HH:mm').format(fecha)}';
+      return 'Ayer ${DateFormat('h:mm a', 'es').format(fecha)}';
     } else if (diferencia.inDays < 7) {
-      return DateFormat('EEEE HH:mm', 'es').format(fecha);
+      return DateFormat('EEEE h:mm a', 'es').format(fecha);
     } else {
-      return DateFormat('dd MMM yyyy HH:mm', 'es').format(fecha);
+      return DateFormat('dd MMM yyyy h:mm a', 'es').format(fecha);
     }
   }
 }

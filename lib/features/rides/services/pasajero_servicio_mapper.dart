@@ -91,7 +91,10 @@ class PasajeroServicioMapper {
         estado.contains('asignado')) {
       return 'aceptado';
     }
-    if (estado.contains('final') || estado.contains('cancel')) {
+    if (estado.contains('cancel')) {
+      return 'cancelado';
+    }
+    if (estado.contains('final')) {
       return 'finalizado';
     }
     if (estado.contains('timeout')) return 'timeout';
@@ -124,8 +127,9 @@ class PasajeroServicioMapper {
       case 4:
       case 21:
         return 'en_curso';
-      case 5:
       case 6:
+        return 'cancelado';
+      case 5:
       case 7:
       case 22:
       case 23:

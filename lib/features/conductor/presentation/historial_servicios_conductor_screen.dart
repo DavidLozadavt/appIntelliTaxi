@@ -31,6 +31,23 @@ class _HistorialServiciosConductorScreenState
   String? _error;
   int _currentPage = 1;
   String _filtroSeleccionado = 'hoy'; // Filtro por defecto
+  String _filtroEstadoHistorial = 'todos';
+
+  List<HistorialServicio> get _serviciosFiltrados {
+    switch (_filtroEstadoHistorial) {
+      case 'cancelados':
+        return _servicios.where((s) => s.isCancelado).toList();
+      case 'finalizados':
+        return _servicios.where((s) => s.isFinalizado).toList();
+      case 'calificados':
+        return _servicios.where((s) => s.calificacion != null).toList();
+      default:
+        return _servicios;
+    }
+  }
+
+  int get _totalCancelados => _servicios.where((s) => s.isCancelado).length;
+  int get _totalFinalizados => _servicios.where((s) => s.isFinalizado).length;
 
   @override
   void initState() {
@@ -204,19 +221,72 @@ class _HistorialServiciosConductorScreenState
       return _buildEmpty();
     }
 
+    final servicios = _serviciosFiltrados;
+
     return RefreshIndicator(
       onRefresh: () => _cargarDatos(),
-      child: ListView.builder(
+      child: ListView(
         padding: const EdgeInsets.all(16),
-        itemCount:
-            _servicios.length + (_paginacion?.hasNextPage == true ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index == _servicios.length) {
-            return _buildLoadMoreButton();
-          }
-          return _buildServicioCard(_servicios[index]);
-        },
+        children: [
+          _buildHistorialEstadoFiltros(),
+          const SizedBox(height: 12),
+          _buildResumenPaginacion(servicios.length),
+          const SizedBox(height: 12),
+          if (servicios.isEmpty)
+            _buildEmptyFiltro()
+          else
+            ...servicios.map(_buildServicioCard),
+          if (_paginacion?.hasNextPage == true) _buildLoadMoreButton(),
+        ],
       ),
+    );
+  }
+
+  Widget _buildHistorialEstadoFiltros() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _buildChipEstado('Todos', 'todos', isDark),
+        _buildChipEstado('Finalizados', 'finalizados', isDark),
+        _buildChipEstado('Cancelados', 'cancelados', isDark),
+        _buildChipEstado('Calificados', 'calificados', isDark),
+      ],
+    );
+  }
+
+  Widget _buildChipEstado(String label, String value, bool isDark) {
+    final isSelected = _filtroEstadoHistorial == value;
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => setState(() => _filtroEstadoHistorial = value),
+      backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+      selectedColor: AppColors.accent.withValues(alpha: 0.16),
+      checkmarkColor: AppColors.accent,
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+        color: isSelected ? AppColors.accent : null,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: isSelected ? AppColors.accent : Colors.transparent,
+          width: 1.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResumenPaginacion(int visibles) {
+    final total = _paginacion?.total ?? _servicios.length;
+    final pagina = _paginacion?.currentPage ?? 1;
+    final ultima = _paginacion?.lastPage ?? 1;
+    return Text(
+      'Mostrando $visibles de $total servicios · Página $pagina/$ultima',
+      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
     );
   }
 
@@ -240,7 +310,7 @@ class _HistorialServiciosConductorScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header: Fecha y precio
+            // Header: Fecha y estado
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -268,6 +338,10 @@ class _HistorialServiciosConductorScreenState
                       ),
                     ),
                   ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [_buildEstadoBadge(servicio)],
                 ),
               ],
             ),
@@ -751,10 +825,10 @@ class _HistorialServiciosConductorScreenState
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildKPIItem(
-                'Ingresos',
-                _estadisticas!.ingresosFormateado,
-                Iconsax.money_4_copy,
-                '+12%',
+                'Finalizados',
+                _totalFinalizados.toString(),
+                Iconsax.tick_circle_copy,
+                null,
               ),
               Container(
                 width: 1,
@@ -765,7 +839,7 @@ class _HistorialServiciosConductorScreenState
                 'Servicios',
                 _estadisticas!.totalServicios.toString(),
                 Iconsax.car_copy,
-                '+8%',
+                null,
               ),
               Container(
                 width: 1,
@@ -777,7 +851,7 @@ class _HistorialServiciosConductorScreenState
                 _estadisticas!.promedioCalificacion?.toStringAsFixed(1) ??
                     'N/A',
                 Iconsax.star_1_copy,
-                '+0.2',
+                null,
               ),
             ],
           ),
@@ -882,15 +956,11 @@ class _HistorialServiciosConductorScreenState
               ),
               _buildMetricaCard(
                 icon: Iconsax.routing_2_copy,
-                titulo: 'Tarifa Promedio',
-                valor:
-                    _estadisticas!.totalServicios > 0 &&
-                        _estadisticas!.totalIngresos != null
-                    ? '\$${(_estadisticas!.totalIngresos! / _estadisticas!.totalServicios).toStringAsFixed(2)}'
-                    : '\$0',
-                cambio: '+3%',
+                titulo: 'Cancelados',
+                valor: _totalCancelados.toString(),
+                cambio: null,
                 isPositivo: true,
-                color: const Color(0xFF10B981),
+                color: const Color(0xFFEF4444),
               ),
               _buildMetricaCard(
                 icon: Iconsax.activity_copy,
@@ -911,7 +981,7 @@ class _HistorialServiciosConductorScreenState
     required IconData icon,
     required String titulo,
     required String valor,
-    required String cambio,
+    String? cambio,
     required bool isPositivo,
     required Color color,
   }) {
@@ -947,33 +1017,37 @@ class _HistorialServiciosConductorScreenState
                 ),
                 child: Icon(icon, color: color, size: 20),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isPositivo
-                      ? Colors.green.withValues(alpha: 0.1)
-                      : Colors.red.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      isPositivo ? Icons.arrow_upward : Icons.arrow_downward,
-                      size: 10,
-                      color: isPositivo ? Colors.green : Colors.red,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      cambio,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
+              if (cambio != null && cambio.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isPositivo
+                        ? Colors.green.withValues(alpha: 0.1)
+                        : Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isPositivo ? Icons.arrow_upward : Icons.arrow_downward,
+                        size: 10,
                         color: isPositivo ? Colors.green : Colors.red,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 2),
+                      Text(
+                        cambio,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: isPositivo ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
           Flexible(
@@ -1074,10 +1148,10 @@ class _HistorialServiciosConductorScreenState
           ),
           const Divider(height: 24),
           _buildResumenItem(
-            'Ingresos generados',
-            _estadisticas!.ingresosFormateado,
-            Iconsax.money_4_copy,
-            Colors.green,
+            'Servicios cancelados',
+            _totalCancelados.toString(),
+            Iconsax.close_circle_copy,
+            Colors.red,
           ),
         ],
       ),
@@ -1143,6 +1217,28 @@ class _HistorialServiciosConductorScreenState
     );
   }
 
+  Widget _buildEstadoBadge(HistorialServicio servicio) {
+    final isCancelado = servicio.isCancelado;
+    final color = isCancelado ? Colors.red : AppColors.green;
+    final text = isCancelado ? 'Cancelado' : 'Finalizado';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+
   Widget _buildError() {
     return Center(
       child: Padding(
@@ -1189,18 +1285,30 @@ class _HistorialServiciosConductorScreenState
     );
   }
 
+  Widget _buildEmptyFiltro() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 20),
+      alignment: Alignment.center,
+      child: Text(
+        'No hay resultados para este filtro',
+        style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
+      ),
+    );
+  }
+
   String _formatearFecha(DateTime fecha) {
+    final fechaLocal = fecha.toLocal();
     final ahora = DateTime.now();
-    final diferencia = ahora.difference(fecha);
+    final diferencia = ahora.difference(fechaLocal);
 
     if (diferencia.inDays == 0) {
-      return 'Hoy ${DateFormat('HH:mm').format(fecha)}';
+      return 'Hoy ${DateFormat('h:mm a', 'es').format(fechaLocal)}';
     } else if (diferencia.inDays == 1) {
-      return 'Ayer ${DateFormat('HH:mm').format(fecha)}';
+      return 'Ayer ${DateFormat('h:mm a', 'es').format(fechaLocal)}';
     } else if (diferencia.inDays < 7) {
-      return DateFormat('EEEE HH:mm', 'es').format(fecha);
+      return DateFormat('EEEE h:mm a', 'es').format(fechaLocal);
     } else {
-      return DateFormat('dd MMM yyyy HH:mm', 'es').format(fecha);
+      return DateFormat('dd MMM yyyy h:mm a', 'es').format(fechaLocal);
     }
   }
 }
