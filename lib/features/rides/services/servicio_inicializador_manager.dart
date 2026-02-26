@@ -2,6 +2,7 @@ import 'package:intellitaxi/features/rides/services/servicio_persistencia_servic
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Gestor de inicialización de servicios activos
 /// Verifica si hay un servicio activo guardado al iniciar la app
@@ -15,7 +16,7 @@ class ServicioInicializadorManager {
   /// Verifica e inicializa servicio activo al abrir la app
   Future<Map<String, dynamic>?> verificarYCargarServicioActivo() async {
     try {
-      print('🔍 Verificando servicio activo al iniciar app...');
+      AppLogger.d('🔍 Verificando servicio activo al iniciar app...');
 
       // Inicializar notificaciones
       await _notificacionService.inicializar();
@@ -24,7 +25,7 @@ class ServicioInicializadorManager {
       final servicioGuardado = await _persistencia.obtenerServicioActivo();
 
       if (servicioGuardado == null) {
-        print('ℹ️ No hay servicio activo guardado localmente');
+        AppLogger.d('ℹ️ No hay servicio activo guardado localmente');
         return null;
       }
 
@@ -32,7 +33,7 @@ class ServicioInicializadorManager {
       final servicioActivo = await _activeServiceManager.getActiveService();
 
       if (servicioActivo != null && servicioActivo.isActivo) {
-        print('✅ Servicio activo verificado: ${servicioActivo.id}');
+        AppLogger.d('✅ Servicio activo verificado: ${servicioActivo.id}');
 
         // Restaurar notificación
         await _restaurarNotificacion(servicioActivo, servicioGuardado['tipo']);
@@ -40,12 +41,12 @@ class ServicioInicializadorManager {
         return {'servicio': servicioActivo, 'tipo': servicioGuardado['tipo']};
       } else {
         // El servicio ya no está activo, limpiar
-        print('ℹ️ Servicio guardado ya no está activo, limpiando...');
+        AppLogger.d('ℹ️ Servicio guardado ya no está activo, limpiando...');
         await _persistencia.limpiarServicioActivo();
         return null;
       }
     } catch (e) {
-      print('⚠️ Error verificando servicio activo: $e');
+      AppLogger.d('⚠️ Error verificando servicio activo: $e');
       return null;
     }
   }
@@ -75,7 +76,7 @@ class ServicioInicializadorManager {
         );
       }
     } catch (e) {
-      print('⚠️ Error restaurando notificación: $e');
+      AppLogger.d('⚠️ Error restaurando notificación: $e');
     }
   }
 

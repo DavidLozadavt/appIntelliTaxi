@@ -1,8 +1,11 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:intellitaxi/core/services/connectivity_provider.dart';
-import 'package:intellitaxi/core/services/background_location_service.dart';
 import 'package:intellitaxi/core/theme/theme_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/performance_monitor_service.dart';
 
 import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
@@ -25,6 +28,7 @@ import 'package:intellitaxi/features/notifications/presentation/notification_scr
 import 'package:intellitaxi/firebase_msg.dart' show FirebaseMsg;
 import 'package:intellitaxi/firebase_options.dart' show DefaultFirebaseOptions;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -41,31 +45,110 @@ import 'config/pusher_config.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
+  await runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // Cargar variables de entorno
+      await dotenv.load(fileName: ".env");
+
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      // Optimizaciones de rendimiento
+      _setupPerformanceOptimizations();
+      PerformanceMonitorService.initialize();
+
+      runApp(const MyApp());
+
+      // Tareas no críticas: ejecutar después del primer frame para evitar jank de arranque.
+      unawaited(OptimizedTextStyles.precacheAllFonts());
+      unawaited(_bootstrapRuntimeServices());
+    },
+    (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('Uncaught zone error: $error\n$stackTrace');
+      }
+    },
+    zoneSpecification: ZoneSpecification(
+      print: (self, parent, zone, line) {
+        // En release/profile evitamos costo de logs masivos en runtime.
+        if (kDebugMode) {
+          parent.print(zone, line);
+        }
+      },
+    ),
+  );
+}
+
+Future<void> _bootstrapRuntimeServices() async {
+  try {
+    await FirebaseMsg().initFCM().timeout(const Duration(seconds: 8));
+  } catch (e, st) {
+    AppLogger.e(
+      'No se pudo inicializar FCM en segundo plano de arranque',
+      tag: 'Bootstrap',
+      error: e,
+      stackTrace: st,
+    );
+  }
+
+  try {
+    await PusherService.initialize().timeout(const Duration(seconds: 8));
+  } catch (e, st) {
+    AppLogger.e(
+      'No se pudo inicializar Pusher en segundo plano de arranque',
+      tag: 'Bootstrap',
+      error: e,
+      stackTrace: st,
+    );
+  }
+}
+
+/// Entrypoint requerido por `flutter_overlay_window`.
+/// Evita el error "Could not resolve main entrypoint function" en el isolate secundario.
+@pragma('vm:entry-point')
+void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Cargar variables de entorno
-  await dotenv.load(fileName: ".env");
-
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  await FirebaseMsg().initFCM();
-
-  // Inicializar Pusher (ambas conexiones)
-  await PusherService.initialize();
-
-  // Inicializar servicio de ubicacion en segundo plano (Android)
-  await BackgroundLocationService.initialize();
-
-  // Optimizaciones de rendimiento
-  _setupPerformanceOptimizations();
-
-  // Pre-cachear fuentes para mejorar rendimiento inicial
-  await OptimizedTextStyles.precacheAllFonts();
-
-  runApp(const MyApp());
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SizedBox.shrink(),
+      ),
+    ),
+  );
 }
 
 void _setupPerformanceOptimizations() {
+  final imageCache = PaintingBinding.instance.imageCache;
+  imageCache.maximumSize = 120;
+  imageCache.maximumSizeBytes = 80 << 20; // 80MB
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (kDebugMode) {
+      FlutterError.presentError(details);
+    }
+    AppLogger.e(
+      'FlutterError capturado',
+      tag: 'Flutter',
+      error: details.exception,
+      stackTrace: details.stack,
+    );
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppLogger.e(
+      'Error no controlado en PlatformDispatcher',
+      tag: 'Flutter',
+      error: error,
+      stackTrace: stack,
+    );
+    return true;
+  };
+
   // Limitar la tasa de refresco si no es necesario 120Hz
   // SchedulerBinding.instance.addPostFrameCallback((_) {
   //   SchedulerBinding.instance.platformDispatcher.onReportTimings = (timings) {};

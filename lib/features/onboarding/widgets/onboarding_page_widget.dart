@@ -33,10 +33,10 @@ class OnboardingPageWidget extends StatelessWidget {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     width: 2,
                   ),
                 ),
@@ -64,7 +64,7 @@ class OnboardingPageWidget extends StatelessWidget {
                   page.subtitle!,
                   style: TextStyle(
                     fontSize: 15,
-                    color: Colors.white.withOpacity(0.85),
+                    color: Colors.white.withValues(alpha: 0.85),
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.2,
                   ),
@@ -78,10 +78,10 @@ class OnboardingPageWidget extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.15),
                     width: 1,
                   ),
                 ),
@@ -90,7 +90,7 @@ class OnboardingPageWidget extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15,
                     height: 1.6,
-                    color: Colors.white.withOpacity(0.9),
+                    color: Colors.white.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w400,
                     letterSpacing: 0.2,
                   ),
@@ -108,10 +108,10 @@ class OnboardingPageWidget extends StatelessWidget {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.white.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       width: 1,
                     ),
                   ),
@@ -120,14 +120,14 @@ class OnboardingPageWidget extends StatelessWidget {
                     children: [
                       Icon(
                         Icons.verified_rounded,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         size: 18,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Powered by Virtual Technology',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withValues(alpha: 0.9),
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.3,

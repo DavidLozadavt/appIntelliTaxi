@@ -26,20 +26,15 @@ class RideConfirmationDialog extends StatelessWidget {
     final isDelivery = serviceType == 'domicilio';
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final bgColor = isDark ? AppColors.darkCard : Colors.white;
     final textColor = isDark ? AppColors.darkOnSurface : Colors.black;
     final subtitleColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
-    final cardBg = isDark ? Colors.grey.shade900 : Colors.grey.shade50;
     final cardBorder = isDark ? Colors.grey.shade800 : Colors.grey.shade200;
 
     return Dialog(
       // backgroundColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-        
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -52,13 +47,13 @@ class RideConfirmationDialog extends StatelessWidget {
                   gradient: LinearGradient(
                     colors: [
                       AppColors.accent,
-                      AppColors.accent.withOpacity(0.8),
+                      AppColors.accent.withValues(alpha: 0.8),
                     ],
                   ),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.accent.withOpacity(0.3),
+                      color: AppColors.accent.withValues(alpha: 0.3),
                       blurRadius: 15,
                       offset: const Offset(0, 5),
                     ),
@@ -105,8 +100,8 @@ class RideConfirmationDialog extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.green.withOpacity(
-                              isDark ? 0.2 : 0.15,
+                            color: AppColors.green.withValues(
+                              alpha: isDark ? 0.2 : 0.15,
                             ),
                             borderRadius: BorderRadius.circular(8),
                           ),
@@ -154,7 +149,9 @@ class RideConfirmationDialog extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(isDark ? 0.2 : 0.15),
+                            color: Colors.red.withValues(
+                              alpha: isDark ? 0.2 : 0.15,
+                            ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Icon(
@@ -206,12 +203,12 @@ class RideConfirmationDialog extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(
-                          isDark ? 0.15 : 0.1,
+                        color: AppColors.primary.withValues(
+                          alpha: isDark ? 0.15 : 0.1,
                         ),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: AppColors.primary.withOpacity(0.3),
+                          color: AppColors.primary.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
@@ -244,12 +241,12 @@ class RideConfirmationDialog extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppColors.accent.withOpacity(
-                          isDark ? 0.15 : 0.1,
+                        color: AppColors.accent.withValues(
+                          alpha: isDark ? 0.15 : 0.1,
                         ),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: AppColors.accent.withOpacity(0.3),
+                          color: AppColors.accent.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(
@@ -281,9 +278,13 @@ class RideConfirmationDialog extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(isDark ? 0.15 : 0.1),
+                  color: AppColors.primary.withValues(
+                    alpha: isDark ? 0.15 : 0.1,
+                  ),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -342,7 +343,7 @@ class RideConfirmationDialog extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        shadowColor: AppColors.accent.withOpacity(0.3),
+                        shadowColor: AppColors.accent.withValues(alpha: 0.3),
                       ),
                       child: const Text(
                         'Confirmar',

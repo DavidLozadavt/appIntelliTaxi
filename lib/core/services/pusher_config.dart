@@ -17,7 +17,10 @@ class PusherConfig {
   String SECRET = "e40628078fb3825a489f";
   String API_CLUSTER = "us2";
 
-  Future<void> initPusher(onEvent, {channelName = "admin-vt"}) async {
+  Future<void> initPusher(
+    void Function(PusherEvent event) onEvent, {
+    String channelName = "admin-vt",
+  }) async {
     _pusher = PusherChannelsFlutter.getInstance();
 
     try {
@@ -45,38 +48,38 @@ class PusherConfig {
     }
   }
 
- Future<dynamic> onAuthorizer(
-    String channelName, String socketId, dynamic options) async {
-  log("Authorizing channel: $channelName with socketId: $socketId");
+  Future<dynamic> onAuthorizer(
+    String channelName,
+    String socketId,
+    dynamic options,
+  ) async {
+    log("Authorizing channel: $channelName with socketId: $socketId");
 
-  try {
-    final dio = DioClient.getInstance(); 
+    try {
+      final dio = DioClient.getInstance();
 
-    final response = await dio.post(
-      "auth/pusher",
-      data: FormData.fromMap({
-        "channel_name": channelName,
-        "socket_id": socketId,
-      }),
-      options: Options(
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      ),
-    );
+      final response = await dio.post(
+        "auth/pusher",
+        data: FormData.fromMap({
+          "channel_name": channelName,
+          "socket_id": socketId,
+        }),
+        options: Options(
+          headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        ),
+      );
 
-    log("Pusher auth response: ${response.data}");
+      log("Pusher auth response: ${response.data}");
 
-    if (response.data is String) {
-      return jsonDecode(response.data);
+      if (response.data is String) {
+        return jsonDecode(response.data);
+      }
+      return response.data;
+    } catch (e) {
+      log("Error in onAuthorizer: $e");
+      return {};
     }
-    return response.data;
-  } catch (e) {
-    log("Error in onAuthorizer: $e");
-    return {};
   }
-}
-
 
   void disconnect() {
     _pusher.disconnect();
@@ -117,6 +120,8 @@ class PusherConfig {
   }
 
   void onSubscriptionCount(String channelName, int subscriptionCount) {
-    log("onSubscriptionCount: $channelName subscriptionCount: $subscriptionCount");
+    log(
+      "onSubscriptionCount: $channelName subscriptionCount: $subscriptionCount",
+    );
   }
 }

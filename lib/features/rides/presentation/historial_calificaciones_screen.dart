@@ -195,7 +195,7 @@ class _HistorialCalificacionesScreenState
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.deepOrange.withOpacity(0.3),
+            color: Colors.deepOrange.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -290,7 +290,7 @@ class _HistorialCalificacionesScreenState
             child: Container(
               height: 6,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(3),
               ),
               child: FractionallySizedBox(

@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Estados posibles del conductor
 enum EstadoConductor { disponible, ocupado, desconectado }
@@ -30,7 +31,7 @@ class ConductorLocationService {
   /// [intervalSeconds] - Intervalo en segundos entre cada envío (default: 10)
   Future<void> startSendingLocation({int intervalSeconds = 10}) async {
     if (_isActive) {
-      print('⚠️ El servicio de ubicación ya está activo');
+      AppLogger.d('⚠️ El servicio de ubicación ya está activo');
       return;
     }
 
@@ -38,7 +39,7 @@ class ConductorLocationService {
     await _loadConductorId();
 
     if (_conductorId == null) {
-      print('❌ No se pudo obtener conductor_id');
+      AppLogger.d('❌ No se pudo obtener conductor_id');
       return;
     }
 
@@ -55,9 +56,11 @@ class ConductorLocationService {
       await _sendCurrentLocation();
     });
 
-    print('✅ Servicio de ubicación iniciado (cada $intervalSeconds segundos)');
-    print('   Conductor ID: $_conductorId');
-    print('   Estado: disponible');
+    AppLogger.d(
+      '✅ Servicio de ubicación iniciado (cada $intervalSeconds segundos)',
+    );
+    AppLogger.d('   Conductor ID: $_conductorId');
+    AppLogger.d('   Estado: disponible');
   }
 
   /// Carga el conductor_id desde SharedPreferences
@@ -76,7 +79,7 @@ class ConductorLocationService {
             final userData = jsonDecode(userDataStr);
             _conductorId = userData['user']?['id'] ?? userData['id'];
           } catch (e) {
-            print('⚠️ Error parseando user_data: $e');
+            AppLogger.d('⚠️ Error parseando user_data: $e');
           }
         }
       }
@@ -84,12 +87,12 @@ class ConductorLocationService {
       _conductorId ??= prefs.getInt('user_id');
 
       if (_conductorId != null) {
-        print('✅ Conductor ID cargado: $_conductorId');
+        AppLogger.d('✅ Conductor ID cargado: $_conductorId');
       } else {
-        print('⚠️ No se pudo obtener conductor_id');
+        AppLogger.d('⚠️ No se pudo obtener conductor_id');
       }
     } catch (e) {
-      print('❌ Error cargando conductor_id: $e');
+      AppLogger.d('❌ Error cargando conductor_id: $e');
     }
   }
 
@@ -97,14 +100,16 @@ class ConductorLocationService {
   Future<bool> _sendCurrentLocation() async {
     try {
       if (_conductorId == null) {
-        print('⚠️ No hay conductor_id, no se puede enviar ubicación');
+        AppLogger.d('⚠️ No hay conductor_id, no se puede enviar ubicación');
         return false;
       }
 
       // Obtener ubicación actual con alta precisión
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
 
       _lastPosition = position;
@@ -116,11 +121,11 @@ class ConductorLocationService {
           ? 'ocupado'
           : 'desconectado';
 
-      print('📍 Enviando ubicación...');
-      print('   Conductor ID: $_conductorId');
-      print('   Lat: ${position.latitude}');
-      print('   Lng: ${position.longitude}');
-      print('   Estado: $estadoString');
+      AppLogger.d('📍 Enviando ubicación...');
+      AppLogger.d('   Conductor ID: $_conductorId');
+      AppLogger.d('   Lat: ${position.latitude}');
+      AppLogger.d('   Lng: ${position.longitude}');
+      AppLogger.d('   Estado: $estadoString');
 
       final response = await _dio.post(
         'conductor/estado-disponible',
@@ -135,28 +140,30 @@ class ConductorLocationService {
       if (response.statusCode == 200) {
         final data = response.data;
         if (data['success'] == true) {
-          print('✅ Ubicación enviada exitosamente');
+          AppLogger.d('✅ Ubicación enviada exitosamente');
           return true;
         } else {
-          print(
+          AppLogger.d(
             '⚠️ Respuesta del servidor: ${data['message'] ?? "Sin mensaje"}',
           );
           return false;
         }
       } else {
-        print('⚠️ Código de respuesta inesperado: ${response.statusCode}');
+        AppLogger.d(
+          '⚠️ Código de respuesta inesperado: ${response.statusCode}',
+        );
         return false;
       }
     } on DioException catch (e) {
-      print('❌ Error DioException enviando ubicación:');
-      print('   ${e.message}');
+      AppLogger.d('❌ Error DioException enviando ubicación:');
+      AppLogger.d('   ${e.message}');
       if (e.response != null) {
-        print('   Status: ${e.response?.statusCode}');
-        print('   Data: ${e.response?.data}');
+        AppLogger.d('   Status: ${e.response?.statusCode}');
+        AppLogger.d('   Data: ${e.response?.data}');
       }
       return false;
     } catch (e) {
-      print('❌ Error obteniendo/enviando ubicación: $e');
+      AppLogger.d('❌ Error obteniendo/enviando ubicación: $e');
       return false;
     }
   }
@@ -165,7 +172,7 @@ class ConductorLocationService {
   void cambiarEstado(EstadoConductor nuevoEstado) {
     if (_estado != nuevoEstado) {
       _estado = nuevoEstado;
-      print('🔄 Estado cambiado a: $nuevoEstado');
+      AppLogger.d('🔄 Estado cambiado a: $nuevoEstado');
 
       // Enviar actualización inmediata
       if (_isActive) {
@@ -183,7 +190,7 @@ class ConductorLocationService {
   /// Envía la ubicación manualmente (sin timer)
   Future<bool> sendLocationNow() async {
     if (!_isActive) {
-      print('⚠️ El servicio no está activo. Enviando ubicación única...');
+      AppLogger.d('⚠️ El servicio no está activo. Enviando ubicación única...');
     }
     return await _sendCurrentLocation();
   }
@@ -191,7 +198,7 @@ class ConductorLocationService {
   /// Detiene el envío periódico de ubicación y notifica desconexión
   Future<void> stopSendingLocation() async {
     if (!_isActive) {
-      print('⚠️ El servicio de ubicación ya está detenido');
+      AppLogger.d('⚠️ El servicio de ubicación ya está detenido');
       return;
     }
 
@@ -203,20 +210,20 @@ class ConductorLocationService {
     _locationTimer = null;
     _isActive = false;
 
-    print('🛑 Servicio de ubicación detenido');
-    print('   Estado: desconectado');
+    AppLogger.d('🛑 Servicio de ubicación detenido');
+    AppLogger.d('   Estado: desconectado');
   }
 
   /// Actualiza el intervalo de envío (reinicia el timer)
   Future<void> updateInterval(int intervalSeconds) async {
     if (!_isActive) {
-      print('⚠️ El servicio no está activo');
+      AppLogger.d('⚠️ El servicio no está activo');
       return;
     }
 
     await stopSendingLocation();
     await startSendingLocation(intervalSeconds: intervalSeconds);
-    print('🔄 Intervalo actualizado a $intervalSeconds segundos');
+    AppLogger.d('🔄 Intervalo actualizado a $intervalSeconds segundos');
   }
 
   /// Limpia recursos

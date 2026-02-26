@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para gestionar los turnos del conductor
 class TurnoService {
@@ -13,28 +14,28 @@ class TurnoService {
     required double lng,
   }) async {
     try {
-      print('🚀 Iniciando turno...');
-      print('   🚗 Vehículo ID: $idVehiculo');
-      print('   📍 Ubicación: ($lat, $lng)');
-      print('   🌐 URL: ${_dio.options.baseUrl}/turnos');
-      print('   🔑 Headers: ${_dio.options.headers}');
+      AppLogger.d('🚀 Iniciando turno...');
+      AppLogger.d('   🚗 Vehículo ID: $idVehiculo');
+      AppLogger.d('   📍 Ubicación: ($lat, $lng)');
+      AppLogger.d('   🌐 URL: ${_dio.options.baseUrl}/turnos');
+      AppLogger.d('   🔑 Headers: ${_dio.options.headers}');
 
       final requestData = {'idVehiculo': idVehiculo, 'lat': lat, 'lng': lng};
-      print('   📤 Request Data: $requestData');
+      AppLogger.d('   📤 Request Data: $requestData');
 
       final response = await _dio.post('turnos', data: requestData);
 
-      print('   📥 Response Status: ${response.statusCode}');
-      print('   📥 Response Data: ${response.data}');
+      AppLogger.d('   📥 Response Status: ${response.statusCode}');
+      AppLogger.d('   📥 Response Data: ${response.data}');
 
       // Manejar redirección 302
       if (response.statusCode == 302 || response.statusCode == 301) {
-        print('⚠️ Servidor está redirigiendo (302/301)');
-        print('   Location: ${response.headers['location']}');
-        print('   Esto puede indicar:');
-        print('   - Usuario no autenticado correctamente');
-        print('   - Usuario no tiene permisos de conductor');
-        print('   - Endpoint requiere middleware específico');
+        AppLogger.d('⚠️ Servidor está redirigiendo (302/301)');
+        AppLogger.d('   Location: ${response.headers['location']}');
+        AppLogger.d('   Esto puede indicar:');
+        AppLogger.d('   - Usuario no autenticado correctamente');
+        AppLogger.d('   - Usuario no tiene permisos de conductor');
+        AppLogger.d('   - Endpoint requiere middleware específico');
         return null;
       }
 
@@ -42,56 +43,60 @@ class TurnoService {
         final data = response.data;
 
         if (data['success'] == true || data['turno'] != null) {
-          print('✅ Turno iniciado exitosamente');
-          print('   ID Turno: ${data['turno']?['id']}');
+          AppLogger.d('✅ Turno iniciado exitosamente');
+          AppLogger.d('   ID Turno: ${data['turno']?['id']}');
 
           return TurnoResponse.fromJson(data);
         } else {
-          print('⚠️ Respuesta inesperada: ${data['message'] ?? "Sin mensaje"}');
+          AppLogger.d(
+            '⚠️ Respuesta inesperada: ${data['message'] ?? "Sin mensaje"}',
+          );
           return null;
         }
       }
 
-      print('⚠️ Error al iniciar turno: Status ${response.statusCode}');
+      AppLogger.d('⚠️ Error al iniciar turno: Status ${response.statusCode}');
       return null;
     } on DioException catch (e) {
-      print('❌ Error DioException iniciando turno:');
-      print('   Tipo: ${e.type}');
-      print('   Mensaje: ${e.message}');
-      print('   🔗 Request URL: ${e.requestOptions.uri}');
-      print('   🔗 Request Method: ${e.requestOptions.method}');
-      print('   📤 Request Data: ${e.requestOptions.data}');
-      print('   🔑 Request Headers: ${e.requestOptions.headers}');
+      AppLogger.d('❌ Error DioException iniciando turno:');
+      AppLogger.d('   Tipo: ${e.type}');
+      AppLogger.d('   Mensaje: ${e.message}');
+      AppLogger.d('   🔗 Request URL: ${e.requestOptions.uri}');
+      AppLogger.d('   🔗 Request Method: ${e.requestOptions.method}');
+      AppLogger.d('   📤 Request Data: ${e.requestOptions.data}');
+      AppLogger.d('   🔑 Request Headers: ${e.requestOptions.headers}');
 
       if (e.response != null) {
-        print('   📥 Response Status: ${e.response?.statusCode}');
-        print('   📥 Response Data: ${e.response?.data}');
-        print('   📥 Response Headers: ${e.response?.headers}');
+        AppLogger.d('   📥 Response Status: ${e.response?.statusCode}');
+        AppLogger.d('   📥 Response Data: ${e.response?.data}');
+        AppLogger.d('   📥 Response Headers: ${e.response?.headers}');
 
         // Verificar si es redirección
         if (e.response?.statusCode == 302 || e.response?.statusCode == 301) {
-          print('   🔄 Redirección detectada');
+          AppLogger.d('   🔄 Redirección detectada');
           final location = e.response?.headers['location'];
           if (location != null) {
-            print('   🔄 Redirigiendo a: $location');
+            AppLogger.d('   🔄 Redirigiendo a: $location');
           }
         }
 
         if (e.response?.data is Map) {
           final errorData = e.response?.data as Map;
           if (errorData['message'] != null) {
-            print('   💬 Mensaje: ${errorData['message']}');
+            AppLogger.d('   💬 Mensaje: ${errorData['message']}');
           }
           if (errorData['error'] != null) {
-            print('   ⚠️ Error: ${errorData['error']}');
+            AppLogger.d('   ⚠️ Error: ${errorData['error']}');
           }
         }
       } else {
-        print('   ⚠️ No hay respuesta del servidor (posible problema de red)');
+        AppLogger.d(
+          '   ⚠️ No hay respuesta del servidor (posible problema de red)',
+        );
       }
       return null;
     } catch (e) {
-      print('❌ Error iniciando turno: $e');
+      AppLogger.d('❌ Error iniciando turno: $e');
       return null;
     }
   }
@@ -99,7 +104,7 @@ class TurnoService {
   /// Finaliza el turno actual
   Future<bool> finalizarTurno(int idTurno) async {
     try {
-      print('🛑 Finalizando turno $idTurno...');
+      AppLogger.d('🛑 Finalizando turno $idTurno...');
 
       final response = await _dio.put(
         'turnos/$idTurno',
@@ -110,23 +115,23 @@ class TurnoService {
         final data = response.data;
 
         if (data['success'] == true) {
-          print('✅ Turno finalizado exitosamente');
+          AppLogger.d('✅ Turno finalizado exitosamente');
           return true;
         }
       }
 
-      print('⚠️ Error al finalizar turno');
+      AppLogger.d('⚠️ Error al finalizar turno');
       return false;
     } on DioException catch (e) {
-      print('❌ Error DioException finalizando turno:');
-      print('   ${e.message}');
+      AppLogger.d('❌ Error DioException finalizando turno:');
+      AppLogger.d('   ${e.message}');
       if (e.response != null) {
-        print('   Status: ${e.response?.statusCode}');
-        print('   Data: ${e.response?.data}');
+        AppLogger.d('   Status: ${e.response?.statusCode}');
+        AppLogger.d('   Data: ${e.response?.data}');
       }
       return false;
     } catch (e) {
-      print('❌ Error finalizando turno: $e');
+      AppLogger.d('❌ Error finalizando turno: $e');
       return false;
     }
   }
@@ -146,7 +151,7 @@ class TurnoService {
 
       return null;
     } catch (e) {
-      print('Error obteniendo turno activo: $e');
+      AppLogger.d('Error obteniendo turno activo: $e');
       return null;
     }
   }
@@ -154,16 +159,18 @@ class TurnoService {
   /// Inicia turno con ubicación GPS automática
   Future<TurnoResponse?> iniciarTurnoConGPS({required int idVehiculo}) async {
     try {
-      print('📍 Obteniendo ubicación GPS...');
+      AppLogger.d('📍 Obteniendo ubicación GPS...');
 
       // Obtener ubicación actual
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
 
-      print('✅ Ubicación obtenida:');
-      print('   Lat: ${position.latitude}');
-      print('   Lng: ${position.longitude}');
+      AppLogger.d('✅ Ubicación obtenida:');
+      AppLogger.d('   Lat: ${position.latitude}');
+      AppLogger.d('   Lng: ${position.longitude}');
 
       return await iniciarTurno(
         idVehiculo: idVehiculo,
@@ -171,8 +178,8 @@ class TurnoService {
         lng: position.longitude,
       );
     } catch (e) {
-      print('❌ Error obteniendo ubicación GPS: $e');
-      print('   Tipo de error: ${e.runtimeType}');
+      AppLogger.d('❌ Error obteniendo ubicación GPS: $e');
+      AppLogger.d('   Tipo de error: ${e.runtimeType}');
 
       // Si falla el GPS, no podemos iniciar el turno
       return null;
@@ -182,22 +189,22 @@ class TurnoService {
   /// Verifica si hay un token de autenticación válido
   Future<bool> verificarAutenticacion() async {
     try {
-      print('🔍 Verificando autenticación...');
+      AppLogger.d('🔍 Verificando autenticación...');
 
       final response = await _dio.get(
         'auth/me',
       ); // O el endpoint que uses para verificar sesión
 
       if (response.statusCode == 200) {
-        print('✅ Autenticación válida');
-        print('   Usuario: ${response.data}');
+        AppLogger.d('✅ Autenticación válida');
+        AppLogger.d('   Usuario: ${response.data}');
         return true;
       }
 
-      print('⚠️ Autenticación inválida');
+      AppLogger.d('⚠️ Autenticación inválida');
       return false;
     } catch (e) {
-      print('❌ Error verificando autenticación: $e');
+      AppLogger.d('❌ Error verificando autenticación: $e');
       return false;
     }
   }

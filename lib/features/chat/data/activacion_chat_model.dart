@@ -46,10 +46,7 @@ class Role {
   Role({required this.id, required this.name});
 
   factory Role.fromJson(Map<String, dynamic> json) {
-    return Role(
-      id: json['id'],
-      name: json['name']?.toString() ?? '',
-    );
+    return Role(id: json['id'], name: json['name']?.toString() ?? '');
   }
 }
 
@@ -70,13 +67,13 @@ class User {
 }
 
 class Persona {
-    final int id;
+  final int id;
 
   final String nombre1;
   final String nombre2;
   final String apellido1;
   final String apellido2;
-   final String? rutaFotoUrl;
+  final String? rutaFotoUrl;
 
   Persona({
     required this.id,
@@ -99,7 +96,8 @@ class Persona {
   }
 
   String get nombreCompleto {
-    return '$nombre1 ${nombre2.isNotEmpty ? "$nombre2 " : ""}$apellido1 ${apellido2.isNotEmpty ? apellido2 : ""}'.trim();
+    return '$nombre1 ${nombre2.isNotEmpty ? "$nombre2 " : ""}$apellido1 ${apellido2.isNotEmpty ? apellido2 : ""}'
+        .trim();
   }
 }
 
@@ -109,9 +107,7 @@ class Company {
   Company({required this.razonSocial});
 
   factory Company.fromJson(Map<String, dynamic> json) {
-    return Company(
-      razonSocial: json['razonSocial']?.toString() ?? '',
-    );
+    return Company(razonSocial: json['razonSocial']?.toString() ?? '');
   }
 }
 
@@ -121,8 +117,6 @@ class Estado {
   Estado({required this.estado});
 
   factory Estado.fromJson(Map<String, dynamic> json) {
-    return Estado(
-      estado: json['estado']?.toString() ?? '',
-    );
+    return Estado(estado: json['estado']?.toString() ?? '');
   }
 }

@@ -102,7 +102,7 @@ class CustomDrawer extends StatelessWidget {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.accent.withOpacity(0.3),
+                  color: AppColors.accent.withValues(alpha: 0.3),
                   blurRadius: 15,
                   offset: const Offset(0, 5),
                 ),
@@ -119,7 +119,7 @@ class CustomDrawer extends StatelessWidget {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.3),
+                            color: Colors.black.withValues(alpha: 0.3),
                             blurRadius: 15,
                             spreadRadius: 2,
                           ),
@@ -133,7 +133,7 @@ class CustomDrawer extends StatelessWidget {
                           backgroundImage: NetworkImage(
                             auth.user!.persona.rutaFotoUrl!,
                           ),
-                          onBackgroundImageError: (_, __) =>
+                          onBackgroundImageError: (_, _) =>
                               const Icon(Icons.person, size: 35),
                         ),
                       ),
@@ -167,7 +167,7 @@ class CustomDrawer extends StatelessWidget {
                               Icon(
                                 Iconsax.shield_tick_copy,
                                 size: 14,
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                               ),
                               const SizedBox(width: 4),
                               Flexible(
@@ -178,7 +178,7 @@ class CustomDrawer extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: Colors.white.withValues(alpha: 0.9),
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                   maxLines: 2,
@@ -211,7 +211,7 @@ class CustomDrawer extends StatelessWidget {
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.15),
+                    color: AppColors.accent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(item.icon, color: AppColors.accent, size: 22),
@@ -254,7 +254,7 @@ class CustomDrawer extends StatelessWidget {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.15),
+                  color: AppColors.accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
@@ -296,7 +296,7 @@ class CustomDrawer extends StatelessWidget {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(

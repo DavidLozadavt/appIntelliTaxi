@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
@@ -26,7 +27,7 @@ class ServiceNavigationHelper {
         type: tipo,
         serviceId: servicioId,
       )) {
-        print(
+        AppLogger.d(
           'ℹ️ [Navigation] La pantalla activa ya está visible. Se omite navegación.',
         );
         return;
@@ -52,12 +53,12 @@ class ServiceNavigationHelper {
     final conductorId = authProvider.user?.id;
 
     if (conductorId == null) {
-      print('⚠️ [Navigation] ID del conductor no disponible');
+      AppLogger.d('⚠️ [Navigation] ID del conductor no disponible');
       return;
     }
 
-    print('📱 [Navigation] Navegando a pantalla de conductor...');
-    print('📊 [Navigation] Estado del servicio: ${servicio['idEstado']}');
+    AppLogger.d('📱 [Navigation] Navegando a pantalla de conductor...');
+    AppLogger.d('📊 [Navigation] Estado del servicio: ${servicio['idEstado']}');
 
     final servicioCompleto = ServicioPayloadAdapter.normalize(
       servicio: Map<String, dynamic>.from(servicio),
@@ -65,11 +66,11 @@ class ServiceNavigationHelper {
       vehiculo: vehiculo != null ? Map<String, dynamic>.from(vehiculo) : null,
     );
 
-    print('📍 [Navigation] Coordenadas normalizadas:');
-    print(
+    AppLogger.d('📍 [Navigation] Coordenadas normalizadas:');
+    AppLogger.d(
       '   Origen: ${servicioCompleto['origen_lat']}, ${servicioCompleto['origen_lng']}',
     );
-    print(
+    AppLogger.d(
       '   Destino: ${servicioCompleto['destino_lat']}, ${servicioCompleto['destino_lng']}',
     );
 
@@ -85,7 +86,7 @@ class ServiceNavigationHelper {
       ),
     );
 
-    print('✅ [Navigation] Navegación a conductor completada');
+    AppLogger.d('✅ [Navigation] Navegación a conductor completada');
   }
 
   /// Navega a la pantalla de servicio activo del pasajero
@@ -97,8 +98,8 @@ class ServiceNavigationHelper {
     final conductor = servicioData['conductor'];
     final vehiculo = servicioData['vehiculo'];
 
-    print('📱 [Navigation] Navegando a pantalla de pasajero...');
-    print('📊 [Navigation] Estado del servicio: ${servicio['idEstado']}');
+    AppLogger.d('📱 [Navigation] Navegando a pantalla de pasajero...');
+    AppLogger.d('📊 [Navigation] Estado del servicio: ${servicio['idEstado']}');
 
     final servicioCompleto = ServicioPayloadAdapter.normalize(
       servicio: Map<String, dynamic>.from(servicio),
@@ -108,11 +109,11 @@ class ServiceNavigationHelper {
       vehiculo: vehiculo != null ? Map<String, dynamic>.from(vehiculo) : null,
     )..['conductor_id'] = conductor?['id'];
 
-    print('📍 [Navigation] Coordenadas normalizadas:');
-    print(
+    AppLogger.d('📍 [Navigation] Coordenadas normalizadas:');
+    AppLogger.d(
       '   Origen: ${servicioCompleto['origen_lat']}, ${servicioCompleto['origen_lng']}',
     );
-    print(
+    AppLogger.d(
       '   Destino: ${servicioCompleto['destino_lat']}, ${servicioCompleto['destino_lng']}',
     );
 
@@ -128,7 +129,7 @@ class ServiceNavigationHelper {
       ),
     );
 
-    print('✅ [Navigation] Navegación a pasajero completada');
+    AppLogger.d('✅ [Navigation] Navegación a pasajero completada');
   }
 
   /// Determina si debe mostrar la pantalla de servicio activo
@@ -140,7 +141,7 @@ class ServiceNavigationHelper {
 
     // Si el servicio ya finalizó, no mostrar
     if (finServicio != null) {
-      print('ℹ️ [Navigation] Servicio ya finalizado');
+      AppLogger.d('ℹ️ [Navigation] Servicio ya finalizado');
       return false;
     }
 
@@ -149,7 +150,7 @@ class ServiceNavigationHelper {
     final estadosInactivos = [5, 6, 7]; // cancelado, finalizado, rechazado
 
     if (idEstado != null && estadosInactivos.contains(idEstado)) {
-      print('ℹ️ [Navigation] Estado inactivo: $idEstado');
+      AppLogger.d('ℹ️ [Navigation] Estado inactivo: $idEstado');
       return false;
     }
 

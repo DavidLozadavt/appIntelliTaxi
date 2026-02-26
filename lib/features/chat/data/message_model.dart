@@ -34,7 +34,7 @@ class MessageModel {
           : null,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'])
-          : null, 
+          : null,
     );
   }
 }
@@ -60,7 +60,7 @@ class Persona {
       rutaFotoUrl: json['rutaFotoUrl'],
     );
   }
-  
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

@@ -104,8 +104,8 @@ class _ServiceTypeButton extends StatelessWidget {
                     color: isSelected
                         ? Colors.white
                         : (isDark
-                            ? Colors.grey.shade300
-                            : Colors.grey.shade800),
+                              ? Colors.grey.shade300
+                              : Colors.grey.shade800),
                   ),
                 ),
                 Text(
@@ -113,10 +113,10 @@ class _ServiceTypeButton extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 10,
                     color: isSelected
-                        ? Colors.white.withOpacity(0.9)
+                        ? Colors.white.withValues(alpha: 0.9)
                         : (isDark
-                            ? Colors.grey.shade500
-                            : Colors.grey.shade600),
+                              ? Colors.grey.shade500
+                              : Colors.grey.shade600),
                   ),
                 ),
               ],

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/pasajero_servicio_mapper.dart';
@@ -24,7 +25,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   LatLng? _conductorUbicacion;
   String _estadoServicio = 'buscando';
   Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+  final Set<Polyline> _polylines = {};
   BitmapDescriptor? _carIcon;
 
   // ===== TIMERS =====
@@ -56,12 +57,12 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// 🚀 Inicializa el provider
   Future<void> _inicializar() async {
-    print('\n${'=' * 80}');
-    print('🚀 PROVIDER: Iniciando PasajeroServicioActivoProvider');
-    print('=' * 80);
-    print('   Servicio ID: $servicioId');
-    print('   Canal Pusher: servicio.$servicioId');
-    print('=' * 80 + '\n');
+    AppLogger.d('\n${'=' * 80}');
+    AppLogger.d('🚀 PROVIDER: Iniciando PasajeroServicioActivoProvider');
+    AppLogger.d('=' * 80);
+    AppLogger.d('   Servicio ID: $servicioId');
+    AppLogger.d('   Canal Pusher: servicio.$servicioId');
+    AppLogger.d('=' * 80 + '\n');
 
     await _cargarIconoCarro();
     _crearMarcadores();
@@ -130,31 +131,31 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         const ImageConfiguration(size: Size(48, 48)),
         'assets/images/marker.png',
       );
-      print('✅ PROVIDER: Ícono del carro cargado');
+      AppLogger.d('✅ PROVIDER: Ícono del carro cargado');
     } catch (e) {
-      print('⚠️ Error cargando ícono del carro: $e');
+      AppLogger.d('⚠️ Error cargando ícono del carro: $e');
     }
   }
 
   /// 🗺️ Crea los marcadores iniciales (origen y destino)
   void _crearMarcadores() {
-    print('🗺️ PROVIDER: Creando marcadores iniciales...');
-    print('   Origen lat: ${datosServicio['origen_lat']}');
-    print('   Origen lng: ${datosServicio['origen_lng']}');
-    print('   Destino lat: ${datosServicio['destino_lat']}');
-    print('   Destino lng: ${datosServicio['destino_lng']}');
+    AppLogger.d('🗺️ PROVIDER: Creando marcadores iniciales...');
+    AppLogger.d('   Origen lat: ${datosServicio['origen_lat']}');
+    AppLogger.d('   Origen lng: ${datosServicio['origen_lng']}');
+    AppLogger.d('   Destino lat: ${datosServicio['destino_lat']}');
+    AppLogger.d('   Destino lng: ${datosServicio['destino_lng']}');
 
     final origen = PasajeroServicioMapper.origen(datosServicio);
     final destino = PasajeroServicioMapper.destino(datosServicio);
 
     // Validar que las coordenadas sean válidas
     if (origen.latitude == 0.0 || origen.longitude == 0.0) {
-      print(
+      AppLogger.d(
         '⚠️ PROVIDER: Coordenadas de origen inválidas, usando valores por defecto',
       );
     }
     if (destino == null) {
-      print('⚠️ PROVIDER: Coordenadas de destino inválidas');
+      AppLogger.d('⚠️ PROVIDER: Coordenadas de destino inválidas');
     }
 
     _markers = {
@@ -184,7 +185,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         ),
     };
 
-    print('✅ PROVIDER: Marcadores creados: ${_markers.length} marcadores');
+    AppLogger.d(
+      '✅ PROVIDER: Marcadores creados: ${_markers.length} marcadores',
+    );
     notifyListeners();
   }
 
@@ -203,7 +206,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
     _timeoutTimer = Timer(Duration(seconds: _maxWaitingSeconds), () {
       if (_estadoServicio == 'buscando') {
-        print(
+        AppLogger.d(
           '⏰ TIMEOUT: No se encontró conductor en $_maxWaitingSeconds segundos',
         );
         // La UI escuchará este cambio y mostrará el diálogo
@@ -212,7 +215,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       }
     });
 
-    print('⏱️ Timer de timeout iniciado ($_maxWaitingSeconds segundos)');
+    AppLogger.d('⏱️ Timer de timeout iniciado ($_maxWaitingSeconds segundos)');
   }
 
   /// 🚫 Cancela los timers de timeout
@@ -221,7 +224,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _countdownTimer?.cancel();
     _timeoutTimer = null;
     _countdownTimer = null;
-    print('✅ Timers de timeout cancelados');
+    AppLogger.d('✅ Timers de timeout cancelados');
   }
 
   void _iniciarRefreshUbicacion() {
@@ -236,12 +239,12 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// 🔌 Suscribe a eventos de Pusher
   Future<void> _suscribirEventos() async {
-    print('🔌 PROVIDER: Suscribiendo a eventos Pusher...');
+    AppLogger.d('🔌 PROVIDER: Suscribiendo a eventos Pusher...');
 
     _pusherService.suscribirServicio(
       servicioId: servicioId,
       onServicioAceptado: (data) {
-        print('🎉 Servicio aceptado - Data: ${data.keys}');
+        AppLogger.d('🎉 Servicio aceptado - Data: ${data.keys}');
         _cancelarTimeout();
 
         _conductor = data;
@@ -258,7 +261,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         notifyListeners();
       },
       onUbicacionActualizada: (data) {
-        print('📍 Ubicación actualizada: $data');
+        AppLogger.d('📍 Ubicación actualizada: $data');
         final lat = data['conductor_lat'] ?? data['lat'];
         final lng = data['conductor_lng'] ?? data['lng'];
 
@@ -271,7 +274,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
           );
 
           if (_estadoServicio == 'buscando') {
-            print('✅ PROVIDER: Conductor ubicado, cambiando estado a aceptado');
+            AppLogger.d(
+              '✅ PROVIDER: Conductor ubicado, cambiando estado a aceptado',
+            );
             _estadoServicio = 'aceptado';
             if (_conductor == null) {
               _obtenerInfoServicio();
@@ -282,7 +287,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         }
       },
       onEstadoCambiado: (data) {
-        print('🔄 Estado cambiado: ${data['estado']}');
+        AppLogger.d('🔄 Estado cambiado: ${data['estado']}');
         _estadoServicio = PasajeroServicioMapper.normalizeEstado(
           data['estado'],
         );
@@ -295,7 +300,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   /// 🔍 Verifica el estado del servicio en la API
   Future<void> _verificarEstadoServicio() async {
     if (_conductor == null && _estadoServicio == 'buscando') {
-      print('⚠️ PROVIDER: No se recibió evento, consultando API...');
+      AppLogger.d('⚠️ PROVIDER: No se recibió evento, consultando API...');
       await _obtenerInfoServicio();
     }
   }
@@ -306,7 +311,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _isFetchingService = true;
     try {
       final dio = DioClient.getInstance();
-      print('🔍 PROVIDER: Consultando servicio en /servicios/$servicioId');
+      AppLogger.d(
+        '🔍 PROVIDER: Consultando servicio en /servicios/$servicioId',
+      );
 
       final response = await dio.get('/servicios/taxi/$servicioId');
 
@@ -329,7 +336,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             root['vehiculo'] as Map<String, dynamic>?;
 
         if (conductorId != null && conductorData != null) {
-          print('✅ PROVIDER: Info del servicio obtenida desde API');
+          AppLogger.d('✅ PROVIDER: Info del servicio obtenida desde API');
           _conductor = PasajeroServicioMapper.conductorResumen(
             servicio,
             conductor: conductorData,
@@ -361,7 +368,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         }
       }
     } catch (e) {
-      print('❌ Error obteniendo info del servicio: $e');
+      AppLogger.d('❌ Error obteniendo info del servicio: $e');
     } finally {
       _isFetchingService = false;
     }
@@ -371,7 +378,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   void _actualizarMarcadores() {
     if (_conductorUbicacion == null) return;
 
-    print('🗺️ PROVIDER: Actualizando marcadores');
+    AppLogger.d('🗺️ PROVIDER: Actualizando marcadores');
 
     _markers.removeWhere((m) => m.markerId.value == 'conductor');
     _markers.add(
@@ -442,9 +449,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       }
 
       notifyListeners();
-      print('✅ PROVIDER: Polylines dibujadas');
+      AppLogger.d('✅ PROVIDER: Polylines dibujadas');
     } catch (e) {
-      print('❌ Error dibujando rutas: $e');
+      AppLogger.d('❌ Error dibujando rutas: $e');
     }
   }
 
@@ -488,9 +495,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         '/servicios/taxi/$servicioId/cancelar',
         data: {'motivo': motivo},
       );
-      print('✅ PROVIDER: Servicio cancelado');
+      AppLogger.d('✅ PROVIDER: Servicio cancelado');
     } catch (e) {
-      print('❌ Error cancelando servicio: $e');
+      AppLogger.d('❌ Error cancelando servicio: $e');
       rethrow;
     }
   }

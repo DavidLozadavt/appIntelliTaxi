@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/conductor_model.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ConductoresService {
   final Dio _dio = DioClient.getInstance();
@@ -12,13 +13,15 @@ class ConductoresService {
     double radioKm = 10,
   }) async {
     try {
-      print('🔍 Buscando conductores disponibles...');
-      print('   📍 Ubicación: ($lat, $lng)');
-      print('   📏 Radio: $radioKm km');
+      AppLogger.d('🔍 Buscando conductores disponibles...');
+      AppLogger.d('   📍 Ubicación: ($lat, $lng)');
+      AppLogger.d('   📏 Radio: $radioKm km');
 
       final queryParams = {'lat': lat, 'lng': lng, 'radio_km': radioKm};
-      print('   📤 Query Parameters: $queryParams');
-      print('   🌐 URL: ${_dio.options.baseUrl}/taxi/conductores-disponibles');
+      AppLogger.d('   📤 Query Parameters: $queryParams');
+      AppLogger.d(
+        '   🌐 URL: ${_dio.options.baseUrl}/taxi/conductores-disponibles',
+      );
 
       final response = await _dio.get(
         'taxi/conductores-disponibles',
@@ -33,46 +36,48 @@ class ConductoresService {
               .map((c) => Conductor.fromJson(c))
               .toList();
 
-          print('✅ ${conductores.length} conductores encontrados');
+          AppLogger.d('✅ ${conductores.length} conductores encontrados');
           return conductores;
         } else {
-          print('⚠️ Respuesta del servidor: success = false');
-          print('   Mensaje: ${data['message'] ?? "Sin mensaje"}');
+          AppLogger.d('⚠️ Respuesta del servidor: success = false');
+          AppLogger.d('   Mensaje: ${data['message'] ?? "Sin mensaje"}');
         }
       }
 
-      print('⚠️ No se encontraron conductores');
+      AppLogger.d('⚠️ No se encontraron conductores');
       return [];
     } on DioException catch (e) {
-      print('❌ Error DioException: ${e.message}');
-      print('   🔗 Request URL: ${e.requestOptions.uri}');
-      print('   � Request Method: ${e.requestOptions.method}');
-      print('   📤 Request Data: ${e.requestOptions.data}');
-      print('   🔑 Headers: ${e.requestOptions.headers}');
+      AppLogger.d('❌ Error DioException: ${e.message}');
+      AppLogger.d('   🔗 Request URL: ${e.requestOptions.uri}');
+      AppLogger.d('   � Request Method: ${e.requestOptions.method}');
+      AppLogger.d('   📤 Request Data: ${e.requestOptions.data}');
+      AppLogger.d('   🔑 Headers: ${e.requestOptions.headers}');
 
       if (e.response != null) {
-        print('   📥 Status Code: ${e.response?.statusCode}');
-        print('   📥 Response Data: ${e.response?.data}');
+        AppLogger.d('   📥 Status Code: ${e.response?.statusCode}');
+        AppLogger.d('   📥 Response Data: ${e.response?.data}');
 
         // Si el servidor devuelve un mensaje de error específico
         if (e.response?.data is Map) {
           final responseData = e.response?.data as Map;
           if (responseData['message'] != null) {
-            print('   💬 Mensaje del servidor: ${responseData['message']}');
+            AppLogger.d(
+              '   💬 Mensaje del servidor: ${responseData['message']}',
+            );
           }
           if (responseData['error'] != null) {
-            print('   ⚠️ Error del servidor: ${responseData['error']}');
+            AppLogger.d('   ⚠️ Error del servidor: ${responseData['error']}');
           }
           if (responseData['errors'] != null) {
-            print('   📋 Errores: ${responseData['errors']}');
+            AppLogger.d('   📋 Errores: ${responseData['errors']}');
           }
         }
       } else {
-        print('   ⚠️ No hay respuesta del servidor');
+        AppLogger.d('   ⚠️ No hay respuesta del servidor');
       }
       return [];
     } catch (e) {
-      print('❌ Error getConductoresDisponibles: $e');
+      AppLogger.d('❌ Error getConductoresDisponibles: $e');
       return [];
     }
   }

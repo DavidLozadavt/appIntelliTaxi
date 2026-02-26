@@ -14,10 +14,10 @@ class ChatTaxiScreen extends StatefulWidget {
   final int miUserId;
 
   const ChatTaxiScreen({
-    Key? key,
+    super.key,
     required this.servicioId,
     required this.miUserId,
-  }) : super(key: key);
+  });
 
   @override
   State<ChatTaxiScreen> createState() => _ChatTaxiScreenState();
@@ -94,7 +94,7 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return ChangeNotifierProvider.value(
       value: _controller,
       child: Scaffold(
@@ -114,7 +114,7 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
 
   PreferredSizeWidget _buildAppBar() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AppBar(
       backgroundColor: isDark ? AppColors.darkCard : Colors.white,
       elevation: 1,
@@ -128,7 +128,7 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
       title: Consumer<ChatTaxiController>(
         builder: (context, controller, _) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
-          
+
           if (controller.cargando && controller.infoChat == null) {
             return Text(
               'Cargando...',
@@ -151,7 +151,9 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
                     ? Icon(
                         Icons.person,
                         size: 20,
-                        color: isDark ? AppColors.darkOnSurface : Colors.grey[700],
+                        color: isDark
+                            ? AppColors.darkOnSurface
+                            : Colors.grey[700],
                       )
                     : null,
               ),
@@ -167,7 +169,9 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? AppColors.darkOnSurface : Colors.black87,
+                        color: isDark
+                            ? AppColors.darkOnSurface
+                            : Colors.black87,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -254,11 +258,7 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Iconsax.messages_copy,
-                  size: 80,
-                  color: Colors.grey[300],
-                ),
+                Icon(Iconsax.messages_copy, size: 80, color: Colors.grey[300]),
                 const SizedBox(height: 16),
                 Text(
                   'No hay mensajes aún',
@@ -362,16 +362,16 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
 
   Widget _buildInputArea() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkCard : Colors.white,
         boxShadow: [
           BoxShadow(
-            color: isDark 
-                ? Colors.black.withOpacity(0.3) 
-                : Colors.grey.withOpacity(0.2),
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.3)
+                : Colors.grey.withValues(alpha: 0.2),
             blurRadius: 4,
             offset: const Offset(0, -2),
           ),
@@ -417,8 +417,8 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
               builder: (context, controller, _) {
                 return Container(
                   decoration: BoxDecoration(
-                    color: _enviando 
-                        ? Colors.grey 
+                    color: _enviando
+                        ? Colors.grey
                         : (isDark ? AppColors.accent : AppColors.accent),
                     shape: BoxShape.circle,
                   ),
@@ -448,7 +448,7 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
 
   Widget _buildMensajesRapidos() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -475,7 +475,9 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
                   color: isDark ? AppColors.darkOnSurface : Colors.black87,
                 ),
               ),
-              backgroundColor: isDark ? AppColors.darkBackground : AppColors.white,
+              backgroundColor: isDark
+                  ? AppColors.darkBackground
+                  : AppColors.white,
               side: BorderSide(
                 color: isDark ? AppColors.grey : AppColors.grey,
                 width: 1,

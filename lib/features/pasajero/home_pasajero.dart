@@ -8,7 +8,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
-import 'package:intellitaxi/core/constants/map_styles.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/places_service.dart';
@@ -29,6 +28,7 @@ import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/features/pasajero/widgets/ride_confirmation_dialog.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/pasajero/widgets/waiting_for_driver_dialog.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -46,8 +46,6 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _isLoadingLocation = true;
   String _locationMessage =
       'Verificando tu ubicación actual con GPS de alta precisión...';
-  Brightness? _lastBrightness;
-  Brightness _currentBrightness = Brightness.light;
 
   // Para el bottom sheet animado
   late AnimationController _animationController;
@@ -135,16 +133,6 @@ class _HomePasajeroState extends State<HomePasajero>
 
     // Guardar referencia segura al ScaffoldMessenger
     _scaffoldMessenger = ScaffoldMessenger.of(context);
-
-    final currentBrightness = Theme.of(context).brightness;
-    _currentBrightness = currentBrightness;
-
-    if (_lastBrightness != null &&
-        _lastBrightness != currentBrightness &&
-        _mapController != null) {
-      _setMapStyle(_mapController!);
-    }
-    _lastBrightness = currentBrightness;
   }
 
   @override
@@ -197,13 +185,13 @@ class _HomePasajeroState extends State<HomePasajero>
   /// Verifica si hay un servicio activo al iniciar la app
   Future<void> _checkActiveService() async {
     try {
-      print('🔍 Verificando servicio activo al iniciar...');
+      AppLogger.d('🔍 Verificando servicio activo al iniciar...');
 
       final servicio = await _activeServiceManager.getActiveService();
 
       if (servicio != null && servicio.isActivo) {
-        print('✅ Servicio activo encontrado: ${servicio.id}');
-        print('📊 Estado: ${servicio.estado.estado}');
+        AppLogger.d('✅ Servicio activo encontrado: ${servicio.id}');
+        AppLogger.d('📊 Estado: ${servicio.estado.estado}');
 
         // Navegar a pantalla de servicio activo
         if (!mounted) return;
@@ -223,7 +211,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
                   // Recargar conductores disponibles después de completar el servicio
                   if (mounted) {
-                    print(
+                    AppLogger.d(
                       '🔄 Recargando conductores disponibles al volver de servicio activo...',
                     );
                     _loadAvailableDrivers();
@@ -237,10 +225,10 @@ class _HomePasajeroState extends State<HomePasajero>
         // Iniciar polling para actualizar el servicio
         _startServiceTracking(servicio.id);
       } else {
-        print('ℹ️ No hay servicio activo');
+        AppLogger.d('ℹ️ No hay servicio activo');
       }
     } catch (e) {
-      print('⚠️ Error verificando servicio activo: $e');
+      AppLogger.d('⚠️ Error verificando servicio activo: $e');
     }
   }
 
@@ -249,12 +237,12 @@ class _HomePasajeroState extends State<HomePasajero>
     // Configurar callbacks
     _activeServiceManager.onServiceUpdated = (servicio) {
       if (!mounted) return;
-      print('🔄 Servicio actualizado: ${servicio.estado.estado}');
+      AppLogger.d('🔄 Servicio actualizado: ${servicio.estado.estado}');
       // TODO: Actualizar UI si es necesario
     };
 
     _activeServiceManager.onServiceCompleted = () {
-      print('🏁 Servicio completado/cancelado');
+      AppLogger.d('🏁 Servicio completado/cancelado');
       if (!mounted) return;
 
       // Usar WidgetsBinding para asegurar que se ejecute después del frame actual
@@ -267,7 +255,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
           // Recargar conductores disponibles después de completar el servicio
           if (mounted) {
-            print(
+            AppLogger.d(
               '🔄 Recargando conductores disponibles después de finalizar servicio...',
             );
             _loadAvailableDrivers();
@@ -291,8 +279,8 @@ class _HomePasajeroState extends State<HomePasajero>
       // Por ahora usar empresa ID = 1 (puedes obtenerlo del backend si es necesario)
       const idEmpresa = 1;
 
-      print('🚗 Configurando Pusher para conductores...');
-      print('   🏢 Empresa ID: $idEmpresa');
+      AppLogger.d('🚗 Configurando Pusher para conductores...');
+      AppLogger.d('   🏢 Empresa ID: $idEmpresa');
 
       _pusherConductoresService = PusherConductoresService(
         idEmpresa: idEmpresa,
@@ -312,22 +300,22 @@ class _HomePasajeroState extends State<HomePasajero>
       // Conectar al canal
       await _pusherConductoresService!.connect();
 
-      print('✅ Pusher conductores configurado');
+      AppLogger.d('✅ Pusher conductores configurado');
     } catch (e) {
-      print('❌ Error configurando Pusher conductores: $e');
+      AppLogger.d('❌ Error configurando Pusher conductores: $e');
     }
   }
 
   /// Carga los conductores disponibles inicialmente
   Future<void> _loadAvailableDrivers() async {
     if (_currentPosition == null) {
-      print('⚠️ No hay posición actual para buscar conductores');
+      AppLogger.d('⚠️ No hay posición actual para buscar conductores');
       return;
     }
 
     try {
-      print('🔍 Cargando conductores disponibles...');
-      print(
+      AppLogger.d('🔍 Cargando conductores disponibles...');
+      AppLogger.d(
         '   📊 Conductores actuales en memoria: ${_conductoresDisponibles.length}',
       );
 
@@ -355,12 +343,12 @@ class _HomePasajeroState extends State<HomePasajero>
       // Actualizar marcadores
       _updateAllDriverMarkers();
 
-      print('✅ ${conductores.length} conductores desde API');
-      print(
+      AppLogger.d('✅ ${conductores.length} conductores desde API');
+      AppLogger.d(
         '   📍 Total en mapa: ${_conductoresDisponibles.length} conductores',
       );
     } catch (e) {
-      print('❌ Error cargando conductores: $e');
+      AppLogger.d('❌ Error cargando conductores: $e');
     }
   }
 
@@ -373,7 +361,7 @@ class _HomePasajeroState extends State<HomePasajero>
       _updateAllDriverMarkers();
     });
 
-    print('📍 Marcador actualizado: ${conductor.nombre}');
+    AppLogger.d('📍 Marcador actualizado: ${conductor.nombre}');
   }
 
   /// Elimina el marcador de un conductor
@@ -383,22 +371,24 @@ class _HomePasajeroState extends State<HomePasajero>
       _updateAllDriverMarkers();
     });
 
-    print('🔴 Conductor removido: $conductorId');
+    AppLogger.d('🔴 Conductor removido: $conductorId');
   }
 
   /// Actualiza todos los marcadores en el mapa
   void _updateAllDriverMarkers() {
-    print('🔄 _updateAllDriverMarkers llamado');
-    print('   🚗 _showDrivers: $_showDrivers');
-    print('   📊 Conductores en memoria: ${_conductoresDisponibles.length}');
+    AppLogger.d('🔄 _updateAllDriverMarkers llamado');
+    AppLogger.d('   🚗 _showDrivers: $_showDrivers');
+    AppLogger.d(
+      '   📊 Conductores en memoria: ${_conductoresDisponibles.length}',
+    );
 
     final Set<Marker> newMarkers = {};
 
     // Agregar marcadores de conductores solo si están visibles
     if (_showDrivers) {
-      print('   ✅ Agregando marcadores de conductores...');
+      AppLogger.d('   ✅ Agregando marcadores de conductores...');
       for (var conductor in _conductoresDisponibles.values) {
-        print(
+        AppLogger.d(
           '      🚗 Agregando: ${conductor.nombre} en (${conductor.lat}, ${conductor.lng})',
         );
         newMarkers.add(
@@ -417,13 +407,15 @@ class _HomePasajeroState extends State<HomePasajero>
                   '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}\n'
                   '📏 ${conductor.distanciaKm != null ? "${conductor.distanciaKm!.toStringAsFixed(2)} km" : ""}',
             ),
-            zIndex: 1, // Debajo de otros marcadores
+            zIndexInt: 1, // Debajo de otros marcadores
           ),
         );
       }
-      print('   ✅ ${newMarkers.length} marcadores de conductores agregados');
+      AppLogger.d(
+        '   ✅ ${newMarkers.length} marcadores de conductores agregados',
+      );
     } else {
-      print('   ⚠️ _showDrivers es false, NO se agregan conductores');
+      AppLogger.d('   ⚠️ _showDrivers es false, NO se agregan conductores');
     }
 
     // Agregar marcadores existentes que NO sean de conductores (ruta, origen, destino, etc)
@@ -449,7 +441,7 @@ class _HomePasajeroState extends State<HomePasajero>
             title: 'Tú',
             snippet: 'Tu ubicación actual',
           ),
-          zIndex: 10, // Encima de todos
+          zIndexInt: 10, // Encima de todos
         ),
       );
     }
@@ -458,14 +450,14 @@ class _HomePasajeroState extends State<HomePasajero>
       _markers = newMarkers;
     });
 
-    print(
+    AppLogger.d(
       '🗺️ Marcadores actualizados: ${_conductoresDisponibles.length} conductores, ${newMarkers.length} marcadores totales',
     );
 
     // Debug: Listar todos los marcadores
-    print('   📍 Marcadores en el mapa:');
+    AppLogger.d('   📍 Marcadores en el mapa:');
     for (var marker in newMarkers) {
-      print('      - ${marker.markerId.value}');
+      AppLogger.d('      - ${marker.markerId.value}');
     }
   }
 
@@ -495,7 +487,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
       _setStateSafe(() => _driverMarkerIcon = icon);
     } catch (e) {
-      print('Error creando icono de conductor: $e');
+      AppLogger.d('Error creando icono de conductor: $e');
       _setStateSafe(
         () => _driverMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
           BitmapDescriptor.hueGreen,
@@ -519,7 +511,7 @@ class _HomePasajeroState extends State<HomePasajero>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        AppColors.accent.withOpacity(0.05),
+                        AppColors.accent.withValues(alpha: 0.05),
                         Colors.white,
                       ],
                     ),
@@ -538,18 +530,20 @@ class _HomePasajeroState extends State<HomePasajero>
                             end: Alignment.bottomRight,
                             colors: _isLoadingLocation
                                 ? [
-                                    AppColors.accent.withOpacity(0.2),
-                                    AppColors.accent.withOpacity(0.05),
+                                    AppColors.accent.withValues(alpha: 0.2),
+                                    AppColors.accent.withValues(alpha: 0.05),
                                   ]
                                 : [
-                                    Colors.grey.withOpacity(0.2),
-                                    Colors.grey.withOpacity(0.05),
+                                    Colors.grey.withValues(alpha: 0.2),
+                                    Colors.grey.withValues(alpha: 0.05),
                                   ],
                           ),
                           boxShadow: _isLoadingLocation
                               ? [
                                   BoxShadow(
-                                    color: AppColors.accent.withOpacity(0.2),
+                                    color: AppColors.accent.withValues(
+                                      alpha: 0.2,
+                                    ),
                                     blurRadius: 30,
                                     spreadRadius: 10,
                                   ),
@@ -563,8 +557,8 @@ class _HomePasajeroState extends State<HomePasajero>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: _isLoadingLocation
-                                  ? AppColors.accent.withOpacity(0.15)
-                                  : Colors.grey.withOpacity(0.15),
+                                  ? AppColors.accent.withValues(alpha: 0.15)
+                                  : Colors.grey.withValues(alpha: 0.15),
                             ),
                             child: Center(
                               child: _isLoadingLocation
@@ -634,7 +628,7 @@ class _HomePasajeroState extends State<HomePasajero>
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.accent.withOpacity(0.3),
+                                color: AppColors.accent.withValues(alpha: 0.3),
                                 blurRadius: 15,
                                 offset: const Offset(0, 5),
                               ),
@@ -715,7 +709,7 @@ class _HomePasajeroState extends State<HomePasajero>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
+                          color: Colors.black.withValues(alpha: 0.2),
                           blurRadius: 20,
                           offset: const Offset(0, -5),
                         ),
@@ -1047,10 +1041,10 @@ class _HomePasajeroState extends State<HomePasajero>
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(isDark ? 0.2 : 0.1),
+            color: Colors.blue.withValues(alpha: isDark ? 0.2 : 0.1),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.blue.withOpacity(isDark ? 0.5 : 0.3),
+              color: Colors.blue.withValues(alpha: isDark ? 0.5 : 0.3),
               width: 1,
             ),
           ),
@@ -1129,7 +1123,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
       // Dibujar sombra exterior
       final Paint shadowPaint = Paint()
-        ..color = Colors.black.withOpacity(0.4)
+        ..color = Colors.black.withValues(alpha: 0.4)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
       canvas.drawCircle(
         Offset(size / 2 + 2, size / 2 + 2),
@@ -1198,10 +1192,10 @@ class _HomePasajeroState extends State<HomePasajero>
       final Uint8List? pngBytes = byteData?.buffer.asUint8List();
 
       if (pngBytes != null) {
-        return BitmapDescriptor.fromBytes(pngBytes);
+        return BitmapDescriptor.bytes(pngBytes);
       }
     } catch (e) {
-      print('Error creando marcador personalizado: $e');
+      AppLogger.d('Error creando marcador personalizado: $e');
     }
     return null;
   }
@@ -1272,7 +1266,9 @@ class _HomePasajeroState extends State<HomePasajero>
       );
 
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
 
       if (mounted) {
@@ -1333,18 +1329,6 @@ class _HomePasajeroState extends State<HomePasajero>
           _locationMessage = 'Error al obtener ubicación';
         });
       }
-    }
-  }
-
-  Future<void> _setMapStyle(GoogleMapController controller) async {
-    if (!mounted) return;
-    final isDarkMode = _currentBrightness == Brightness.dark;
-    try {
-      await controller.setMapStyle(
-        isDarkMode ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
-      );
-    } catch (e) {
-      // Ignorar error
     }
   }
 
@@ -1552,7 +1536,7 @@ class _HomePasajeroState extends State<HomePasajero>
               title: 'Destino',
               snippet: _selectedDestination!.name,
             ),
-            zIndex: 5,
+            zIndexInt: 5,
           ),
         );
 
@@ -1574,7 +1558,7 @@ class _HomePasajeroState extends State<HomePasajero>
                       '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
                       '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}',
                 ),
-                zIndex: 1,
+                zIndexInt: 1,
               ),
             );
           }
@@ -1596,7 +1580,7 @@ class _HomePasajeroState extends State<HomePasajero>
                 title: 'Tu ubicación',
                 snippet: 'Ubicación en tiempo real',
               ),
-              zIndex: 1, // Asegurar que esté encima de otros marcadores
+              zIndexInt: 1, // Asegurar que esté encima de otros marcadores
             ),
           );
         }
@@ -1740,8 +1724,10 @@ class _HomePasajeroState extends State<HomePasajero>
         }
 
         if (servicioId != null) {
-          print('🚀 PASAJERO: Navegando a PasajeroEsperandoConductorScreen');
-          print('   Servicio ID: $servicioId');
+          AppLogger.d(
+            '🚀 PASAJERO: Navegando a PasajeroEsperandoConductorScreen',
+          );
+          AppLogger.d('   Servicio ID: $servicioId');
 
           Navigator.push(
             context,
@@ -1774,8 +1760,8 @@ class _HomePasajeroState extends State<HomePasajero>
             }
           });
         } else {
-          print('⚠️ No se pudo obtener servicio_id de la respuesta');
-          print('   Response completo: $response');
+          AppLogger.d('⚠️ No se pudo obtener servicio_id de la respuesta');
+          AppLogger.d('   Response completo: $response');
         }
       }
     } catch (e) {
@@ -1806,7 +1792,7 @@ class _HomePasajeroState extends State<HomePasajero>
   /// Configura la conexión a Pusher para recibir la confirmación de solicitud creada
   Future<void> _setupPusherRequestConfirmation() async {
     try {
-      print('🚀 Configurando Pusher para confirmación de solicitudes...');
+      AppLogger.d('🚀 Configurando Pusher para confirmación de solicitudes...');
 
       // Suscribirse al canal de solicitudes-servicio (conexión secundaria)
       await PusherService.subscribeSecondary('solicitudes-servicio');
@@ -1817,22 +1803,22 @@ class _HomePasajeroState extends State<HomePasajero>
         _manejarNuevaSolicitud,
       );
 
-      print(
+      AppLogger.d(
         '✅ Pusher configurado - Esperando confirmación en canal solicitudes-servicio',
       );
     } catch (e) {
-      print('❌ Error configurando Pusher: $e');
+      AppLogger.d('❌ Error configurando Pusher: $e');
     }
   }
 
   /// Maneja la llegada de la confirmación de solicitud creada
   void _manejarNuevaSolicitud(dynamic data) {
-    print('🚕 _manejarNuevaSolicitud llamado en PASAJERO');
-    print('📦 Tipo de datos: ${data.runtimeType}');
-    print('📦 Datos recibidos: $data');
+    AppLogger.d('🚕 _manejarNuevaSolicitud llamado en PASAJERO');
+    AppLogger.d('📦 Tipo de datos: ${data.runtimeType}');
+    AppLogger.d('📦 Datos recibidos: $data');
 
     if (!mounted) {
-      print('⚠️ Widget no montado, ignorando solicitud');
+      AppLogger.d('⚠️ Widget no montado, ignorando solicitud');
       return;
     }
 
@@ -1848,15 +1834,15 @@ class _HomePasajeroState extends State<HomePasajero>
       } else if (data is Map) {
         solicitudData = Map<String, dynamic>.from(data);
       } else {
-        print('⚠️ Tipo de datos no soportado: ${data.runtimeType}');
+        AppLogger.d('⚠️ Tipo de datos no soportado: ${data.runtimeType}');
         return;
       }
 
-      print('✅ Datos parseados correctamente');
-      print('🔍 Contenido:');
-      print('   - servicio_id: ${solicitudData['servicio_id']}');
-      print('   - success: ${solicitudData['success']}');
-      print('   - message: ${solicitudData['message']}');
+      AppLogger.d('✅ Datos parseados correctamente');
+      AppLogger.d('🔍 Contenido:');
+      AppLogger.d('   - servicio_id: ${solicitudData['servicio_id']}');
+      AppLogger.d('   - success: ${solicitudData['success']}');
+      AppLogger.d('   - message: ${solicitudData['message']}');
 
       // Verificar que el widget aún esté montado
       if (!mounted) return;
@@ -1869,10 +1855,12 @@ class _HomePasajeroState extends State<HomePasajero>
       final pasajeroId =
           solicitudData['pasajero_id'] ?? solicitudData['data']?['pasajero_id'];
 
-      print('👤 Usuario actual: $currentUserId, Solicitud para: $pasajeroId');
+      AppLogger.d(
+        '👤 Usuario actual: $currentUserId, Solicitud para: $pasajeroId',
+      );
 
       if (currentUserId == pasajeroId) {
-        print('✅ La solicitud es para este pasajero');
+        AppLogger.d('✅ La solicitud es para este pasajero');
 
         // Mostrar notificación de solicitud confirmada
         if (mounted && _scaffoldMessenger != null) {
@@ -1889,18 +1877,18 @@ class _HomePasajeroState extends State<HomePasajero>
           );
         }
       } else {
-        print('⏭️ Solicitud no es para este pasajero, ignorando');
+        AppLogger.d('⏭️ Solicitud no es para este pasajero, ignorando');
       }
     } catch (e, stackTrace) {
-      print('⚠️ Error procesando solicitud: $e');
-      print('📍 Stack trace: $stackTrace');
+      AppLogger.d('⚠️ Error procesando solicitud: $e');
+      AppLogger.d('📍 Stack trace: $stackTrace');
     }
   }
 
   /// Configura la conexión a Pusher para recibir contraofertas
   Future<void> _setupPusherOffers() async {
     try {
-      print('🚀 Configurando Pusher para ofertas globales...');
+      AppLogger.d('🚀 Configurando Pusher para ofertas globales...');
 
       // Suscribirse al canal de ofertas globales (conexión secundaria)
       await PusherService.subscribeSecondary('ofertas-globales');
@@ -1911,19 +1899,19 @@ class _HomePasajeroState extends State<HomePasajero>
         _handleNewOffer,
       );
 
-      print(
+      AppLogger.d(
         '✅ Pusher configurado - Esperando ofertas en canal ofertas-globales',
       );
     } catch (e) {
-      print('❌ Error configurando Pusher: $e');
+      AppLogger.d('❌ Error configurando Pusher: $e');
     }
   }
 
   /// Maneja la llegada de una nueva contraoferta
   void _handleNewOffer(dynamic data) {
-    print('🎉 ¡Nueva contraoferta recibida!');
-    print('📦 Data tipo: ${data.runtimeType}');
-    print('📦 Data completa: $data');
+    AppLogger.d('🎉 ¡Nueva contraoferta recibida!');
+    AppLogger.d('📦 Data tipo: ${data.runtimeType}');
+    AppLogger.d('📦 Data completa: $data');
 
     try {
       // Parsear data si viene como string
@@ -1934,12 +1922,12 @@ class _HomePasajeroState extends State<HomePasajero>
         offerData = Map<String, dynamic>.from(data);
       }
 
-      print('🔍 Datos parseados:');
-      print('   - oferta_id: ${offerData['oferta_id']}');
-      print('   - solicitud_id: ${offerData['solicitud_id']}');
-      print('   - pasajero_id: ${offerData['pasajero_id']}');
-      print('   - conductor_nombre: ${offerData['conductor_nombre']}');
-      print('   - precio_ofertado: ${offerData['precio_ofertado']}');
+      AppLogger.d('🔍 Datos parseados:');
+      AppLogger.d('   - oferta_id: ${offerData['oferta_id']}');
+      AppLogger.d('   - solicitud_id: ${offerData['solicitud_id']}');
+      AppLogger.d('   - pasajero_id: ${offerData['pasajero_id']}');
+      AppLogger.d('   - conductor_nombre: ${offerData['conductor_nombre']}');
+      AppLogger.d('   - precio_ofertado: ${offerData['precio_ofertado']}');
 
       // Verificar que el widget aún esté montado
       if (!mounted) return;
@@ -1949,7 +1937,7 @@ class _HomePasajeroState extends State<HomePasajero>
       final currentUserId = authProvider.idPersona;
       final offerPassengerId = offerData['pasajero_id'];
 
-      print(
+      AppLogger.d(
         '👤 Usuario actual: $currentUserId, Oferta para: $offerPassengerId',
       );
 
@@ -1961,7 +1949,7 @@ class _HomePasajeroState extends State<HomePasajero>
           _showOffer = true;
         });
 
-        print('✅ Oferta mostrada al usuario');
+        AppLogger.d('✅ Oferta mostrada al usuario');
 
         // Mostrar snackbar de notificación
         if (mounted && _scaffoldMessenger != null) {
@@ -1977,11 +1965,11 @@ class _HomePasajeroState extends State<HomePasajero>
           );
         }
       } else {
-        print('⏭️ Oferta no es para este pasajero, ignorando');
+        AppLogger.d('⏭️ Oferta no es para este pasajero, ignorando');
       }
     } catch (e, stackTrace) {
-      print('❌ Error procesando oferta: $e');
-      print('📍 Stack trace: $stackTrace');
+      AppLogger.d('❌ Error procesando oferta: $e');
+      AppLogger.d('📍 Stack trace: $stackTrace');
     }
   }
 
@@ -1989,7 +1977,7 @@ class _HomePasajeroState extends State<HomePasajero>
   void _acceptOffer() {
     if (_currentOffer == null) return;
 
-    print('✅ Aceptando oferta: ${_currentOffer!['oferta_id']}');
+    AppLogger.d('✅ Aceptando oferta: ${_currentOffer!['oferta_id']}');
 
     // TODO: Llamar al backend para confirmar la aceptación
     // await _rideRequestService.acceptOffer(_currentOffer!['oferta_id']);
@@ -2018,7 +2006,7 @@ class _HomePasajeroState extends State<HomePasajero>
   void _rejectOffer() {
     if (_currentOffer == null) return;
 
-    print('❌ Rechazando oferta: ${_currentOffer!['oferta_id']}');
+    AppLogger.d('❌ Rechazando oferta: ${_currentOffer!['oferta_id']}');
 
     // TODO: Llamar al backend para notificar el rechazo
     // await _rideRequestService.rejectOffer(_currentOffer!['oferta_id']);

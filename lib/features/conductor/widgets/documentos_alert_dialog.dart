@@ -53,19 +53,19 @@ class DocumentosAlertDialog extends StatelessWidget {
                       end: Alignment.bottomRight,
                       colors: hayVencidos
                           ? [
-                              Colors.red.withOpacity(0.15),
-                              Colors.red.withOpacity(0.05),
+                              Colors.red.withValues(alpha: 0.15),
+                              Colors.red.withValues(alpha: 0.05),
                             ]
                           : [
-                              Colors.orange.withOpacity(0.15),
-                              Colors.orange.withOpacity(0.05),
+                              Colors.orange.withValues(alpha: 0.15),
+                              Colors.orange.withValues(alpha: 0.05),
                             ],
                     ),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
                         color: (hayVencidos ? Colors.red : Colors.orange)
-                            .withOpacity(0.2),
+                            .withValues(alpha: 0.2),
                         blurRadius: 20,
                         spreadRadius: 5,
                       ),
@@ -135,38 +135,38 @@ class DocumentosAlertDialog extends StatelessWidget {
 
                 // Botón único - obligatorio ver documentos
                 SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  // Navegar a la pantalla de documentos
-                  Navigator.pushNamed(context, '/mis-documentos');
-                  onContinuar?.call();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: hayVencidos ? Colors.red : Colors.orange,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      // Navegar a la pantalla de documentos
+                      Navigator.pushNamed(context, '/mis-documentos');
+                      onContinuar?.call();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: hayVencidos ? Colors.red : Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    icon: const Icon(Iconsax.document_text_copy, size: 20),
+                    label: Text(
+                      hayVencidos
+                          ? 'Actualizar documentos ahora'
+                          : 'Revisar documentos',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                  elevation: 0,
                 ),
-                icon: const Icon(Iconsax.document_text_copy, size: 20),
-                label: Text(
-                  hayVencidos
-                      ? 'Actualizar documentos ahora'
-                      : 'Revisar documentos',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
         ),
       ),
     );
@@ -181,9 +181,9 @@ class DocumentosAlertDialog extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
+        color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

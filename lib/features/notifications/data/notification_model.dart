@@ -39,7 +39,8 @@ class NotificationModel {
     this.empresa,
   });
 
-  factory NotificationModel.fromJson(Map<String, dynamic> json) => NotificationModel(
+  factory NotificationModel.fromJson(Map<String, dynamic> json) =>
+      NotificationModel(
         id: json["id"],
         fecha: json["fecha"],
         hora: json["hora"],
@@ -63,29 +64,31 @@ class NotificationModel {
         tipoNotificacion: json["tipoNotificacion"] != null
             ? TipoNotificacion.fromJson(json["tipoNotificacion"])
             : null,
-        empresa: json["empresa"] != null ? Empresa.fromJson(json["empresa"]) : null,
+        empresa: json["empresa"] != null
+            ? Empresa.fromJson(json["empresa"])
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
-        "id": id,
-        "fecha": fecha,
-        "hora": hora,
-        "asunto": asunto,
-        "mensaje": mensaje,
-        "estado_id": estadoId,
-        "idUsuarioReceptor": idUsuarioReceptor,
-        "idUsuarioRemitente": idUsuarioRemitente,
-        "idTipoNotificacion": idTipoNotificacion,
-        "idEmpresa": idEmpresa,
-        "created_at": createdAt,
-        "updated_at": updatedAt,
-        "route": route,
-        "estado": estado?.toJson(),
-        "personaReceptor": personaReceptor?.toJson(),
-        "personaRemitente": personaRemitente?.toJson(),
-        "tipoNotificacion": tipoNotificacion?.toJson(),
-        "empresa": empresa?.toJson(),
-      };
+    "id": id,
+    "fecha": fecha,
+    "hora": hora,
+    "asunto": asunto,
+    "mensaje": mensaje,
+    "estado_id": estadoId,
+    "idUsuarioReceptor": idUsuarioReceptor,
+    "idUsuarioRemitente": idUsuarioRemitente,
+    "idTipoNotificacion": idTipoNotificacion,
+    "idEmpresa": idEmpresa,
+    "created_at": createdAt,
+    "updated_at": updatedAt,
+    "route": route,
+    "estado": estado?.toJson(),
+    "personaReceptor": personaReceptor?.toJson(),
+    "personaRemitente": personaRemitente?.toJson(),
+    "tipoNotificacion": tipoNotificacion?.toJson(),
+    "empresa": empresa?.toJson(),
+  };
 }
 
 class Estado {
@@ -96,16 +99,16 @@ class Estado {
   Estado({this.id, this.estado, this.descripcion});
 
   factory Estado.fromJson(Map<String, dynamic> json) => Estado(
-        id: json["id"],
-        estado: json["estado"],
-        descripcion: json["descripcion"],
-      );
+    id: json["id"],
+    estado: json["estado"],
+    descripcion: json["descripcion"],
+  );
 
   Map<String, dynamic> toJson() => {
-        "id": id,
-        "estado": estado,
-        "descripcion": descripcion,
-      };
+    "id": id,
+    "estado": estado,
+    "descripcion": descripcion,
+  };
 }
 
 class Persona {
@@ -158,54 +161,54 @@ class Persona {
   });
 
   factory Persona.fromJson(Map<String, dynamic> json) => Persona(
-        id: json["id"],
-        identificacion: json["identificacion"],
-        nombre1: json["nombre1"],
-        nombre2: json["nombre2"],
-        apellido1: json["apellido1"],
-        apellido2: json["apellido2"],
-        fechaNac: json["fechaNac"],
-        direccion: json["direccion"],
-        email: json["email"],
-        telefonoFijo: json["telefonoFijo"] == "null" ? null : json["telefonoFijo"],
-        celular: json["celular"],
-        perfil: json["perfil"],
-        sexo: json["sexo"],
-        rh: json["rh"],
-        rutaFoto: json["rutaFoto"],
-        idTipoIdentificacion: json["idTipoIdentificacion"],
-        idCiudad: json["idCiudad"],
-        idCiudadNac: json["idCiudadNac"],
-        idCiudadUbicacion: json["idCiudadUbicacion"],
-        createdAt: json["created_at"],
-        updatedAt: json["updated_at"],
-        rutaFotoUrl: json["rutaFotoUrl"],
-      );
+    id: json["id"],
+    identificacion: json["identificacion"],
+    nombre1: json["nombre1"],
+    nombre2: json["nombre2"],
+    apellido1: json["apellido1"],
+    apellido2: json["apellido2"],
+    fechaNac: json["fechaNac"],
+    direccion: json["direccion"],
+    email: json["email"],
+    telefonoFijo: json["telefonoFijo"] == "null" ? null : json["telefonoFijo"],
+    celular: json["celular"],
+    perfil: json["perfil"],
+    sexo: json["sexo"],
+    rh: json["rh"],
+    rutaFoto: json["rutaFoto"],
+    idTipoIdentificacion: json["idTipoIdentificacion"],
+    idCiudad: json["idCiudad"],
+    idCiudadNac: json["idCiudadNac"],
+    idCiudadUbicacion: json["idCiudadUbicacion"],
+    createdAt: json["created_at"],
+    updatedAt: json["updated_at"],
+    rutaFotoUrl: json["rutaFotoUrl"],
+  );
 
   Map<String, dynamic> toJson() => {
-        "id": id,
-        "identificacion": identificacion,
-        "nombre1": nombre1,
-        "nombre2": nombre2,
-        "apellido1": apellido1,
-        "apellido2": apellido2,
-        "fechaNac": fechaNac,
-        "direccion": direccion,
-        "email": email,
-        "telefonoFijo": telefonoFijo,
-        "celular": celular,
-        "perfil": perfil,
-        "sexo": sexo,
-        "rh": rh,
-        "rutaFoto": rutaFoto,
-        "idTipoIdentificacion": idTipoIdentificacion,
-        "idCiudad": idCiudad,
-        "idCiudadNac": idCiudadNac,
-        "idCiudadUbicacion": idCiudadUbicacion,
-        "created_at": createdAt,
-        "updated_at": updatedAt,
-        "rutaFotoUrl": rutaFotoUrl,
-      };
+    "id": id,
+    "identificacion": identificacion,
+    "nombre1": nombre1,
+    "nombre2": nombre2,
+    "apellido1": apellido1,
+    "apellido2": apellido2,
+    "fechaNac": fechaNac,
+    "direccion": direccion,
+    "email": email,
+    "telefonoFijo": telefonoFijo,
+    "celular": celular,
+    "perfil": perfil,
+    "sexo": sexo,
+    "rh": rh,
+    "rutaFoto": rutaFoto,
+    "idTipoIdentificacion": idTipoIdentificacion,
+    "idCiudad": idCiudad,
+    "idCiudadNac": idCiudadNac,
+    "idCiudadUbicacion": idCiudadUbicacion,
+    "created_at": createdAt,
+    "updated_at": updatedAt,
+    "rutaFotoUrl": rutaFotoUrl,
+  };
 }
 
 class TipoNotificacion {
@@ -233,12 +236,12 @@ class TipoNotificacion {
       );
 
   Map<String, dynamic> toJson() => {
-        "id": id,
-        "tipoNotificacion": tipoNotificacion,
-        "observacion": observacion,
-        "created_at": createdAt,
-        "updated_at": updatedAt,
-      };
+    "id": id,
+    "tipoNotificacion": tipoNotificacion,
+    "observacion": observacion,
+    "created_at": createdAt,
+    "updated_at": updatedAt,
+  };
 }
 
 class Empresa {
@@ -265,26 +268,26 @@ class Empresa {
   });
 
   factory Empresa.fromJson(Map<String, dynamic> json) => Empresa(
-        id: json["id"],
-        razonSocial: json["razonSocial"],
-        nit: json["nit"],
-        rutaLogo: json["rutaLogo"],
-        representanteLegal: json["representanteLegal"],
-        digitoVerificacion: json["digitoVerificacion"],
-        createdAt: json["created_at"],
-        updatedAt: json["updated_at"],
-        rutaLogoUrl: json["rutaLogoUrl"],
-      );
+    id: json["id"],
+    razonSocial: json["razonSocial"],
+    nit: json["nit"],
+    rutaLogo: json["rutaLogo"],
+    representanteLegal: json["representanteLegal"],
+    digitoVerificacion: json["digitoVerificacion"],
+    createdAt: json["created_at"],
+    updatedAt: json["updated_at"],
+    rutaLogoUrl: json["rutaLogoUrl"],
+  );
 
   Map<String, dynamic> toJson() => {
-        "id": id,
-        "razonSocial": razonSocial,
-        "nit": nit,
-        "rutaLogo": rutaLogo,
-        "representanteLegal": representanteLegal,
-        "digitoVerificacion": digitoVerificacion,
-        "created_at": createdAt,
-        "updated_at": updatedAt,
-        "rutaLogoUrl": rutaLogoUrl,
-      };
+    "id": id,
+    "razonSocial": razonSocial,
+    "nit": nit,
+    "rutaLogo": rutaLogo,
+    "representanteLegal": representanteLegal,
+    "digitoVerificacion": digitoVerificacion,
+    "created_at": createdAt,
+    "updated_at": updatedAt,
+    "rutaLogoUrl": rutaLogoUrl,
+  };
 }

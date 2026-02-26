@@ -89,8 +89,12 @@ class _SancionesScreenState extends State<SancionesScreen> {
     final p = _porcentajeRiesgo;
     final activas = _sancionesActivas.length;
     if (p == 0) return 'No tienes sanciones activas. ¡Sigue así!';
-    if (p <= 0.2) return 'Tienes $activas sanción(es) activa(s). Mantén un buen comportamiento.';
-    if (p <= 0.5) return 'Tienes $activas sanción(es) activa(s). Mejora tu conducta para evitar bloqueos.';
+    if (p <= 0.2) {
+      return 'Tienes $activas sanción(es) activa(s). Mantén un buen comportamiento.';
+    }
+    if (p <= 0.5) {
+      return 'Tienes $activas sanción(es) activa(s). Mejora tu conducta para evitar bloqueos.';
+    }
     return 'Tienes $activas sanción(es) activa(s). Estás cerca de ser bloqueado.';
   }
 
@@ -133,53 +137,52 @@ class _SancionesScreenState extends State<SancionesScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _buildError(isDark)
-              : _sanciones.isEmpty
-                  ? EmptyStateWidget(
-                      icon: Iconsax.shield_tick_copy,
-                      title: 'Sin sanciones',
-                      subtitle: 'No tienes ninguna sanción registrada. ¡Excelente!',
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _cargarSanciones,
-                      child: ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          _buildBarraAdvertencia(isDark),
-                          const SizedBox(height: 20),
-                          // Título de sección
-                          Row(
-                            children: [
-                              Icon(
-                                Iconsax.document_text_copy,
-                                size: 18,
-                                color: isDark
-                                    ? Colors.grey.shade400
-                                    : Colors.grey.shade700,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Historial de sanciones (${_sanciones.length})',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark
-                                      ? Colors.grey.shade300
-                                      : Colors.grey.shade800,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          // Lista de sanciones
-                          ...List.generate(
-                            _sanciones.length,
-                            (index) =>
-                                _buildSancionCard(_sanciones[index], isDark),
-                          ),
-                        ],
+          ? _buildError(isDark)
+          : _sanciones.isEmpty
+          ? EmptyStateWidget(
+              icon: Iconsax.shield_tick_copy,
+              title: 'Sin sanciones',
+              subtitle: 'No tienes ninguna sanción registrada. ¡Excelente!',
+            )
+          : RefreshIndicator(
+              onRefresh: _cargarSanciones,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildBarraAdvertencia(isDark),
+                  const SizedBox(height: 20),
+                  // Título de sección
+                  Row(
+                    children: [
+                      Icon(
+                        Iconsax.document_text_copy,
+                        size: 18,
+                        color: isDark
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade700,
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Historial de sanciones (${_sanciones.length})',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? Colors.grey.shade300
+                              : Colors.grey.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Lista de sanciones
+                  ...List.generate(
+                    _sanciones.length,
+                    (index) => _buildSancionCard(_sanciones[index], isDark),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 
@@ -227,15 +230,15 @@ class _SancionesScreenState extends State<SancionesScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: color.withOpacity(0.3), width: 1.5),
+        side: BorderSide(color: color.withValues(alpha: 0.3), width: 1.5),
       ),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
           gradient: LinearGradient(
             colors: [
-              color.withOpacity(0.05),
-              color.withOpacity(0.12),
+              color.withValues(alpha: 0.05),
+              color.withValues(alpha: 0.12),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -251,7 +254,7 @@ class _SancionesScreenState extends State<SancionesScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.15),
+                    color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(_iconoRiesgo, color: color, size: 24),
@@ -306,9 +309,7 @@ class _SancionesScreenState extends State<SancionesScreen> {
                   'Bajo',
                   style: TextStyle(
                     fontSize: 10,
-                    color: isDark
-                        ? Colors.grey.shade500
-                        : Colors.grey.shade500,
+                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
                   ),
                 ),
                 Text(
@@ -316,9 +317,7 @@ class _SancionesScreenState extends State<SancionesScreen> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: isDark
-                        ? Colors.grey.shade500
-                        : Colors.grey.shade500,
+                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
                   ),
                 ),
               ],
@@ -350,7 +349,7 @@ class _SancionesScreenState extends State<SancionesScreen> {
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: estaActiva
-              ? gravedadColor.withOpacity(0.3)
+              ? gravedadColor.withValues(alpha: 0.3)
               : Colors.grey.shade300,
           width: 1,
         ),
@@ -367,7 +366,7 @@ class _SancionesScreenState extends State<SancionesScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: gravedadColor.withOpacity(0.12),
+                    color: gravedadColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(gravedadIcon, color: gravedadColor, size: 22),
@@ -380,10 +379,10 @@ class _SancionesScreenState extends State<SancionesScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: gravedadColor.withOpacity(0.12),
+                    color: gravedadColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                      color: gravedadColor.withOpacity(0.3),
+                      color: gravedadColor.withValues(alpha: 0.3),
                     ),
                   ),
                   child: Text(
@@ -404,17 +403,15 @@ class _SancionesScreenState extends State<SancionesScreen> {
                   ),
                   decoration: BoxDecoration(
                     color: estaActiva
-                        ? Colors.red.withOpacity(0.1)
-                        : AppColors.green.withOpacity(0.1),
+                        ? Colors.red.withValues(alpha: 0.1)
+                        : AppColors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        estaActiva
-                            ? Icons.circle
-                            : Icons.check_circle_outline,
+                        estaActiva ? Icons.circle : Icons.check_circle_outline,
                         size: 8,
                         color: estaActiva ? Colors.red : AppColors.green,
                       ),
@@ -485,9 +482,7 @@ class _SancionesScreenState extends State<SancionesScreen> {
                   Icon(
                     Iconsax.user_copy,
                     size: 14,
-                    color: isDark
-                        ? Colors.grey.shade500
-                        : Colors.grey.shade500,
+                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -528,10 +523,10 @@ class _SancionesScreenState extends State<SancionesScreen> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.08),
+                    color: AppColors.accent.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: AppColors.accent.withOpacity(0.2),
+                      color: AppColors.accent.withValues(alpha: 0.2),
                     ),
                   ),
                   child: Row(
@@ -592,7 +587,8 @@ class _SancionesScreenState extends State<SancionesScreen> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: valueColor ??
+                color:
+                    valueColor ??
                     (isDark ? Colors.grey.shade300 : Colors.grey.shade800),
               ),
             ),

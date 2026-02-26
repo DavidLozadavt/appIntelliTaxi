@@ -14,7 +14,10 @@ class AppFeedback {
         content: Row(
           children: [
             Icon(
-              icon ?? (success ? Iconsax.tick_circle_copy : Iconsax.info_circle_copy),
+              icon ??
+                  (success
+                      ? Iconsax.tick_circle_copy
+                      : Iconsax.info_circle_copy),
               color: Colors.white,
             ),
             const SizedBox(width: 8),
@@ -22,20 +25,13 @@ class AppFeedback {
           ],
         ),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         duration: const Duration(seconds: 2),
       ),
     );
   }
 
   static void info(BuildContext context, String mensaje) {
-    show(
-      context,
-      mensaje,
-      success: true,
-      icon: Iconsax.info_circle_copy,
-    );
+    show(context, mensaje, success: true, icon: Iconsax.info_circle_copy);
   }
 }

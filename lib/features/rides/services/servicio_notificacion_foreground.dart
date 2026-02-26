@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para manejar notificaciones foreground persistentes
 /// Muestra un widget/notificación persistente cuando hay un servicio activo
@@ -12,7 +13,7 @@ class ServicioNotificacionForeground {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
-  bool _enabled = false;
+  final bool _enabled = false;
 
   /// Inicializa el servicio de notificaciones
   Future<void> inicializar() async {
@@ -38,9 +39,9 @@ class ServicioNotificacionForeground {
       await _notificationsPlugin.initialize(settings: initSettings);
 
       _initialized = true;
-      print('✅ Servicio de notificaciones foreground inicializado');
+      AppLogger.d('✅ Servicio de notificaciones foreground inicializado');
     } catch (e) {
-      print('⚠️ Error inicializando notificaciones foreground: $e');
+      AppLogger.d('⚠️ Error inicializando notificaciones foreground: $e');
     }
   }
 
@@ -95,9 +96,9 @@ class ServicioNotificacionForeground {
         notificationDetails: details,
       );
 
-      print('✅ Notificación conductor mostrada: Servicio #$servicioId');
+      AppLogger.d('✅ Notificación conductor mostrada: Servicio #$servicioId');
     } catch (e) {
-      print('⚠️ Error mostrando notificación conductor: $e');
+      AppLogger.d('⚠️ Error mostrando notificación conductor: $e');
     }
   }
 
@@ -159,9 +160,9 @@ class ServicioNotificacionForeground {
         notificationDetails: details,
       );
 
-      print('✅ Notificación pasajero mostrada: Servicio #$servicioId');
+      AppLogger.d('✅ Notificación pasajero mostrada: Servicio #$servicioId');
     } catch (e) {
-      print('⚠️ Error mostrando notificación pasajero: $e');
+      AppLogger.d('⚠️ Error mostrando notificación pasajero: $e');
     }
   }
 
@@ -205,9 +206,9 @@ class ServicioNotificacionForeground {
           ? servicioId
           : servicioId + 10000;
       await _notificationsPlugin.cancel(id: notificationId);
-      print('✅ Notificación cancelada: Servicio #$servicioId');
+      AppLogger.d('✅ Notificación cancelada: Servicio #$servicioId');
     } catch (e) {
-      print('⚠️ Error cancelando notificación: $e');
+      AppLogger.d('⚠️ Error cancelando notificación: $e');
     }
   }
 
@@ -216,9 +217,9 @@ class ServicioNotificacionForeground {
     if (!_enabled) return;
     try {
       await _notificationsPlugin.cancelAll();
-      print('✅ Todas las notificaciones canceladas');
+      AppLogger.d('✅ Todas las notificaciones canceladas');
     } catch (e) {
-      print('⚠️ Error cancelando notificaciones: $e');
+      AppLogger.d('⚠️ Error cancelando notificaciones: $e');
     }
   }
 

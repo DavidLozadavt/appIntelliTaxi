@@ -5,11 +5,11 @@ import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/auth/data/auth_model.dart';
 import 'package:intellitaxi/features/chat/data/message_model.dart' hide Persona;
 import 'package:flutter/foundation.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/chat/data/activacion_chat_model.dart'
     hide User, Persona;
 import 'package:intellitaxi/features/chat/services/chat_service.dart';
 import 'package:pusher_channels_flutter/pusher_channels_flutter.dart';
-
 
 class ChatProvider with ChangeNotifier {
   final ChatService _chatService = ChatService();
@@ -61,11 +61,11 @@ class ChatProvider with ChangeNotifier {
           final roles = user.roles.map((r) => r.name).join(", ");
           final nombreCompleto =
               '${user.user.persona.nombre1} ${user.user.persona.apellido1}';
-          print("$nombreCompleto - Roles: $roles");
+          AppLogger.d("$nombreCompleto - Roles: $roles");
         }
       }
     } catch (e) {
-      print("⚠️ Error cargando usuarios: $e");
+      AppLogger.d("⚠️ Error cargando usuarios: $e");
       _users = [];
       _filteredUsers = [];
     } finally {
@@ -112,8 +112,8 @@ class ChatProvider with ChangeNotifier {
   }
 
   Future<void> loadMessages(int userId, selectedUser, idActivation) async {
-    print(idActivation);
-    print(selectedUser);
+    AppLogger.d(idActivation);
+    AppLogger.d(selectedUser);
 
     _loadingMessages = true;
     notifyListeners();
@@ -168,7 +168,7 @@ class ChatProvider with ChangeNotifier {
     final users = [currentUserId, otherUserId]..sort();
     final channelName = "private-chat.${users[0]}.${users[1]}";
 
-    print("🔔 Subscribing to channel: $channelName");
+    AppLogger.d("🔔 Subscribing to channel: $channelName");
     await _pusher!.subscribe(channelName: channelName);
 
     debugPrint("✅ Subscribed to channel: $channelName");

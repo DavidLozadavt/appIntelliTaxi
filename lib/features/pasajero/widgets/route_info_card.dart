@@ -44,14 +44,21 @@ class RouteInfoCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
+              color: Colors.blue.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
+              border: Border.all(
+                color: Colors.blue.withValues(alpha: 0.3),
+                width: 1,
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Iconsax.info_circle_copy, color: Colors.blue.shade700, size: 18),
+                Icon(
+                  Iconsax.info_circle_copy,
+                  color: Colors.blue.shade700,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Cobro según taxímetro',

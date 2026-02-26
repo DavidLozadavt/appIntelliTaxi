@@ -9,8 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class BackgroundLocationService {
   static final FlutterBackgroundService _service = FlutterBackgroundService();
+  static bool _initialized = false;
 
   static Future<void> initialize() async {
+    if (_initialized) return;
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return;
     }
@@ -27,6 +29,7 @@ class BackgroundLocationService {
       ),
       iosConfiguration: IosConfiguration(),
     );
+    _initialized = true;
   }
 
   static Future<void> startTracking({
@@ -34,6 +37,9 @@ class BackgroundLocationService {
     required int conductorId,
   }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!_initialized) {
+      await initialize();
+    }
 
     final isRunning = await _service.isRunning();
     if (!isRunning) {

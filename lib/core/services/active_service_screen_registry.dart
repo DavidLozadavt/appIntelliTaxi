@@ -1,3 +1,5 @@
+import 'package:intellitaxi/core/services/app_logger.dart';
+
 /// Registro simple en memoria para evitar reabrir/reemplazar la misma pantalla
 /// de servicio activo cuando la app vuelve del background.
 class ActiveServiceScreenRegistry {
@@ -7,7 +9,7 @@ class ActiveServiceScreenRegistry {
   static void markVisible({required String type, required int serviceId}) {
     _activeType = type;
     _activeServiceId = serviceId;
-    print(
+    AppLogger.d(
       '🧭 [ScreenRegistry] Pantalla activa visible: tipo=$type, servicio=$serviceId',
     );
   }
@@ -17,7 +19,7 @@ class ActiveServiceScreenRegistry {
     if (isSame) {
       _activeType = null;
       _activeServiceId = null;
-      print(
+      AppLogger.d(
         '🧭 [ScreenRegistry] Pantalla activa oculta: tipo=$type, servicio=$serviceId',
       );
     }

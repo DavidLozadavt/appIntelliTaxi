@@ -52,7 +52,10 @@ class ActiveServiceProvider extends ChangeNotifier {
     await _inicializarPersistencia();
   }
 
-  static Future<BitmapDescriptor> _createDotMarker(Color color, {double size = 28}) async {
+  static Future<BitmapDescriptor> _createDotMarker(
+    Color color, {
+    double size = 28,
+  }) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final s = size;
@@ -62,7 +65,7 @@ class ActiveServiceProvider extends ChangeNotifier {
       Offset(s / 2, s / 2 + 1),
       s / 3,
       Paint()
-        ..color = color.withOpacity(0.3)
+        ..color = color.withValues(alpha: 0.3)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
     // Círculo exterior (borde blanco)
@@ -72,11 +75,7 @@ class ActiveServiceProvider extends ChangeNotifier {
       Paint()..color = Colors.white,
     );
     // Círculo interior (color)
-    canvas.drawCircle(
-      Offset(s / 2, s / 2),
-      s / 4,
-      Paint()..color = color,
-    );
+    canvas.drawCircle(Offset(s / 2, s / 2), s / 4, Paint()..color = color);
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(s.toInt(), s.toInt());

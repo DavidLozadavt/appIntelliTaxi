@@ -3,8 +3,8 @@ import 'package:shimmer/shimmer.dart';
 
 Widget buildUserShimmer() {
   return ListView.separated(
-    itemCount: 6, 
-    separatorBuilder: (_, __) => Divider(
+    itemCount: 6,
+    separatorBuilder: (_, _) => Divider(
       height: 1,
       thickness: 0.5,
       color: Colors.grey.shade300,

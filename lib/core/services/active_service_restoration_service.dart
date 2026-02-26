@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 
 /// Servicio centralizado para verificar y restaurar servicios activos
@@ -11,7 +12,9 @@ class ActiveServiceRestorationService {
   /// Endpoint: GET /api/servicio-activo-conductor
   Future<Map<String, dynamic>?> verificarServicioActivoConductor() async {
     try {
-      print('🔍 [Restoration] Verificando servicio activo del conductor...');
+      AppLogger.d(
+        '🔍 [Restoration] Verificando servicio activo del conductor...',
+      );
 
       final response = await _dio.get('taxi/servicio-activo-conductor');
 
@@ -19,7 +22,7 @@ class ActiveServiceRestorationService {
         final data = response.data;
 
         if (data['success'] == true && data['data'] != null) {
-          print('✅ [Restoration] Servicio activo conductor encontrado');
+          AppLogger.d('✅ [Restoration] Servicio activo conductor encontrado');
 
           final servicio = _normalizarServicio(data['data']['servicio']);
           final vehiculo = data['data']['vehiculo'];
@@ -37,19 +40,21 @@ class ActiveServiceRestorationService {
         }
       }
 
-      print('ℹ️ [Restoration] No hay servicio activo del conductor');
+      AppLogger.d('ℹ️ [Restoration] No hay servicio activo del conductor');
       return null;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
-        print('ℹ️ [Restoration] No hay servicio activo del conductor (404)');
+        AppLogger.d(
+          'ℹ️ [Restoration] No hay servicio activo del conductor (404)',
+        );
         return null;
       }
-      print(
+      AppLogger.d(
         '⚠️ [Restoration] Error verificando servicio conductor: ${e.message}',
       );
       return null;
     } catch (e) {
-      print('⚠️ [Restoration] Error verificando servicio conductor: $e');
+      AppLogger.d('⚠️ [Restoration] Error verificando servicio conductor: $e');
       return null;
     }
   }
@@ -58,7 +63,9 @@ class ActiveServiceRestorationService {
   /// Endpoint: GET /api/servicio-activo-pasajero
   Future<Map<String, dynamic>?> verificarServicioActivoPasajero() async {
     try {
-      print('🔍 [Restoration] Verificando servicio activo del pasajero...');
+      AppLogger.d(
+        '🔍 [Restoration] Verificando servicio activo del pasajero...',
+      );
 
       final response = await _dio.get('taxi/servicio-activo-pasajero');
 
@@ -66,7 +73,7 @@ class ActiveServiceRestorationService {
         final data = response.data;
 
         if (data['success'] == true && data['data'] != null) {
-          print('✅ [Restoration] Servicio activo pasajero encontrado');
+          AppLogger.d('✅ [Restoration] Servicio activo pasajero encontrado');
 
           final servicio = _normalizarServicio(data['data']['servicio']);
           final conductor = data['data']['conductor'];
@@ -84,19 +91,21 @@ class ActiveServiceRestorationService {
         }
       }
 
-      print('ℹ️ [Restoration] No hay servicio activo del pasajero');
+      AppLogger.d('ℹ️ [Restoration] No hay servicio activo del pasajero');
       return null;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
-        print('ℹ️ [Restoration] No hay servicio activo del pasajero (404)');
+        AppLogger.d(
+          'ℹ️ [Restoration] No hay servicio activo del pasajero (404)',
+        );
         return null;
       }
-      print(
+      AppLogger.d(
         '⚠️ [Restoration] Error verificando servicio pasajero: ${e.message}',
       );
       return null;
     } catch (e) {
-      print('⚠️ [Restoration] Error verificando servicio pasajero: $e');
+      AppLogger.d('⚠️ [Restoration] Error verificando servicio pasajero: $e');
       return null;
     }
   }
@@ -107,12 +116,12 @@ class ActiveServiceRestorationService {
     AuthProvider authProvider,
   ) async {
     if (authProvider.user == null) {
-      print('⚠️ [Restoration] Usuario no autenticado');
+      AppLogger.d('⚠️ [Restoration] Usuario no autenticado');
       return null;
     }
 
     final roles = authProvider.roles;
-    print('🔍 [Restoration] Roles del usuario: $roles');
+    AppLogger.d('🔍 [Restoration] Roles del usuario: $roles');
 
     // Si es conductor, verificar servicio activo de conductor
     if (roles.contains('conductor') || roles.contains('CONDUCTOR')) {
@@ -132,7 +141,7 @@ class ActiveServiceRestorationService {
       }
     }
 
-    print('ℹ️ [Restoration] No hay servicios activos para este usuario');
+    AppLogger.d('ℹ️ [Restoration] No hay servicios activos para este usuario');
     return null;
   }
 
@@ -140,11 +149,11 @@ class ActiveServiceRestorationService {
   /// Backend usa: origenLat, destinoLat, etc.
   /// Flutter espera: origen_lat, destino_lat, etc.
   Map<String, dynamic> _normalizarServicio(Map<String, dynamic> servicio) {
-    print('🔧 [Restoration] Normalizando campos del servicio...');
-    print(
+    AppLogger.d('🔧 [Restoration] Normalizando campos del servicio...');
+    AppLogger.d(
       '   origenLat: ${servicio['origenLat']}, origenLng: ${servicio['origenLng']}',
     );
-    print(
+    AppLogger.d(
       '   destinoLat: ${servicio['destinoLat']}, destinoLng: ${servicio['destinoLng']}',
     );
 
@@ -182,7 +191,9 @@ class ActiveServiceRestorationService {
 
     // Si finServicio no es null, el servicio ya terminó
     if (finServicio != null) {
-      print('ℹ️ [Restoration] Servicio terminado (finServicio: $finServicio)');
+      AppLogger.d(
+        'ℹ️ [Restoration] Servicio terminado (finServicio: $finServicio)',
+      );
       return false;
     }
 
@@ -195,7 +206,7 @@ class ActiveServiceRestorationService {
     ]; // Ejemplo: 5=cancelado, 6=finalizado, 7=rechazado
 
     if (idEstado != null && estadosInactivos.contains(idEstado)) {
-      print('ℹ️ [Restoration] Servicio con estado inactivo: $idEstado');
+      AppLogger.d('ℹ️ [Restoration] Servicio con estado inactivo: $idEstado');
       return false;
     }
 

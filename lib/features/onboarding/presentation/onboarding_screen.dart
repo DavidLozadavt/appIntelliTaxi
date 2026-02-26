@@ -81,7 +81,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: TextButton(
                   onPressed: _skipOnboarding,
                   style: TextButton.styleFrom(
-                    backgroundColor: Colors.black.withOpacity(0.2),
+                    backgroundColor: Colors.black.withValues(alpha: 0.2),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 18,
                       vertical: 8,
@@ -127,7 +127,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           decoration: BoxDecoration(
                             color: _currentPage == index
                                 ? Colors.white
-                                : Colors.white.withOpacity(0.3),
+                                : Colors.white.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
@@ -146,7 +146,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           backgroundColor: Colors.white,
                           foregroundColor: Colors.grey.shade800,
                           elevation: 4,
-                          shadowColor: Colors.black.withOpacity(0.2),
+                          shadowColor: Colors.black.withValues(alpha: 0.2),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),

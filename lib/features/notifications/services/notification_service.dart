@@ -4,7 +4,6 @@ import 'package:intellitaxi/core/dio_client.dart';
 import '../data/notification_model.dart';
 
 class NotificationService {
-
   final Dio _dio = DioClient.getInstance();
 
   Future<List<NotificationModel>> fetchNotifications() async {
@@ -15,12 +14,12 @@ class NotificationService {
         final List<dynamic> data = response.data;
         return data.map((json) => NotificationModel.fromJson(json)).toList();
       } else {
-        throw Exception("Error al obtener notificaciones: ${response.statusCode}");
+        throw Exception(
+          "Error al obtener notificaciones: ${response.statusCode}",
+        );
       }
     } on DioException catch (e) {
       throw Exception("Error en la petición: ${e.message}");
     }
   }
-
- 
 }

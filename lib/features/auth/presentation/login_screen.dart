@@ -36,10 +36,12 @@ class _LoginScreenState extends State<LoginScreen> {
           rememberMe: _rememberMe,
         );
 
+        if (!mounted) return;
         if (success) {
           Navigator.pushReplacementNamed(context, '/home');
         }
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -50,6 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _loadSavedCredentials() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final creds = await authProvider.getSavedCredentials();
+    if (!mounted) return;
     if (creds != null) {
       setState(() {
         _emailController.text = creds['email'] ?? '';

@@ -34,15 +34,14 @@ class StandardMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GoogleMap(
-      onMapCreated: (GoogleMapController controller) {
-        _setMapStyle(context, controller);
-        onMapCreated(controller);
-      },
+      onMapCreated: onMapCreated,
       initialCameraPosition: CameraPosition(
         target: initialPosition,
         zoom: zoom,
       ),
+      style: isDark ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
       markers: markers,
       polylines: polylines,
       myLocationEnabled: myLocationEnabled,
@@ -54,19 +53,5 @@ class StandardMap extends StatelessWidget {
       onCameraIdle: onCameraIdle,
       padding: const EdgeInsets.only(top: 80, bottom: 100),
     );
-  }
-
-  Future<void> _setMapStyle(
-    BuildContext context,
-    GoogleMapController controller,
-  ) async {
-    try {
-      final isDark = Theme.of(context).brightness == Brightness.dark;
-      await controller.setMapStyle(
-        isDark ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
-      );
-    } catch (e) {
-      debugPrint('Error aplicando estilo del mapa: $e');
-    }
   }
 }

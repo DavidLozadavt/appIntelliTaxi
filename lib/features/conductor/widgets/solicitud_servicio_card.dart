@@ -82,7 +82,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 10,
                 spreadRadius: 0,
                 offset: const Offset(0, 4),
@@ -110,7 +110,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -150,8 +150,8 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                         ),
                         decoration: BoxDecoration(
                           color: enRiesgo
-                              ? Colors.red.withOpacity(0.9)
-                              : Colors.black.withOpacity(0.25),
+                              ? Colors.red.withValues(alpha: 0.9)
+                              : Colors.black.withValues(alpha: 0.25),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -182,12 +182,12 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                                 radius: 22,
                                 backgroundImage: NetworkImage(pasajeroFoto),
                                 backgroundColor: Colors.grey.shade300,
-                                onBackgroundImageError: (_, __) {},
+                                onBackgroundImageError: (_, _) {},
                               )
                             : CircleAvatar(
                                 radius: 22,
-                                backgroundColor: AppColors.accent.withOpacity(
-                                  0.1,
+                                backgroundColor: AppColors.accent.withValues(
+                                  alpha: 0.1,
                                 ),
                                 child: Icon(
                                   Iconsax.user_copy,
@@ -227,8 +227,8 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           ),
                           decoration: BoxDecoration(
                             color: claseVehiculo == 'taxi'
-                                ? Colors.orange.withOpacity(0.1)
-                                : Colors.green.withOpacity(0.1),
+                                ? Colors.orange.withValues(alpha: 0.1)
+                                : Colors.green.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -336,9 +336,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
+                        color: Colors.blue.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                        border: Border.all(
+                          color: Colors.blue.withValues(alpha: 0.3),
+                        ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,

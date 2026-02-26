@@ -29,7 +29,7 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
   Timer? _timer;
   final ValueNotifier<int> _remainingSeconds = ValueNotifier(120);
   final ValueNotifier<int> _dotCount = ValueNotifier(0);
-  
+
   late AnimationController _pulseController;
   late AnimationController _rotateController;
   late AnimationController _scaleController;
@@ -40,13 +40,13 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
   @override
   void initState() {
     super.initState();
-    
+
     // Animación de pulso para el icono
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
@@ -56,29 +56,30 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
       duration: const Duration(seconds: 3),
       vsync: this,
     )..repeat();
-    
-    _rotateAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _rotateController, curve: Curves.linear),
-    );
+
+    _rotateAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _rotateController, curve: Curves.linear));
 
     // Animación de escala para entrada
     _scaleController = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
     );
-    
+
     _scaleAnimation = CurvedAnimation(
       parent: _scaleController,
       curve: Curves.easeOutBack,
     );
-    
+
     _scaleController.forward();
 
     // Timer
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _remainingSeconds.value--;
       _dotCount.value = (_dotCount.value + 1) % 4;
-      
+
       if (_remainingSeconds.value <= 0) {
         timer.cancel();
         if (mounted) {
@@ -104,8 +105,8 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = widget.isDelivery ? Colors.green : AppColors.accent;
 
-    return WillPopScope(
-      onWillPop: () async => true,
+    return PopScope(
+      canPop: true,
       child: Dialog(
         backgroundColor: Colors.transparent,
         child: ScaleTransition(
@@ -129,7 +130,7 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
+                    color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 20,
                     spreadRadius: 2,
                   ),
@@ -140,7 +141,7 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
                 children: [
                   // Icono animado con pulso y anillos
                   _buildAnimatedIcon(primaryColor),
-                  
+
                   const SizedBox(height: 32),
 
                   // Texto principal con fade in
@@ -166,17 +167,14 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   TweenAnimationBuilder<double>(
                     duration: const Duration(milliseconds: 800),
                     tween: Tween(begin: 0.0, end: 1.0),
                     builder: (context, value, child) {
-                      return Opacity(
-                        opacity: value,
-                        child: child,
-                      );
+                      return Opacity(opacity: value, child: child);
                     },
                     child: Text(
                       widget.isDelivery
@@ -184,28 +182,30 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
                           : 'Conectando con conductores\ncercanos a tu ubicación',
                       style: TextStyle(
                         fontSize: 15,
-                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                        color: isDark
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade600,
                         height: 1.4,
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  
+
                   const SizedBox(height: 40),
 
                   // Barra de progreso circular animada
                   _buildProgressIndicator(primaryColor),
-                  
+
                   const SizedBox(height: 32),
 
                   // Contador con efecto
                   _buildTimer(primaryColor, isDark),
-                  
+
                   const SizedBox(height: 20),
 
                   // Indicador de puntos
                   _buildDotIndicator(primaryColor, isDark),
-                  
+
                   const SizedBox(height: 24),
 
                   // Botón cancelar con hover
@@ -233,14 +233,16 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: primaryColor.withOpacity(0.3 / _pulseAnimation.value),
+                  color: primaryColor.withValues(
+                    alpha: 0.3 / _pulseAnimation.value,
+                  ),
                   width: 2,
                 ),
               ),
             );
           },
         ),
-        
+
         // Segundo anillo con delay
         AnimatedBuilder(
           animation: _pulseAnimation,
@@ -252,8 +254,8 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: primaryColor.withOpacity(
-                    0.2 / delayedValue.clamp(1.0, 1.15),
+                  color: primaryColor.withValues(
+                    alpha: 0.2 / delayedValue.clamp(1.0, 1.15),
                   ),
                   width: 2,
                 ),
@@ -261,7 +263,7 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
             );
           },
         ),
-        
+
         // Icono principal con pulso
         AnimatedBuilder(
           animation: _pulseAnimation,
@@ -276,7 +278,7 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
                   color: primaryColor,
                   boxShadow: [
                     BoxShadow(
-                      color: primaryColor.withOpacity(0.4),
+                      color: primaryColor.withValues(alpha: 0.4),
                       blurRadius: 15 * _pulseAnimation.value,
                       spreadRadius: 2,
                     ),
@@ -316,7 +318,7 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
                   value: 1.0,
                   strokeWidth: 6,
                   valueColor: AlwaysStoppedAnimation(
-                    primaryColor.withOpacity(0.1),
+                    primaryColor.withValues(alpha: 0.1),
                   ),
                 ),
               ),
@@ -422,10 +424,7 @@ class _RequestingServiceModalState extends State<RequestingServiceModal>
       child: TextButton(
         onPressed: () => Navigator.pop(context),
         style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 32,
-            vertical: 12,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),

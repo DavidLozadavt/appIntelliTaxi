@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intellitaxi/features/auth/services/auth_interceptor.dart';
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/core/interceptors/retry_interceptor.dart';
 
 class DioClient {
   static Dio? _dio;
@@ -26,18 +28,21 @@ class DioClient {
       );
 
       _dio!.interceptors.add(AuthInterceptor());
+      _dio!.interceptors.add(RetryInterceptor(dio: _dio!));
 
-      // Log interceptor para debugging (opcional)
-      _dio!.interceptors.add(
-        LogInterceptor(
-          requestBody: true,
-          responseBody: true,
-          error: true,
-          requestHeader: true,
-          responseHeader: false,
-          request: false,
-        ),
-      );
+      // Log interceptor solo en debug.
+      if (kDebugMode) {
+        _dio!.interceptors.add(
+          LogInterceptor(
+            requestBody: true,
+            responseBody: true,
+            error: true,
+            requestHeader: true,
+            responseHeader: false,
+            request: false,
+          ),
+        );
+      }
     }
     return _dio!;
   }

@@ -30,7 +30,7 @@ class _HistorialServiciosPasajeroScreenState
   bool _isLoadingMore = false;
   String? _error;
   int _currentPage = 1;
-  String _filtroSeleccionado = 'hoy'; // Filtro por defecto
+  final String _filtroSeleccionado = 'hoy'; // Filtro por defecto
 
   @override
   void initState() {
@@ -106,7 +106,6 @@ class _HistorialServiciosPasajeroScreenState
     }
   }
 
- 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -195,7 +194,7 @@ class _HistorialServiciosPasajeroScreenState
         border: Border.all(color: Colors.grey.shade200, width: 0.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -447,7 +446,7 @@ class _HistorialServiciosPasajeroScreenState
                     border: Border.all(color: Colors.grey.shade300, width: 2),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -681,13 +680,16 @@ class _HistorialServiciosPasajeroScreenState
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [color.withOpacity(0.08), color.withOpacity(0.03)],
+          colors: [
+            color.withValues(alpha: 0.08),
+            color.withValues(alpha: 0.03),
+          ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.2), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -705,12 +707,15 @@ class _HistorialServiciosPasajeroScreenState
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [color.withOpacity(0.2), color.withOpacity(0.3)],
+                  colors: [
+                    color.withValues(alpha: 0.2),
+                    color.withValues(alpha: 0.3),
+                  ],
                 ),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: color.withOpacity(0.3),
+                    color: color.withValues(alpha: 0.3),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),

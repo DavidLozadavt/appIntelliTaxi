@@ -11,6 +11,7 @@ import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -267,7 +268,7 @@ class _PasajeroEsperandoConductorScreenState
         ),
       );
     } catch (e) {
-      print('❌ Error cancelando servicio: $e');
+      AppLogger.d('❌ Error cancelando servicio: $e');
 
       if (!mounted) return;
 
@@ -306,7 +307,7 @@ class _PasajeroEsperandoConductorScreenState
 
           return PopScope(
             canPop: false,
-            onPopInvoked: (didPop) {
+            onPopInvokedWithResult: (didPop, _) {
               if (!didPop) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -552,7 +553,7 @@ class _PasajeroEsperandoConductorScreenState
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: Colors.black.withValues(alpha: 0.15),
             blurRadius: 15,
             offset: const Offset(0, -3),
           ),
@@ -574,7 +575,7 @@ class _PasajeroEsperandoConductorScreenState
                 width: 50,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.5),
+                  color: AppColors.primary.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -613,7 +614,7 @@ class _PasajeroEsperandoConductorScreenState
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: (info['color'] as Color).withOpacity(0.1),
+                color: (info['color'] as Color).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -648,9 +649,12 @@ class _PasajeroEsperandoConductorScreenState
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.08),
+        color: AppColors.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withOpacity(0.2), width: 1),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.2),
+          width: 1,
+        ),
       ),
       child: Row(
         children: [
@@ -659,10 +663,12 @@ class _PasajeroEsperandoConductorScreenState
                   conductor!['conductor_foto'].toString().isNotEmpty
               ? CircleAvatar(
                   radius: 22,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                   backgroundImage: NetworkImage(conductor['conductor_foto']),
                   onBackgroundImageError: (exception, stackTrace) {
-                    print('⚠️ Error cargando foto del conductor: $exception');
+                    AppLogger.d(
+                      '⚠️ Error cargando foto del conductor: $exception',
+                    );
                   },
                 )
               : CircleAvatar(

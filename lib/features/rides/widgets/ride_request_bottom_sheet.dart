@@ -58,13 +58,13 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
       duration: const Duration(milliseconds: 300),
     );
 
-    _heightAnimation = Tween<double>(
-      begin: _minHeight,
-      end: _maxHeight,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
+    _heightAnimation = Tween<double>(begin: _minHeight, end: _maxHeight)
+        .animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeInOut,
+          ),
+        );
 
     // Listeners para búsqueda
     _originController.addListener(_onOriginChanged);
@@ -101,9 +101,9 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
 
     setState(() => _isSearchingOrigin = true);
 
-    _placesService
-        .getAutocompletePredictions(_originController.text)
-        .then((predictions) {
+    _placesService.getAutocompletePredictions(_originController.text).then((
+      predictions,
+    ) {
       if (mounted) {
         setState(() {
           _originPredictions = predictions;
@@ -124,16 +124,16 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
 
     setState(() => _isSearchingDestination = true);
 
-    _placesService
-        .getAutocompletePredictions(_destinationController.text)
-        .then((predictions) {
-      if (mounted) {
-        setState(() {
-          _destinationPredictions = predictions;
-          _isSearchingDestination = false;
-        });
-      }
-    });
+    _placesService.getAutocompletePredictions(_destinationController.text).then(
+      (predictions) {
+        if (mounted) {
+          setState(() {
+            _destinationPredictions = predictions;
+            _isSearchingDestination = false;
+          });
+        }
+      },
+    );
   }
 
   Future<void> _selectOrigin(PlacePrediction prediction) async {
@@ -206,7 +206,7 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 20,
                   offset: const Offset(0, -5),
                 ),
@@ -227,7 +227,10 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
 
                 // Título
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
                       const Text(
@@ -302,7 +305,8 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
                         width: double.infinity,
                         height: 56,
                         child: ElevatedButton(
-                          onPressed: _selectedOrigin != null &&
+                          onPressed:
+                              _selectedOrigin != null &&
                                   _selectedDestination != null
                               ? _confirmTrip
                               : null,
@@ -385,10 +389,7 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
           decoration: BoxDecoration(
             color: Colors.grey.shade100,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.grey.shade300,
-              width: 1,
-            ),
+            border: Border.all(color: Colors.grey.shade300, width: 1),
           ),
           child: TextField(
             controller: controller,
@@ -414,9 +415,7 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
         if (isSearching)
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Center(
-              child: CircularProgressIndicator(),
-            ),
+            child: Center(child: CircularProgressIndicator()),
           ),
 
         if (!isSearching && predictions.isNotEmpty)
@@ -425,10 +424,7 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.grey.shade300,
-                width: 1,
-              ),
+              border: Border.all(color: Colors.grey.shade300, width: 1),
             ),
             child: ListView.separated(
               shrinkWrap: true,
@@ -444,16 +440,11 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
                   ),
                   title: Text(
                     prediction.mainText,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   subtitle: Text(
                     prediction.secondaryText,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                   onTap: () => onSelectPrediction(prediction),
                 );

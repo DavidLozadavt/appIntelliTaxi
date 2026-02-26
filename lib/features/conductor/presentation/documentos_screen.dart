@@ -8,6 +8,7 @@ import 'package:intellitaxi/features/conductor/data/documento_conductor_model.da
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class DocumentosScreen extends StatefulWidget {
   const DocumentosScreen({super.key});
@@ -45,7 +46,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print(' Error cargando documentos: $e');
+      AppLogger.d(' Error cargando documentos: $e');
       setState(() => _isLoading = false);
 
       if (mounted) {
@@ -403,7 +404,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: estadoColor.withOpacity(0.15),
+                            color: estadoColor.withValues(alpha: 0.15),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
@@ -494,10 +495,10 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: estadoColor.withOpacity(0.1),
+                    color: estadoColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: estadoColor.withOpacity(0.3),
+                      color: estadoColor.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -554,7 +555,7 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
       try {
         _selectedDate = DateTime.parse(widget.documento.fechaVigencia!);
       } catch (e) {
-        print('Error parsing date: $e');
+        AppLogger.d('Error parsing date: $e');
       }
     }
   }
@@ -574,10 +575,10 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
-    final initialDate = _selectedDate != null && _selectedDate!.isAfter(now) 
-        ? _selectedDate! 
+    final initialDate = _selectedDate != null && _selectedDate!.isAfter(now)
+        ? _selectedDate!
         : now;
-    
+
     final picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
@@ -679,7 +680,7 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -689,7 +690,7 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(
@@ -715,7 +716,7 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                             widget.documento.tipoDocumento.tituloDocumento,
                             style: TextStyle(
                               fontSize: 14,
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                             ),
                           ),
                         ],
@@ -759,7 +760,7 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                         widget.documento.rutaUrl,
                         height: 150,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) =>
+                        errorBuilder: (_, _, _) =>
                             const Icon(Iconsax.document_copy, size: 100),
                       ),
                     ),
@@ -789,7 +790,7 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                             : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: AppColors.accent.withOpacity(0.5),
+                          color: AppColors.accent.withValues(alpha: 0.5),
                           width: 2,
                           style: BorderStyle.solid,
                         ),
@@ -849,7 +850,7 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                             : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: AppColors.accent.withOpacity(0.3),
+                          color: AppColors.accent.withValues(alpha: 0.3),
                         ),
                       ),
                       child: Row(

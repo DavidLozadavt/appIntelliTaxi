@@ -5,6 +5,7 @@ import 'package:intellitaxi/features/conductor/data/turno_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ConductorService {
   final Dio _dio = DioClient.getInstance();
@@ -25,7 +26,7 @@ class ConductorService {
         throw Exception('Error al obtener documentos: ${response.statusCode}');
       }
     } catch (e) {
-      print('⚠️ Error obteniendo documentos del conductor: $e');
+      AppLogger.d('⚠️ Error obteniendo documentos del conductor: $e');
       rethrow;
     }
   }
@@ -42,7 +43,7 @@ class ConductorService {
         throw Exception('Error al obtener vehículos: ${response.statusCode}');
       }
     } catch (e) {
-      print('⚠️ Error obteniendo vehículos del conductor: $e');
+      AppLogger.d('⚠️ Error obteniendo vehículos del conductor: $e');
       rethrow;
     }
   }
@@ -76,7 +77,7 @@ class ConductorService {
         throw Exception('Error al obtener alertas: ${response.statusCode}');
       }
     } catch (e) {
-      print('⚠️ Error verificando documentos: $e');
+      AppLogger.d('⚠️ Error verificando documentos: $e');
       return {'vencidos': [], 'porVencer': []};
     }
   }
@@ -95,7 +96,7 @@ class ConductorService {
         'lng': ?lng,
       };
 
-      print('🚀 Iniciando turno con datos: $requestData');
+      AppLogger.d('🚀 Iniciando turno con datos: $requestData');
 
       final response = await _dio.post('turnos', data: requestData);
 
@@ -110,7 +111,7 @@ class ConductorService {
         throw Exception('Error al iniciar turno: ${response.statusCode}');
       }
     } catch (e) {
-      print('⚠️ Error iniciando turno: $e');
+      AppLogger.d('⚠️ Error iniciando turno: $e');
       rethrow;
     }
   }
@@ -124,7 +125,7 @@ class ConductorService {
         throw Exception('Error al finalizar turno: ${response.statusCode}');
       }
     } catch (e) {
-      print('⚠️ Error finalizando turno: $e');
+      AppLogger.d('⚠️ Error finalizando turno: $e');
       rethrow;
     }
   }
@@ -139,7 +140,7 @@ class ConductorService {
       }
       return null;
     } catch (e) {
-      print('⚠️ Error obteniendo turno activo: $e');
+      AppLogger.d('⚠️ Error obteniendo turno activo: $e');
       return null;
     }
   }
@@ -168,7 +169,7 @@ class ConductorService {
         );
       }
     } catch (e) {
-      print('⚠️ Error actualizando documento: $e');
+      AppLogger.d('⚠️ Error actualizando documento: $e');
       rethrow;
     }
   }
@@ -197,7 +198,7 @@ class ConductorService {
       int? servicioIdNumerico;
       if (servicioId.startsWith('temp_')) {
         // Si es temporal, intentar extraer el timestamp o usar null
-        print('⚠️ ID temporal detectado: $servicioId');
+        AppLogger.d('⚠️ ID temporal detectado: $servicioId');
         // No podemos enviar un ID temporal al backend
         throw Exception('No se puede aceptar una solicitud con ID temporal');
       } else {
@@ -207,11 +208,11 @@ class ConductorService {
         }
       }
 
-      print('📤 Enviando aceptación de solicitud:');
-      print('   servicio_id: $servicioIdNumerico');
-      print('   conductor_id: $conductorId (de sesión)');
-      print('   precio_ofertado: $precioOfertado');
-      if (mensaje != null) print('   mensaje: $mensaje');
+      AppLogger.d('📤 Enviando aceptación de solicitud:');
+      AppLogger.d('   servicio_id: $servicioIdNumerico');
+      AppLogger.d('   conductor_id: $conductorId (de sesión)');
+      AppLogger.d('   precio_ofertado: $precioOfertado');
+      if (mensaje != null) AppLogger.d('   mensaje: $mensaje');
 
       final response = await _dio.post(
         'taxi/solicitud/aceptar',
@@ -233,11 +234,11 @@ class ConductorService {
         ),
       );
 
-      print('✅ Respuesta del servidor: ${response.statusCode}');
-      print('📦 Data: ${response.data}');
+      AppLogger.d('✅ Respuesta del servidor: ${response.statusCode}');
+      AppLogger.d('📦 Data: ${response.data}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        print('✅ Solicitud aceptada exitosamente');
+        AppLogger.d('✅ Solicitud aceptada exitosamente');
         return response.data is Map<String, dynamic>
             ? response.data
             : {'success': true, 'data': response.data};
@@ -245,10 +246,10 @@ class ConductorService {
         throw Exception('Error al aceptar solicitud: ${response.statusCode}');
       }
     } on DioException catch (e) {
-      print('⚠️ DioException al aceptar solicitud:');
-      print('   Status: ${e.response?.statusCode}');
-      print('   Message: ${e.message}');
-      print('   Response: ${e.response?.data}');
+      AppLogger.d('⚠️ DioException al aceptar solicitud:');
+      AppLogger.d('   Status: ${e.response?.statusCode}');
+      AppLogger.d('   Message: ${e.message}');
+      AppLogger.d('   Response: ${e.response?.data}');
 
       if (e.response?.statusCode == 302) {
         throw Exception(
@@ -266,7 +267,7 @@ class ConductorService {
 
       rethrow;
     } catch (e) {
-      print('⚠️ Error aceptando solicitud: $e');
+      AppLogger.d('⚠️ Error aceptando solicitud: $e');
       rethrow;
     }
   }
@@ -277,21 +278,21 @@ class ConductorService {
     required String motivo,
   }) async {
     try {
-      print('📤 Cancelando servicio:');
-      print('   servicio_id: $servicioId');
-      print('   motivo: $motivo');
+      AppLogger.d('📤 Cancelando servicio:');
+      AppLogger.d('   servicio_id: $servicioId');
+      AppLogger.d('   motivo: $motivo');
 
       final response = await _dio.post(
         'taxi/servicio/cancelar',
         data: {'servicio_id': servicioId, 'motivo': motivo},
       );
 
-      print('✅ Servicio cancelado exitosamente');
+      AppLogger.d('✅ Servicio cancelado exitosamente');
       return response.data is Map<String, dynamic>
           ? response.data
           : {'success': true};
     } catch (e) {
-      print('❌ Error cancelando servicio: $e');
+      AppLogger.d('❌ Error cancelando servicio: $e');
       rethrow;
     }
   }

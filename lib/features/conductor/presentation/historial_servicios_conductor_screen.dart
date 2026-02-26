@@ -229,7 +229,7 @@ class _HistorialServiciosConductorScreenState
         border: Border.all(color: Colors.grey.shade200, width: 0.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -481,7 +481,7 @@ class _HistorialServiciosConductorScreenState
                     border: Border.all(color: Colors.grey.shade300, width: 2),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -644,7 +644,7 @@ class _HistorialServiciosConductorScreenState
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -691,7 +691,7 @@ class _HistorialServiciosConductorScreenState
         }
       },
       backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-      selectedColor: AppColors.accent.withOpacity(0.2),
+      selectedColor: AppColors.accent.withValues(alpha: 0.2),
       checkmarkColor: AppColors.accent,
       labelStyle: TextStyle(
         fontSize: 12,
@@ -719,12 +719,12 @@ class _HistorialServiciosConductorScreenState
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppColors.accent, AppColors.accent.withOpacity(0.8)],
+          colors: [AppColors.accent, AppColors.accent.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accent.withOpacity(0.3),
+            color: AppColors.accent.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -759,7 +759,7 @@ class _HistorialServiciosConductorScreenState
               Container(
                 width: 1,
                 height: 60,
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
               ),
               _buildKPIItem(
                 'Servicios',
@@ -770,7 +770,7 @@ class _HistorialServiciosConductorScreenState
               Container(
                 width: 1,
                 height: 60,
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
               ),
               _buildKPIItem(
                 'Rating',
@@ -794,7 +794,7 @@ class _HistorialServiciosConductorScreenState
   ) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white.withOpacity(0.9), size: 28),
+        Icon(icon, color: Colors.white.withValues(alpha: 0.9), size: 28),
         const SizedBox(height: 8),
         Text(
           valor,
@@ -809,7 +809,7 @@ class _HistorialServiciosConductorScreenState
         Text(
           titulo,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.9),
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
@@ -819,7 +819,7 @@ class _HistorialServiciosConductorScreenState
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
@@ -923,10 +923,10 @@ class _HistorialServiciosConductorScreenState
       decoration: BoxDecoration(
         color: isDark ? Colors.grey.shade900 : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+        border: Border.all(color: color.withValues(alpha: 0.2), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -942,7 +942,7 @@ class _HistorialServiciosConductorScreenState
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: color, size: 20),
@@ -951,8 +951,8 @@ class _HistorialServiciosConductorScreenState
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: isPositivo
-                      ? Colors.green.withOpacity(0.1)
-                      : Colors.red.withOpacity(0.1),
+                      ? Colors.green.withValues(alpha: 0.1)
+                      : Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
@@ -1024,7 +1024,7 @@ class _HistorialServiciosConductorScreenState
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1098,7 +1098,7 @@ class _HistorialServiciosConductorScreenState
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: color, size: 18),

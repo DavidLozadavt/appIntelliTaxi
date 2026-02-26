@@ -25,7 +25,9 @@ class _SplashScreenState extends State<SplashScreen>
   final String _fullText = "Bienvenido a IntelliTaxi";
   Timer? _typewriterStartTimer;
   Timer? _typewriterTimer;
+  Timer? _navigationWatchdogTimer;
   int _currentTypewriterIndex = 0;
+  bool _hasNavigated = false;
 
   @override
   void initState() {
@@ -68,6 +70,11 @@ class _SplashScreenState extends State<SplashScreen>
       _startTypewriter();
     });
 
+    // Evita quedarse bloqueado en splash si falla cualquier async de inicio.
+    _navigationWatchdogTimer = Timer(const Duration(seconds: 8), () {
+      _navigateToLogin();
+    });
+
     _checkLogin();
   }
 
@@ -99,27 +106,59 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkLogin() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final token = await authProvider.getSavedToken();
-    await Future.delayed(const Duration(seconds: 4));
-    if (!mounted) return;
-    if (token != null) {
-      await authProvider.loadUserFromStorage();
-      if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
-    } else {
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+    final sw = Stopwatch()..start();
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final token = await authProvider.getSavedToken().timeout(
+        const Duration(seconds: 3),
       );
+      debugPrint('⏱️ [Splash] token en ${sw.elapsedMilliseconds}ms');
+
+      await Future.delayed(const Duration(seconds: 4));
+      if (!mounted || _hasNavigated) return;
+
+      if (token != null) {
+        await authProvider.loadUserFromStorage().timeout(
+          const Duration(seconds: 3),
+        );
+        debugPrint(
+          '✅ [Splash] user cargado en ${sw.elapsedMilliseconds}ms, yendo home',
+        );
+        _navigateToHome();
+      } else {
+        debugPrint('ℹ️ [Splash] sin token en ${sw.elapsedMilliseconds}ms');
+        _navigateToLogin();
+      }
+    } catch (_) {
+      debugPrint('⚠️ [Splash] fallback login en ${sw.elapsedMilliseconds}ms');
+      _navigateToLogin();
+    } finally {
+      sw.stop();
     }
+  }
+
+  void _navigateToHome() {
+    if (!mounted || _hasNavigated) return;
+    _hasNavigated = true;
+    _navigationWatchdogTimer?.cancel();
+    Navigator.pushReplacementNamed(context, '/home');
+  }
+
+  void _navigateToLogin() {
+    if (!mounted || _hasNavigated) return;
+    _hasNavigated = true;
+    _navigationWatchdogTimer?.cancel();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
   }
 
   @override
   void dispose() {
     _typewriterStartTimer?.cancel();
     _typewriterTimer?.cancel();
+    _navigationWatchdogTimer?.cancel();
     _controller.dispose();
     _typewriterController.dispose();
     _glowController.dispose();
@@ -145,8 +184,8 @@ class _SplashScreenState extends State<SplashScreen>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.orange.withOpacity(
-                          _glowAnimation.value * 0.2,
+                        color: Colors.orange.withValues(
+                          alpha: _glowAnimation.value * 0.2,
                         ),
                         blurRadius: 20 * _glowAnimation.value,
                         spreadRadius: 8 * _glowAnimation.value,
@@ -191,7 +230,7 @@ class _SplashScreenState extends State<SplashScreen>
                       letterSpacing: 1.5,
                       shadows: [
                         Shadow(
-                          color: Colors.orange.withOpacity(0.2),
+                          color: Colors.orange.withValues(alpha: 0.2),
                           blurRadius: 5,
                           offset: const Offset(0, 2),
                         ),
@@ -253,7 +292,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.orange.withOpacity(0.3),
+                            color: Colors.orange.withValues(alpha: 0.3),
                             blurRadius: 5,
                             spreadRadius: 1,
                           ),

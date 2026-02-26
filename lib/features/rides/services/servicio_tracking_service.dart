@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/background_location_service.dart';
 import 'package:intellitaxi/core/services/location_tracking_config.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para rastrear la ubicación del conductor durante un servicio activo
 class ServicioTrackingService {
@@ -29,7 +30,7 @@ class ServicioTrackingService {
   }) async {
     final hasPermission = await _ensureLocationPermission();
     if (!hasPermission) {
-      print('⚠️ Permiso de ubicacion denegado. No se inicia tracking.');
+      AppLogger.d('⚠️ Permiso de ubicacion denegado. No se inicia tracking.');
       return;
     }
 
@@ -37,7 +38,7 @@ class ServicioTrackingService {
     _conductorId = conductorId;
     _isTracking = true;
 
-    print('✅ Iniciando seguimiento para servicio $_servicioId');
+    AppLogger.d('✅ Iniciando seguimiento para servicio $_servicioId');
 
     // Android: activar servicio foreground para mantener tracking en background.
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -83,7 +84,7 @@ class ServicioTrackingService {
     _servicioId = null;
     _conductorId = null;
     _lastPosition = null;
-    print('🛑 Seguimiento detenido');
+    AppLogger.d('🛑 Seguimiento detenido');
   }
 
   /// Enviar ubicación actual al backend
@@ -109,7 +110,9 @@ class ServicioTrackingService {
 
         // Si no se ha movido lo suficiente y la velocidad es baja, no enviar
         if (distancia < _distanciaMinima && position.speed < 1.0) {
-          print('⏭️ Ubicación sin cambios significativos, omitiendo envío');
+          AppLogger.d(
+            '⏭️ Ubicación sin cambios significativos, omitiendo envío',
+          );
           return;
         }
       }
@@ -127,11 +130,11 @@ class ServicioTrackingService {
       );
 
       _lastPosition = position;
-      print(
+      AppLogger.d(
         '📍 Ubicación enviada: ${position.latitude}, ${position.longitude} | Velocidad: ${position.speed.toStringAsFixed(1)} m/s',
       );
     } catch (e) {
-      print('⚠️ Error enviando ubicación: $e');
+      AppLogger.d('⚠️ Error enviando ubicación: $e');
     }
   }
 
@@ -151,10 +154,10 @@ class ServicioTrackingService {
         },
       );
 
-      print('✅ Estado cambiado a: $estado');
+      AppLogger.d('✅ Estado cambiado a: $estado');
       return true;
     } catch (e) {
-      print('❌ Error cambiando estado: $e');
+      AppLogger.d('❌ Error cambiando estado: $e');
       return false;
     }
   }
@@ -176,10 +179,10 @@ class ServicioTrackingService {
         },
       );
 
-      print('✅ Estado cambiado a: $estado');
+      AppLogger.d('✅ Estado cambiado a: $estado');
       return true;
     } catch (e) {
-      print('❌ Error cambiando estado: $e');
+      AppLogger.d('❌ Error cambiando estado: $e');
       return false;
     }
   }

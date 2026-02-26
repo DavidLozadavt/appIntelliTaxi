@@ -24,7 +24,7 @@ Widget buildMessageBubble(MessageModel msg, bool isMe) {
             gradient: isMe
                 ? LinearGradient(
                     colors: [
-                      AppColors.accent.withOpacity(0.80),
+                      AppColors.accent.withValues(alpha: 0.80),
                       AppColors.primary,
                     ],
                     begin: Alignment.topLeft,
@@ -44,7 +44,7 @@ Widget buildMessageBubble(MessageModel msg, bool isMe) {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 4,
                 offset: const Offset(2, 2),
               ),

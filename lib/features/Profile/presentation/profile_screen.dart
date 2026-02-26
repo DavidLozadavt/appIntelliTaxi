@@ -1,4 +1,3 @@
-
 import 'package:intellitaxi/features/Profile/presentation/profile_body_screen.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/shared/loading_screen.dart';
@@ -21,12 +20,10 @@ class _ProfileTabState extends State<ProfileTab>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
 
-    Future.microtask(
-      () => Provider.of<AuthProvider>(
-        context,
-        listen: false,
-      ).loadUserFromStorage(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AuthProvider>().loadUserFromStorage();
+    });
   }
 
   @override
@@ -61,13 +58,11 @@ class _ProfileTabState extends State<ProfileTab>
                 icon: const Icon(Icons.power_settings_new),
                 onPressed: () async {
                   await authProvider.logout();
-                  if (mounted) {
-                    Navigator.pushReplacementNamed(context, '/login');
-                  }
+                  if (!context.mounted) return;
+                  Navigator.pushReplacementNamed(context, '/login');
                 },
               ),
             ],
-         
           ),
           body: ProfileBodyScreen(
             company: company,

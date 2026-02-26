@@ -1,3 +1,5 @@
+// ignore_for_file: file_names
+
 import 'package:flutter/material.dart';
 
 class TabItem {
@@ -8,6 +10,6 @@ class TabItem {
   TabItem({
     required this.page,
     required this.navItem,
-    this.allowedRoles = const [], 
+    this.allowedRoles = const [],
   });
 }

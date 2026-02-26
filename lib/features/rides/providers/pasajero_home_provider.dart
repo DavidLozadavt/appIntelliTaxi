@@ -3,22 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
-import 'package:intellitaxi/features/rides/services/places_service.dart';
-import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
-import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
-import 'package:intellitaxi/features/rides/services/conductores_service.dart';
-import 'package:intellitaxi/features/rides/services/pusher_conductores_service.dart';
-
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Provider para gestionar toda la lógica del home del pasajero
 /// Incluye: ubicación, búsqueda, rutas, solicitudes, Pusher, conductores
 class PasajeroHomeProvider extends ChangeNotifier {
   final RoutesService _routesService = RoutesService();
-  final PlacesService _placesService = PlacesService();
-  final RideRequestService _rideRequestService = RideRequestService();
-  final ActiveServiceManager _activeServiceManager = ActiveServiceManager();
-  final ConductoresService _conductoresService = ConductoresService();
-  PusherConductoresService? _pusherConductoresService;
 
   // Estado de ubicación
   Position? _currentPosition;
@@ -37,8 +27,8 @@ class PasajeroHomeProvider extends ChangeNotifier {
   LatLng? _destinoLatLng;
 
   // Mapa
-  Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
   double? _distanciaKm;
   double? _precioEstimado;
 
@@ -46,7 +36,8 @@ class PasajeroHomeProvider extends ChangeNotifier {
   Position? get currentPosition => _currentPosition;
   bool get isLoadingLocation => _isLoadingLocation;
   List<Map<String, dynamic>> get originSuggestions => _originSuggestions;
-  List<Map<String, dynamic>> get destinationSuggestions => _destinationSuggestions;
+  List<Map<String, dynamic>> get destinationSuggestions =>
+      _destinationSuggestions;
   bool get isSearchingOrigin => _isSearchingOrigin;
   bool get isSearchingDestination => _isSearchingDestination;
   String? get origenSeleccionado => _origenSeleccionado;
@@ -73,22 +64,24 @@ class PasajeroHomeProvider extends ChangeNotifier {
       notifyListeners();
 
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
 
       _currentPosition = position;
       _isLoadingLocation = false;
       notifyListeners();
     } catch (e) {
-      print('❌ Error obteniendo ubicación: $e');
+      AppLogger.d('❌ Error obteniendo ubicación: $e');
       _isLoadingLocation = false;
       notifyListeners();
     }
   }
 
   /// Busca sugerencias de direcciones para el origen
-  /// 
+  ///
   /// TODO: Implementar cuando exista el método buscarDireccion en RoutesService
   Future<void> buscarOrigen(String query) async {
     if (query.isEmpty) {
@@ -110,14 +103,14 @@ class PasajeroHomeProvider extends ChangeNotifier {
       _isSearchingOrigin = false;
       notifyListeners();
     } catch (e) {
-      print('❌ Error buscando origen: $e');
+      AppLogger.d('❌ Error buscando origen: $e');
       _isSearchingOrigin = false;
       notifyListeners();
     }
   }
 
   /// Busca sugerencias de direcciones para el destino
-  /// 
+  ///
   /// TODO: Implementar cuando exista el método buscarDireccion en RoutesService
   Future<void> buscarDestino(String query) async {
     if (query.isEmpty) {
@@ -139,14 +132,14 @@ class PasajeroHomeProvider extends ChangeNotifier {
       _isSearchingDestination = false;
       notifyListeners();
     } catch (e) {
-      print('❌ Error buscando destino: $e');
+      AppLogger.d('❌ Error buscando destino: $e');
       _isSearchingDestination = false;
       notifyListeners();
     }
   }
 
   /// Selecciona una dirección de origen
-  /// 
+  ///
   /// TODO: Implementar cuando exista obtenerCoordenadasDeDireccion en RoutesService
   Future<void> seleccionarOrigen(Map<String, dynamic> prediction) async {
     try {
@@ -165,12 +158,12 @@ class PasajeroHomeProvider extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      print('❌ Error seleccionando origen: $e');
+      AppLogger.d('❌ Error seleccionando origen: $e');
     }
   }
 
   /// Selecciona una dirección de destino
-  /// 
+  ///
   /// TODO: Implementar cuando exista obtenerCoordenadasDeDireccion en RoutesService
   Future<void> seleccionarDestino(Map<String, dynamic> prediction) async {
     try {
@@ -189,7 +182,7 @@ class PasajeroHomeProvider extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      print('❌ Error seleccionando destino: $e');
+      AppLogger.d('❌ Error seleccionando destino: $e');
     }
   }
 
@@ -204,7 +197,9 @@ class PasajeroHomeProvider extends ChangeNotifier {
         Marker(
           markerId: const MarkerId('origen'),
           position: _origenLatLng!,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          icon: BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueGreen,
+          ),
           infoWindow: const InfoWindow(title: 'Origen'),
         ),
       );
@@ -255,7 +250,7 @@ class PasajeroHomeProvider extends ChangeNotifier {
         _distanciaKm = _calcularDistancia(routeInfo.polylinePoints);
       }
     } catch (e) {
-      print('❌ Error dibujando ruta: $e');
+      AppLogger.d('❌ Error dibujando ruta: $e');
     }
   }
 

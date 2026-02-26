@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:intellitaxi/core/constants/map_styles.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.dart';
@@ -12,6 +11,7 @@ import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.d
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
@@ -28,7 +28,6 @@ class HomeConductor extends StatefulWidget {
 
 class _HomeConductorState extends State<HomeConductor> {
   GoogleMapController? _mapController;
-  Brightness? _lastBrightness;
   late ConductorHomeProvider _provider;
 
   // Sanciones
@@ -60,7 +59,7 @@ class _HomeConductorState extends State<HomeConductor> {
       const Offset(s / 2, s / 2 + 1),
       s / 3,
       Paint()
-        ..color = color.withOpacity(0.3)
+        ..color = color.withValues(alpha: 0.3)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
     // Borde blanco
@@ -130,21 +129,6 @@ class _HomeConductorState extends State<HomeConductor> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final currentBrightness = Theme.of(context).brightness;
-
-    // Si el tema cambió y el mapa está cargado, actualizar el estilo
-    if (_lastBrightness != null &&
-        _lastBrightness != currentBrightness &&
-        _mapController != null) {
-      _setMapStyle(_mapController!);
-    }
-
-    _lastBrightness = currentBrightness;
-  }
-
-  @override
   void dispose() {
     _bannerTimer?.cancel();
     _mapController?.dispose();
@@ -169,11 +153,11 @@ class _HomeConductorState extends State<HomeConductor> {
     );
 
     if (solicitud.isEmpty) {
-      print('⚠️ Solicitud no encontrada: $solicitudId');
+      AppLogger.d('⚠️ Solicitud no encontrada: $solicitudId');
       return;
     }
 
-    print('👉 Intentando aceptar solicitud ID: $solicitudId');
+    AppLogger.d('👉 Intentando aceptar solicitud ID: $solicitudId');
 
     // Obtener datos necesarios
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -190,294 +174,6 @@ class _HomeConductorState extends State<HomeConductor> {
     }
 
     // Nota: No se calcula precio porque funciona con taxímetro
-
-    // Controladores para el diálogo
-    final mensajeController = TextEditingController(text: 'Voy en camino');
-
-    // Mostrar diálogo de confirmación
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            // gradient: LinearGradient(
-            //   begin: Alignment.topLeft,
-            //   end: Alignment.bottomRight,
-            //   colors: [Colors.white, AppColors.accent.withOpacity(0.05)],
-            // ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icono principal
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.accent,
-                          AppColors.accent.withOpacity(0.8),
-                        ],
-                      ),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.accent.withOpacity(0.3),
-                          blurRadius: 15,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Iconsax.car_copy,
-                      color: Colors.white,
-                      size: 40,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Título
-                  const Text(
-                    'Aceptar Solicitud',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Confirma que aceptarás este servicio',
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Información del pasajero
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      // color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blue.shade100),
-                    ),
-                    child: Row(
-                      children: [
-                        // Avatar del pasajero
-                        solicitud['pasajero_foto'] != null &&
-                                solicitud['pasajero_foto'].toString().isNotEmpty
-                            ? CircleAvatar(
-                                radius: 24,
-                                backgroundImage: NetworkImage(
-                                  solicitud['pasajero_foto'],
-                                ),
-                                backgroundColor: Colors.grey.shade300,
-                                onBackgroundImageError: (_, __) {},
-                              )
-                            : CircleAvatar(
-                                radius: 24,
-                                backgroundColor: AppColors.accent.withOpacity(
-                                  0.15,
-                                ),
-                                child: Icon(
-                                  Iconsax.user_copy,
-                                  color: AppColors.accent,
-                                  size: 24,
-                                ),
-                              ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Pasajero',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                solicitud['pasajero_nombre'],
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Origen y destino
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      // color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Column(
-                      children: [
-                        // Origen
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppColors.accent.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Iconsax.record_circle_copy,
-                                color: AppColors.accent,
-                                size: 14,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Origen',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    solicitud['origen'],
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Destino
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                // color: Colors.red.shade100,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Iconsax.location_copy,
-                                color: Colors.red.shade700,
-                                size: 14,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Destino',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    solicitud['destino'],
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  const SizedBox(height: 20),
-
-                  // Botones
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            'Cancelar',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.accent,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            shadowColor: AppColors.accent.withOpacity(0.3),
-                          ),
-                          child: const Text(
-                            'Aceptar Servicio',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    if (confirmar != true) return;
 
     // Mostrar loading
     if (mounted) {
@@ -514,7 +210,7 @@ class _HomeConductorState extends State<HomeConductor> {
         );
       }
 
-      print('✅ Solicitud $solicitudId aceptada exitosamente');
+      AppLogger.d('✅ Solicitud $solicitudId aceptada exitosamente');
 
       // Navegar a la pantalla de servicio activo del conductor
       if (mounted && response['servicio'] != null) {
@@ -550,7 +246,7 @@ class _HomeConductorState extends State<HomeConductor> {
             ),
           );
         } catch (e) {
-          print('⚠️ Error procesando servicio activo: $e');
+          AppLogger.d('⚠️ Error procesando servicio activo: $e');
         }
       }
     } catch (e) {
@@ -569,16 +265,13 @@ class _HomeConductorState extends State<HomeConductor> {
         );
       }
 
-      print('⚠️ Error al aceptar solicitud: $e');
-    } finally {
-      // Limpiar controladores
-      mensajeController.dispose();
+      AppLogger.d('⚠️ Error al aceptar solicitud: $e');
     }
   }
 
   /// Rechaza la solicitud de servicio
   void _rechazarSolicitud(String solicitudId) {
-    print('❌ Solicitud rechazada: $solicitudId');
+    AppLogger.d('❌ Solicitud rechazada: $solicitudId');
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -588,22 +281,6 @@ class _HomeConductorState extends State<HomeConductor> {
     );
 
     _provider.rechazarSolicitud(solicitudId);
-  }
-
-  Future<void> _setMapStyle(GoogleMapController controller) async {
-    // Verificar que el widget está montado antes de acceder al contexto
-    if (!mounted) return;
-
-    // Detectar el tema actual
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-    try {
-      await controller.setMapStyle(
-        isDarkMode ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
-      );
-    } catch (e) {
-      // Ignora si hay error al aplicar el estilo
-    }
   }
 
   /// Verifica documentos del conductor y muestra alertas
@@ -730,7 +407,7 @@ class _HomeConductorState extends State<HomeConductor> {
     return Material(
       elevation: 6,
       borderRadius: BorderRadius.circular(14),
-      shadowColor: color.withOpacity(0.3),
+      shadowColor: color.withValues(alpha: 0.3),
       child: InkWell(
         onTap: () => Navigator.pushNamed(context, '/mis-sanciones'),
         borderRadius: BorderRadius.circular(14),
@@ -738,7 +415,7 @@ class _HomeConductorState extends State<HomeConductor> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             gradient: LinearGradient(
-              colors: [color, color.withOpacity(0.85)],
+              colors: [color, color.withValues(alpha: 0.85)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -750,7 +427,7 @@ class _HomeConductorState extends State<HomeConductor> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icono, color: Colors.white, size: 22),
@@ -774,7 +451,7 @@ class _HomeConductorState extends State<HomeConductor> {
                     Text(
                       subtitulo,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 11,
                       ),
                       maxLines: 2,
@@ -790,7 +467,7 @@ class _HomeConductorState extends State<HomeConductor> {
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.close, color: Colors.white, size: 16),
@@ -835,19 +512,21 @@ class _HomeConductorState extends State<HomeConductor> {
                                 end: Alignment.bottomRight,
                                 colors: provider.isLoadingLocation
                                     ? [
-                                        AppColors.accent.withOpacity(0.2),
-                                        AppColors.accent.withOpacity(0.05),
+                                        AppColors.accent.withValues(alpha: 0.2),
+                                        AppColors.accent.withValues(
+                                          alpha: 0.05,
+                                        ),
                                       ]
                                     : [
-                                        Colors.grey.withOpacity(0.2),
-                                        Colors.grey.withOpacity(0.05),
+                                        Colors.grey.withValues(alpha: 0.2),
+                                        Colors.grey.withValues(alpha: 0.05),
                                       ],
                               ),
                               boxShadow: provider.isLoadingLocation
                                   ? [
                                       BoxShadow(
-                                        color: AppColors.accent.withOpacity(
-                                          0.2,
+                                        color: AppColors.accent.withValues(
+                                          alpha: 0.2,
                                         ),
                                         blurRadius: 30,
                                         spreadRadius: 10,
@@ -862,8 +541,8 @@ class _HomeConductorState extends State<HomeConductor> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   color: provider.isLoadingLocation
-                                      ? AppColors.accent.withOpacity(0.15)
-                                      : Colors.grey.withOpacity(0.15),
+                                      ? AppColors.accent.withValues(alpha: 0.15)
+                                      : Colors.grey.withValues(alpha: 0.15),
                                 ),
                                 child: Center(
                                   child: provider.isLoadingLocation
@@ -933,7 +612,9 @@ class _HomeConductorState extends State<HomeConductor> {
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.accent.withOpacity(0.3),
+                                    color: AppColors.accent.withValues(
+                                      alpha: 0.3,
+                                    ),
                                     blurRadius: 15,
                                     offset: const Offset(0, 5),
                                   ),
@@ -975,30 +656,32 @@ class _HomeConductorState extends State<HomeConductor> {
                       ),
                     ),
                   )
-                : StandardMap(
-                    initialPosition: LatLng(
-                      provider.currentPosition!.latitude,
-                      provider.currentPosition!.longitude,
-                    ),
-                    zoom: 15,
-                    markers: {
-                      Marker(
-                        markerId: const MarkerId('current_location'),
-                        position: LatLng(
-                          provider.currentPosition!.latitude,
-                          provider.currentPosition!.longitude,
-                        ),
-                        infoWindow: const InfoWindow(
-                          title: 'Tu ubicación',
-                          snippet: 'Estás aquí',
-                        ),
-                        icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
-                        anchor: const Offset(0.5, 0.5),
+                : RepaintBoundary(
+                    child: StandardMap(
+                      initialPosition: LatLng(
+                        provider.currentPosition!.latitude,
+                        provider.currentPosition!.longitude,
                       ),
-                    },
-                    onMapCreated: (controller) {
-                      _mapController = controller;
-                    },
+                      zoom: 15,
+                      markers: {
+                        Marker(
+                          markerId: const MarkerId('current_location'),
+                          position: LatLng(
+                            provider.currentPosition!.latitude,
+                            provider.currentPosition!.longitude,
+                          ),
+                          infoWindow: const InfoWindow(
+                            title: 'Tu ubicación',
+                            snippet: 'Estás aquí',
+                          ),
+                          icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
+                          anchor: const Offset(0.5, 0.5),
+                        ),
+                      },
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                      },
+                    ),
                   ),
 
             // Chip de estado del conductor (superior izquierda)
@@ -1010,8 +693,8 @@ class _HomeConductorState extends State<HomeConductor> {
                   elevation: 4,
                   borderRadius: BorderRadius.circular(20),
                   shadowColor: provider.isOnline
-                      ? AppColors.accent.withOpacity(0.3)
-                      : Colors.grey.withOpacity(0.3),
+                      ? AppColors.accent.withValues(alpha: 0.3)
+                      : Colors.grey.withValues(alpha: 0.3),
                   child: InkWell(
                     onTap: _cambiarEstadoConductor,
                     borderRadius: BorderRadius.circular(20),
@@ -1055,7 +738,7 @@ class _HomeConductorState extends State<HomeConductor> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.25),
+                                color: Colors.white.withValues(alpha: 0.25),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
@@ -1104,105 +787,109 @@ class _HomeConductorState extends State<HomeConductor> {
                 left: 0,
                 right: 0,
                 bottom: 20,
-                child: Builder(
-                  builder: (context) {
-                    final solicitudes = provider.solicitudesOrdenadas;
-                    return ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: solicitudes.length,
-                      itemBuilder: (context, index) {
-                        final solicitud = solicitudes[index];
-                        final solicitudId = _getSolicitudId(solicitud);
+                child: RepaintBoundary(
+                  child: Builder(
+                    builder: (context) {
+                      final solicitudes = provider.solicitudesOrdenadas;
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: solicitudes.length,
+                        itemBuilder: (context, index) {
+                          final solicitud = solicitudes[index];
+                          final solicitudId = _getSolicitudId(solicitud);
 
-                        if (solicitudId.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
+                          if (solicitudId.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
 
-                        final esPrincipal = index == 0;
-                        final segundosRestantes = provider
-                            .obtenerSegundosRestantes(solicitudId);
+                          final esPrincipal = index == 0;
+                          final segundosRestantes = provider
+                              .obtenerSegundosRestantes(solicitudId);
 
-                        return Column(
-                          children: [
-                            if (esPrincipal)
-                              Container(
-                                width: double.infinity,
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
+                          return Column(
+                            children: [
+                              if (esPrincipal)
+                                Container(
+                                  width: double.infinity,
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.95,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    'Solicitud recomendada',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.black,
+                                    ),
+                                  ),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withOpacity(0.95),
-                                  borderRadius: BorderRadius.circular(12),
+                              Dismissible(
+                                key: Key('solicitud_$solicitudId'),
+                                direction: DismissDirection.horizontal,
+                                onDismissed: (direction) {
+                                  provider.rechazarSolicitud(solicitudId);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Solicitud descartada'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                                background: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  alignment: Alignment.centerLeft,
+                                  padding: const EdgeInsets.only(left: 20),
+                                  child: const Icon(
+                                    Icons.delete,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
                                 ),
-                                child: const Text(
-                                  'Solicitud recomendada',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.black,
+                                secondaryBackground: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20),
+                                  child: const Icon(
+                                    Icons.delete,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: SolicitudServicioCard(
+                                    solicitud: solicitud,
+                                    segundosRestantes: segundosRestantes,
+                                    destacada: esPrincipal,
+                                    onAceptar: () =>
+                                        _aceptarSolicitud(solicitudId),
+                                    onRechazar: () =>
+                                        _rechazarSolicitud(solicitudId),
                                   ),
                                 ),
                               ),
-                            Dismissible(
-                              key: Key('solicitud_$solicitudId'),
-                              direction: DismissDirection.horizontal,
-                              onDismissed: (direction) {
-                                provider.rechazarSolicitud(solicitudId);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Solicitud descartada'),
-                                    duration: Duration(seconds: 1),
-                                  ),
-                                );
-                              },
-                              background: Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                alignment: Alignment.centerLeft,
-                                padding: const EdgeInsets.only(left: 20),
-                                child: const Icon(
-                                  Icons.delete,
-                                  color: Colors.white,
-                                  size: 32,
-                                ),
-                              ),
-                              secondaryBackground: Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.only(right: 20),
-                                child: const Icon(
-                                  Icons.delete,
-                                  color: Colors.white,
-                                  size: 32,
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: SolicitudServicioCard(
-                                  solicitud: solicitud,
-                                  segundosRestantes: segundosRestantes,
-                                  destacada: esPrincipal,
-                                  onAceptar: () =>
-                                      _aceptarSolicitud(solicitudId),
-                                  onRechazar: () =>
-                                      _rechazarSolicitud(solicitudId),
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  },
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
           ],

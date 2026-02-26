@@ -26,7 +26,7 @@ class ConductorActionButtons extends StatelessWidget {
           backgroundColor: Colors.white,
           child: const Icon(Iconsax.gps_copy, color: Colors.deepOrange),
         ),
-        
+
         // Botón de refrescar (opcional)
         if (showRefresh && onRefresh != null) ...[
           const SizedBox(height: 8),

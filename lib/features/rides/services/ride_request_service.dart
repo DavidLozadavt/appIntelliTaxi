@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class RideRequestService {
   final Dio _dio = DioClient.getInstance();
@@ -78,63 +79,65 @@ class RideRequestService {
   /// 📌 LOGS DETALLADOS EN CONSOLA
   void _logRequestData(Map<String, dynamic> data) {
     if (kDebugMode) {
-      print('\n${'=' * 80}');
-      print('🚖 DATOS DE SOLICITUD DE SERVICIO');
-      print('=' * 80);
+      AppLogger.d('\n${'=' * 80}');
+      AppLogger.d('🚖 DATOS DE SOLICITUD DE SERVICIO');
+      AppLogger.d('=' * 80);
 
       // IDs del usuario
-      print('\n👤 DATOS DEL USUARIO:');
-      print('   persona_id: ${data['persona_id']}');
-      print('   company_user_id: ${data['company_user_id']}');
+      AppLogger.d('\n👤 DATOS DEL USUARIO:');
+      AppLogger.d('   persona_id: ${data['persona_id']}');
+      AppLogger.d('   company_user_id: ${data['company_user_id']}');
 
       // Origen
-      print('\n📍 PUNTO DE ORIGEN:');
-      print('   Nombre: ${data['origin_name']}');
-      print('   Dirección: ${data['origin_address']}');
-      print('   Coordenadas: ${data['origin_lat']}, ${data['origin_lng']}');
-      print('   Place ID: ${data['origin_place_id']}');
+      AppLogger.d('\n📍 PUNTO DE ORIGEN:');
+      AppLogger.d('   Nombre: ${data['origin_name']}');
+      AppLogger.d('   Dirección: ${data['origin_address']}');
+      AppLogger.d(
+        '   Coordenadas: ${data['origin_lat']}, ${data['origin_lng']}',
+      );
+      AppLogger.d('   Place ID: ${data['origin_place_id']}');
 
       // Destino
-      print('\n📍 PUNTO DE DESTINO:');
-      print('   Nombre: ${data['destination_name']}');
-      print('   Dirección: ${data['destination_address']}');
-      print(
+      AppLogger.d('\n📍 PUNTO DE DESTINO:');
+      AppLogger.d('   Nombre: ${data['destination_name']}');
+      AppLogger.d('   Dirección: ${data['destination_address']}');
+      AppLogger.d(
         '   Coordenadas: ${data['destination_lat']}, ${data['destination_lng']}',
       );
-      print('   Place ID: ${data['destination_place_id']}');
+      AppLogger.d('   Place ID: ${data['destination_place_id']}');
 
       // Información de la ruta
-      print('\n🛣️  INFORMACIÓN DE LA RUTA:');
-      print(
+      AppLogger.d('\n🛣️  INFORMACIÓN DE LA RUTA:');
+      AppLogger.d(
         '   Distancia: ${data['distance']} (${data['distance_value']} metros)',
       );
-      print(
+      AppLogger.d(
         '   Duración: ${data['duration']} (${data['duration_value']} segundos)',
       );
-      print('   Precio estimado: \$${data['estimated_price']}');
+      AppLogger.d('   Precio estimado: \$${data['estimated_price']}');
 
       // Tipo de servicio
-      print('\n🚗 TIPO DE SERVICIO:');
-      print(
+      AppLogger.d('\n🚗 TIPO DE SERVICIO:');
+      AppLogger.d(
         '   ${data['service_type']} (${data['service_type'] == 'taxi' ? 'Transporte de pasajeros' : 'Entrega de domicilio'})',
       );
-      print('   Estado: ${data['status']}');
+      AppLogger.d('   Estado: ${data['status']}');
 
       // Observaciones
       if (data['observations'] != null) {
-        print('\n📝 OBSERVACIONES:');
-        print('   ${data['observations']}');
+        AppLogger.d('\n📝 OBSERVACIONES:');
+        AppLogger.d('   ${data['observations']}');
       }
 
       // Timestamp
-      print('\n⏰ TIMESTAMP:');
-      print('   ${data['requested_at']}');
+      AppLogger.d('\n⏰ TIMESTAMP:');
+      AppLogger.d('   ${data['requested_at']}');
 
       // JSON completo
-      print('\n📦 JSON COMPLETO:');
-      print(JsonEncoder.withIndent('  ').convert(data));
+      AppLogger.d('\n📦 JSON COMPLETO:');
+      AppLogger.d(JsonEncoder.withIndent('  ').convert(data));
 
-      print('=' * 80 + '\n');
+      AppLogger.d('=' * 80 + '\n');
 
       // También usar el logger de developer para que aparezca en DevTools
       developer.log(
@@ -147,11 +150,11 @@ class RideRequestService {
 
   void _logResponse(dynamic data) {
     if (kDebugMode) {
-      print('\n${'=' * 80}');
-      print('✅ RESPUESTA DEL SERVIDOR');
-      print('=' * 80);
-      print(JsonEncoder.withIndent('  ').convert(data));
-      print('=' * 80 + '\n');
+      AppLogger.d('\n${'=' * 80}');
+      AppLogger.d('✅ RESPUESTA DEL SERVIDOR');
+      AppLogger.d('=' * 80);
+      AppLogger.d(JsonEncoder.withIndent('  ').convert(data));
+      AppLogger.d('=' * 80 + '\n');
 
       developer.log(
         'Respuesta exitosa del servidor',
@@ -163,17 +166,17 @@ class RideRequestService {
 
   void _logError(DioException e) {
     if (kDebugMode) {
-      print('\n${'=' * 80}');
-      print('❌ ERROR EN LA SOLICITUD');
-      print('=' * 80);
-      print('Tipo de error: ${e.type}');
-      print('Mensaje: ${e.message}');
+      AppLogger.d('\n${'=' * 80}');
+      AppLogger.d('❌ ERROR EN LA SOLICITUD');
+      AppLogger.d('=' * 80);
+      AppLogger.d('Tipo de error: ${e.type}');
+      AppLogger.d('Mensaje: ${e.message}');
       if (e.response != null) {
-        print('Status Code: ${e.response?.statusCode}');
-        print('Datos de respuesta:');
-        print(JsonEncoder.withIndent('  ').convert(e.response?.data));
+        AppLogger.d('Status Code: ${e.response?.statusCode}');
+        AppLogger.d('Datos de respuesta:');
+        AppLogger.d(JsonEncoder.withIndent('  ').convert(e.response?.data));
       }
-      print('=' * 80 + '\n');
+      AppLogger.d('=' * 80 + '\n');
 
       developer.log(
         'Error en solicitud de servicio',
@@ -197,9 +200,9 @@ class RideRequestService {
     };
 
     if (kDebugMode) {
-      print('\n🚫 CANCELANDO SOLICITUD:');
-      print('   Ride ID: $rideId');
-      print('   Razón: $reason\n');
+      AppLogger.d('\n🚫 CANCELANDO SOLICITUD:');
+      AppLogger.d('   Ride ID: $rideId');
+      AppLogger.d('   Razón: $reason\n');
     }
 
     try {
@@ -271,21 +274,21 @@ class RideRequestService {
     required String motivo,
   }) async {
     try {
-      print('📤 Cancelando servicio (pasajero):');
-      print('   servicio_id: $servicioId');
-      print('   motivo: $motivo');
+      AppLogger.d('📤 Cancelando servicio (pasajero):');
+      AppLogger.d('   servicio_id: $servicioId');
+      AppLogger.d('   motivo: $motivo');
 
       final response = await _dio.post(
         'taxi/servicio/cancelar',
         data: {'servicio_id': servicioId, 'motivo': motivo},
       );
 
-      print('✅ Servicio cancelado exitosamente');
+      AppLogger.d('✅ Servicio cancelado exitosamente');
       return response.data is Map<String, dynamic>
           ? response.data
           : {'success': true};
     } catch (e) {
-      print('❌ Error cancelando servicio: $e');
+      AppLogger.d('❌ Error cancelando servicio: $e');
       rethrow;
     }
   }

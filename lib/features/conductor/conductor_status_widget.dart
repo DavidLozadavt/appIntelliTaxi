@@ -3,6 +3,7 @@ import 'package:intellitaxi/features/rides/services/conductor_location_service.d
 import 'package:intellitaxi/features/conductor/services/turno_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Widget para controlar el estado del conductor (online/offline)
 /// y el envío de ubicación en tiempo real
@@ -89,16 +90,18 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
 
     try {
       // 1. Obtener ubicación GPS primero
-      print('📍 Obteniendo ubicación GPS antes de iniciar turno...');
+      AppLogger.d('📍 Obteniendo ubicación GPS antes de iniciar turno...');
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
 
-      print('✅ Ubicación GPS obtenida:');
-      print('   Lat: ${position.latitude}');
-      print('   Lng: ${position.longitude}');
-      print('   Accuracy: ${position.accuracy}m');
+      AppLogger.d('✅ Ubicación GPS obtenida:');
+      AppLogger.d('   Lat: ${position.latitude}');
+      AppLogger.d('   Lng: ${position.longitude}');
+      AppLogger.d('   Accuracy: ${position.accuracy}m');
 
       if (!mounted) return;
 
@@ -111,10 +114,10 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
       final lng = position.longitude;
       final vehiculoId = widget.idVehiculo;
 
-      print('🔄 Llamando a iniciarTurno con:');
-      print('   idVehiculo: $vehiculoId');
-      print('   lat: $lat');
-      print('   lng: $lng');
+      AppLogger.d('🔄 Llamando a iniciarTurno con:');
+      AppLogger.d('   idVehiculo: $vehiculoId');
+      AppLogger.d('   lat: $lat');
+      AppLogger.d('   lng: $lng');
 
       // 3. Iniciar turno con la ubicación obtenida
       final turnoResponse = await _turnoService.iniciarTurno(
@@ -157,22 +160,22 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
       // 3. Actualizar posición en UI
       _updatePosition();
     } on PermissionDeniedException catch (e) {
-      print('❌ Error de permisos: $e');
+      AppLogger.d('❌ Error de permisos: $e');
       _showSnackBar('❌ Permisos de ubicación denegados');
       setState(() {
         _isLoading = false;
         _statusMessage = 'Fuera de línea';
       });
     } on LocationServiceDisabledException catch (e) {
-      print('❌ Servicio de ubicación deshabilitado: $e');
+      AppLogger.d('❌ Servicio de ubicación deshabilitado: $e');
       _showSnackBar('❌ Activa el GPS en tu dispositivo');
       setState(() {
         _isLoading = false;
         _statusMessage = 'Fuera de línea';
       });
     } catch (e) {
-      print('❌ Error iniciando turno: $e');
-      print('   Tipo: ${e.runtimeType}');
+      AppLogger.d('❌ Error iniciando turno: $e');
+      AppLogger.d('   Tipo: ${e.runtimeType}');
       _showSnackBar('❌ Error al iniciar turno: ${e.toString()}');
       setState(() {
         _isLoading = false;
@@ -212,7 +215,7 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
         _turnoActivo = null;
       });
     } catch (e) {
-      print('Error finalizando turno: $e');
+      AppLogger.d('Error finalizando turno: $e');
       _showSnackBar('❌ Error al finalizar turno');
       setState(() {
         _isOnline = false;
@@ -233,7 +236,7 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
         });
       }
     } catch (e) {
-      print('Error obteniendo posición: $e');
+      AppLogger.d('Error obteniendo posición: $e');
     }
   }
 
@@ -277,7 +280,7 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
                 boxShadow: _isOnline
                     ? [
                         BoxShadow(
-                          color: Colors.green.withOpacity(0.5),
+                          color: Colors.green.withValues(alpha: 0.5),
                           blurRadius: 20,
                           spreadRadius: 5,
                         ),

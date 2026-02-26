@@ -12,8 +12,8 @@ class EstadoBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: activo
-            ? AppColors.green.withOpacity(0.15)
-            : Colors.red.withOpacity(0.15),
+            ? AppColors.green.withValues(alpha: 0.15)
+            : Colors.red.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: activo ? AppColors.green : Colors.red,
@@ -37,7 +37,8 @@ class ActionButton extends StatelessWidget {
   final String text;
   final VoidCallback onTap;
 
-  const ActionButton({super.key, 
+  const ActionButton({
+    super.key,
     required this.icon,
     required this.text,
     required this.onTap,

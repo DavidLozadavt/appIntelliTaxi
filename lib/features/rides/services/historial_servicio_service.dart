@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/historial_servicio_model.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para gestionar el historial de servicios de taxi
 class HistorialServicioService {
@@ -12,17 +13,23 @@ class HistorialServicioService {
     int page = 1,
   }) async {
     try {
-      print('📤 Obteniendo historial del conductor $conductorId (página $page)');
+      AppLogger.d(
+        '📤 Obteniendo historial del conductor $conductorId (página $page)',
+      );
 
       final response = await _dio.get(
         'historial-servicios/conductor/$conductorId',
         queryParameters: {'page': page},
       );
 
-      print('✅ Historial del conductor obtenido: ${response.data['pagination']['total']} servicios');
+      AppLogger.d(
+        '✅ Historial del conductor obtenido: ${response.data['pagination']['total']} servicios',
+      );
       return HistorialResponse.fromJson(response.data);
     } on DioException catch (e) {
-      print('⚠️ Error al obtener historial del conductor: ${e.response?.data}');
+      AppLogger.d(
+        '⚠️ Error al obtener historial del conductor: ${e.response?.data}',
+      );
       throw _handleError(e);
     }
   }
@@ -33,23 +40,29 @@ class HistorialServicioService {
     int page = 1,
   }) async {
     try {
-      print('📤 Obteniendo historial del pasajero $pasajeroId (página $page)');
+      AppLogger.d(
+        '📤 Obteniendo historial del pasajero $pasajeroId (página $page)',
+      );
 
       final response = await _dio.get(
         'historial-servicios/pasajero/$pasajeroId',
         queryParameters: {'page': page},
       );
 
-      print('✅ Historial del pasajero obtenido: ${response.data['pagination']['total']} servicios');
+      AppLogger.d(
+        '✅ Historial del pasajero obtenido: ${response.data['pagination']['total']} servicios',
+      );
       return HistorialResponse.fromJson(response.data);
     } on DioException catch (e) {
-      print('⚠️ Error al obtener historial del pasajero: ${e.response?.data}');
+      AppLogger.d(
+        '⚠️ Error al obtener historial del pasajero: ${e.response?.data}',
+      );
       throw _handleError(e);
     }
   }
 
   /// 📌 OBTENER ESTADÍSTICAS DEL CONDUCTOR
-  /// 
+  ///
   /// [filtro] puede ser: 'hoy', 'semana', 'mes', 'ano', 'personalizado' o null (todas)
   /// Si [filtro] es 'personalizado', se requieren [fechaInicio] y [fechaFin]
   Future<EstadisticasServicios> obtenerEstadisticasConductor({
@@ -59,7 +72,9 @@ class HistorialServicioService {
     String? fechaFin,
   }) async {
     try {
-      print('📤 Obteniendo estadísticas del conductor $conductorId (filtro: $filtro)');
+      AppLogger.d(
+        '📤 Obteniendo estadísticas del conductor $conductorId (filtro: $filtro)',
+      );
 
       final queryParams = <String, dynamic>{};
       if (filtro != null) {
@@ -75,16 +90,18 @@ class HistorialServicioService {
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
-      print('✅ Estadísticas del conductor obtenidas');
+      AppLogger.d('✅ Estadísticas del conductor obtenidas');
       return EstadisticasServicios.fromJson(response.data);
     } on DioException catch (e) {
-      print('⚠️ Error al obtener estadísticas del conductor: ${e.response?.data}');
+      AppLogger.d(
+        '⚠️ Error al obtener estadísticas del conductor: ${e.response?.data}',
+      );
       throw _handleError(e);
     }
   }
 
   /// 📌 OBTENER ESTADÍSTICAS DEL PASAJERO
-  /// 
+  ///
   /// [filtro] puede ser: 'hoy', 'semana', 'mes', 'ano', 'personalizado' o null (todas)
   /// Si [filtro] es 'personalizado', se requieren [fechaInicio] y [fechaFin]
   Future<EstadisticasServicios> obtenerEstadisticasPasajero({
@@ -94,7 +111,9 @@ class HistorialServicioService {
     String? fechaFin,
   }) async {
     try {
-      print('📤 Obteniendo estadísticas del pasajero $pasajeroId (filtro: $filtro)');
+      AppLogger.d(
+        '📤 Obteniendo estadísticas del pasajero $pasajeroId (filtro: $filtro)',
+      );
 
       final queryParams = <String, dynamic>{};
       if (filtro != null) {
@@ -110,10 +129,12 @@ class HistorialServicioService {
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
-      print('✅ Estadísticas del pasajero obtenidas');
+      AppLogger.d('✅ Estadísticas del pasajero obtenidas');
       return EstadisticasServicios.fromJson(response.data);
     } on DioException catch (e) {
-      print('⚠️ Error al obtener estadísticas del pasajero: ${e.response?.data}');
+      AppLogger.d(
+        '⚠️ Error al obtener estadísticas del pasajero: ${e.response?.data}',
+      );
       throw _handleError(e);
     }
   }

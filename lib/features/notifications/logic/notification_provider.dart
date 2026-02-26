@@ -2,7 +2,6 @@ import 'package:intellitaxi/features/notifications/services/notification_service
 import 'package:intellitaxi/features/notifications/data/notification_model.dart';
 import 'package:flutter/material.dart';
 
-
 class NotificationProvider extends ChangeNotifier {
   final _api = NotificationService();
   List<NotificationModel> _notifications = [];

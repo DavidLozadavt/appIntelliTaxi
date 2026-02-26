@@ -33,13 +33,13 @@ class ActivationCompanyUser {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'user_id': userId,
-        'state_id': stateId,
-        'company_id': companyId,
-        'fechaInicio': fechaInicio,
-        'fechaFin': fechaFin,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-      };
+    'id': id,
+    'user_id': userId,
+    'state_id': stateId,
+    'company_id': companyId,
+    'fechaInicio': fechaInicio,
+    'fechaFin': fechaFin,
+    'created_at': createdAt,
+    'updated_at': updatedAt,
+  };
 }

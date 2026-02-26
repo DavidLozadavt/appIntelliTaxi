@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ActiveServiceManager {
   final Dio _dio = DioClient.getInstance();
@@ -17,7 +18,7 @@ class ActiveServiceManager {
   /// Obtiene el servicio activo del usuario desde el backend
   Future<ServicioActivo?> getActiveService() async {
     try {
-      print('🔍 Consultando servicio activo...');
+      AppLogger.d('🔍 Consultando servicio activo...');
 
       final response = await _dio.get('taxi/servicio-activo');
 
@@ -25,7 +26,7 @@ class ActiveServiceManager {
         final data = response.data;
 
         if (data['success'] == true && data['data'] != null) {
-          print('✅ Servicio activo encontrado');
+          AppLogger.d('✅ Servicio activo encontrado');
 
           final servicioData = data['data']['servicio'];
 
@@ -43,29 +44,31 @@ class ActiveServiceManager {
           await saveActiveServiceId(servicio.id);
           _activeServiceId = servicio.id;
 
-          print('📋 Servicio ID: ${servicio.id}');
-          print('📊 Estado: ${servicio.estado.estado} (${servicio.idEstado})');
+          AppLogger.d('📋 Servicio ID: ${servicio.id}');
+          AppLogger.d(
+            '📊 Estado: ${servicio.estado.estado} (${servicio.idEstado})',
+          );
 
           return servicio;
         } else {
-          print('ℹ️ No hay servicios activos');
+          AppLogger.d('ℹ️ No hay servicios activos');
           await clearActiveServiceId();
           return null;
         }
       } else if (response.statusCode == 404) {
-        print('ℹ️ No hay servicios activos (404)');
+        AppLogger.d('ℹ️ No hay servicios activos (404)');
         await clearActiveServiceId();
         return null;
       }
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
-        print('ℹ️ No hay servicios activos');
+        AppLogger.d('ℹ️ No hay servicios activos');
         await clearActiveServiceId();
       } else {
-        print('⚠️ Error obteniendo servicio activo: ${e.message}');
+        AppLogger.d('⚠️ Error obteniendo servicio activo: ${e.message}');
       }
     } catch (e) {
-      print('⚠️ Error obteniendo servicio activo: $e');
+      AppLogger.d('⚠️ Error obteniendo servicio activo: $e');
     }
     return null;
   }
@@ -74,7 +77,7 @@ class ActiveServiceManager {
   void startPolling({Duration interval = const Duration(seconds: 5)}) {
     stopPolling(); // Detener polling anterior si existe
 
-    print('🔄 Iniciando polling cada ${interval.inSeconds}s');
+    AppLogger.d('🔄 Iniciando polling cada ${interval.inSeconds}s');
 
     _pollingTimer = Timer.periodic(interval, (_) async {
       try {
@@ -88,7 +91,7 @@ class ActiveServiceManager {
 
           // Si el servicio está finalizado o cancelado, detener polling
           if (!servicio.isActivo) {
-            print('🏁 Servicio finalizado/cancelado, deteniendo polling');
+            AppLogger.d('🏁 Servicio finalizado/cancelado, deteniendo polling');
             stopPolling();
             await clearActiveServiceId();
             if (onServiceCompleted != null) {
@@ -97,14 +100,14 @@ class ActiveServiceManager {
           }
         } else {
           // No hay servicio activo, detener polling
-          print('⏹️ Sin servicio activo, deteniendo polling');
+          AppLogger.d('⏹️ Sin servicio activo, deteniendo polling');
           stopPolling();
           if (onServiceCompleted != null) {
             onServiceCompleted?.call();
           }
         }
       } catch (e) {
-        print('⚠️ Error en polling: $e');
+        AppLogger.d('⚠️ Error en polling: $e');
       }
     });
   }
@@ -112,7 +115,7 @@ class ActiveServiceManager {
   /// Detiene el polling
   void stopPolling() {
     if (_pollingTimer != null) {
-      print('⏹️ Deteniendo polling');
+      AppLogger.d('⏹️ Deteniendo polling');
       _pollingTimer?.cancel();
       _pollingTimer = null;
     }
@@ -121,7 +124,7 @@ class ActiveServiceManager {
   /// Suscribe a eventos de Pusher para el servicio activo
   Future<void> subscribeToServiceEvents(int servicioId) async {
     try {
-      print('📡 Suscribiendo a eventos del servicio $servicioId');
+      AppLogger.d('📡 Suscribiendo a eventos del servicio $servicioId');
 
       final channelName = 'servicio-$servicioId';
 
@@ -134,7 +137,7 @@ class ActiveServiceManager {
       PusherService.registerEventHandlerSecondary(
         '$channelName:estado-cambiado',
         (data) async {
-          print('🔔 Estado del servicio cambió');
+          AppLogger.d('🔔 Estado del servicio cambió');
           try {
             final servicio = await getActiveService();
             if (servicio != null && onServiceUpdated != null) {
@@ -148,7 +151,7 @@ class ActiveServiceManager {
               }
             }
           } catch (e) {
-            print('⚠️ Error procesando estado-cambiado: $e');
+            AppLogger.d('⚠️ Error procesando estado-cambiado: $e');
           }
         },
       );
@@ -157,7 +160,7 @@ class ActiveServiceManager {
       PusherService.registerEventHandlerSecondary(
         '$channelName:conductor-ubicacion',
         (data) {
-          print('📍 Ubicación del conductor actualizada');
+          AppLogger.d('📍 Ubicación del conductor actualizada');
           // Aquí puedes actualizar el mapa con la nueva ubicación
         },
       );
@@ -166,28 +169,28 @@ class ActiveServiceManager {
       PusherService.registerEventHandlerSecondary(
         '$channelName:servicio-aceptado',
         (data) async {
-          print('✅ Servicio aceptado por conductor');
+          AppLogger.d('✅ Servicio aceptado por conductor');
           try {
             final servicio = await getActiveService();
             if (servicio != null && onServiceUpdated != null) {
               onServiceUpdated?.call(servicio);
             }
           } catch (e) {
-            print('⚠️ Error procesando servicio-aceptado: $e');
+            AppLogger.d('⚠️ Error procesando servicio-aceptado: $e');
           }
         },
       );
 
-      print('✅ Suscripción exitosa a eventos del servicio');
+      AppLogger.d('✅ Suscripción exitosa a eventos del servicio');
     } catch (e) {
-      print('⚠️ Error suscribiendo a eventos: $e');
+      AppLogger.d('⚠️ Error suscribiendo a eventos: $e');
     }
   }
 
   /// Desuscribe de eventos de Pusher
   Future<void> unsubscribeFromServiceEvents(int servicioId) async {
     try {
-      print('🔕 Desuscribiendo de eventos del servicio $servicioId');
+      AppLogger.d('🔕 Desuscribiendo de eventos del servicio $servicioId');
 
       final channelName = 'servicio-$servicioId';
 
@@ -205,9 +208,9 @@ class ActiveServiceManager {
         '$channelName:servicio-aceptado',
       );
 
-      print('✅ Desuscripción exitosa');
+      AppLogger.d('✅ Desuscripción exitosa');
     } catch (e) {
-      print('⚠️ Error desuscribiendo: $e');
+      AppLogger.d('⚠️ Error desuscribiendo: $e');
     }
   }
 
@@ -216,9 +219,9 @@ class ActiveServiceManager {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_keyActiveServiceId, servicioId);
-      print('💾 Servicio ID guardado: $servicioId');
+      AppLogger.d('💾 Servicio ID guardado: $servicioId');
     } catch (e) {
-      print('⚠️ Error guardando servicio ID: $e');
+      AppLogger.d('⚠️ Error guardando servicio ID: $e');
     }
   }
 
@@ -228,11 +231,11 @@ class ActiveServiceManager {
       final prefs = await SharedPreferences.getInstance();
       final id = prefs.getInt(_keyActiveServiceId);
       if (id != null) {
-        print('📂 Servicio ID recuperado: $id');
+        AppLogger.d('📂 Servicio ID recuperado: $id');
       }
       return id;
     } catch (e) {
-      print('⚠️ Error recuperando servicio ID: $e');
+      AppLogger.d('⚠️ Error recuperando servicio ID: $e');
       return null;
     }
   }
@@ -243,15 +246,15 @@ class ActiveServiceManager {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyActiveServiceId);
       _activeServiceId = null;
-      print('🗑️ Servicio ID limpiado');
+      AppLogger.d('🗑️ Servicio ID limpiado');
     } catch (e) {
-      print('⚠️ Error limpiando servicio ID: $e');
+      AppLogger.d('⚠️ Error limpiando servicio ID: $e');
     }
   }
 
   /// Limpieza completa al cerrar
   Future<void> cleanup() async {
-    print('🧹 Limpiando ActiveServiceManager');
+    AppLogger.d('🧹 Limpiando ActiveServiceManager');
     stopPolling();
 
     if (_activeServiceId != null) {

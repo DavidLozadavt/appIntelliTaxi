@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 // TODO: Crear estos modelos cuando estén disponibles:
 // - lib/features/conductor/data/servicio_historial_model.dart
@@ -7,11 +7,9 @@ import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 
 /// Provider para gestionar el historial de servicios del conductor
 /// Incluye: carga de historial, filtros, estadísticas
-/// 
-/// NOTA: Usa Map<String, dynamic> temporalmente hasta que se creen los modelos
+///
+/// NOTA: Usa `Map<String, dynamic>` temporalmente hasta que se creen los modelos.
 class HistorialServiciosProvider extends ChangeNotifier {
-  final ConductorService _conductorService = ConductorService();
-
   // Estado - Usando Map temporalmente
   List<Map<String, dynamic>> _servicios = [];
   Map<String, dynamic>? _estadisticas;
@@ -27,7 +25,7 @@ class HistorialServiciosProvider extends ChangeNotifier {
   String get filtroSeleccionado => _filtroSeleccionado;
 
   /// Carga el historial de servicios del conductor
-  /// 
+  ///
   /// TODO: Implementar cuando exista el método en ConductorService
   Future<void> cargarHistorial({
     required int conductorId,
@@ -53,7 +51,7 @@ class HistorialServiciosProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      print('❌ Error cargando historial: $e');
+      AppLogger.d('❌ Error cargando historial: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
@@ -61,7 +59,7 @@ class HistorialServiciosProvider extends ChangeNotifier {
   }
 
   /// Carga las estadísticas del conductor
-  /// 
+  ///
   /// TODO: Implementar cuando exista el método en ConductorService
   Future<void> cargarEstadisticas(int conductorId) async {
     try {
@@ -78,7 +76,7 @@ class HistorialServiciosProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      print('❌ Error cargando estadísticas: $e');
+      AppLogger.d('❌ Error cargando estadísticas: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();

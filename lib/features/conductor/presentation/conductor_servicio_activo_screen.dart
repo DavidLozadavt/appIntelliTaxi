@@ -20,6 +20,7 @@ import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
   final Map<String, dynamic> servicio;
@@ -323,9 +324,9 @@ class _ConductorServicioActivoScreenState
         const ImageConfiguration(size: Size(48, 48)),
         'assets/images/marker.png',
       );
-      print('✅ CONDUCTOR: Ícono del carro cargado');
+      AppLogger.d('✅ CONDUCTOR: Ícono del carro cargado');
     } catch (e) {
-      print('⚠️ Error cargando ícono del carro: $e');
+      AppLogger.d('⚠️ Error cargando ícono del carro: $e');
     }
   }
 
@@ -333,15 +334,17 @@ class _ConductorServicioActivoScreenState
     _estadoActual = _estadoUiEfectivo;
 
     // Debug: Ver estructura completa del servicio
-    print('🔍 DATOS DEL SERVICIO RECIBIDOS:');
-    print('   ID: ${widget.servicio['id']}');
-    print('   Pasajero nombre directo: ${widget.servicio['pasajero_nombre']}');
-    print('   Pasajero objeto: ${widget.servicio['pasajero']}');
-    print('   Precio final: ${widget.servicio['precio_final']}');
-    print('   Precio estimado: ${widget.servicio['precio_estimado']}');
-    print('   Origen: ${widget.servicio['origen_address']}');
-    print('   Destino: ${widget.servicio['destino_address']}');
-    print('');
+    AppLogger.d('🔍 DATOS DEL SERVICIO RECIBIDOS:');
+    AppLogger.d('   ID: ${widget.servicio['id']}');
+    AppLogger.d(
+      '   Pasajero nombre directo: ${widget.servicio['pasajero_nombre']}',
+    );
+    AppLogger.d('   Pasajero objeto: ${widget.servicio['pasajero']}');
+    AppLogger.d('   Precio final: ${widget.servicio['precio_final']}');
+    AppLogger.d('   Precio estimado: ${widget.servicio['precio_estimado']}');
+    AppLogger.d('   Origen: ${widget.servicio['origen_address']}');
+    AppLogger.d('   Destino: ${widget.servicio['destino_address']}');
+    AppLogger.d('');
 
     // Cargar iconos personalizados
     await _cargarIconoCarro();
@@ -383,13 +386,13 @@ class _ConductorServicioActivoScreenState
 
   Future<void> _guardarServicioActivo() async {
     try {
-      print('📋 Intentando guardar servicio activo...');
-      print('📦 Datos del servicio: ${widget.servicio}');
+      AppLogger.d('📋 Intentando guardar servicio activo...');
+      AppLogger.d('📦 Datos del servicio: ${widget.servicio}');
 
       final servicioId = widget.servicio['id'];
       if (servicioId == null) {
-        print('❌ Error: servicioId es null');
-        print('📦 Keys disponibles: ${widget.servicio.keys}');
+        AppLogger.d('❌ Error: servicioId es null');
+        AppLogger.d('📦 Keys disponibles: ${widget.servicio.keys}');
         return;
       }
 
@@ -398,10 +401,10 @@ class _ConductorServicioActivoScreenState
         tipo: 'conductor',
         datosServicio: widget.servicio,
       );
-      print('✅ Servicio activo guardado: $servicioId');
+      AppLogger.d('✅ Servicio activo guardado: $servicioId');
     } catch (e, stackTrace) {
-      print('❌ Error guardando servicio activo: $e');
-      print('Stack trace: $stackTrace');
+      AppLogger.d('❌ Error guardando servicio activo: $e');
+      AppLogger.d('Stack trace: $stackTrace');
     }
   }
 
@@ -435,7 +438,7 @@ class _ConductorServicioActivoScreenState
       // Iniciar escucha continua de ubicación
       _iniciarStreamUbicacion();
     } catch (e) {
-      print('❌ Error obteniendo ubicación: $e');
+      AppLogger.d('❌ Error obteniendo ubicación: $e');
     }
   }
 
@@ -483,7 +486,7 @@ class _ConductorServicioActivoScreenState
         Offset(s / 2, s / 2 + 1),
         s / 3,
         Paint()
-          ..color = color.withOpacity(0.3)
+          ..color = color.withValues(alpha: 0.3)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
       );
       canvas.drawCircle(
@@ -581,15 +584,17 @@ class _ConductorServicioActivoScreenState
             ),
           );
         });
-        print('✅ Ruta dibujada: ${routeInfo.distance} - ${routeInfo.duration}');
+        AppLogger.d(
+          '✅ Ruta dibujada: ${routeInfo.distance} - ${routeInfo.duration}',
+        );
       } else {
         // Si la API no devuelve ruta, conservar la última polilínea válida.
-        print(
+        AppLogger.d(
           '⚠️ No se recibió polilínea válida; se conserva la ruta anterior',
         );
       }
     } catch (e) {
-      print('❌ Error dibujando ruta: $e');
+      AppLogger.d('❌ Error dibujando ruta: $e');
       // En caso de error temporal, conservar la última polilínea válida.
     }
   }
@@ -683,7 +688,7 @@ class _ConductorServicioActivoScreenState
       final conductorId = authProvider.user?.id;
 
       if (conductorId == null) {
-        print('⚠️ No se pudo obtener ID del conductor');
+        AppLogger.d('⚠️ No se pudo obtener ID del conductor');
         return;
       }
 
@@ -713,7 +718,7 @@ class _ConductorServicioActivoScreenState
       }
 
       if (pasajeroId == null) {
-        print('⚠️ No se pudo obtener ID del pasajero');
+        AppLogger.d('⚠️ No se pudo obtener ID del pasajero');
         return;
       }
 
@@ -732,10 +737,10 @@ class _ConductorServicioActivoScreenState
       );
 
       if (resultado == true) {
-        print('✅ Calificación del pasajero registrada');
+        AppLogger.d('✅ Calificación del pasajero registrada');
       }
     } catch (e) {
-      print('❌ Error al mostrar diálogo de calificación: $e');
+      AppLogger.d('❌ Error al mostrar diálogo de calificación: $e');
     }
   }
 
@@ -917,7 +922,7 @@ class _ConductorServicioActivoScreenState
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                         blurRadius: 15,
                         offset: const Offset(0, -3),
                       ),
@@ -941,7 +946,7 @@ class _ConductorServicioActivoScreenState
                             width: 50,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: AppColors.primary.withOpacity(0.5),
+                              color: AppColors.primary.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(3),
                             ),
                           ),
@@ -1049,9 +1054,12 @@ class _ConductorServicioActivoScreenState
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.1),
+        color: AppColors.primary.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.3),
+          width: 1,
+        ),
       ),
       child: Row(
         children: [
@@ -1059,10 +1067,12 @@ class _ConductorServicioActivoScreenState
           fotoUrl != null && fotoUrl.isNotEmpty
               ? CircleAvatar(
                   radius: 28,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                   backgroundImage: NetworkImage(fotoUrl),
                   onBackgroundImageError: (exception, stackTrace) {
-                    print('⚠️ Error cargando foto del pasajero: $exception');
+                    AppLogger.d(
+                      '⚠️ Error cargando foto del pasajero: $exception',
+                    );
                   },
                   child: null,
                 )
@@ -1125,13 +1135,13 @@ class _ConductorServicioActivoScreenState
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: enCurso
-                ? Colors.grey.withOpacity(0.05)
-                : AppColors.accent.withOpacity(0.1),
+                ? Colors.grey.withValues(alpha: 0.05)
+                : AppColors.accent.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: enCurso
-                  ? Colors.grey.withOpacity(0.2)
-                  : AppColors.accent.withOpacity(0.3),
+                  ? Colors.grey.withValues(alpha: 0.2)
+                  : AppColors.accent.withValues(alpha: 0.3),
               width: enCurso ? 1 : 1.5,
             ),
           ),
@@ -1141,8 +1151,8 @@ class _ConductorServicioActivoScreenState
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: enCurso
-                      ? Colors.grey.withOpacity(0.2)
-                      : AppColors.accent.withOpacity(0.2),
+                      ? Colors.grey.withValues(alpha: 0.2)
+                      : AppColors.accent.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -1230,13 +1240,13 @@ class _ConductorServicioActivoScreenState
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: enCurso
-                ? AppColors.green.withOpacity(0.1)
-                : Colors.grey.withOpacity(0.05),
+                ? AppColors.green.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: enCurso
-                  ? AppColors.green.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.2),
+                  ? AppColors.green.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.2),
               width: enCurso ? 1.5 : 1,
             ),
           ),
@@ -1246,8 +1256,8 @@ class _ConductorServicioActivoScreenState
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: enCurso
-                      ? AppColors.green.withOpacity(0.2)
-                      : Colors.grey.withOpacity(0.2),
+                      ? AppColors.green.withValues(alpha: 0.2)
+                      : Colors.grey.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
@@ -1346,7 +1356,7 @@ class _ConductorServicioActivoScreenState
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.red.withOpacity(0.2),
+            color: Colors.red.withValues(alpha: 0.2),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),

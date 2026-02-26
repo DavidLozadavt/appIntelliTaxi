@@ -95,18 +95,18 @@ class _DriverOfferCardState extends State<DriverOfferCard>
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Colors.white, AppColors.accent.withOpacity(0.05)],
+              colors: [Colors.white, AppColors.accent.withValues(alpha: 0.05)],
             ),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: AppColors.accent.withOpacity(0.2),
+                color: AppColors.accent.withValues(alpha: 0.2),
                 blurRadius: 12,
                 spreadRadius: 1,
                 offset: const Offset(0, 4),
               ),
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -127,7 +127,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                     gradient: LinearGradient(
                       colors: [
                         AppColors.accent,
-                        AppColors.accent.withOpacity(0.8),
+                        AppColors.accent.withValues(alpha: 0.8),
                       ],
                     ),
                     borderRadius: const BorderRadius.only(
@@ -168,7 +168,11 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                       ),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 18,
+                        ),
                         onPressed: _dismiss,
                         constraints: const BoxConstraints(),
                         padding: EdgeInsets.zero,
@@ -199,7 +203,9 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppColors.accent.withOpacity(0.2),
+                                      color: AppColors.accent.withValues(
+                                        alpha: 0.2,
+                                      ),
                                       blurRadius: 6,
                                       spreadRadius: 1,
                                     ),
@@ -210,7 +216,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                       ? Image.network(
                                           conductorFoto,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
+                                          errorBuilder: (_, _, _) =>
                                               _buildAvatarPlaceholder(
                                                 conductorNombre,
                                               ),
@@ -317,7 +323,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: AppColors.accent.withOpacity(0.08),
+                          color: AppColors.accent.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -398,20 +404,20 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                AppColors.accent.withOpacity(0.08),
-                                AppColors.accent.withOpacity(0.04),
+                                AppColors.accent.withValues(alpha: 0.08),
+                                AppColors.accent.withValues(alpha: 0.04),
                               ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppColors.accent.withOpacity(0.2),
+                              color: AppColors.accent.withValues(alpha: 0.2),
                               width: 1,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.accent.withOpacity(0.05),
+                                color: AppColors.accent.withValues(alpha: 0.05),
                                 blurRadius: 4,
                                 offset: const Offset(0, 2),
                               ),
@@ -511,7 +517,9 @@ class _DriverOfferCardState extends State<DriverOfferCard>
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 elevation: 3,
-                                shadowColor: AppColors.accent.withOpacity(0.4),
+                                shadowColor: AppColors.accent.withValues(
+                                  alpha: 0.4,
+                                ),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -545,7 +553,7 @@ class _DriverOfferCardState extends State<DriverOfferCard>
   Widget _buildAvatarPlaceholder(String nombre) {
     final inicial = nombre.isNotEmpty ? nombre[0].toUpperCase() : '?';
     return Container(
-      color: AppColors.accent.withOpacity(0.2),
+      color: AppColors.accent.withValues(alpha: 0.2),
       child: Center(
         child: Text(
           inicial,

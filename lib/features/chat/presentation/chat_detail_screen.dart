@@ -7,8 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 
-
-
 class ChatDetailScreen extends StatefulWidget {
   final String userName;
   final String userImage;
@@ -76,6 +74,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Future<File?> pickImage() async {
     final granted = await _permissionsService.requestStoragePermission();
+    if (!mounted) return null;
     if (!granted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Se necesita permiso de galería")),
@@ -230,7 +229,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 alignment: Alignment.center,
                 scale: 3.3,
                 colorFilter: ColorFilter.mode(
-                  Colors.white.withOpacity(0.3), //
+                  Colors.white.withValues(alpha: 0.3), //
                   BlendMode.modulate,
                 ),
               ),
@@ -343,7 +342,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
+                                  color: Colors.black.withValues(alpha: 0.03),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),

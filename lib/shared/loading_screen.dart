@@ -48,7 +48,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.shadowColor.withOpacity(0.1),
+                    color: theme.shadowColor.withValues(alpha: 0.1),
                     blurRadius: 12,
                     offset: const Offset(0, 2),
                   ),
@@ -72,7 +72,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                 valueColor: const AlwaysStoppedAnimation<Color>(
                   AppColors.accent,
                 ),
-                backgroundColor: theme.dividerColor.withOpacity(0.3),
+                backgroundColor: theme.dividerColor.withValues(alpha: 0.3),
               ),
             ),
 

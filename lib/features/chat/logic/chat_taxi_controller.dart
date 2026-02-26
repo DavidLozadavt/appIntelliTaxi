@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import '../data/mensaje_taxi_model.dart';
 import '../services/chat_taxi_service.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ChatTaxiController extends ChangeNotifier {
   final ChatTaxiService _service;
@@ -87,7 +88,7 @@ class ChatTaxiController extends ChangeNotifier {
       _error = null;
     } catch (e) {
       _error = 'Error al inicializar: $e';
-      print('Error inicializando chat: $e');
+      AppLogger.d('Error inicializando chat: $e');
     }
 
     _cargando = false;
@@ -125,14 +126,14 @@ class ChatTaxiController extends ChangeNotifier {
 
       return false;
     } catch (e) {
-      print('Error enviando mensaje: $e');
+      AppLogger.d('Error enviando mensaje: $e');
       return false;
     }
   }
 
   /// Callback cuando llega un nuevo mensaje por Pusher
   void _onNuevoMensaje(MensajeTaxi mensaje) {
-    print('📨 Nuevo mensaje recibido: ${mensaje.mensaje}');
+    AppLogger.d('📨 Nuevo mensaje recibido: ${mensaje.mensaje}');
 
     // Evitar duplicados
     final existe = _mensajes.any(
@@ -157,7 +158,7 @@ class ChatTaxiController extends ChangeNotifier {
 
   /// Callback cuando el otro usuario lee los mensajes
   void _onMensajeLeido(int mensajeId, int leidoPor) {
-    print('✓✓ Mensaje leído: $mensajeId por $leidoPor');
+    AppLogger.d('✓✓ Mensaje leído: $mensajeId por $leidoPor');
 
     bool cambios = false;
 
@@ -198,7 +199,7 @@ class ChatTaxiController extends ChangeNotifier {
         }
       }
     } catch (e) {
-      print('Error marcando como leídos: $e');
+      AppLogger.d('Error marcando como leídos: $e');
     }
   }
 
@@ -210,7 +211,7 @@ class ChatTaxiController extends ChangeNotifier {
       _mensajes.sort((a, b) => a.createdAt.compareTo(b.createdAt));
       notifyListeners();
     } catch (e) {
-      print('Error recargando mensajes: $e');
+      AppLogger.d('Error recargando mensajes: $e');
     }
   }
 
@@ -219,7 +220,7 @@ class ChatTaxiController extends ChangeNotifier {
     try {
       return await _service.obtenerNoLeidos(servicioId);
     } catch (e) {
-      print('Error obteniendo no leídos: $e');
+      AppLogger.d('Error obteniendo no leídos: $e');
       return 0;
     }
   }

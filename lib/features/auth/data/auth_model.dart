@@ -1,5 +1,16 @@
 import 'package:intellitaxi/features/auth/data/activation_company_user.dart';
 
+int _asInt(dynamic value, {int fallback = 0}) {
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+String _asString(dynamic value, {String fallback = ''}) {
+  if (value == null) return fallback;
+  return value.toString();
+}
+
 class Company {
   final int id;
   final String razonSocial;
@@ -15,10 +26,10 @@ class Company {
 
   factory Company.fromJson(Map<String, dynamic> json) {
     return Company(
-      id: json['id'],
-      razonSocial: json['razonSocial'],
-      nit: json['nit'],
-      rutaLogoUrl: json['rutaLogoUrl'],
+      id: _asInt(json['id']),
+      razonSocial: _asString(json['razonSocial']),
+      nit: _asString(json['nit']),
+      rutaLogoUrl: _asString(json['rutaLogoUrl']),
     );
   }
 
@@ -67,21 +78,23 @@ class Persona {
 
   factory Persona.fromJson(Map<String, dynamic> json) {
     return Persona(
-      id: json['id'],
-      nombre1: json['nombre1'],
-      nombre2: json['nombre2'],
-      apellido1: json['apellido1'],
-      apellido2: json['apellido2'],
-      rutaFotoUrl: json['rutaFotoUrl'],
-      perfil: json['perfil'],
-      email: json['email'] ?? '',
-      telefono: json['telefono'] ?? '',
-      direccion: json['direccion'] ?? '',
-      celular: json['celular'] ?? '',
-      identificacion: json['identificacion'],
-      fechaNac: json['fechaNac'],
-      sexo: json['sexo'],
-      idTipoIdentificacion: json['idTipoIdentificacion'],
+      id: _asInt(json['id']),
+      nombre1: _asString(json['nombre1']),
+      nombre2: json['nombre2']?.toString(),
+      apellido1: _asString(json['apellido1']),
+      apellido2: json['apellido2']?.toString(),
+      rutaFotoUrl: json['rutaFotoUrl']?.toString(),
+      perfil: json['perfil']?.toString(),
+      email: json['email']?.toString() ?? '',
+      telefono: json['telefono']?.toString() ?? '',
+      direccion: json['direccion']?.toString() ?? '',
+      celular: json['celular']?.toString() ?? '',
+      identificacion: json['identificacion']?.toString(),
+      fechaNac: json['fechaNac']?.toString(),
+      sexo: json['sexo']?.toString(),
+      idTipoIdentificacion: json['idTipoIdentificacion'] == null
+          ? null
+          : _asInt(json['idTipoIdentificacion']),
     );
   }
 
@@ -120,13 +133,14 @@ class User {
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
-    final personaJson = json['persona'];
+    final personaJson =
+        (json['persona'] as Map?)?.cast<String, dynamic>() ?? {};
 
     return User(
-      id: json['id'],
-      email: json['email'],
+      id: _asInt(json['id']),
+      email: _asString(json['email']),
       nombreCompleto:
-          "${personaJson['nombre1']} ${personaJson['nombre2'] ?? ''} ${personaJson['apellido1']} ${personaJson['apellido2'] ?? ''}"
+          "${_asString(personaJson['nombre1'])} ${personaJson['nombre2'] ?? ''} ${_asString(personaJson['apellido1'])} ${personaJson['apellido2'] ?? ''}"
               .trim(),
       persona: Persona.fromJson(personaJson),
       activationCompanyUsers:
@@ -164,12 +178,19 @@ class AuthResponse {
   });
 
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
+    final payload = (json['payload'] as Map?)?.cast<String, dynamic>() ?? {};
+    final rolesRaw = payload['roles'] as List<dynamic>? ?? const [];
+    final permissionsRaw = payload['permissions'] as List<dynamic>? ?? const [];
+    final companyRaw =
+        (payload['company'] as Map?)?.cast<String, dynamic>() ?? {};
+    final userRaw = (json['user'] as Map?)?.cast<String, dynamic>() ?? {};
+
     return AuthResponse(
-      token: json['access_token'],
-      roles: List<String>.from(json['payload']['roles']),
-      permissions: List<String>.from(json['payload']['permissions']),
-      company: Company.fromJson(json['payload']['company']),
-      user: User.fromJson(json['user']),
+      token: _asString(json['access_token']),
+      roles: rolesRaw.map((e) => e.toString()).toList(),
+      permissions: permissionsRaw.map((e) => e.toString()).toList(),
+      company: Company.fromJson(companyRaw),
+      user: User.fromJson(userRaw),
     );
   }
 

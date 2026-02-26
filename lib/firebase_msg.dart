@@ -4,49 +4,55 @@ import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 void onNotificationTap(NotificationResponse notificationResponse) {
   // Obtener el payload (datos de la notificación)
   final payload = notificationResponse.payload;
-  print('📱 Notificación tocada. Payload: $payload');
-  
+  AppLogger.d('📱 Notificación tocada. Payload: $payload');
+
   // Si el payload contiene información del tipo de notificación
   if (payload != null && payload.contains('tipo')) {
     if (payload.contains('calificacion') || payload.contains('CALIFICACION')) {
-      print('🔔 Navegando a pantalla de notificaciones (calificación)');
+      AppLogger.d('🔔 Navegando a pantalla de notificaciones (calificación)');
       navigatorKey.currentState?.pushNamed('/notifications');
       return;
     }
   }
-  
+
   // Por defecto, ir a chat
   navigatorKey.currentState?.pushNamed('/chat');
 }
 
 @pragma('vm:entry-point')
 Future<void> _handleBackgroundNotification(RemoteMessage message) async {
-  print('Notificación en segundo plano: ${message.notification?.title}');
+  AppLogger.d('Notificación en segundo plano: ${message.notification?.title}');
 }
 
 class FirebaseMsg {
   final FirebaseMessaging msgService = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin localNotifications = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin localNotifications =
+      FlutterLocalNotificationsPlugin();
 
-  Future<void> initFCM() async {
-    await msgService.requestPermission(alert: true, badge: true, sound: true);
+  Future<void> initFCM({bool requestPermissionOnStart = false}) async {
+    if (requestPermissionOnStart) {
+      await requestUserPermissionIfNeeded();
+    }
     await _setupLocalNotifications();
     await _setupTokenHandling(); // 🔹 importante: await
 
     FirebaseMessaging.onMessage.listen(_handleForegroundNotification);
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('Notificación abierta desde segundo plano: ${message.notification?.title}');
-      print('Data: ${message.data}');
-      
+      AppLogger.d(
+        'Notificación abierta desde segundo plano: ${message.notification?.title}',
+      );
+      AppLogger.d('Data: ${message.data}');
+
       // Verificar si es notificación de calificación
       final tipo = message.data['tipo']?.toString().toLowerCase();
       if (tipo != null && tipo.contains('calificacion')) {
-        print('🔔 Navegando a pantalla de notificaciones (calificación)');
+        AppLogger.d('🔔 Navegando a pantalla de notificaciones (calificación)');
         navigatorKey.currentState?.pushNamed('/notifications');
       } else {
         navigatorKey.currentState?.pushNamed('/chat');
@@ -56,16 +62,26 @@ class FirebaseMsg {
     _handleTerminatedStateNotification();
   }
 
+  Future<void> requestUserPermissionIfNeeded() async {
+    // En Android 13+ pedir este permiso al arranque causa congelones percibidos.
+    // Se recomienda pedirlo desde una acción explícita del usuario.
+    if (Platform.isAndroid) return;
+    await msgService.requestPermission(alert: true, badge: true, sound: true);
+  }
+
   Future<void> _handleTerminatedStateNotification() async {
-    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    RemoteMessage? initialMessage = await FirebaseMessaging.instance
+        .getInitialMessage();
     if (initialMessage != null) {
-      print('App abierta desde estado terminado por notificación: ${initialMessage.notification?.title}');
-      print('Data: ${initialMessage.data}');
-      
+      AppLogger.d(
+        'App abierta desde estado terminado por notificación: ${initialMessage.notification?.title}',
+      );
+      AppLogger.d('Data: ${initialMessage.data}');
+
       // Verificar si es notificación de calificación
       final tipo = initialMessage.data['tipo']?.toString().toLowerCase();
       if (tipo != null && tipo.contains('calificacion')) {
-        print('🔔 Navegando a pantalla de notificaciones (calificación)');
+        AppLogger.d('🔔 Navegando a pantalla de notificaciones (calificación)');
         navigatorKey.currentState?.pushNamed('/notifications');
       } else {
         navigatorKey.currentState?.pushNamed('/chat');
@@ -73,38 +89,40 @@ class FirebaseMsg {
     }
   }
 
-Future<void> _setupTokenHandling() async {
-  try {
-    if (Platform.isIOS) {
-      final apnsToken = await msgService.getAPNSToken();
-      if (apnsToken == null) {
-        debugPrint('⚠️ No hay APNs token (simulador iOS). Continuando sin APNs.');
-        // 👉 Asignamos token simulado directamente
+  Future<void> _setupTokenHandling() async {
+    try {
+      if (Platform.isIOS) {
+        final apnsToken = await msgService.getAPNSToken();
+        if (apnsToken == null) {
+          debugPrint(
+            '⚠️ No hay APNs token (simulador iOS). Continuando sin APNs.',
+          );
+          // 👉 Asignamos token simulado directamente
+          debugPrint("✅ Token FCM: SIMULATOR_FAKE_TOKEN");
+          return;
+        }
+      }
+
+      // ✅ Android o dispositivo físico iOS
+      final token = await msgService.getToken();
+      if (token != null) {
+        debugPrint("✅ Token FCM: $token");
+      } else {
+        debugPrint(
+          "⚠️ No se pudo obtener el token FCM, asignando token simulado",
+        );
         debugPrint("✅ Token FCM: SIMULATOR_FAKE_TOKEN");
-        return;
+      }
+    } catch (e) {
+      // ⚠️ En simulador puede lanzar apns-token-not-set: lo manejamos y seguimos
+      if (e.toString().contains('apns-token-not-set')) {
+        debugPrint("⚠️ Simulador iOS sin APNs. Usando token simulado.");
+        debugPrint("✅ Token FCM: SIMULATOR_FAKE_TOKEN");
+      } else {
+        debugPrint('🔥 Error inesperado obteniendo token FCM: $e');
       }
     }
-
-    // ✅ Android o dispositivo físico iOS
-    final token = await msgService.getToken();
-    if (token != null) {
-      debugPrint("✅ Token FCM: $token");
-    } else {
-      debugPrint("⚠️ No se pudo obtener el token FCM, asignando token simulado");
-      debugPrint("✅ Token FCM: SIMULATOR_FAKE_TOKEN");
-    }
-  } catch (e) {
-    // ⚠️ En simulador puede lanzar apns-token-not-set: lo manejamos y seguimos
-    if (e.toString().contains('apns-token-not-set')) {
-      debugPrint("⚠️ Simulador iOS sin APNs. Usando token simulado.");
-      debugPrint("✅ Token FCM: SIMULATOR_FAKE_TOKEN");
-    } else {
-      debugPrint('🔥 Error inesperado obteniendo token FCM: $e');
-    }
   }
-}
-
-
 
   Future<void> _setupLocalNotifications() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -112,15 +130,16 @@ Future<void> _setupTokenHandling() async {
 
     final DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        );
 
-    final InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsDarwin,
-    );
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
+          android: initializationSettingsAndroid,
+          iOS: initializationSettingsDarwin,
+        );
 
     await localNotifications.initialize(
       settings: initializationSettings,
@@ -138,21 +157,19 @@ Future<void> _setupTokenHandling() async {
 
     await localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
 
     await localNotifications
         .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
+          IOSFlutterLocalNotificationsPlugin
+        >()
+        ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   Future<void> _handleForegroundNotification(RemoteMessage message) async {
-    print('Notificación en primer plano: ${message.notification}');
+    AppLogger.d('Notificación en primer plano: ${message.notification}');
     await _showNotification(message);
   }
 
@@ -187,4 +204,3 @@ Future<void> _setupTokenHandling() async {
     );
   }
 }
-  

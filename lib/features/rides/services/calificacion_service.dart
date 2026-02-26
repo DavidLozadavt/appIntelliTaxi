@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/calificacion_model.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para gestionar calificaciones de servicios de taxi
 class CalificacionService {
@@ -16,12 +17,12 @@ class CalificacionService {
     String? comentario,
   }) async {
     try {
-      print('📤 Enviando calificación:');
-      print('   Servicio ID: $idServicio');
-      print('   Califica: $idUsuarioCalifica');
-      print('   Calificado: $idUsuarioCalificado');
-      print('   Tipo: $tipoCalificacion');
-      print('   Estrellas: $calificacion');
+      AppLogger.d('📤 Enviando calificación:');
+      AppLogger.d('   Servicio ID: $idServicio');
+      AppLogger.d('   Califica: $idUsuarioCalifica');
+      AppLogger.d('   Calificado: $idUsuarioCalificado');
+      AppLogger.d('   Tipo: $tipoCalificacion');
+      AppLogger.d('   Estrellas: $calificacion');
 
       final response = await _dio.post(
         'calificacion-servicio',
@@ -36,17 +37,17 @@ class CalificacionService {
         },
       );
 
-      print('✅ Calificación creada exitosamente');
-      
+      AppLogger.d('✅ Calificación creada exitosamente');
+
       // Extraer data de forma segura
       final responseData = response.data;
-      final data = responseData is Map<String, dynamic> 
+      final data = responseData is Map<String, dynamic>
           ? (responseData['data'] ?? responseData)
           : responseData;
-          
+
       return CalificacionServicio.fromJson(data as Map<String, dynamic>);
     } on DioException catch (e) {
-      print('⚠️ Error al crear calificación: ${e.response?.data}');
+      AppLogger.d('⚠️ Error al crear calificación: ${e.response?.data}');
       throw _handleError(e);
     }
   }
@@ -63,7 +64,9 @@ class CalificacionService {
       final data = response.data['data'] as List? ?? [];
       return data.map((item) => CalificacionServicio.fromJson(item)).toList();
     } on DioException catch (e) {
-      print('⚠️ Error al obtener calificaciones del servicio: ${e.message}');
+      AppLogger.d(
+        '⚠️ Error al obtener calificaciones del servicio: ${e.message}',
+      );
       throw _handleError(e);
     }
   }
@@ -75,10 +78,7 @@ class CalificacionService {
     int page = 1,
   }) async {
     try {
-      final queryParams = <String, dynamic>{
-        'tipo': ?tipo,
-        'page': page,
-      };
+      final queryParams = <String, dynamic>{'tipo': ?tipo, 'page': page};
 
       final response = await _dio.get(
         'calificacion-servicio/usuario/$idUsuario',
@@ -100,7 +100,9 @@ class CalificacionService {
         }),
       };
     } on DioException catch (e) {
-      print('⚠️ Error al obtener calificaciones del usuario: ${e.message}');
+      AppLogger.d(
+        '⚠️ Error al obtener calificaciones del usuario: ${e.message}',
+      );
       throw _handleError(e);
     }
   }
@@ -120,7 +122,7 @@ class CalificacionService {
 
       return PromedioCalificacion.fromJson(response.data);
     } on DioException catch (e) {
-      print('⚠️ Error al obtener promedio: ${e.message}');
+      AppLogger.d('⚠️ Error al obtener promedio: ${e.message}');
       throw _handleError(e);
     }
   }
@@ -137,7 +139,7 @@ class CalificacionService {
 
       return PuedeCalificar.fromJson(response.data);
     } on DioException catch (e) {
-      print('⚠️ Error al verificar si puede calificar: ${e.message}');
+      AppLogger.d('⚠️ Error al verificar si puede calificar: ${e.message}');
       throw _handleError(e);
     }
   }
@@ -155,7 +157,7 @@ class CalificacionService {
       final data = response.data['data'] as List? ?? [];
       return data.map((item) => item as Map<String, dynamic>).toList();
     } on DioException catch (e) {
-      print('⚠️ Error al obtener ranking: ${e.message}');
+      AppLogger.d('⚠️ Error al obtener ranking: ${e.message}');
       throw _handleError(e);
     }
   }
@@ -167,7 +169,7 @@ class CalificacionService {
 
       return response.data['data'] ?? {};
     } on DioException catch (e) {
-      print('⚠️ Error al obtener estadísticas: ${e.message}');
+      AppLogger.d('⚠️ Error al obtener estadísticas: ${e.message}');
       throw _handleError(e);
     }
   }

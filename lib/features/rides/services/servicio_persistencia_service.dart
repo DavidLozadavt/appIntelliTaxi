@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para persistir el estado de servicios activos
 /// Permite que la app recupere el estado del servicio después de cerrarla
@@ -22,9 +23,9 @@ class ServicioPersistenciaService {
       await prefs.setString(_keyServicioActivoTipo, tipo);
       await prefs.setString(_keyServicioActivoData, jsonEncode(datosServicio));
 
-      print('✅ Servicio activo guardado: ID=$servicioId, Tipo=$tipo');
+      AppLogger.d('✅ Servicio activo guardado: ID=$servicioId, Tipo=$tipo');
     } catch (e) {
-      print('⚠️ Error guardando servicio activo: $e');
+      AppLogger.d('⚠️ Error guardando servicio activo: $e');
     }
   }
 
@@ -38,17 +39,17 @@ class ServicioPersistenciaService {
       final dataJson = prefs.getString(_keyServicioActivoData);
 
       if (servicioId == null || tipo == null || dataJson == null) {
-        print('ℹ️ No hay servicio activo guardado');
+        AppLogger.d('ℹ️ No hay servicio activo guardado');
         return null;
       }
 
       final datosServicio = jsonDecode(dataJson) as Map<String, dynamic>;
 
-      print('✅ Servicio activo recuperado: ID=$servicioId, Tipo=$tipo');
+      AppLogger.d('✅ Servicio activo recuperado: ID=$servicioId, Tipo=$tipo');
 
       return {'servicioId': servicioId, 'tipo': tipo, 'datos': datosServicio};
     } catch (e) {
-      print('⚠️ Error recuperando servicio activo: $e');
+      AppLogger.d('⚠️ Error recuperando servicio activo: $e');
       return null;
     }
   }
@@ -62,9 +63,9 @@ class ServicioPersistenciaService {
       await prefs.remove(_keyServicioActivoTipo);
       await prefs.remove(_keyServicioActivoData);
 
-      print('🗑️ Datos del servicio activo limpiados');
+      AppLogger.d('🗑️ Datos del servicio activo limpiados');
     } catch (e) {
-      print('⚠️ Error limpiando servicio activo: $e');
+      AppLogger.d('⚠️ Error limpiando servicio activo: $e');
     }
   }
 
@@ -74,7 +75,7 @@ class ServicioPersistenciaService {
       final prefs = await SharedPreferences.getInstance();
       return prefs.containsKey(_keyServicioActivoId);
     } catch (e) {
-      print('⚠️ Error verificando servicio activo: $e');
+      AppLogger.d('⚠️ Error verificando servicio activo: $e');
       return false;
     }
   }

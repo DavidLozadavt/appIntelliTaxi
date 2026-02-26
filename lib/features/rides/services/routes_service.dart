@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class RoutesService {
   final PolylinePoints _polylinePoints = PolylinePoints();
@@ -49,7 +50,7 @@ class RoutesService {
 
       return null;
     } catch (e) {
-      print('Error obteniendo ruta: $e');
+      AppLogger.d('Error obteniendo ruta: $e');
       return null;
     }
   }

@@ -94,6 +94,5 @@ class PersonaRegistro {
     );
   }
 
-  String get nombreCompleto =>
-      '${nombre1 ?? ''} ${apellido1 ?? ''}'.trim();
+  String get nombreCompleto => '${nombre1 ?? ''} ${apellido1 ?? ''}'.trim();
 }

@@ -146,7 +146,7 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.red.withOpacity(0.2),
+                            color: Colors.red.withValues(alpha: 0.2),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -221,7 +221,9 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? AppColors.accent.withOpacity(0.1)
+                                        ? AppColors.accent.withValues(
+                                            alpha: 0.1,
+                                          )
                                         : backgroundColor,
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
@@ -234,7 +236,7 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                                         ? [
                                             BoxShadow(
                                               color: AppColors.accent
-                                                  .withOpacity(0.2),
+                                                  .withValues(alpha: 0.2),
                                               blurRadius: 8,
                                               offset: const Offset(0, 4),
                                             ),

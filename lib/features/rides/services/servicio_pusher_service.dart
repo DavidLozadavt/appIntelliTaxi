@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para que el pasajero reciba actualizaciones en tiempo real del servicio
 class ServicioPusherService {
@@ -16,24 +17,24 @@ class ServicioPusherService {
     try {
       _channelName = 'servicio.$servicioId';
 
-      print('\n${'=' * 80}');
-      print('🔌 PASAJERO: INICIANDO SUSCRIPCIÓN A PUSHER SECONDARY');
-      print('=' * 80);
-      print('   Canal: $_channelName');
-      print('   Eventos esperados:');
-      print('     1. servicio.aceptado');
-      print('     2. conductor.ubicacion.actualizada');
-      print('     3. servicio.estado.cambiado');
-      print('   🔸 TRANSPORTE usa SECONDARY, NO PRIMARY');
-      print('=' * 80);
+      AppLogger.d('\n${'=' * 80}');
+      AppLogger.d('🔌 PASAJERO: INICIANDO SUSCRIPCIÓN A PUSHER SECONDARY');
+      AppLogger.d('=' * 80);
+      AppLogger.d('   Canal: $_channelName');
+      AppLogger.d('   Eventos esperados:');
+      AppLogger.d('     1. servicio.aceptado');
+      AppLogger.d('     2. conductor.ubicacion.actualizada');
+      AppLogger.d('     3. servicio.estado.cambiado');
+      AppLogger.d('   🔸 TRANSPORTE usa SECONDARY, NO PRIMARY');
+      AppLogger.d('=' * 80);
 
       // Registrar handlers en SECONDARY (eventos de transporte vienen por ahí)
-      print('📝 Registrando handlers en SECONDARY...');
+      AppLogger.d('📝 Registrando handlers en SECONDARY...');
 
       PusherService.registerEventHandlerSecondary(
         '$_channelName:servicio.aceptado',
         (event) {
-          print('\n⭐ PASAJERO: Evento servicio.aceptado recibido!');
+          AppLogger.d('\n⭐ PASAJERO: Evento servicio.aceptado recibido!');
           _handleEvent(event, onServicioAceptado);
         },
       );
@@ -41,7 +42,7 @@ class ServicioPusherService {
       PusherService.registerEventHandlerSecondary(
         '$_channelName:conductor.ubicacion.actualizada',
         (event) {
-          print(
+          AppLogger.d(
             '\n📍 PASAJERO: Evento conductor.ubicacion.actualizada recibido!',
           );
           _handleEvent(event, onUbicacionActualizada);
@@ -51,32 +52,34 @@ class ServicioPusherService {
       PusherService.registerEventHandlerSecondary(
         '$_channelName:servicio.estado.cambiado',
         (event) {
-          print('\n🔄 PASAJERO: Evento servicio.estado.cambiado recibido!');
+          AppLogger.d(
+            '\n🔄 PASAJERO: Evento servicio.estado.cambiado recibido!',
+          );
           _handleEvent(event, onEstadoCambiado);
         },
       );
 
-      print('✅ Handlers registrados en SECONDARY');
+      AppLogger.d('✅ Handlers registrados en SECONDARY');
 
       // Suscribirse solo al canal SECONDARY (sin bloquear)
-      print('🔌 Suscribiendo al canal SECONDARY...');
+      AppLogger.d('🔌 Suscribiendo al canal SECONDARY...');
       PusherService.subscribeSecondary(_channelName!)
           .then((_) {
-            print('✅ Canal SECONDARY suscrito exitosamente');
+            AppLogger.d('✅ Canal SECONDARY suscrito exitosamente');
           })
           .catchError((error) {
-            print('❌ Error al suscribir SECONDARY: $error');
+            AppLogger.d('❌ Error al suscribir SECONDARY: $error');
           });
 
       _isConnected = true;
-      print('\n${'=' * 80}');
-      print('✅ PASAJERO: SUSCRIPCIÓN COMPLETADA (SECONDARY)');
-      print('=' * 80);
-      print('   Esperando eventos en servicio.$servicioId...');
-      print('=' * 80 + '\n');
+      AppLogger.d('\n${'=' * 80}');
+      AppLogger.d('✅ PASAJERO: SUSCRIPCIÓN COMPLETADA (SECONDARY)');
+      AppLogger.d('=' * 80);
+      AppLogger.d('   Esperando eventos en servicio.$servicioId...');
+      AppLogger.d('=' * 80 + '\n');
     } catch (e) {
-      print('\n❌ Error suscribiendo al canal: $e');
-      print('   Stack trace: ${StackTrace.current}');
+      AppLogger.d('\n❌ Error suscribiendo al canal: $e');
+      AppLogger.d('   Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -91,7 +94,7 @@ class ServicioPusherService {
       } else if (event is Map) {
         data = Map<String, dynamic>.from(event);
       } else {
-        print('⚠️ Tipo de evento no soportado: ${event.runtimeType}');
+        AppLogger.d('⚠️ Tipo de evento no soportado: ${event.runtimeType}');
         return;
       }
 
@@ -102,7 +105,7 @@ class ServicioPusherService {
 
       callback(data);
     } catch (e) {
-      print('⚠️ Error procesando evento: $e');
+      AppLogger.d('⚠️ Error procesando evento: $e');
     }
   }
 
@@ -122,9 +125,9 @@ class ServicioPusherService {
         );
 
         _isConnected = false;
-        print('🔌 Desconectado del canal: $_channelName');
+        AppLogger.d('🔌 Desconectado del canal: $_channelName');
       } catch (e) {
-        print('⚠️ Error desconectando: $e');
+        AppLogger.d('⚠️ Error desconectando: $e');
       }
     }
   }

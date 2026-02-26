@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class PlacesService {
   static const String _baseUrl = 'https://maps.googleapis.com/maps/api';
@@ -16,7 +17,7 @@ class PlacesService {
     if (query.trim().isEmpty) return [];
 
     try {
-      print('🔍 Buscando lugares: "$query"');
+      AppLogger.d('🔍 Buscando lugares: "$query"');
 
       final url = Uri.parse(
         '$_baseUrl/place/textsearch/json?'
@@ -27,41 +28,41 @@ class PlacesService {
         '&language=es',
       );
 
-      print('🌐 URL: $url');
+      AppLogger.d('🌐 URL: $url');
 
       final response = await http.get(url);
-      print('📡 Response status: ${response.statusCode}');
+      AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('📦 Response data status: ${data['status']}');
+        AppLogger.d('📦 Response data status: ${data['status']}');
 
         if (data['status'] == 'OK') {
           final results = (data['results'] as List)
               .map((place) => PlaceResult.fromJson(place))
               .where((place) => _isNearPopayan(place.lat, place.lng))
               .toList();
-          print('✅ Encontrados ${results.length} lugares');
+          AppLogger.d('✅ Encontrados ${results.length} lugares');
           return results;
         } else if (data['status'] == 'ZERO_RESULTS') {
-          print('⚠️ No se encontraron resultados para: "$query"');
+          AppLogger.d('⚠️ No se encontraron resultados para: "$query"');
           return [];
         } else {
-          print('❌ Error de Google API: ${data['status']}');
+          AppLogger.d('❌ Error de Google API: ${data['status']}');
           if (data['error_message'] != null) {
-            print('   Mensaje: ${data['error_message']}');
+            AppLogger.d('   Mensaje: ${data['error_message']}');
           }
           return [];
         }
       } else {
-        print('❌ Error HTTP: ${response.statusCode}');
-        print('   Body: ${response.body}');
+        AppLogger.d('❌ Error HTTP: ${response.statusCode}');
+        AppLogger.d('   Body: ${response.body}');
       }
 
       return [];
     } catch (e, stackTrace) {
-      print('❌ Error buscando lugares: $e');
-      print('   Stack trace: $stackTrace');
+      AppLogger.d('❌ Error buscando lugares: $e');
+      AppLogger.d('   Stack trace: $stackTrace');
       return [];
     }
   }
@@ -71,7 +72,7 @@ class PlacesService {
     if (input.trim().isEmpty) return [];
 
     try {
-      print('🔍 Buscando: "$input"');
+      AppLogger.d('🔍 Buscando: "$input"');
 
       final url = Uri.parse(
         '$_baseUrl/place/autocomplete/json?'
@@ -84,40 +85,40 @@ class PlacesService {
         '&language=es',
       );
 
-      print('🌐 URL: $url');
+      AppLogger.d('🌐 URL: $url');
 
       final response = await http.get(url);
-      print('📡 Response status: ${response.statusCode}');
+      AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('📦 Response data status: ${data['status']}');
+        AppLogger.d('📦 Response data status: ${data['status']}');
 
         if (data['status'] == 'OK') {
           final predictions = (data['predictions'] as List)
               .map((pred) => PlacePrediction.fromJson(pred))
               .toList();
-          print('✅ Encontrados ${predictions.length} resultados');
+          AppLogger.d('✅ Encontrados ${predictions.length} resultados');
           return predictions;
         } else if (data['status'] == 'ZERO_RESULTS') {
-          print('⚠️ No se encontraron resultados para: "$input"');
+          AppLogger.d('⚠️ No se encontraron resultados para: "$input"');
           return [];
         } else {
-          print('❌ Error de Google API: ${data['status']}');
+          AppLogger.d('❌ Error de Google API: ${data['status']}');
           if (data['error_message'] != null) {
-            print('   Mensaje: ${data['error_message']}');
+            AppLogger.d('   Mensaje: ${data['error_message']}');
           }
           return [];
         }
       } else {
-        print('❌ Error HTTP: ${response.statusCode}');
-        print('   Body: ${response.body}');
+        AppLogger.d('❌ Error HTTP: ${response.statusCode}');
+        AppLogger.d('   Body: ${response.body}');
       }
 
       return [];
     } catch (e, stackTrace) {
-      print('❌ Error en autocomplete: $e');
-      print('   Stack trace: $stackTrace');
+      AppLogger.d('❌ Error en autocomplete: $e');
+      AppLogger.d('   Stack trace: $stackTrace');
       return [];
     }
   }
@@ -125,7 +126,7 @@ class PlacesService {
   /// Obtiene los detalles de un lugar por su placeId
   Future<PlaceDetails?> getPlaceDetails(String placeId) async {
     try {
-      print('📍 Obteniendo detalles del lugar: $placeId');
+      AppLogger.d('📍 Obteniendo detalles del lugar: $placeId');
 
       final url = Uri.parse(
         '$_baseUrl/place/details/json?'
@@ -136,31 +137,31 @@ class PlacesService {
       );
 
       final response = await http.get(url);
-      print('📡 Response status: ${response.statusCode}');
+      AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('📦 Response data status: ${data['status']}');
+        AppLogger.d('📦 Response data status: ${data['status']}');
 
         if (data['status'] == 'OK') {
           final placeDetails = PlaceDetails.fromJson(data['result']);
-          print('✅ Detalles obtenidos: ${placeDetails.name}');
+          AppLogger.d('✅ Detalles obtenidos: ${placeDetails.name}');
           return placeDetails;
         } else {
-          print('❌ Error de Google API: ${data['status']}');
+          AppLogger.d('❌ Error de Google API: ${data['status']}');
           if (data['error_message'] != null) {
-            print('   Mensaje: ${data['error_message']}');
+            AppLogger.d('   Mensaje: ${data['error_message']}');
           }
         }
       } else {
-        print('❌ Error HTTP: ${response.statusCode}');
-        print('   Body: ${response.body}');
+        AppLogger.d('❌ Error HTTP: ${response.statusCode}');
+        AppLogger.d('   Body: ${response.body}');
       }
 
       return null;
     } catch (e, stackTrace) {
-      print('❌ Error obteniendo detalles: $e');
-      print('   Stack trace: $stackTrace');
+      AppLogger.d('❌ Error obteniendo detalles: $e');
+      AppLogger.d('   Stack trace: $stackTrace');
       return null;
     }
   }

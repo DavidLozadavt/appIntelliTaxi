@@ -24,7 +24,7 @@ Widget buildUserList(List<ActivationCompanyUser>? users, bool isLoading) {
     itemCount: users.length,
     cacheExtent: 400,
     addAutomaticKeepAlives: false,
-    separatorBuilder: (_, __) => Divider(
+    separatorBuilder: (_, _) => Divider(
       height: 1,
       thickness: 0.5,
       color: Colors.grey.shade300,

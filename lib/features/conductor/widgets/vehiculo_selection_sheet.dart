@@ -49,8 +49,8 @@ class VehiculoSelectionSheet extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  AppColors.accent.withOpacity(isDarkMode ? 0.15 : 0.08),
-                  AppColors.primary.withOpacity(isDarkMode ? 0.10 : 0.05),
+                  AppColors.accent.withValues(alpha: isDarkMode ? 0.15 : 0.08),
+                  AppColors.primary.withValues(alpha: isDarkMode ? 0.10 : 0.05),
                 ],
               ),
               borderRadius: const BorderRadius.only(
@@ -68,13 +68,13 @@ class VehiculoSelectionSheet extends StatelessWidget {
                       end: Alignment.bottomRight,
                       colors: [
                         AppColors.accent,
-                        AppColors.accent.withOpacity(0.8),
+                        AppColors.accent.withValues(alpha: 0.8),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.accent.withOpacity(0.3),
+                        color: AppColors.accent.withValues(alpha: 0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -109,8 +109,8 @@ class VehiculoSelectionSheet extends StatelessWidget {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.accent.withOpacity(
-                                isDarkMode ? 0.25 : 0.15,
+                              color: AppColors.accent.withValues(
+                                alpha: isDarkMode ? 0.25 : 0.15,
                               ),
                               borderRadius: BorderRadius.circular(6),
                             ),
@@ -189,22 +189,22 @@ class VehiculoSelectionSheet extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isDarkMode
-              ? [AppColors.darkCard, AppColors.darkCard.withOpacity(0.95)]
+              ? [AppColors.darkCard, AppColors.darkCard.withValues(alpha: 0.95)]
               : [Colors.white, Colors.grey.shade50],
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: AppColors.accent.withOpacity(isDarkMode ? 0.25 : 0.15),
+          color: AppColors.accent.withValues(alpha: isDarkMode ? 0.25 : 0.15),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accent.withOpacity(isDarkMode ? 0.15 : 0.08),
+            color: AppColors.accent.withValues(alpha: isDarkMode ? 0.15 : 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(isDarkMode ? 0.3 : 0.04),
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.3 : 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -239,7 +239,7 @@ class VehiculoSelectionSheet extends StatelessWidget {
                           child: Image.network(
                             vehiculo.rutaUrl!,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
+                            errorBuilder: (_, _, _) =>
                                 _buildCarPlaceholder(),
                           ),
                         )

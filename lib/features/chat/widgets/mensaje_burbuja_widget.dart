@@ -9,15 +9,15 @@ class MensajeBurbujaWidget extends StatelessWidget {
   final bool esMio;
 
   const MensajeBurbujaWidget({
-    Key? key,
+    super.key,
     required this.mensaje,
     required this.esMio,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Align(
       alignment: esMio ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -38,7 +38,7 @@ class MensajeBurbujaWidget extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 3,
               offset: const Offset(0, 1),
             ),
@@ -51,8 +51,8 @@ class MensajeBurbujaWidget extends StatelessWidget {
             Text(
               mensaje.mensaje,
               style: TextStyle(
-                color: esMio 
-                    ? Colors.white 
+                color: esMio
+                    ? Colors.white
                     : (isDark ? AppColors.darkOnSurface : Colors.black87),
                 fontSize: 15,
               ),
@@ -66,8 +66,8 @@ class MensajeBurbujaWidget extends StatelessWidget {
                 Text(
                   _formatTime(mensaje.createdAt),
                   style: TextStyle(
-                    color: esMio 
-                        ? Colors.white70 
+                    color: esMio
+                        ? Colors.white70
                         : (isDark ? Colors.grey[500] : Colors.black54),
                     fontSize: 11,
                   ),
@@ -77,9 +77,7 @@ class MensajeBurbujaWidget extends StatelessWidget {
                   Icon(
                     mensaje.leido ? Icons.done_all : Icons.done,
                     size: 14,
-                    color: mensaje.leido
-                        ? AppColors.primary
-                        : Colors.white70,
+                    color: mensaje.leido ? AppColors.primary : Colors.white70,
                   ),
                 ],
               ],

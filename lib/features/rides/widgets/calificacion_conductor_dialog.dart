@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
 import 'package:intellitaxi/features/auth/logic/auth_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class CalificacionConductorDialog extends StatefulWidget {
   final int servicioId;
@@ -72,8 +73,8 @@ class _CalificacionConductorDialogState
   }
 
   Future<void> _enviarCalificacion() async {
-    print('Calificación: $_calificacionSeleccionada');
-    print('Comentario: ${_comentarioController.text}');
+    AppLogger.d('Calificación: $_calificacionSeleccionada');
+    AppLogger.d('Comentario: ${_comentarioController.text}');
 
     // Guardar contexto y navigator
     final ctx = context;
@@ -141,12 +142,12 @@ class _CalificacionConductorDialogState
     );
 
     try {
-      print('📤 Enviando calificación:');
-      print('   Servicio: ${widget.servicioId}');
-      print('   Pasajero (califica): $idPasajero');
-      print('   Conductor (calificado): $idConductor');
-      print('   Estrellas: $_calificacionSeleccionada');
-      print('   Comentario: ${_comentarioController.text}');
+      AppLogger.d('📤 Enviando calificación:');
+      AppLogger.d('   Servicio: ${widget.servicioId}');
+      AppLogger.d('   Pasajero (califica): $idPasajero');
+      AppLogger.d('   Conductor (calificado): $idConductor');
+      AppLogger.d('   Estrellas: $_calificacionSeleccionada');
+      AppLogger.d('   Comentario: ${_comentarioController.text}');
 
       // Enviar calificación
       final resultado = await _calificacionService.crearCalificacion(
@@ -160,7 +161,7 @@ class _CalificacionConductorDialogState
             : _comentarioController.text.trim(),
       );
 
-      print('✅ Calificación enviada: ID ${resultado.id}');
+      AppLogger.d('✅ Calificación enviada: ID ${resultado.id}');
 
       // Cerrar loading dialog usando rootNavigator
       if (mounted && ctx.mounted) {
@@ -186,7 +187,7 @@ class _CalificacionConductorDialogState
         Navigator.of(ctx).pop(true);
       }
     } catch (e) {
-      print('❌ Error enviando calificación: $e');
+      AppLogger.d('❌ Error enviando calificación: $e');
 
       // Cerrar loading dialog usando rootNavigator
       if (mounted && ctx.mounted) {
@@ -237,24 +238,24 @@ class _CalificacionConductorDialogState
                 ? LinearGradient(
                     colors: [
                       colorScheme.primary,
-                      colorScheme.primary.withOpacity(0.8),
+                      colorScheme.primary.withValues(alpha: 0.8),
                     ],
                   )
                 : null,
             color: isSelected
                 ? null
-                : colorScheme.surfaceVariant.withOpacity(0.5),
+                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isSelected
                   ? colorScheme.primary
-                  : colorScheme.outline.withOpacity(0.3),
+                  : colorScheme.outline.withValues(alpha: 0.3),
               width: isSelected ? 2 : 1,
             ),
             boxShadow: isSelected
                 ? [
                     BoxShadow(
-                      color: colorScheme.primary.withOpacity(0.3),
+                      color: colorScheme.primary.withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -280,7 +281,7 @@ class _CalificacionConductorDialogState
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: isSelected
                         ? colorScheme.onPrimary
-                        : colorScheme.onSurface.withOpacity(0.7),
+                        : colorScheme.onSurface.withValues(alpha: 0.7),
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                   ),
                   textAlign: TextAlign.center,
@@ -310,7 +311,7 @@ class _CalificacionConductorDialogState
             end: Alignment.bottomRight,
             colors: [
               colorScheme.surface,
-              colorScheme.primary.withOpacity(0.02),
+              colorScheme.primary.withValues(alpha: 0.02),
             ],
           ),
           borderRadius: BorderRadius.circular(24),
@@ -326,7 +327,7 @@ class _CalificacionConductorDialogState
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: Colors.green.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -349,7 +350,7 @@ class _CalificacionConductorDialogState
               Text(
                 '¡Gracias por usar nuestro servicio!',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface.withOpacity(0.7),
+                  color: colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -396,10 +397,12 @@ class _CalificacionConductorDialogState
                   horizontal: 16,
                 ),
                 decoration: BoxDecoration(
-                  color: colorScheme.surfaceVariant.withOpacity(0.3),
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.3,
+                  ),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: colorScheme.outline.withOpacity(0.2),
+                    color: colorScheme.outline.withValues(alpha: 0.2),
                   ),
                 ),
                 child: Column(
@@ -425,7 +428,9 @@ class _CalificacionConductorDialogState
                                     : Icons.star_outline_rounded,
                                 color: starValue <= _calificacionSeleccionada
                                     ? Colors.amber.shade600
-                                    : colorScheme.outline.withOpacity(0.3),
+                                    : colorScheme.outline.withValues(
+                                        alpha: 0.3,
+                                      ),
                                 size: 36,
                               ),
                             ),
@@ -465,14 +470,14 @@ class _CalificacionConductorDialogState
                     Icon(
                       Icons.chat_bubble_outline_rounded,
                       size: 16,
-                      color: colorScheme.onSurface.withOpacity(0.6),
+                      color: colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                     const SizedBox(width: 6),
                     Text(
                       'Mensajes rápidos',
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurface.withOpacity(0.7),
+                        color: colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -520,20 +525,22 @@ class _CalificacionConductorDialogState
                 decoration: InputDecoration(
                   hintText: 'Escribe tu comentario (opcional)',
                   hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.4),
+                    color: colorScheme.onSurface.withValues(alpha: 0.4),
                   ),
                   filled: true,
-                  fillColor: colorScheme.surfaceVariant.withOpacity(0.3),
+                  fillColor: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.3,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide(
-                      color: colorScheme.outline.withOpacity(0.2),
+                      color: colorScheme.outline.withValues(alpha: 0.2),
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide(
-                      color: colorScheme.outline.withOpacity(0.2),
+                      color: colorScheme.outline.withValues(alpha: 0.2),
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -546,7 +553,7 @@ class _CalificacionConductorDialogState
                   contentPadding: const EdgeInsets.all(12),
                   prefixIcon: Icon(
                     Icons.edit_note_rounded,
-                    color: colorScheme.onSurface.withOpacity(0.4),
+                    color: colorScheme.onSurface.withValues(alpha: 0.4),
                     size: 20,
                   ),
                 ),
@@ -566,7 +573,7 @@ class _CalificacionConductorDialogState
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         side: BorderSide(
-                          color: colorScheme.outline.withOpacity(0.3),
+                          color: colorScheme.outline.withValues(alpha: 0.3),
                         ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -575,7 +582,7 @@ class _CalificacionConductorDialogState
                       child: Text(
                         'Omitir',
                         style: theme.textTheme.titleSmall?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.6),
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -591,7 +598,7 @@ class _CalificacionConductorDialogState
                         foregroundColor: colorScheme.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         elevation: 3,
-                        shadowColor: colorScheme.primary.withOpacity(0.4),
+                        shadowColor: colorScheme.primary.withValues(alpha: 0.4),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class SancionService {
   final Dio _dio = DioClient.getInstance();
@@ -22,10 +23,10 @@ class SancionService {
 
       return [];
     } on DioException catch (e) {
-      print('Error al obtener sanciones: ${e.message}');
+      AppLogger.d('Error al obtener sanciones: ${e.message}');
       if (e.response?.data is Map) {
         final responseData = e.response?.data as Map;
-        print('Mensaje del servidor: ${responseData['message']}');
+        AppLogger.d('Mensaje del servidor: ${responseData['message']}');
       }
       throw Exception('Error al cargar las sanciones');
     }

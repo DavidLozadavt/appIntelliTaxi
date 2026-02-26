@@ -5,6 +5,7 @@ import 'package:intellitaxi/features/Profile/presentation/profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../auth/logic/auth_provider.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,14 +28,14 @@ class _HomeScreenState extends State<HomeScreen> {
         final user = authProvider.user;
 
         if (user == null) {
-          print('⚠️ HomeScreen: Usuario es NULL');
+          AppLogger.d('⚠️ HomeScreen: Usuario es NULL');
           return const Center(child: CircularProgressIndicator());
         }
 
         final roles = authProvider.roles;
-        print('👤 HomeScreen: Usuario ID: ${user.id}');
-        print('👤 HomeScreen: Nombre: ${user.nombreCompleto}');
-        print('🎭 HomeScreen: Roles: $roles');
+        AppLogger.d('👤 HomeScreen: Usuario ID: ${user.id}');
+        AppLogger.d('👤 HomeScreen: Nombre: ${user.nombreCompleto}');
+        AppLogger.d('🎭 HomeScreen: Roles: $roles');
 
         Widget body;
 
@@ -42,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (roles.any(
           (r) => ['CONDUCTOR', 'MOTORISTA', 'DRIVER', 'Admin'].contains(r),
         )) {
-          print('✅ HomeScreen: Mostrando pantalla de CONDUCTOR');
+          AppLogger.d('✅ HomeScreen: Mostrando pantalla de CONDUCTOR');
           body = const HomeConductor(stories: []);
         }
         // Verificar rol de pasajero (passenger)
@@ -54,12 +55,12 @@ class _HomeScreenState extends State<HomeScreen> {
             'AUXILIAR CONTAB',
           ].contains(r),
         )) {
-          print('✅ HomeScreen: Mostrando pantalla de PASAJERO');
+          AppLogger.d('✅ HomeScreen: Mostrando pantalla de PASAJERO');
           body = const HomePasajero(stories: []);
         }
         // Si no tiene ninguno de estos roles
         else {
-          print('⚠️ HomeScreen: Rol NO reconocido');
+          AppLogger.d('⚠️ HomeScreen: Rol NO reconocido');
           body = const Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

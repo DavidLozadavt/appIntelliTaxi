@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intellitaxi/features/conductor/data/documento_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Provider para gestionar la lógica de documentos del conductor
 /// Incluye: carga de documentos, actualización, cálculo de vigencia
@@ -68,13 +69,15 @@ class DocumentosProvider extends ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      final documentos = await _conductorService.getDocumentosConductor(conductorId);
+      final documentos = await _conductorService.getDocumentosConductor(
+        conductorId,
+      );
 
       _documentos = documentos;
       _isLoading = false;
       notifyListeners();
     } catch (e) {
-      print('❌ Error cargando documentos: $e');
+      AppLogger.d('❌ Error cargando documentos: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       _isLoading = false;
       notifyListeners();
@@ -96,7 +99,7 @@ class DocumentosProvider extends ChangeNotifier {
       }
       return null;
     } catch (e) {
-      print('❌ Error seleccionando imagen: $e');
+      AppLogger.d('❌ Error seleccionando imagen: $e');
       return null;
     }
   }
@@ -112,7 +115,8 @@ class DocumentosProvider extends ChangeNotifier {
       // Convertir DateTime a String en formato yyyy-MM-dd
       String? fechaStr;
       if (fechaVigencia != null) {
-        fechaStr = '${fechaVigencia.year}-${fechaVigencia.month.toString().padLeft(2, '0')}-${fechaVigencia.day.toString().padLeft(2, '0')}';
+        fechaStr =
+            '${fechaVigencia.year}-${fechaVigencia.month.toString().padLeft(2, '0')}-${fechaVigencia.day.toString().padLeft(2, '0')}';
       }
 
       await _conductorService.actualizarDocumento(
@@ -126,7 +130,7 @@ class DocumentosProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      print('❌ Error actualizando documento: $e');
+      AppLogger.d('❌ Error actualizando documento: $e');
       _error = e.toString().replaceAll('Exception: ', '');
       notifyListeners();
       return false;

@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/chat/logic/chat_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
-
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -54,7 +53,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -94,7 +93,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(28),
                         borderSide: BorderSide(
-                          color: AppColors.accent.withOpacity(0.5),
+                          color: AppColors.accent.withValues(alpha: 0.5),
                           width: 1.5,
                         ),
                       ),

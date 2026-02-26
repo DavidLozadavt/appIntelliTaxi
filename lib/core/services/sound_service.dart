@@ -1,4 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para reproducir sonidos de notificaciones
 class SoundService {
@@ -12,9 +13,9 @@ class SoundService {
     try {
       _player = AudioPlayer();
       _isInitialized = true;
-      print('🔊 AudioPlayer inicializado correctamente');
+      AppLogger.d('🔊 AudioPlayer inicializado correctamente');
     } catch (e) {
-      print('⚠️ No se pudo inicializar AudioPlayer: $e');
+      AppLogger.d('⚠️ No se pudo inicializar AudioPlayer: $e');
       _player = null;
       _isInitialized = false;
     }
@@ -25,12 +26,12 @@ class SoundService {
     await _initialize();
 
     if (_player == null) {
-      print('⚠️ AudioPlayer no disponible, omitiendo sonido');
+      AppLogger.d('⚠️ AudioPlayer no disponible, omitiendo sonido');
       return;
     }
 
     try {
-      print('🔊 Reproduciendo sonido de nueva oferta...');
+      AppLogger.d('🔊 Reproduciendo sonido de nueva oferta...');
 
       // Primera reproducción
       await _player!.play(AssetSource('sound/nuevaoferta.mp3'));
@@ -41,9 +42,9 @@ class SoundService {
       // Segunda reproducción
       await _player!.play(AssetSource('sound/nuevaoferta.mp3'));
 
-      print('✅ Sonido reproducido 2 veces');
+      AppLogger.d('✅ Sonido reproducido 2 veces');
     } catch (e) {
-      print('⚠️ Error reproduciendo sonido (no crítico): $e');
+      AppLogger.d('⚠️ Error reproduciendo sonido (no crítico): $e');
       // No lanzar error, solo loguearlo
     }
   }
@@ -53,7 +54,7 @@ class SoundService {
     await _initialize();
 
     if (_player == null) {
-      print('⚠️ AudioPlayer no disponible, omitiendo sonido');
+      AppLogger.d('⚠️ AudioPlayer no disponible, omitiendo sonido');
       return;
     }
 
@@ -66,9 +67,9 @@ class SoundService {
         }
       }
 
-      print('✅ Sonido reproducido $times veces');
+      AppLogger.d('✅ Sonido reproducido $times veces');
     } catch (e) {
-      print('⚠️ Error reproduciendo sonido: $e');
+      AppLogger.d('⚠️ Error reproduciendo sonido: $e');
     }
   }
 
@@ -77,7 +78,7 @@ class SoundService {
     try {
       await _player?.stop();
     } catch (e) {
-      print('⚠️ Error deteniendo sonido: $e');
+      AppLogger.d('⚠️ Error deteniendo sonido: $e');
     }
   }
 
@@ -88,7 +89,7 @@ class SoundService {
       _player = null;
       _isInitialized = false;
     } catch (e) {
-      print('⚠️ Error liberando reproductor: $e');
+      AppLogger.d('⚠️ Error liberando reproductor: $e');
     }
   }
 }

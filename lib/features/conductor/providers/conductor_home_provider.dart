@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
@@ -87,11 +88,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> conectarPusher() async {
     try {
       if (_suscritoAPusher) {
-        print('⚠️ Ya está suscrito a solicitudes-servicio');
+        AppLogger.d('⚠️ Ya está suscrito a solicitudes-servicio');
         return;
       }
 
-      print('🔌 Suscribiéndose al canal de solicitudes...');
+      AppLogger.d('🔌 Suscribiéndose al canal de solicitudes...');
 
       await PusherService.subscribeSecondary('solicitudes-servicio');
 
@@ -99,7 +100,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       PusherService.registerEventHandlerSecondary(
         'solicitudes-servicio:nueva-solicitud',
         (data) {
-          print('🔔 Evento recibido: nueva-solicitud');
+          AppLogger.d('🔔 Evento recibido: nueva-solicitud');
           if (data != null) {
             _procesarNuevaSolicitud(data);
           }
@@ -107,24 +108,24 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
 
       _suscritoAPusher = true;
-      print('✅ Suscrito correctamente al canal de solicitudes');
+      AppLogger.d('✅ Suscrito correctamente al canal de solicitudes');
     } catch (e) {
-      print('❌ Error al conectarse a Pusher: $e');
+      AppLogger.d('❌ Error al conectarse a Pusher: $e');
     }
   }
 
   /// Desconecta de Pusher
   Future<void> desconectarPusher() async {
     try {
-      print('🔌 Desconectándose de Pusher...');
+      AppLogger.d('🔌 Desconectándose de Pusher...');
       PusherService.unregisterEventHandlerSecondary(
         'solicitudes-servicio:nueva-solicitud',
       );
       await PusherService.unsubscribeSecondary('solicitudes-servicio');
       _suscritoAPusher = false;
-      print('✅ Desconectado de Pusher');
+      AppLogger.d('✅ Desconectado de Pusher');
     } catch (e) {
-      print('❌ Error al desconectar Pusher: $e');
+      AppLogger.d('❌ Error al desconectar Pusher: $e');
     }
   }
 
@@ -133,19 +134,19 @@ class ConductorHomeProvider extends ChangeNotifier {
     try {
       final solicitud = json.decode(data) as Map<String, dynamic>;
       final solicitudId = _obtenerSolicitudId(solicitud);
-      print('📩 Solicitud decodificada: $solicitudId');
+      AppLogger.d('📩 Solicitud decodificada: $solicitudId');
 
       // Verificar si ya existe la solicitud
       final yaExiste = _solicitudesActivas.any(
         (s) => _obtenerSolicitudId(s) == solicitudId,
       );
       if (yaExiste) {
-        print('⚠️ Solicitud ya existe: $solicitudId');
+        AppLogger.d('⚠️ Solicitud ya existe: $solicitudId');
         return;
       }
 
       if (solicitudId == null || solicitudId.isEmpty) {
-        print('⚠️ Solicitud descartada: no contiene id válido');
+        AppLogger.d('⚠️ Solicitud descartada: no contiene id válido');
         return;
       }
 
@@ -166,7 +167,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       if (!_isDisposed) notifyListeners();
     } catch (e) {
-      print('❌ Error procesando solicitud: $e');
+      AppLogger.d('❌ Error procesando solicitud: $e');
     }
   }
 
@@ -181,7 +182,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Expira una solicitud después del tiempo límite
   void _expirarSolicitud(String solicitudId) {
-    print('⏱️ Solicitud expirada: $solicitudId');
+    AppLogger.d('⏱️ Solicitud expirada: $solicitudId');
     _solicitudesActivas.removeWhere(
       (s) => _obtenerSolicitudId(s) == solicitudId,
     );
@@ -196,7 +197,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     try {
       await _audioPlayer.play(AssetSource('sound/nuevaoferta.mp3'));
     } catch (e) {
-      print('❌ Error reproduciendo sonido: $e');
+      AppLogger.d('❌ Error reproduciendo sonido: $e');
     }
   }
 
@@ -204,7 +205,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Rechaza una solicitud
   void rechazarSolicitud(String solicitudId) {
-    print('❌ Rechazando solicitud: $solicitudId');
+    AppLogger.d('❌ Rechazando solicitud: $solicitudId');
     _solicitudesActivas.removeWhere(
       (s) => _obtenerSolicitudId(s) == solicitudId,
     );
@@ -221,7 +222,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     int idVehiculo,
   ) async {
     try {
-      print('✅ Aceptando solicitud: $solicitudId');
+      AppLogger.d('✅ Aceptando solicitud: $solicitudId');
 
       // Validar que el ID no sea nulo o inválido
       if (solicitudId.isEmpty || solicitudId == 'null') {
@@ -248,7 +249,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return response;
     } catch (e) {
-      print('❌ Error aceptando solicitud: $e');
+      AppLogger.d('❌ Error aceptando solicitud: $e');
       return null;
     }
   }
@@ -311,8 +312,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
 
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
 
       if (_isDisposed) return;
@@ -322,11 +325,11 @@ class ConductorHomeProvider extends ChangeNotifier {
       _locationMessage = 'Ubicación obtenida';
       if (!_isDisposed) notifyListeners();
 
-      print(
+      AppLogger.d(
         '📍 Ubicación obtenida: ${position.latitude}, ${position.longitude}',
       );
     } catch (e) {
-      print('❌ Error obteniendo ubicación: $e');
+      AppLogger.d('❌ Error obteniendo ubicación: $e');
 
       if (_isDisposed) return;
 
@@ -346,7 +349,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _vehiculosDisponibles = vehiculos;
       if (!_isDisposed) notifyListeners();
     } catch (e) {
-      print('❌ Error cargando vehículos: $e');
+      AppLogger.d('❌ Error cargando vehículos: $e');
     }
   }
 
@@ -380,7 +383,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         if (!_isDisposed) notifyListeners();
       }
     } catch (e) {
-      print('❌ Error cargando turno: $e');
+      AppLogger.d('❌ Error cargando turno: $e');
     }
   }
 
@@ -393,11 +396,13 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (position == null) {
         try {
           position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 5),
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 5),
+            ),
           );
         } catch (e) {
-          print('⚠️ Error obteniendo ubicación: $e');
+          AppLogger.d('⚠️ Error obteniendo ubicación: $e');
           throw Exception('No se pudo obtener la ubicación');
         }
       }
@@ -425,7 +430,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
-      print('❌ Error iniciando turno: $e');
+      AppLogger.d('❌ Error iniciando turno: $e');
       return false;
     }
   }
@@ -441,11 +446,13 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (position == null) {
         try {
           position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high,
-            timeLimit: const Duration(seconds: 5),
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 5),
+            ),
           );
         } catch (e) {
-          print('⚠️ Error obteniendo ubicación: $e');
+          AppLogger.d('⚠️ Error obteniendo ubicación: $e');
         }
       }
 
@@ -472,7 +479,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
-      print('❌ Error finalizando turno: $e');
+      AppLogger.d('❌ Error finalizando turno: $e');
       return false;
     }
   }
@@ -495,7 +502,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     try {
       return await _conductorService.verificarDocumentos(userId);
     } catch (e) {
-      print('❌ Error verificando documentos: $e');
+      AppLogger.d('❌ Error verificando documentos: $e');
       return {'vencidos': [], 'porVencer': []};
     }
   }
@@ -506,7 +513,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     required String motivo,
   }) async {
     try {
-      print('🚫 Cancelando servicio: $servicioId');
+      AppLogger.d('🚫 Cancelando servicio: $servicioId');
 
       await _conductorService.cancelarServicio(
         servicioId: servicioId,
@@ -525,7 +532,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
-      print('❌ Error cancelando servicio: $e');
+      AppLogger.d('❌ Error cancelando servicio: $e');
       return false;
     }
   }

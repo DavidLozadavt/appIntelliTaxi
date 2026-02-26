@@ -82,7 +82,7 @@ class ChatHelper {
     return Stack(
       children: [
         IconButton(
-          icon:  Icon(Iconsax.messages_copy),
+          icon: Icon(Iconsax.messages_copy),
           onPressed: () => abrirChat(
             context: context,
             servicioId: servicioId,

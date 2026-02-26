@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/auth_model.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class AuthService {
   final Dio _dio = Dio(
@@ -185,7 +186,7 @@ class AuthService {
       );
     } catch (e) {
       // Opcional: manejar error si falla la petición
-      print("Error en logout API: $e");
+      AppLogger.d("Error en logout API: $e");
     }
 
     // 👈 Después de llamar a la API borras todo

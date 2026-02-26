@@ -18,16 +18,15 @@ class ConnectivityProvider extends ChangeNotifier {
   }
 
   void _updateStatus(List<ConnectivityResult> results) {
-    final hasConnection = results.isNotEmpty &&
-        !results.contains(ConnectivityResult.none);
+    final hasConnection =
+        results.isNotEmpty && !results.contains(ConnectivityResult.none);
 
     _isOnline = hasConnection;
     notifyListeners();
   }
 
   Future<void> checkNow() async {
-  final results = await Connectivity().checkConnectivity();
-  _updateStatus(results);
-}
-
+    final results = await Connectivity().checkConnectivity();
+    _updateStatus(results);
+  }
 }

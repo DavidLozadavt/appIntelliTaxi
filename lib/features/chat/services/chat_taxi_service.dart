@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import '../data/mensaje_taxi_model.dart';
 import '../../../config/pusher_config.dart';
 import '../../../core/dio_client.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ChatTaxiService {
   final Dio _dio = DioClient.getInstance();
@@ -30,16 +31,16 @@ class ChatTaxiService {
         return MensajeTaxi.fromJson(response.data['data']);
       }
 
-      print('Error enviando mensaje: ${response.data['message']}');
+      AppLogger.d('Error enviando mensaje: ${response.data['message']}');
       return null;
     } on DioException catch (e) {
-      print('DioException: ${e.message}');
+      AppLogger.d('DioException: ${e.message}');
       if (e.response != null) {
-        print('Response data: ${e.response?.data}');
+        AppLogger.d('Response data: ${e.response?.data}');
       }
       return null;
     } catch (e) {
-      print('Error: $e');
+      AppLogger.d('Error: $e');
       return null;
     }
   }
@@ -57,10 +58,10 @@ class ChatTaxiService {
 
       return [];
     } on DioException catch (e) {
-      print('DioException: ${e.message}');
+      AppLogger.d('DioException: ${e.message}');
       return [];
     } catch (e) {
-      print('Error: $e');
+      AppLogger.d('Error: $e');
       return [];
     }
   }
@@ -77,10 +78,10 @@ class ChatTaxiService {
 
       return response.data['success'] == true;
     } on DioException catch (e) {
-      print('DioException: ${e.message}');
+      AppLogger.d('DioException: ${e.message}');
       return false;
     } catch (e) {
-      print('Error: $e');
+      AppLogger.d('Error: $e');
       return false;
     }
   }
@@ -96,10 +97,10 @@ class ChatTaxiService {
 
       return 0;
     } on DioException catch (e) {
-      print('DioException: ${e.message}');
+      AppLogger.d('DioException: ${e.message}');
       return 0;
     } catch (e) {
-      print('Error: $e');
+      AppLogger.d('Error: $e');
       return 0;
     }
   }
@@ -115,13 +116,13 @@ class ChatTaxiService {
 
       return null;
     } on DioException catch (e) {
-      print('DioException: ${e.message}');
+      AppLogger.d('DioException: ${e.message}');
       if (e.response != null) {
-        print('Response data: ${e.response?.data}');
+        AppLogger.d('Response data: ${e.response?.data}');
       }
       return null;
     } catch (e) {
-      print('Error: $e');
+      AppLogger.d('Error: $e');
       return null;
     }
   }
@@ -148,7 +149,7 @@ class ChatTaxiService {
           final mensaje = MensajeTaxi.fromPusher(jsonData);
           onNuevoMensaje(mensaje);
         } catch (e) {
-          print('Error parseando mensaje: $e');
+          AppLogger.d('Error parseando mensaje: $e');
         }
       });
 
@@ -163,7 +164,7 @@ class ChatTaxiService {
               jsonData['leido_por'] ?? 0,
             );
           } catch (e) {
-            print('Error parseando mensaje leído: $e');
+            AppLogger.d('Error parseando mensaje leído: $e');
           }
         });
       }
@@ -171,9 +172,9 @@ class ChatTaxiService {
       // Suscribirse al canal usando PusherService secundario
       await PusherService.subscribeSecondary(channelName);
 
-      print('✅ Chat Taxi: Suscrito al canal $channelName');
+      AppLogger.d('✅ Chat Taxi: Suscrito al canal $channelName');
     } catch (e) {
-      print('❌ Error suscribiéndose al canal: $e');
+      AppLogger.d('❌ Error suscribiéndose al canal: $e');
     }
   }
 
@@ -191,11 +192,11 @@ class ChatTaxiService {
         // Desuscribirse del canal
         await PusherService.unsubscribeSecondary(_currentChannel!);
 
-        print('❌ Chat Taxi: Desuscrito del canal $_currentChannel');
+        AppLogger.d('❌ Chat Taxi: Desuscrito del canal $_currentChannel');
         _currentChannel = null;
       }
     } catch (e) {
-      print('Error desuscribiendo: $e');
+      AppLogger.d('Error desuscribiendo: $e');
     }
   }
 

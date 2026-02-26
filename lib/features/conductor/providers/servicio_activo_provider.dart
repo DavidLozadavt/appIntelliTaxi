@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
 import 'package:intellitaxi/features/rides/services/routes_service.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Provider para gestionar la lógica del servicio activo del conductor
 /// Incluye: tracking GPS, cambio de estados, manejo de marcadores y rutas
@@ -23,7 +24,7 @@ class ServicioActivoProvider extends ChangeNotifier {
   LatLng? _miUbicacion;
   LatLng? _destinoActual;
   Set<Marker> _markers = {};
-  Set<Polyline> _polylines = {};
+  final Set<Polyline> _polylines = {};
   BitmapDescriptor? _carIcon;
 
   // Getters
@@ -82,7 +83,9 @@ class ServicioActivoProvider extends ChangeNotifier {
           final apellido1 = persona['apellido1'] ?? '';
           final apellido2 = persona['apellido2'] ?? '';
 
-          final nombreCompleto = '$nombre1 ${nombre2.isEmpty ? '' : nombre2} $apellido1 ${apellido2.isEmpty ? '' : apellido2}'.trim();
+          final nombreCompleto =
+              '$nombre1 ${nombre2.isEmpty ? '' : nombre2} $apellido1 ${apellido2.isEmpty ? '' : apellido2}'
+                  .trim();
           if (nombreCompleto.isNotEmpty) {
             return nombreCompleto;
           }
@@ -165,7 +168,7 @@ class ServicioActivoProvider extends ChangeNotifier {
         'assets/icons/car_marker.png',
       );
     } catch (e) {
-      print('⚠️ Error cargando ícono del carro: $e');
+      AppLogger.d('⚠️ Error cargando ícono del carro: $e');
     }
   }
 
@@ -176,7 +179,9 @@ class ServicioActivoProvider extends ChangeNotifier {
     try {
       // Obtener ubicación actual del conductor
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
 
       _miUbicacion = LatLng(position.latitude, position.longitude);
@@ -194,7 +199,7 @@ class ServicioActivoProvider extends ChangeNotifier {
 
       notifyListeners();
     } catch (e) {
-      print('❌ Error inicializando ubicación: $e');
+      AppLogger.d('❌ Error inicializando ubicación: $e');
     }
   }
 
@@ -210,7 +215,9 @@ class ServicioActivoProvider extends ChangeNotifier {
         Marker(
           markerId: const MarkerId('conductor'),
           position: _miUbicacion!,
-          icon: _carIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+          icon:
+              _carIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
           infoWindow: const InfoWindow(title: 'Mi ubicación'),
         ),
       );
@@ -218,7 +225,8 @@ class ServicioActivoProvider extends ChangeNotifier {
 
     // Marcador del destino actual
     if (_destinoActual != null) {
-      final esRecogida = _estadoActual == 'aceptado' || _estadoActual == 'en_camino';
+      final esRecogida =
+          _estadoActual == 'aceptado' || _estadoActual == 'en_camino';
       markers.add(
         Marker(
           markerId: MarkerId(esRecogida ? 'origen' : 'destino'),
@@ -261,7 +269,7 @@ class ServicioActivoProvider extends ChangeNotifier {
         notifyListeners();
       }
     } catch (e) {
-      print('❌ Error dibujando ruta: $e');
+      AppLogger.d('❌ Error dibujando ruta: $e');
     }
   }
 
@@ -280,17 +288,19 @@ class ServicioActivoProvider extends ChangeNotifier {
         timer.cancel();
         return;
       }
-      
+
       try {
         final position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+          ),
         );
-        
+
         _miUbicacion = LatLng(position.latitude, position.longitude);
         await _actualizarMarcadores();
         await _dibujarRuta();
       } catch (e) {
-        print('❌ Error actualizando ubicación: $e');
+        AppLogger.d('❌ Error actualizando ubicación: $e');
       }
     });
   }
@@ -337,25 +347,13 @@ class ServicioActivoProvider extends ChangeNotifier {
   Map<String, dynamic> getProximaAccion() {
     switch (_estadoActual) {
       case 'aceptado':
-        return {
-          'texto': 'ESTOY EN CAMINO',
-          'proximoEstado': 'en_camino',
-        };
+        return {'texto': 'ESTOY EN CAMINO', 'proximoEstado': 'en_camino'};
       case 'en_camino':
-        return {
-          'texto': 'HE LLEGADO',
-          'proximoEstado': 'llegue',
-        };
+        return {'texto': 'HE LLEGADO', 'proximoEstado': 'llegue'};
       case 'llegue':
-        return {
-          'texto': 'INICIAR VIAJE',
-          'proximoEstado': 'en_curso',
-        };
+        return {'texto': 'INICIAR VIAJE', 'proximoEstado': 'en_curso'};
       case 'en_curso':
-        return {
-          'texto': 'FINALIZAR VIAJE',
-          'proximoEstado': 'finalizado',
-        };
+        return {'texto': 'FINALIZAR VIAJE', 'proximoEstado': 'finalizado'};
       default:
         return {};
     }

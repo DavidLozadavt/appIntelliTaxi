@@ -1,5 +1,6 @@
 // lib/services/pusher_service.dart
 import 'package:pusher_channels_flutter/pusher_channels_flutter.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import '../config/app_config.dart';
 
 class PusherService {
@@ -19,9 +20,9 @@ class PusherService {
     _pusherPrimary = PusherChannelsFlutter.getInstance();
 
     try {
-      print('🔧 Inicializando Pusher Primary...');
-      print('   App Key: ${AppConfig.pusherAppKey}');
-      print('   Cluster: ${AppConfig.pusherCluster}');
+      AppLogger.d('🔧 Inicializando Pusher Primary...');
+      AppLogger.d('   App Key: ${AppConfig.pusherAppKey}');
+      AppLogger.d('   Cluster: ${AppConfig.pusherCluster}');
 
       await _pusherPrimary!.init(
         apiKey: AppConfig.pusherAppKey,
@@ -33,10 +34,12 @@ class PusherService {
       );
 
       await _pusherPrimary!.connect();
-      print('✅ Pusher Primary conectado (Key: ${AppConfig.pusherAppKey})');
-      print('   Esperando eventos...');
+      AppLogger.d(
+        '✅ Pusher Primary conectado (Key: ${AppConfig.pusherAppKey})',
+      );
+      AppLogger.d('   Esperando eventos...');
     } catch (e) {
-      print('❌ Error inicializando Pusher Primary: $e');
+      AppLogger.d('❌ Error inicializando Pusher Primary: $e');
     }
   }
 
@@ -56,11 +59,11 @@ class PusherService {
       );
 
       await _pusherSecondary!.connect();
-      print(
+      AppLogger.d(
         '✅ Pusher Secondary conectado (Key: ${AppConfig.pusherSecondaryAppKey})',
       );
     } catch (e) {
-      print('❌ Error inicializando Pusher Secondary: $e');
+      AppLogger.d('❌ Error inicializando Pusher Secondary: $e');
     }
   }
 
@@ -68,12 +71,12 @@ class PusherService {
 
   static Future<void> subscribe(String channelName) async {
     try {
-      print('📡 Intentando suscribirse a: $channelName');
+      AppLogger.d('📡 Intentando suscribirse a: $channelName');
       await _pusherPrimary?.subscribe(channelName: channelName);
-      print('✅ Suscrito exitosamente a canal principal: $channelName');
-      print('   Handlers registrados: ${_eventHandlers.keys.toList()}');
+      AppLogger.d('✅ Suscrito exitosamente a canal principal: $channelName');
+      AppLogger.d('   Handlers registrados: ${_eventHandlers.keys.toList()}');
     } catch (e) {
-      print('❌ Error suscribiéndose al canal principal $channelName: $e');
+      AppLogger.d('❌ Error suscribiéndose al canal principal $channelName: $e');
       rethrow;
     }
   }
@@ -81,59 +84,61 @@ class PusherService {
   static Future<void> unsubscribe(String channelName) async {
     try {
       await _pusherPrimary?.unsubscribe(channelName: channelName);
-      print('🔕 Desuscrito del canal principal: $channelName');
+      AppLogger.d('🔕 Desuscrito del canal principal: $channelName');
     } catch (e) {
-      print('❌ Error desuscribiéndose del canal principal $channelName: $e');
+      AppLogger.d(
+        '❌ Error desuscribiéndose del canal principal $channelName: $e',
+      );
     }
   }
 
   static void registerEventHandler(String eventKey, Function(dynamic) handler) {
     _eventHandlers[eventKey] = handler;
-    print('📝 Handler registrado para evento principal: $eventKey');
+    AppLogger.d('📝 Handler registrado para evento principal: $eventKey');
   }
 
   static void unregisterEventHandler(String eventKey) {
     _eventHandlers.remove(eventKey);
-    print('🗑️ Handler eliminado para evento principal: $eventKey');
+    AppLogger.d('🗑️ Handler eliminado para evento principal: $eventKey');
   }
 
   static void _onEventPrimary(PusherEvent event) {
-    print('\n========================================');
-    print('🔵 [PRIMARY] ¡EVENTO PUSHER RECIBIDO!');
-    print('========================================');
-    print('   Canal: ${event.channelName}');
-    print('   Evento: ${event.eventName}');
-    print('   Data: ${event.data}');
+    AppLogger.d('\n========================================');
+    AppLogger.d('🔵 [PRIMARY] ¡EVENTO PUSHER RECIBIDO!');
+    AppLogger.d('========================================');
+    AppLogger.d('   Canal: ${event.channelName}');
+    AppLogger.d('   Evento: ${event.eventName}');
+    AppLogger.d('   Data: ${event.data}');
 
     final key = '${event.channelName}:${event.eventName}';
-    print('   Key buscada: $key');
-    print('   Handlers disponibles: ${_eventHandlers.keys.toList()}');
+    AppLogger.d('   Key buscada: $key');
+    AppLogger.d('   Handlers disponibles: ${_eventHandlers.keys.toList()}');
 
     if (_eventHandlers.containsKey(key)) {
-      print('   ✅ Handler encontrado, ejecutando...');
+      AppLogger.d('   ✅ Handler encontrado, ejecutando...');
       _eventHandlers[key]!(event.data);
     } else {
-      print('   ⚠️ NO hay handler registrado para este evento');
+      AppLogger.d('   ⚠️ NO hay handler registrado para este evento');
     }
-    print('========================================\n');
+    AppLogger.d('========================================\n');
   }
 
   static void _onSubscriptionSucceededPrimary(
     String channelName,
     dynamic data,
   ) {
-    print('✅ [PRIMARY] Suscripción exitosa a: $channelName');
+    AppLogger.d('✅ [PRIMARY] Suscripción exitosa a: $channelName');
   }
 
   static void _onErrorPrimary(String message, int? code, dynamic e) {
-    print('❌ [PRIMARY] Error: $message (código: $code)');
+    AppLogger.d('❌ [PRIMARY] Error: $message (código: $code)');
   }
 
   static void _onConnectionStateChangePrimary(
     dynamic currentState,
     dynamic previousState,
   ) {
-    print('🔄 [PRIMARY] Estado: $previousState → $currentState');
+    AppLogger.d('🔄 [PRIMARY] Estado: $previousState → $currentState');
   }
 
   // ========== MÉTODOS PARA CONEXIÓN SECUNDARIA ==========
@@ -141,18 +146,22 @@ class PusherService {
   static Future<void> subscribeSecondary(String channelName) async {
     try {
       await _pusherSecondary?.subscribe(channelName: channelName);
-      print('📡 Suscrito a canal secundario: $channelName');
+      AppLogger.d('📡 Suscrito a canal secundario: $channelName');
     } catch (e) {
-      print('❌ Error suscribiéndose al canal secundario $channelName: $e');
+      AppLogger.d(
+        '❌ Error suscribiéndose al canal secundario $channelName: $e',
+      );
     }
   }
 
   static Future<void> unsubscribeSecondary(String channelName) async {
     try {
       await _pusherSecondary?.unsubscribe(channelName: channelName);
-      print('🔕 Desuscrito del canal secundario: $channelName');
+      AppLogger.d('🔕 Desuscrito del canal secundario: $channelName');
     } catch (e) {
-      print('❌ Error desuscribiéndose del canal secundario $channelName: $e');
+      AppLogger.d(
+        '❌ Error desuscribiéndose del canal secundario $channelName: $e',
+      );
     }
   }
 
@@ -161,40 +170,40 @@ class PusherService {
     Function(dynamic) handler,
   ) {
     _eventHandlersSecondary[eventKey] = handler;
-    print('📝 Handler registrado para evento secundario: $eventKey');
-    print(
+    AppLogger.d('📝 Handler registrado para evento secundario: $eventKey');
+    AppLogger.d(
       '📋 Total handlers secundarios registrados: ${_eventHandlersSecondary.length}',
     );
-    print('📋 Lista completa: ${_eventHandlersSecondary.keys.toList()}');
+    AppLogger.d('📋 Lista completa: ${_eventHandlersSecondary.keys.toList()}');
   }
 
   static void unregisterEventHandlerSecondary(String eventKey) {
     _eventHandlersSecondary.remove(eventKey);
-    print('🗑️ Handler eliminado para evento secundario: $eventKey');
+    AppLogger.d('🗑️ Handler eliminado para evento secundario: $eventKey');
   }
 
   static void _onEventSecondary(PusherEvent event) {
-    print(
+    AppLogger.d(
       '🟢 [SECONDARY] Evento recibido: ${event.eventName} en ${event.channelName}',
     );
-    print('📦 [SECONDARY] Data: ${event.data}');
+    AppLogger.d('📦 [SECONDARY] Data: ${event.data}');
 
     // Log de todos los handlers registrados para debug
     if (!event.eventName.startsWith('pusher:')) {
-      print(
+      AppLogger.d(
         '🔍 [SECONDARY] Buscando handler para: ${event.channelName}:${event.eventName}',
       );
-      print(
+      AppLogger.d(
         '📝 [SECONDARY] Handlers registrados: ${_eventHandlersSecondary.keys.toList()}',
       );
     }
 
     final key = '${event.channelName}:${event.eventName}';
     if (_eventHandlersSecondary.containsKey(key)) {
-      print('✅ [SECONDARY] Ejecutando handler para: $key');
+      AppLogger.d('✅ [SECONDARY] Ejecutando handler para: $key');
       _eventHandlersSecondary[key]!(event.data);
     } else if (!event.eventName.startsWith('pusher:')) {
-      print('⚠️ [SECONDARY] No hay handler registrado para: $key');
+      AppLogger.d('⚠️ [SECONDARY] No hay handler registrado para: $key');
     }
   }
 
@@ -202,18 +211,18 @@ class PusherService {
     String channelName,
     dynamic data,
   ) {
-    print('✅ [SECONDARY] Suscripción exitosa a: $channelName');
+    AppLogger.d('✅ [SECONDARY] Suscripción exitosa a: $channelName');
   }
 
   static void _onErrorSecondary(String message, int? code, dynamic e) {
-    print('❌ [SECONDARY] Error: $message (código: $code)');
+    AppLogger.d('❌ [SECONDARY] Error: $message (código: $code)');
   }
 
   static void _onConnectionStateChangeSecondary(
     dynamic currentState,
     dynamic previousState,
   ) {
-    print('🔄 [SECONDARY] Estado: $previousState → $currentState');
+    AppLogger.d('🔄 [SECONDARY] Estado: $previousState → $currentState');
   }
 
   // ========== MÉTODOS GENERALES ==========
@@ -221,6 +230,6 @@ class PusherService {
   static Future<void> disconnect() async {
     await _pusherPrimary?.disconnect();
     await _pusherSecondary?.disconnect();
-    print('🔌 Ambas conexiones Pusher desconectadas');
+    AppLogger.d('🔌 Ambas conexiones Pusher desconectadas');
   }
 }
