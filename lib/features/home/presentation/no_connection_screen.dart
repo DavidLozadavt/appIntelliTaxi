@@ -1,4 +1,3 @@
-import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:flutter/material.dart';
 
@@ -8,9 +7,10 @@ class NoConnectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
+      backgroundColor: colorScheme.surface,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -21,13 +21,13 @@ class NoConnectionScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
+                    color: colorScheme.primary.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.wifi_off_rounded,
                     size: 100,
-                    color: AppColors.accent,
+                    color: colorScheme.primary,
                   ),
                 ),
 
@@ -37,7 +37,7 @@ class NoConnectionScreen extends StatelessWidget {
                   "Sin conexión a Internet",
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
+                    color: colorScheme.onSurface,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -48,25 +48,25 @@ class NoConnectionScreen extends StatelessWidget {
                 Text(
                   "Por favor revisa tu conexión.\nIntentaremos reconectarnos automáticamente.",
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    color: colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                   textAlign: TextAlign.center,
                 ),
 
                 const SizedBox(height: 32),
 
-                const AppLoadingIndicator(
+                AppLoadingIndicator(
                   size: 26,
                   strokeWidth: 2.8,
-                  color: AppColors.accent,
+                  color: colorScheme.primary,
                 ),
 
                 const SizedBox(height: 24),
 
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    foregroundColor: Colors.white,
+                    backgroundColor: colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
                   ),
                   onPressed: () {},
                   icon: const Icon(Icons.refresh),

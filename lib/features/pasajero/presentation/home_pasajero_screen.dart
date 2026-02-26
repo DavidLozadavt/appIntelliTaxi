@@ -10,25 +10,26 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
-import 'package:intellitaxi/features/rides/services/routes_service.dart';
-import 'package:intellitaxi/features/rides/services/places_service.dart';
-import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
+import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
+import 'package:intellitaxi/features/pasajero/services/places_service.dart';
+import 'package:intellitaxi/features/pasajero/services/ride_request_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
-import 'package:intellitaxi/features/rides/widgets/driver_offer_card.dart';
+import 'package:intellitaxi/features/pasajero/widgets/driver_offer_card.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 import 'package:intellitaxi/features/rides/presentation/active_service_screen.dart';
-import 'package:intellitaxi/features/rides/presentation/pasajero_esperando_conductor_screen.dart';
-import 'package:intellitaxi/features/rides/data/conductor_model.dart';
-import 'package:intellitaxi/features/rides/services/conductores_service.dart';
-import 'package:intellitaxi/features/rides/services/pusher_conductores_service.dart';
+import 'package:intellitaxi/features/pasajero/presentation/pasajero_esperando_conductor_screen.dart';
+import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
+import 'package:intellitaxi/features/conductor/services/conductores_service.dart';
+import 'package:intellitaxi/features/conductor/services/pusher_conductores_service.dart';
 import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart';
 import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
 import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/pasajero/widgets/waiting_for_driver_dialog.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/widgets/location_status_view.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -520,169 +521,10 @@ class _HomePasajeroState extends State<HomePasajero> {
         // Mapa de Google Maps
         _currentPosition == null
             ? Center(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        AppColors.accent.withValues(alpha: 0.05),
-                        Colors.white,
-                      ],
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Animación de ubicación
-                      Container(
-                        width: 140,
-                        height: 140,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: _isLoadingLocation
-                                ? [
-                                    AppColors.accent.withValues(alpha: 0.2),
-                                    AppColors.accent.withValues(alpha: 0.05),
-                                  ]
-                                : [
-                                    Colors.grey.withValues(alpha: 0.2),
-                                    Colors.grey.withValues(alpha: 0.05),
-                                  ],
-                          ),
-                          boxShadow: _isLoadingLocation
-                              ? [
-                                  BoxShadow(
-                                    color: AppColors.accent.withValues(
-                                      alpha: 0.2,
-                                    ),
-                                    blurRadius: 30,
-                                    spreadRadius: 10,
-                                  ),
-                                ]
-                              : [],
-                        ),
-                        child: Center(
-                          child: Container(
-                            width: 90,
-                            height: 90,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: _isLoadingLocation
-                                  ? AppColors.accent.withValues(alpha: 0.15)
-                                  : Colors.grey.withValues(alpha: 0.15),
-                            ),
-                            child: Center(
-                              child: _isLoadingLocation
-                                  ? Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.location_on_rounded,
-                                          size: 45,
-                                          color: AppColors.accent,
-                                        ),
-                                        SizedBox(
-                                          width: 90,
-                                          height: 90,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 3,
-                                            valueColor:
-                                                AlwaysStoppedAnimation<Color>(
-                                                  AppColors.accent,
-                                                ),
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : Icon(
-                                      Icons.location_off_rounded,
-                                      size: 45,
-                                      color: Colors.grey.shade400,
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      // Título
-                      Text(
-                        _isLoadingLocation
-                            ? 'Conectando GPS'
-                            : 'Ubicación no disponible',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade800,
-                          letterSpacing: -0.5,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 12),
-                      // Mensaje descriptivo
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 40),
-                        child: Text(
-                          _locationMessage,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.grey.shade600,
-                            height: 1.5,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      // Botón de reintentar
-                      if (!_isLoadingLocation) ...[
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.accent.withValues(alpha: 0.3),
-                                blurRadius: 15,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: _initializeLocation,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.accent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 40,
-                                vertical: 18,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              elevation: 0,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.refresh_rounded, size: 22),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'Reintentar conexión',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.3,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                child: LocationStatusView(
+                  isLoading: _isLoadingLocation,
+                  message: _locationMessage,
+                  onRetry: _initializeLocation,
                 ),
               )
             : StandardMap(

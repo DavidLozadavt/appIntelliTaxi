@@ -5,7 +5,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_conductor_dialog.dart';
-import 'package:intellitaxi/features/rides/providers/pasajero_servicio_activo_provider.dart';
+import 'package:intellitaxi/features/pasajero/providers/pasajero_servicio_activo_provider.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';

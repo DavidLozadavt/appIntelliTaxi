@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intellitaxi/features/rides/services/places_service.dart';
+import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget reutilizable para campos de búsqueda de ubicación (origen/destino)

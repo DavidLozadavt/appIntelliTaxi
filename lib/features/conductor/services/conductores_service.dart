@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
-import 'package:intellitaxi/features/rides/data/conductor_model.dart';
+import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ConductoresService {

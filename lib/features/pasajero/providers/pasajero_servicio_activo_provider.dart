@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
-import 'package:intellitaxi/features/rides/services/routes_service.dart';
-import 'package:intellitaxi/features/rides/services/pasajero_servicio_mapper.dart';
-import 'package:intellitaxi/features/rides/services/servicio_conductor_location_cache_service.dart';
+import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
+import 'package:intellitaxi/features/pasajero/services/pasajero_servicio_mapper.dart';
+import 'package:intellitaxi/features/pasajero/services/servicio_conductor_location_cache_service.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 
 /// 🎯 Provider que maneja toda la lógica del servicio activo del pasajero

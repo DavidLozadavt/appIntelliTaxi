@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intellitaxi/features/rides/services/conductor_location_service.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_location_service.dart';
 import 'package:intellitaxi/features/conductor/services/turno_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';

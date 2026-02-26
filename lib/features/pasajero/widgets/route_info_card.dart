@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intellitaxi/features/rides/services/routes_service.dart';
+import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Widget que muestra la información de la ruta calculada

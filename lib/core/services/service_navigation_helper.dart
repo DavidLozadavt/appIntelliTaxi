@@ -3,7 +3,7 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
-import 'package:intellitaxi/features/rides/presentation/pasajero_esperando_conductor_screen.dart';
+import 'package:intellitaxi/features/pasajero/presentation/pasajero_esperando_conductor_screen.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 
 /// Servicio de navegación para restaurar pantallas de servicio activo

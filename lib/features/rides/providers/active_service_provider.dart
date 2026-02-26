@@ -4,7 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
-import 'package:intellitaxi/features/rides/services/ride_request_service.dart';
+import 'package:intellitaxi/features/pasajero/services/ride_request_service.dart';
 
 class ActiveServiceProvider extends ChangeNotifier {
   final ServicioActivo servicio;

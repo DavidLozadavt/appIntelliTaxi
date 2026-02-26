@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
-import 'package:intellitaxi/features/rides/services/routes_service.dart';
+import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Provider para gestionar la lógica del servicio activo del conductor

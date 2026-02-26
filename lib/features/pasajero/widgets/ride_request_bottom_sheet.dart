@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
-import 'package:intellitaxi/features/rides/services/places_service.dart';
+import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 import 'package:geolocator/geolocator.dart';
 
 class RideRequestBottomSheet extends StatefulWidget {

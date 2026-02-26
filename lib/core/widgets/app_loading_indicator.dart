@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intellitaxi/core/theme/app_colors.dart';
 
 class AppLoadingIndicator extends StatelessWidget {
   final double size;
@@ -17,12 +16,14 @@ class AppLoadingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     final indicator = SizedBox(
       width: size,
       height: size,
       child: CircularProgressIndicator(
         strokeWidth: strokeWidth,
-        valueColor: AlwaysStoppedAnimation<Color>(color ?? AppColors.accent),
+        valueColor: AlwaysStoppedAnimation<Color>(color ?? colorScheme.primary),
       ),
     );
 

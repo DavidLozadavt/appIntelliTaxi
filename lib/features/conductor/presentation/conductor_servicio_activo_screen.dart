@@ -6,7 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
-import 'package:intellitaxi/features/rides/services/routes_service.dart';
+import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';

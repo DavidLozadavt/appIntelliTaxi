@@ -141,13 +141,7 @@ class _InitialScreenState extends State<InitialScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        body: Center(
-          child: AppLoadingIndicator(
-            size: 30,
-            strokeWidth: 3.2,
-            color: Color(0xFFFFC502),
-          ),
-        ),
+        body: Center(child: AppLoadingIndicator(size: 30, strokeWidth: 3.2)),
       );
     }
 

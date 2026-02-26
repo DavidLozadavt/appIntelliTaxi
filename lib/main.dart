@@ -19,7 +19,7 @@ import 'package:intellitaxi/features/sanciones/presentation/sanciones_screen.dar
 import 'package:intellitaxi/features/conductor/providers/servicio_activo_provider.dart';
 import 'package:intellitaxi/features/pasajero/presentation/historial_servicios_pasajero_screen.dart';
 import 'package:intellitaxi/features/rides/presentation/historial_calificaciones_screen.dart';
-// import 'package:intellitaxi/features/rides/providers/pasajero_home_provider.dart';
+// import 'package:intellitaxi/features/pasajero/providers/pasajero_home_provider.dart';
 import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart';
 
 import 'package:intellitaxi/features/notifications/providers/notification_provider.dart';
@@ -253,9 +253,9 @@ class MyApp extends StatelessWidget {
                 ThemeData(brightness: Brightness.dark).textTheme,
               ),
               colorScheme: const ColorScheme.dark(
-                primary: AppColors.primary,
-                secondary: AppColors.secondary,
-                tertiary: AppColors.accent,
+                primary: AppColors.primaryDark,
+                secondary: AppColors.accent,
+                tertiary: AppColors.secondary,
                 surface: AppColors.darkSurface,
                 error: AppColors.error,
                 onPrimary: AppColors.darkOnPrimary,

@@ -29,7 +29,12 @@ class AuthService {
 
       return AuthResponse.fromJson(response.data);
     } on DioException catch (e) {
-      throw Exception(e.response?.data['message'] ?? 'Error de conexión');
+      throw Exception(
+        _extractDioErrorMessage(
+          e,
+          fallback: 'No fue posible iniciar sesión. Intenta nuevamente.',
+        ),
+      );
     }
   }
 
@@ -69,18 +74,9 @@ class AuthService {
 
       return response.data;
     } on DioException catch (e) {
-      if (e.response?.data != null && e.response?.data is Map) {
-        final errors = e.response?.data['errors'];
-        if (errors != null && errors is Map) {
-          // Extraer el primer error
-          final firstError = errors.values.first;
-          if (firstError is List && firstError.isNotEmpty) {
-            throw Exception(firstError[0]);
-          }
-        }
-        throw Exception(e.response?.data['message'] ?? 'Error en el registro');
-      }
-      throw Exception('Error de conexión');
+      throw Exception(
+        _extractDioErrorMessage(e, fallback: 'Error en el registro'),
+      );
     }
   }
 
@@ -124,20 +120,43 @@ class AuthService {
 
       return response.data;
     } on DioException catch (e) {
-      if (e.response?.data != null && e.response?.data is Map) {
-        final errors = e.response?.data['errors'];
-        if (errors != null && errors is Map) {
-          final firstError = errors.values.first;
-          if (firstError is List && firstError.isNotEmpty) {
-            throw Exception(firstError[0]);
+      throw Exception(
+        _extractDioErrorMessage(e, fallback: 'Error al actualizar perfil'),
+      );
+    }
+  }
+
+  String _extractDioErrorMessage(DioException e, {required String fallback}) {
+    final data = e.response?.data;
+
+    if (data is Map<String, dynamic>) {
+      final backendError = data['error'];
+      if (backendError is String && backendError.trim().isNotEmpty) {
+        return backendError;
+      }
+
+      final backendMessage = data['message'];
+      if (backendMessage is String && backendMessage.trim().isNotEmpty) {
+        return backendMessage;
+      }
+
+      final errors = data['errors'];
+      if (errors is Map && errors.isNotEmpty) {
+        final firstValue = errors.values.first;
+        if (firstValue is List && firstValue.isNotEmpty) {
+          final firstError = firstValue.first;
+          if (firstError is String && firstError.trim().isNotEmpty) {
+            return firstError;
           }
         }
-        throw Exception(
-          e.response?.data['message'] ?? 'Error al actualizar perfil',
-        );
       }
-      throw Exception('Error de conexión');
     }
+
+    if (data is String && data.trim().isNotEmpty) {
+      return data;
+    }
+
+    return fallback;
   }
 
   /// 📌 Guardar token

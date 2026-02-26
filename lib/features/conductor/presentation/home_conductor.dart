@@ -16,6 +16,7 @@ import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
 import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
+import 'package:intellitaxi/core/widgets/location_status_view.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -489,172 +490,10 @@ class _HomeConductorState extends State<HomeConductor> {
           children: [
             // Mapa de Google Maps
             provider.currentPosition == null
-                ? Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.grey.shade50, Colors.white],
-                      ),
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          // Animación de ubicación
-                          Container(
-                            width: 140,
-                            height: 140,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: provider.isLoadingLocation
-                                    ? [
-                                        AppColors.accent.withValues(alpha: 0.2),
-                                        AppColors.accent.withValues(
-                                          alpha: 0.05,
-                                        ),
-                                      ]
-                                    : [
-                                        Colors.grey.withValues(alpha: 0.2),
-                                        Colors.grey.withValues(alpha: 0.05),
-                                      ],
-                              ),
-                              boxShadow: provider.isLoadingLocation
-                                  ? [
-                                      BoxShadow(
-                                        color: AppColors.accent.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                        blurRadius: 30,
-                                        spreadRadius: 10,
-                                      ),
-                                    ]
-                                  : [],
-                            ),
-                            child: Center(
-                              child: Container(
-                                width: 90,
-                                height: 90,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: provider.isLoadingLocation
-                                      ? AppColors.accent.withValues(alpha: 0.15)
-                                      : Colors.grey.withValues(alpha: 0.15),
-                                ),
-                                child: Center(
-                                  child: provider.isLoadingLocation
-                                      ? Stack(
-                                          alignment: Alignment.center,
-                                          children: [
-                                            Icon(
-                                              Icons.location_on_rounded,
-                                              size: 45,
-                                              color: AppColors.accent,
-                                            ),
-                                            SizedBox(
-                                              width: 90,
-                                              height: 90,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 3,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation<
-                                                      Color
-                                                    >(AppColors.accent),
-                                              ),
-                                            ),
-                                          ],
-                                        )
-                                      : Icon(
-                                          Icons.location_off_rounded,
-                                          size: 45,
-                                          color: Colors.grey.shade400,
-                                        ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          // Título
-                          Text(
-                            provider.isLoadingLocation
-                                ? 'Conectando GPS'
-                                : 'Ubicación no disponible',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey.shade800,
-                              letterSpacing: -0.5,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 12),
-                          // Mensaje descriptivo
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 40),
-                            child: Text(
-                              provider.locationMessage,
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: Colors.grey.shade600,
-                                height: 1.5,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          // Botón de reintentar
-                          if (!provider.isLoadingLocation) ...[
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.accent.withValues(
-                                      alpha: 0.3,
-                                    ),
-                                    blurRadius: 15,
-                                    offset: const Offset(0, 5),
-                                  ),
-                                ],
-                              ),
-                              child: ElevatedButton(
-                                onPressed: () => provider.initializeLocation(),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.accent,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 40,
-                                    vertical: 18,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Icon(Icons.refresh_rounded, size: 22),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      'Reintentar conexión',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                ? LocationStatusView(
+                    isLoading: provider.isLoadingLocation,
+                    message: provider.locationMessage,
+                    onRetry: provider.initializeLocation,
                   )
                 : RepaintBoundary(
                     child: StandardMap(
