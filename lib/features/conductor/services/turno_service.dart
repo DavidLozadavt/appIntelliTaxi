@@ -17,7 +17,7 @@ class TurnoService {
       AppLogger.d('🚀 Iniciando turno...');
       AppLogger.d('   🚗 Vehículo ID: $idVehiculo');
       AppLogger.d('   📍 Ubicación: ($lat, $lng)');
-      AppLogger.d('   🌐 URL: ${_dio.options.baseUrl}/turnos');
+      AppLogger.d('   🌐 URL: ${_dio.options.baseUrl}turnos');
       AppLogger.d('   🔑 Headers: ${_dio.options.headers}');
 
       final requestData = {'idVehiculo': idVehiculo, 'lat': lat, 'lng': lng};

@@ -1,6 +1,9 @@
 // lib/services/pusher_service.dart
+import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:pusher_channels_flutter/pusher_channels_flutter.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/dio_client.dart';
 import '../config/app_config.dart';
 
 class PusherService {
@@ -52,8 +55,11 @@ class PusherService {
       await _pusherSecondary!.init(
         apiKey: AppConfig.pusherSecondaryAppKey,
         cluster: AppConfig.pusherSecondaryCluster,
+        authEndpoint: '${AppConfig.baseUrl}auth/pusher-secondary',
+        onAuthorizer: _onAuthorizerSecondary,
         onEvent: _onEventSecondary,
         onSubscriptionSucceeded: _onSubscriptionSucceededSecondary,
+        onSubscriptionError: _onSubscriptionErrorSecondary,
         onError: _onErrorSecondary,
         onConnectionStateChange: _onConnectionStateChangeSecondary,
       );
@@ -218,11 +224,68 @@ class PusherService {
     AppLogger.d('❌ [SECONDARY] Error: $message (código: $code)');
   }
 
+  static void _onSubscriptionErrorSecondary(String message, dynamic e) {
+    AppLogger.d('❌ [SECONDARY] Error de suscripción: $message | details=$e');
+  }
+
   static void _onConnectionStateChangeSecondary(
     dynamic currentState,
     dynamic previousState,
   ) {
     AppLogger.d('🔄 [SECONDARY] Estado: $previousState → $currentState');
+  }
+
+  static Future<dynamic> _onAuthorizerSecondary(
+    String channelName,
+    String socketId,
+    dynamic options,
+  ) async {
+    try {
+      AppLogger.d(
+        '🔐 [SECONDARY] Auth private channel: channel=$channelName socket=$socketId',
+      );
+
+      final dio = DioClient.getInstance();
+      Response response;
+      try {
+        response = await dio.post(
+          'auth/pusher-secondary',
+          data: FormData.fromMap({
+            'channel_name': channelName,
+            'socket_id': socketId,
+          }),
+          options: Options(
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          ),
+        );
+      } on DioException catch (e) {
+        AppLogger.d(
+          '⚠️ [SECONDARY] auth/pusher-secondary falló (${e.response?.statusCode}), probando auth/pusher',
+        );
+        response = await dio.post(
+          'auth/pusher',
+          data: FormData.fromMap({
+            'channel_name': channelName,
+            'socket_id': socketId,
+          }),
+          options: Options(
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          ),
+        );
+      }
+
+      AppLogger.d(
+        '✅ [SECONDARY] Auth response ${response.statusCode}: ${response.data}',
+      );
+
+      if (response.data is String) {
+        return jsonDecode(response.data);
+      }
+      return response.data;
+    } catch (e) {
+      AppLogger.d('❌ [SECONDARY] Error auth private channel $channelName: $e');
+      return {};
+    }
   }
 
   // ========== MÉTODOS GENERALES ==========

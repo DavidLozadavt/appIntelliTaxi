@@ -265,6 +265,14 @@ class ConductorService {
         throw Exception(errorMessage);
       }
 
+      if (e.response?.statusCode == 409) {
+        final errorMessage = e.response?.data is Map
+            ? e.response?.data['message'] ??
+                  'Este servicio ya fue aceptado por otro conductor'
+            : 'Este servicio ya fue aceptado por otro conductor';
+        throw Exception(errorMessage);
+      }
+
       rethrow;
     } catch (e) {
       AppLogger.d('⚠️ Error aceptando solicitud: $e');

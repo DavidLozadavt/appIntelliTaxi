@@ -135,8 +135,14 @@ class ServiceNavigationHelper {
   /// Determina si debe mostrar la pantalla de servicio activo
   /// basándose en el estado del servicio
   static bool shouldShowActiveService(Map<String, dynamic> servicioData) {
+    final tipo = servicioData['tipo']?.toString().toLowerCase();
     final servicio = servicioData['servicio'];
     final idEstado = servicio['idEstado'];
+    final estadoNombre =
+        (servicio['estado'] is Map ? servicio['estado']['estado'] : null)
+            ?.toString()
+            .toUpperCase();
+    final tipoServicio = servicio['tipoServicio']?.toString().toUpperCase();
     final finServicio = servicio['finServicio'];
 
     // Si el servicio ya finalizó, no mostrar
@@ -151,6 +157,21 @@ class ServiceNavigationHelper {
 
     if (idEstado != null && estadosInactivos.contains(idEstado)) {
       AppLogger.d('ℹ️ [Navigation] Estado inactivo: $idEstado');
+      return false;
+    }
+
+    // Conductor: para ofertas directas/sin aceptar, NO abrir pantalla activa automáticamente.
+    // Debe quedarse en Home para aceptar o rechazar la solicitud.
+    final isConductor = tipo == 'conductor';
+    final isPendiente =
+        idEstado == 4 ||
+        estadoNombre == 'PENDIENTE' ||
+        estadoNombre == 'PENDING';
+    if (isConductor && isPendiente) {
+      AppLogger.d(
+        'ℹ️ [Navigation] Conductor con solicitud pendiente'
+        ' (tipoServicio=$tipoServicio, estado=$estadoNombre), no navegar a activo',
+      );
       return false;
     }
 

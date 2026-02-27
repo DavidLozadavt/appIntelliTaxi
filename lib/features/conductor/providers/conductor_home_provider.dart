@@ -37,6 +37,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   final Map<String, DateTime> _expiracionPorSolicitud = {};
   Timer? _tickerExpiracionUI;
   bool _suscritoAPusher = false;
+  final Set<String> _offerChannels = {};
+  final Set<String> _offerHandlerKeys = {};
+  String? _lastAcceptError;
 
   // Control de dispose
   bool _isDisposed = false;
@@ -50,6 +53,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   List<VehiculoConductor> get vehiculosDisponibles => _vehiculosDisponibles;
   TurnoActivo? get turnoActivo => _turnoActivo;
   List<Map<String, dynamic>> get solicitudesActivas => _solicitudesActivas;
+  String? get lastAcceptError => _lastAcceptError;
   List<Map<String, dynamic>> get solicitudesOrdenadas {
     final solicitudes = List<Map<String, dynamic>>.from(_solicitudesActivas);
     solicitudes.sort((a, b) => _calcularScore(b).compareTo(_calcularScore(a)));
@@ -107,6 +111,46 @@ class ConductorHomeProvider extends ChangeNotifier {
         },
       );
 
+      final ids = await _obtenerIdsConductorSesion();
+      if (ids.isNotEmpty) {
+        final candidateChannels = <String>{};
+        for (final id in ids) {
+          // Formato esperado con PrivateChannel('conductor.{id}')
+          candidateChannels.add('private-conductor.$id');
+          // Fallback si backend emite Channel('conductor.{id}')
+          candidateChannels.add('conductor.$id');
+        }
+
+        for (final channel in candidateChannels) {
+          await PusherService.subscribeSecondary(channel);
+          _offerChannels.add(channel);
+
+          for (final eventName in const [
+            'oferta.directa',
+            'oferta_directa',
+            'oferta-directa',
+          ]) {
+            final key = '$channel:$eventName';
+            _offerHandlerKeys.add(key);
+            PusherService.registerEventHandlerSecondary(key, (data) {
+              AppLogger.d('🔔 Evento recibido: $eventName en $channel');
+              if (data != null) {
+                _procesarNuevaSolicitud(data, isDirectOffer: true);
+              }
+            });
+          }
+        }
+
+        AppLogger.d(
+          '✅ Canales oferta directa suscritos: ${_offerChannels.toList()}',
+        );
+        AppLogger.d('✅ Handlers oferta directa: ${_offerHandlerKeys.toList()}');
+      } else {
+        AppLogger.d(
+          '⚠️ No se pudo resolver id de sesión del conductor para ofertas directas',
+        );
+      }
+
       _suscritoAPusher = true;
       AppLogger.d('✅ Suscrito correctamente al canal de solicitudes');
     } catch (e) {
@@ -122,6 +166,17 @@ class ConductorHomeProvider extends ChangeNotifier {
         'solicitudes-servicio:nueva-solicitud',
       );
       await PusherService.unsubscribeSecondary('solicitudes-servicio');
+
+      for (final key in _offerHandlerKeys) {
+        PusherService.unregisterEventHandlerSecondary(key);
+      }
+      _offerHandlerKeys.clear();
+
+      for (final channel in _offerChannels) {
+        await PusherService.unsubscribeSecondary(channel);
+      }
+      _offerChannels.clear();
+
       _suscritoAPusher = false;
       AppLogger.d('✅ Desconectado de Pusher');
     } catch (e) {
@@ -130,9 +185,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Procesa una nueva solicitud recibida de Pusher
-  void _procesarNuevaSolicitud(String data) {
+  void _procesarNuevaSolicitud(dynamic data, {bool isDirectOffer = false}) {
     try {
-      final solicitud = json.decode(data) as Map<String, dynamic>;
+      final raw = _parsePayload(data);
+      final solicitud = isDirectOffer ? _normalizarOfertaDirecta(raw) : raw;
       final solicitudId = _obtenerSolicitudId(solicitud);
       AppLogger.d('📩 Solicitud decodificada: $solicitudId');
 
@@ -169,6 +225,45 @@ class ConductorHomeProvider extends ChangeNotifier {
     } catch (e) {
       AppLogger.d('❌ Error procesando solicitud: $e');
     }
+  }
+
+  Map<String, dynamic> _parsePayload(dynamic data) {
+    if (data is String) {
+      return json.decode(data) as Map<String, dynamic>;
+    }
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    throw Exception('Payload no soportado: ${data.runtimeType}');
+  }
+
+  Map<String, dynamic> _normalizarOfertaDirecta(Map<String, dynamic> raw) {
+    final solicitudId = raw['solicitud_id'] ?? raw['id'];
+    return {
+      'solicitud_id': solicitudId,
+      'servicio_id': solicitudId,
+      'id': solicitudId,
+      'pasajero_id': raw['pasajero_id'],
+      'pasajero_nombre': raw['pasajero_nombre'] ?? 'Pasajero',
+      'pasajero_foto': raw['pasajero_foto'],
+      'origen': raw['origen'] ?? 'Origen no especificado',
+      'destino': raw['destino'] ?? 'Destino no especificado',
+      'origen_lat': raw['origen_lat'],
+      'origen_lng': raw['origen_lng'],
+      'destino_lat': raw['destino_lat'],
+      'destino_lng': raw['destino_lng'],
+      'precio_ofertado': raw['precio_ofrecido'] ?? raw['precio_ofertado'] ?? 0,
+      'distancia': raw['distancia'],
+      'duracion_estimada': raw['duracion_estimada'],
+      'mensaje': raw['mensaje'],
+      'status': 'oferta_directa',
+      'clase_vehiculo': 'taxi',
+      'timestamp': raw['timestamp'] ?? DateTime.now().toIso8601String(),
+      'ttl_segundos': raw['ttl_segundos'] ?? 25,
+    };
   }
 
   /// Configurar timer de expiración para una solicitud
@@ -222,6 +317,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     int idVehiculo,
   ) async {
     try {
+      _lastAcceptError = null;
       AppLogger.d('✅ Aceptando solicitud: $solicitudId');
 
       // Validar que el ID no sea nulo o inválido
@@ -249,7 +345,12 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return response;
     } catch (e) {
+      _lastAcceptError = e.toString().replaceAll('Exception: ', '');
       AppLogger.d('❌ Error aceptando solicitud: $e');
+      // Si hubo conflicto (otro conductor aceptó), retirar de la cola local.
+      if (_lastAcceptError?.toLowerCase().contains('ya fue aceptado') == true) {
+        rechazarSolicitud(solicitudId);
+      }
       return null;
     }
   }
@@ -579,6 +680,36 @@ class ConductorHomeProvider extends ChangeNotifier {
         solicitud['id'] ??
         solicitud['request_id'];
     return rawId?.toString();
+  }
+
+  Future<Set<int>> _obtenerIdsConductorSesion() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataStr = prefs.getString('user_data');
+    if (userDataStr == null || userDataStr.isEmpty) return {};
+
+    try {
+      final userData = json.decode(userDataStr);
+      final ids = <int>{};
+
+      final userId = userData['user']?['id'];
+      final personaId = userData['user']?['persona']?['id'];
+
+      final parsedUserId = userId is int
+          ? userId
+          : int.tryParse(userId?.toString() ?? '');
+      final parsedPersonaId = personaId is int
+          ? personaId
+          : int.tryParse(personaId?.toString() ?? '');
+
+      if (parsedUserId != null && parsedUserId > 0) ids.add(parsedUserId);
+      if (parsedPersonaId != null && parsedPersonaId > 0) {
+        ids.add(parsedPersonaId);
+      }
+
+      return ids;
+    } catch (_) {
+      return {};
+    }
   }
 
   double _parseDouble(dynamic value, {double fallback = 0.0}) {

@@ -76,6 +76,62 @@ class RideRequestService {
     }
   }
 
+  /// 📌 ENVIAR OFERTA DIRECTA (Pasajero -> Conductor específico)
+  Future<Map<String, dynamic>> sendDirectOffer({
+    required int conductorId,
+    required int pasajeroId,
+    required TripLocation origin,
+    required TripLocation destination,
+    double precioOfrecido = 0,
+    required String distancia,
+    required String duracionEstimada,
+    String? mensaje,
+  }) async {
+    final requestData = <String, dynamic>{
+      'conductor_id': conductorId,
+      'pasajero_id': pasajeroId,
+      'origen': origin.address,
+      'destino': destination.address,
+      'origen_lat': origin.lat,
+      'origen_lng': origin.lng,
+      'destino_lat': destination.lat,
+      'destino_lng': destination.lng,
+      'precio_ofrecido': precioOfrecido,
+      'distancia': distancia,
+      'duracion_estimada': duracionEstimada,
+      if (mensaje != null && mensaje.trim().isNotEmpty) 'mensaje': mensaje,
+    };
+
+    if (kDebugMode) {
+      AppLogger.d('📤 Enviando oferta directa:');
+      AppLogger.d('   conductor_id: $conductorId');
+      AppLogger.d('   pasajero_id: $pasajeroId');
+      AppLogger.d('   precio_ofrecido (taxímetro): $precioOfrecido');
+      AppLogger.d('   origen: ${origin.address}');
+      AppLogger.d('   destino: ${destination.address}');
+    }
+
+    try {
+      final response = await _dio.post(
+        'taxi/oferta-directa',
+        data: requestData,
+      );
+      _logResponse(response.data);
+
+      return response.data is Map<String, dynamic>
+          ? response.data
+          : <String, dynamic>{'success': true, 'data': response.data};
+    } on DioException catch (e) {
+      _logError(e);
+
+      if (e.response?.data is Map) {
+        final payload = e.response!.data as Map;
+        throw Exception(payload['message'] ?? 'Error enviando oferta directa');
+      }
+      throw Exception('Error de conexión enviando oferta directa');
+    }
+  }
+
   /// 📌 LOGS DETALLADOS EN CONSOLA
   void _logRequestData(Map<String, dynamic> data) {
     if (kDebugMode) {

@@ -3,8 +3,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AppConfig {
   // URL base de tu API Laravel
-  static String get baseUrl =>
-      dotenv.env['BASE_URL'] ?? 'https://tu-servidor.com/api/';
+  static String get baseUrl {
+    final raw = dotenv.env['BASE_URL'] ?? 'https://tu-servidor.com/api/';
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return 'https://tu-servidor.com/api/';
+    return '${trimmed.replaceAll(RegExp(r'/+$'), '')}/';
+  }
 
   // Google Maps API Key
   static String get googleMapsApiKey => dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';

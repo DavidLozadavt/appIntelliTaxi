@@ -45,7 +45,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   Set<Polyline> get polylines => _polylines;
   int get elapsedSeconds => _elapsedSeconds;
   int get remainingSeconds => _maxWaitingSeconds - _elapsedSeconds;
-  bool get isBuscando => _estadoServicio == 'buscando';
+  bool get isBuscando =>
+      _estadoServicio == 'buscando' || _estadoServicio == 'pendiente';
 
   PasajeroServicioActivoProvider({
     required this.servicioId,
@@ -112,11 +113,6 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       _setConductorUbicacion(_conductorUbicacion!);
     } else if (_lastConductorLocationCache.containsKey(servicioId)) {
       _conductorUbicacion = _lastConductorLocationCache[servicioId];
-    }
-
-    if (PasajeroServicioMapper.hasConductorAsignado(datosServicio) &&
-        _estadoServicio == 'buscando') {
-      _estadoServicio = 'aceptado';
     }
 
     if (_conductorUbicacion != null) {
@@ -273,14 +269,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             ),
           );
 
-          if (_estadoServicio == 'buscando') {
-            AppLogger.d(
-              '✅ PROVIDER: Conductor ubicado, cambiando estado a aceptado',
-            );
-            _estadoServicio = 'aceptado';
-            if (_conductor == null) {
-              _obtenerInfoServicio();
-            }
+          if (_conductor == null) {
+            _obtenerInfoServicio();
           }
           _actualizarMarcadores();
           notifyListeners();
@@ -335,6 +325,16 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             (servicio['vehiculo'] as Map<String, dynamic>?) ??
             root['vehiculo'] as Map<String, dynamic>?;
 
+        final estadoRaw =
+            servicio['estado']?['estado'] ??
+            servicio['estado'] ??
+            root['estado']?['estado'] ??
+            root['estado'];
+        final estadoNormalizado = PasajeroServicioMapper.normalizeEstado(
+          estadoRaw,
+        );
+        _estadoServicio = estadoNormalizado;
+
         if (conductorId != null && conductorData != null) {
           AppLogger.d('✅ PROVIDER: Info del servicio obtenida desde API');
           _conductor = PasajeroServicioMapper.conductorResumen(
@@ -342,7 +342,6 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             conductor: conductorData,
             vehiculo: vehiculoData,
           );
-          _estadoServicio = 'aceptado';
 
           if ((servicio['conductor_lat'] ?? servicio['conductorLat']) != null &&
               (servicio['conductor_lng'] ?? servicio['conductorLng']) != null) {

@@ -20,7 +20,7 @@ class ConductoresService {
       final queryParams = {'lat': lat, 'lng': lng, 'radio_km': radioKm};
       AppLogger.d('   📤 Query Parameters: $queryParams');
       AppLogger.d(
-        '   🌐 URL: ${_dio.options.baseUrl}/taxi/conductores-disponibles',
+        '   🌐 URL: ${_dio.options.baseUrl}taxi/conductores-disponibles',
       );
 
       final response = await _dio.get(

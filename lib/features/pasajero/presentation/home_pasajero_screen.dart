@@ -100,6 +100,7 @@ class _HomePasajeroState extends State<HomePasajero> {
   // Para contraofertas de conductores
   Map<String, dynamic>? _currentOffer;
   bool _showOffer = false;
+  final bool _enableGlobalOffersChannel = false;
 
   // Gestor de servicio activo
   final ActiveServiceManager _activeServiceManager = ActiveServiceManager();
@@ -111,6 +112,7 @@ class _HomePasajeroState extends State<HomePasajero> {
   final ConductoresService _conductoresService = ConductoresService();
   PusherConductoresService? _pusherConductoresService;
   final Map<int, Conductor> _conductoresDisponibles = {};
+  Conductor? _selectedDirectDriver;
   BitmapDescriptor? _driverMarkerIcon;
   final bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
   bool _isDisposed = false;
@@ -171,10 +173,12 @@ class _HomePasajeroState extends State<HomePasajero> {
     _activeServiceManager.cleanup();
 
     // Desuscribirse de Pusher
-    PusherService.unsubscribeSecondary('ofertas-globales');
-    PusherService.unregisterEventHandlerSecondary(
-      'ofertas-globales:nueva-oferta',
-    );
+    if (_enableGlobalOffersChannel) {
+      PusherService.unsubscribeSecondary('ofertas-globales');
+      PusherService.unregisterEventHandlerSecondary(
+        'ofertas-globales:nueva-oferta',
+      );
+    }
 
     PusherService.unsubscribeSecondary('solicitudes-servicio');
     PusherService.unregisterEventHandlerSecondary(
@@ -392,6 +396,9 @@ class _HomePasajeroState extends State<HomePasajero> {
   /// Elimina el marcador de un conductor
   void _removeDriverMarker(int conductorId) {
     _setStateSafe(() {
+      if (_selectedDirectDriver?.conductorId == conductorId) {
+        _selectedDirectDriver = null;
+      }
       _conductoresDisponibles.remove(conductorId);
       _updateAllDriverMarkers();
     });
@@ -432,6 +439,7 @@ class _HomePasajeroState extends State<HomePasajero> {
                   '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}\n'
                   '📏 ${conductor.distanciaKm != null ? "${conductor.distanciaKm!.toStringAsFixed(2)} km" : ""}',
             ),
+            onTap: () => _onDriverMarkerTap(conductor),
             zIndexInt: 1, // Debajo de otros marcadores
           ),
         );
@@ -1803,6 +1811,7 @@ class _HomePasajeroState extends State<HomePasajero> {
                       '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
                       '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}',
                 ),
+                onTap: () => _onDriverMarkerTap(conductor),
                 zIndexInt: 1,
               ),
             );
@@ -1903,8 +1912,22 @@ class _HomePasajeroState extends State<HomePasajero> {
 
   Future<void> _handleRideConfirmation() async {
     final isDelivery = _serviceType == 'domicilio';
+    final pasajeroId =
+        Provider.of<AuthProvider>(context, listen: false).idPersona ?? 0;
 
     if (!mounted) return;
+    if (pasajeroId <= 0) {
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo identificar el pasajero de la sesión'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final bool isDirectFlow = _selectedDirectDriver != null;
+    final Conductor? selectedConductor = _selectedDirectDriver;
 
     showDialog(
       context: context,
@@ -1918,16 +1941,27 @@ class _HomePasajeroState extends State<HomePasajero> {
 
     // 📤 ENVIAR SOLICITUD AL BACKEND
     try {
-      final response = await _rideRequestService.requestRide(
-        origin: _selectedOrigin!,
-        destination: _selectedDestination!,
-        distance: _routeInfo!.distance,
-        distanceValue: _routeInfo!.distanceValue,
-        duration: _routeInfo!.duration,
-        durationValue: _routeInfo!.durationValue,
-        // No se envía precio porque funciona con taxímetro
-        serviceType: isDelivery ? 'domicilio' : 'taxi',
-      );
+      final response = isDirectFlow
+          ? await _rideRequestService.sendDirectOffer(
+              conductorId: selectedConductor!.conductorId,
+              pasajeroId: pasajeroId,
+              origin: _selectedOrigin!,
+              destination: _selectedDestination!,
+              distancia: _routeInfo!.distance,
+              duracionEstimada: _routeInfo!.duration,
+              // Flujo taxímetro: sin negociación de precio en app
+              precioOfrecido: 0,
+            )
+          : await _rideRequestService.requestRide(
+              origin: _selectedOrigin!,
+              destination: _selectedDestination!,
+              distance: _routeInfo!.distance,
+              distanceValue: _routeInfo!.distanceValue,
+              duration: _routeInfo!.duration,
+              durationValue: _routeInfo!.durationValue,
+              // No se envía precio porque funciona con taxímetro
+              serviceType: isDelivery ? 'domicilio' : 'taxi',
+            );
 
       // Cerrar modal de búsqueda
       if (mounted) {
@@ -1942,7 +1976,9 @@ class _HomePasajeroState extends State<HomePasajero> {
         // El backend puede devolver 'servicio', 'data' o 'servicio_id'
         int? servicioId;
 
-        if (response['servicio'] != null) {
+        if (response['solicitud_id'] != null) {
+          servicioId = int.tryParse(response['solicitud_id'].toString());
+        } else if (response['servicio'] != null) {
           final servicioData = response['servicio'] as Map<String, dynamic>;
           servicioId = servicioData['id'] as int;
         } else if (response['data'] != null) {
@@ -1964,12 +2000,15 @@ class _HomePasajeroState extends State<HomePasajero> {
               builder: (context) => PasajeroEsperandoConductorScreen(
                 servicioId: servicioId!,
                 datosServicio: {
+                  if (selectedConductor != null)
+                    'conductor_id': selectedConductor.conductorId,
                   'origen_lat': _selectedOrigin!.lat,
                   'origen_lng': _selectedOrigin!.lng,
                   'origen_address': _selectedOrigin!.address,
                   'destino_lat': _selectedDestination!.lat,
                   'destino_lng': _selectedDestination!.lng,
                   'destino_address': _selectedDestination!.address,
+                  'precio_ofrecido': 0,
                   // No se envía precio porque funciona con taxímetro
                 },
               ),
@@ -1978,6 +2017,7 @@ class _HomePasajeroState extends State<HomePasajero> {
             // Cuando regrese, limpiar selección
             if (mounted) {
               _setStateSafe(() {
+                _selectedDirectDriver = null;
                 _selectedOrigin = null;
                 _selectedDestination = null;
                 _routeInfo = null;
@@ -2014,6 +2054,30 @@ class _HomePasajeroState extends State<HomePasajero> {
         );
       }
     }
+  }
+
+  Future<void> _onDriverMarkerTap(Conductor conductor) async {
+    _setStateSafe(() {
+      _selectedDirectDriver = conductor;
+    });
+
+    _scaffoldMessenger?.showSnackBar(
+      SnackBar(
+        content: Text('Conductor seleccionado: ${conductor.nombre}'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    final canSendDirectNow =
+        _selectedOrigin != null &&
+        _selectedDestination != null &&
+        _routeInfo != null;
+
+    if (!canSendDirectNow) {
+      return;
+    }
+
+    await _handleRideConfirmation();
   }
 
   // ========== MÉTODOS DE PUSHER - CONTRAOFERTAS ==========
@@ -2116,6 +2180,11 @@ class _HomePasajeroState extends State<HomePasajero> {
 
   /// Configura la conexión a Pusher para recibir contraofertas
   Future<void> _setupPusherOffers() async {
+    if (!_enableGlobalOffersChannel) {
+      AppLogger.d('⏭️ Canal ofertas-globales deshabilitado');
+      return;
+    }
+
     try {
       AppLogger.d('🚀 Configurando Pusher para ofertas globales...');
 
@@ -2265,4 +2334,5 @@ class _HomePasajeroState extends State<HomePasajero> {
       _currentOffer = null;
     });
   }
+
 }

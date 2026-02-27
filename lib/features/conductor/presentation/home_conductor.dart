@@ -177,12 +177,21 @@ class _HomeConductorState extends State<HomeConductor> {
     // Nota: No se calcula precio porque funciona con taxímetro
 
     // Mostrar loading
+    bool loadingShown = false;
     if (mounted) {
+      loadingShown = true;
       showDialog(
         context: context,
+        useRootNavigator: true,
         barrierDismissible: false,
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
+    }
+
+    void closeLoadingIfNeeded() {
+      if (!mounted || !loadingShown) return;
+      loadingShown = false;
+      Navigator.of(context, rootNavigator: true).pop();
     }
 
     try {
@@ -192,11 +201,12 @@ class _HomeConductorState extends State<HomeConductor> {
         _provider.vehiculoSeleccionado?.id ?? 0,
       );
 
-      // Cerrar loading
-      if (mounted) Navigator.pop(context);
+      closeLoadingIfNeeded();
 
       if (response == null) {
-        throw Exception('No se pudo aceptar la solicitud');
+        throw Exception(
+          _provider.lastAcceptError ?? 'No se pudo aceptar la solicitud',
+        );
       }
 
       // Mostrar éxito
@@ -251,8 +261,7 @@ class _HomeConductorState extends State<HomeConductor> {
         }
       }
     } catch (e) {
-      // Cerrar loading
-      if (mounted) Navigator.pop(context);
+      closeLoadingIfNeeded();
 
       // Mostrar error con el mensaje del backend
       String errorMsg = e.toString().replaceAll('Exception: ', '');

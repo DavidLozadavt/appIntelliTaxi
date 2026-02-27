@@ -94,6 +94,9 @@ class PasajeroServicioMapper {
     if (estado.contains('cancel')) {
       return 'cancelado';
     }
+    if (estado.contains('pend')) {
+      return 'pendiente';
+    }
     if (estado.contains('final')) {
       return 'finalizado';
     }
@@ -122,9 +125,10 @@ class PasajeroServicioMapper {
       case 2:
       case 20:
         return hasConductor ? 'aceptado' : 'buscando';
+      case 4:
+        return 'pendiente';
       case 3:
         return 'llegue';
-      case 4:
       case 21:
         return 'en_curso';
       case 6:
