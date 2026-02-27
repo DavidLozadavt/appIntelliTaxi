@@ -135,7 +135,8 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               // Avatar
-              if (widget.fotoCalificado != null)
+              if (widget.fotoCalificado != null &&
+                  widget.fotoCalificado!.trim().isNotEmpty)
                 CircleAvatar(
                   radius: 45,
                   backgroundImage: NetworkImage(widget.fotoCalificado!),

@@ -2057,16 +2057,21 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   Future<void> _onDriverMarkerTap(Conductor conductor) async {
+    final alreadySelected =
+        _selectedDirectDriver?.conductorId == conductor.conductorId;
+
     _setStateSafe(() {
-      _selectedDirectDriver = conductor;
+      _selectedDirectDriver = alreadySelected ? null : conductor;
     });
 
-    _scaffoldMessenger?.showSnackBar(
-      SnackBar(
-        content: Text('Conductor seleccionado: ${conductor.nombre}'),
-        duration: const Duration(seconds: 2),
-      ),
+    _showDriverSelectionToast(
+      alreadySelected
+          ? 'Conductor deseleccionado'
+          : 'Conductor seleccionado: ${conductor.nombre}',
+      isSelected: !alreadySelected,
     );
+
+    if (alreadySelected) return;
 
     final canSendDirectNow =
         _selectedOrigin != null &&
@@ -2078,6 +2083,45 @@ class _HomePasajeroState extends State<HomePasajero> {
     }
 
     await _handleRideConfirmation();
+  }
+
+  void _showDriverSelectionToast(String message, {required bool isSelected}) {
+    if (_scaffoldMessenger == null) return;
+    _scaffoldMessenger!
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 110),
+          backgroundColor: isSelected
+              ? Colors.green.shade700
+              : Colors.grey.shade800,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          duration: const Duration(milliseconds: 1700),
+          content: Row(
+            children: [
+              Icon(
+                isSelected
+                    ? Icons.check_circle_rounded
+                    : Icons.remove_circle_rounded,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
   }
 
   // ========== MÉTODOS DE PUSHER - CONTRAOFERTAS ==========
@@ -2334,5 +2378,4 @@ class _HomePasajeroState extends State<HomePasajero> {
       _currentOffer = null;
     });
   }
-
 }

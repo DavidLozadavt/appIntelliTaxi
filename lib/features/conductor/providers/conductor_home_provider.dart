@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
@@ -248,7 +249,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       'id': solicitudId,
       'pasajero_id': raw['pasajero_id'],
       'pasajero_nombre': raw['pasajero_nombre'] ?? 'Pasajero',
-      'pasajero_foto': raw['pasajero_foto'],
+      'pasajero_foto': _resolverFotoPasajero(raw['pasajero_foto']?.toString()),
       'origen': raw['origen'] ?? 'Origen no especificado',
       'destino': raw['destino'] ?? 'Destino no especificado',
       'origen_lat': raw['origen_lat'],
@@ -264,6 +265,18 @@ class ConductorHomeProvider extends ChangeNotifier {
       'timestamp': raw['timestamp'] ?? DateTime.now().toIso8601String(),
       'ttl_segundos': raw['ttl_segundos'] ?? 25,
     };
+  }
+
+  String? _resolverFotoPasajero(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final foto = value.trim();
+    if (foto.startsWith('http://') || foto.startsWith('https://')) return foto;
+
+    final base = Uri.parse(AppConfig.baseUrl);
+    final origin =
+        '${base.scheme}://${base.host}${base.hasPort ? ':${base.port}' : ''}';
+    if (foto.startsWith('/')) return '$origin$foto';
+    return '$origin/$foto';
   }
 
   /// Configurar timer de expiración para una solicitud

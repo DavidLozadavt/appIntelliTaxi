@@ -20,6 +20,7 @@ import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
+import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -307,21 +308,51 @@ class _ConductorServicioActivoScreenState
 
   // Método helper para obtener la foto del pasajero
   String? _getFotoPasajero() {
-    // Buscar en usuario_pasajero.persona.rutaFotoUrl
+    // Buscar en usuario_pasajero.persona
     if (widget.servicio['usuario_pasajero'] != null) {
       final usuarioPasajero = widget.servicio['usuario_pasajero'];
       if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
         final persona = usuarioPasajero['persona'];
         if (persona is Map) {
-          final fotoUrl = persona['rutaFotoUrl'];
-          if (fotoUrl != null && fotoUrl.toString().isNotEmpty) {
-            return fotoUrl.toString();
+          final fotoRaw =
+              persona['rutaFotoUrl'] ?? persona['rutaFoto'] ?? persona['foto'];
+          final foto = _resolverFotoUrl(fotoRaw?.toString());
+          if (foto != null) {
+            return foto;
           }
         }
       }
     }
 
+    // Fallbacks en el servicio
+    final fotoServicio = _resolverFotoUrl(
+      widget.servicio['pasajero_foto']?.toString(),
+    );
+    if (fotoServicio != null) return fotoServicio;
+
+    final pasajero = widget.servicio['pasajero'];
+    if (pasajero is Map) {
+      final fotoPasajero = _resolverFotoUrl(
+        pasajero['rutaFotoUrl']?.toString() ??
+            pasajero['rutaFoto']?.toString() ??
+            pasajero['foto']?.toString(),
+      );
+      if (fotoPasajero != null) return fotoPasajero;
+    }
+
     return null;
+  }
+
+  String? _resolverFotoUrl(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final foto = value.trim();
+    if (foto.startsWith('http://') || foto.startsWith('https://')) return foto;
+
+    final base = Uri.parse(AppConfig.baseUrl);
+    final origin =
+        '${base.scheme}://${base.host}${base.hasPort ? ':${base.port}' : ''}';
+    if (foto.startsWith('/')) return '$origin$foto';
+    return '$origin/$foto';
   }
 
   Future<void> _cargarIconoCarro() async {
@@ -770,7 +801,7 @@ class _ConductorServicioActivoScreenState
       // Obtener ID del pasajero
       int? pasajeroId;
       String nombrePasajero = _getNombrePasajero();
-      String? fotoPasajero;
+      String? fotoPasajero = _getFotoPasajero();
 
       // Intentar obtener el ID del pasajero de diferentes fuentes
       if (widget.servicio['usuario_pasajero'] != null) {
@@ -778,13 +809,6 @@ class _ConductorServicioActivoScreenState
         if (usuarioPasajero is Map) {
           pasajeroId = usuarioPasajero['id'] ?? usuarioPasajero['usuario_id'];
 
-          // Obtener foto del pasajero
-          if (usuarioPasajero['persona'] != null) {
-            final persona = usuarioPasajero['persona'];
-            if (persona is Map) {
-              fotoPasajero = persona['foto'];
-            }
-          }
         }
       } else if (widget.servicio['pasajero_id'] != null) {
         pasajeroId = widget.servicio['pasajero_id'] is int
