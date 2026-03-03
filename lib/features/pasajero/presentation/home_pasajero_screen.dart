@@ -66,7 +66,6 @@ class _HomePasajeroState extends State<HomePasajero> {
   double _sheetSize = _sheetMinSize;
   _SheetVisualState _sheetVisualState = _SheetVisualState.compact;
   _SheetVisualState? _lastHapticSnap;
-  DateTime _lastSheetFrameUpdateAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Para las búsquedas
   final PlacesService _placesService = PlacesService();
@@ -96,6 +95,7 @@ class _HomePasajeroState extends State<HomePasajero> {
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
   BitmapDescriptor? _userMarkerIcon;
+  BitmapDescriptor? _destinationPointIcon;
 
   // Para contraofertas de conductores
   Map<String, dynamic>? _currentOffer;
@@ -133,6 +133,7 @@ class _HomePasajeroState extends State<HomePasajero> {
     super.initState();
     _createUserMarkerIcon();
     _createDriverMarkerIcon();
+    _createDestinationPointIcon();
     _initializeLocation();
     _setupPusherOffers();
     _setupPusherRequestConfirmation();
@@ -514,6 +515,59 @@ class _HomePasajeroState extends State<HomePasajero> {
     }
   }
 
+  /// Crea un icono tipo punto para destino (sin usar pines por defecto de Google)
+  Future<void> _createDestinationPointIcon() async {
+    try {
+      const double size = 28;
+      const double outerRadius = 11;
+      const double innerRadius = 6;
+
+      final ui.PictureRecorder recorder = ui.PictureRecorder();
+      final Canvas canvas = Canvas(recorder);
+
+      final Paint shadowPaint = Paint()
+        ..color = Colors.black.withValues(alpha: 0.22)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      canvas.drawCircle(
+        const Offset(size / 2 + 0.8, size / 2 + 1.2),
+        outerRadius,
+        shadowPaint,
+      );
+
+      final Paint ringPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+        const Offset(size / 2, size / 2),
+        outerRadius,
+        ringPaint,
+      );
+
+      final Paint corePaint = Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(
+        const Offset(size / 2, size / 2),
+        innerRadius,
+        corePaint,
+      );
+
+      final ui.Image image = await recorder.endRecording().toImage(
+        size.toInt(),
+        size.toInt(),
+      );
+      final ByteData? bytes = await image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      final Uint8List? png = bytes?.buffer.asUint8List();
+      if (png == null) return;
+
+      _setStateSafe(() => _destinationPointIcon = BitmapDescriptor.bytes(png));
+    } catch (e) {
+      AppLogger.w('No se pudo crear icono punto de destino: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -535,6 +589,8 @@ class _HomePasajeroState extends State<HomePasajero> {
                 zoom: 15,
                 polylines: _polylines,
                 markers: _markers,
+                onTap: _onMapTap,
+                onLongPress: _onMapLongPress,
                 onMapCreated: (controller) {
                   _mapController = controller;
                 },
@@ -559,12 +615,13 @@ class _HomePasajeroState extends State<HomePasajero> {
               onNotification: (notification) {
                 if (!mounted) return false;
                 final nextSize = notification.extent;
-                if (_shouldApplySheetFrameUpdate(nextSize)) {
-                  _setStateSafe(() => _sheetSize = nextSize);
-                }
                 final nextVisualState = _sheetStateFromExtent(nextSize);
-                if (nextVisualState != _sheetVisualState) {
-                  _setStateSafe(() => _sheetVisualState = nextVisualState);
+                if ((nextSize - _sheetSize).abs() > 0.0005 ||
+                    nextVisualState != _sheetVisualState) {
+                  _setStateSafe(() {
+                    _sheetSize = nextSize;
+                    _sheetVisualState = nextVisualState;
+                  });
                 }
                 _emitSnapHapticIfNeeded(nextSize, nextVisualState);
                 return false;
@@ -863,7 +920,7 @@ class _HomePasajeroState extends State<HomePasajero> {
               onPressed: _drawRoute,
               icon: const Icon(Icons.route),
               label: const Text(
-                'Ver ruta en el mapa',
+                'Reintentar ruta',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
@@ -942,11 +999,6 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   Widget _buildFixedCta() {
-    // En estado compacto no hay espacio vertical suficiente para un CTA fijo.
-    if (_sheetVisualState == _SheetVisualState.compact) {
-      return const SizedBox.shrink();
-    }
-
     String label;
     VoidCallback? onPressed;
     Color color;
@@ -954,7 +1006,7 @@ class _HomePasajeroState extends State<HomePasajero> {
     if (_selectedOrigin != null &&
         _selectedDestination != null &&
         _routeInfo == null) {
-      label = 'Ver ruta en el mapa';
+      label = 'Reintentar ruta';
       onPressed = _drawRoute;
       color = Colors.deepOrange;
     } else if (_routeInfo != null) {
@@ -1404,6 +1456,124 @@ class _HomePasajeroState extends State<HomePasajero> {
     await _expandSheet();
   }
 
+  Future<void> _onMapTap(LatLng latLng) async {
+    await _setDestinationFromMap(
+      latLng,
+      showToast: true,
+      routeWithLoading: false,
+    );
+  }
+
+  Future<void> _onMapLongPress(LatLng latLng) async {
+    await _setDestinationFromMap(
+      latLng,
+      showToast: true,
+      routeWithLoading: true,
+    );
+  }
+
+  Marker _buildDestinationMarker(LatLng position, String snippet) {
+    return Marker(
+      markerId: const MarkerId('destination'),
+      position: position,
+      icon:
+          _destinationPointIcon ??
+          _driverMarkerIcon ??
+          BitmapDescriptor.defaultMarker,
+      infoWindow: InfoWindow(title: 'Destino seleccionado', snippet: snippet),
+      draggable: true,
+      onDragEnd: _onDestinationMarkerDragged,
+      zIndexInt: 6,
+    );
+  }
+
+  void _upsertDestinationMarker(TripLocation destination) {
+    final nextMarkers = <Marker>{};
+    for (final marker in _markers) {
+      if (marker.markerId.value == 'destination') continue;
+      nextMarkers.add(marker);
+    }
+    nextMarkers.add(
+      _buildDestinationMarker(
+        LatLng(destination.lat, destination.lng),
+        destination.name,
+      ),
+    );
+    _markers = nextMarkers;
+  }
+
+  Future<void> _onDestinationMarkerDragged(LatLng latLng) async {
+    await _setDestinationFromMap(
+      latLng,
+      showToast: false,
+      routeWithLoading: false,
+    );
+  }
+
+  Future<void> _setDestinationFromMap(
+    LatLng latLng, {
+    required bool showToast,
+    required bool routeWithLoading,
+  }) async {
+    final locationData = await _getAddressFromCoordinates(
+      latLng.latitude,
+      latLng.longitude,
+    );
+    if (!mounted) return;
+
+    final rawName = locationData.name.trim();
+    final rawAddress = locationData.address.trim();
+    final bool isLatLngFallback =
+        rawAddress.toLowerCase().startsWith('lat ') &&
+        rawAddress.toLowerCase().contains('lng');
+    final normalizedAddress = (rawAddress.isEmpty || isLatLngFallback)
+        ? 'Dirección no disponible'
+        : rawAddress;
+
+    // Prioridad: nombre real del lugar -> primer segmento de dirección -> dirección completa.
+    final bool invalidName =
+        rawName.isEmpty || rawName.toLowerCase() == 'mi ubicación';
+    final String firstAddressPart = normalizedAddress.split(',').first.trim();
+    final normalizedName = !invalidName
+        ? rawName
+        : (firstAddressPart.isNotEmpty
+              ? firstAddressPart
+              : 'Destino seleccionado');
+
+    final destination = TripLocation(
+      placeId: null,
+      name: normalizedName,
+      address: normalizedAddress,
+      lat: latLng.latitude,
+      lng: latLng.longitude,
+      isCurrentLocation: false,
+    );
+
+    _setStateSafe(() {
+      _selectedDestination = destination;
+      _destinationController.text = destination.name;
+      _destinationPredictions = [];
+      _isSearchingDestination = false;
+      _upsertDestinationMarker(destination);
+    });
+
+    await _saveRecentDestination(destination);
+    _updateAllDriverMarkers();
+
+    if (_selectedOrigin != null) {
+      await _drawRoute(showLoadingSnack: routeWithLoading);
+    }
+
+    if (!mounted || !showToast) return;
+    _scaffoldMessenger?.showSnackBar(
+      const SnackBar(
+        content: Text('Destino fijado en el mapa'),
+        duration: Duration(milliseconds: 1300),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   String _prefKey(String suffix) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final uid = auth.user?.id ?? 0;
@@ -1522,25 +1692,39 @@ class _HomePasajeroState extends State<HomePasajero> {
       _destinationController.text = destination.name;
       _isSearchingDestination = false;
       _destinationPredictions = [];
+      _upsertDestinationMarker(destination);
     });
     await _saveRecentDestination(destination);
+    _updateAllDriverMarkers();
     if (_selectedOrigin != null) {
       await _drawRoute();
     }
   }
 
   _SheetVisualState _sheetStateFromExtent(double extent) {
-    final distMin = (extent - _sheetMinSize).abs();
-    final distMid = (extent - _sheetMidSize).abs();
-    final distMax = (extent - _sheetMaxSize).abs();
+    // Evita parpadeo entre estados cuando el usuario suelta cerca del borde.
+    const double hysteresis = 0.02;
+    final toMiddle = (_sheetMinSize + _sheetMidSize) / 2;
+    final toExpanded = (_sheetMidSize + _sheetMaxSize) / 2;
 
-    if (distMin <= distMid && distMin <= distMax) {
-      return _SheetVisualState.compact;
+    switch (_sheetVisualState) {
+      case _SheetVisualState.compact:
+        return extent > (toMiddle + hysteresis)
+            ? _SheetVisualState.middle
+            : _SheetVisualState.compact;
+      case _SheetVisualState.middle:
+        if (extent < (toMiddle - hysteresis)) {
+          return _SheetVisualState.compact;
+        }
+        if (extent > (toExpanded + hysteresis)) {
+          return _SheetVisualState.expanded;
+        }
+        return _SheetVisualState.middle;
+      case _SheetVisualState.expanded:
+        return extent < (toExpanded - hysteresis)
+            ? _SheetVisualState.middle
+            : _SheetVisualState.expanded;
     }
-    if (distMid <= distMin && distMid <= distMax) {
-      return _SheetVisualState.middle;
-    }
-    return _SheetVisualState.expanded;
   }
 
   void _emitSnapHapticIfNeeded(double extent, _SheetVisualState visualState) {
@@ -1562,18 +1746,6 @@ class _HomePasajeroState extends State<HomePasajero> {
         HapticFeedback.lightImpact();
         break;
     }
-  }
-
-  bool _shouldApplySheetFrameUpdate(double nextSize) {
-    final delta = (nextSize - _sheetSize).abs();
-    if (delta <= 0.02) return false;
-
-    final now = DateTime.now();
-    final elapsedMs = now.difference(_lastSheetFrameUpdateAt).inMilliseconds;
-    if (elapsedMs < 33) return false;
-
-    _lastSheetFrameUpdateAt = now;
-    return true;
   }
 
   void _onOriginChanged() {
@@ -1664,6 +1836,11 @@ class _HomePasajeroState extends State<HomePasajero> {
 
       // Restaurar listener
       _originController.addListener(_onOriginChanged);
+
+      // Si ya hay destino seleccionado, calcular ruta automáticamente.
+      if (_selectedDestination != null) {
+        await _drawRoute();
+      }
     }
   }
 
@@ -1688,19 +1865,26 @@ class _HomePasajeroState extends State<HomePasajero> {
         _destinationController.text = prediction.mainText;
         _destinationPredictions = [];
         _isSearchingDestination = false;
+        _upsertDestinationMarker(_selectedDestination!);
       });
       await _saveRecentDestination(_selectedDestination!);
+      _updateAllDriverMarkers();
 
       // Restaurar listener
       _destinationController.addListener(_onDestinationChanged);
+
+      // Calcular ruta automáticamente al elegir destino.
+      if (_selectedOrigin != null) {
+        await _drawRoute();
+      }
     }
   }
 
-  Future<void> _drawRoute() async {
+  Future<void> _drawRoute({bool showLoadingSnack = true}) async {
     if (_selectedOrigin == null || _selectedDestination == null) return;
 
     // Mostrar indicador de carga
-    if (mounted && _scaffoldMessenger != null) {
+    if (showLoadingSnack && mounted && _scaffoldMessenger != null) {
       _scaffoldMessenger!.showSnackBar(
         const SnackBar(
           content: Row(
@@ -1779,17 +1963,9 @@ class _HomePasajeroState extends State<HomePasajero> {
 
         // Marcador de destino
         newMarkers.add(
-          Marker(
-            markerId: const MarkerId('destination'),
-            position: destinationLatLng,
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueRed,
-            ),
-            infoWindow: InfoWindow(
-              title: 'Destino',
-              snippet: _selectedDestination!.name,
-            ),
-            zIndexInt: 5,
+          _buildDestinationMarker(
+            destinationLatLng,
+            _selectedDestination!.name,
           ),
         );
 
