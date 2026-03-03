@@ -5,11 +5,15 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 class VehiculoSelectionSheet extends StatelessWidget {
   final List<VehiculoConductor> vehiculos;
+  final Map<int, int> vencidosPorVehiculo;
+  final int maxVencidosBloqueo;
   final Function(VehiculoConductor) onVehiculoSelected;
 
   const VehiculoSelectionSheet({
     super.key,
     required this.vehiculos,
+    this.vencidosPorVehiculo = const {},
+    this.maxVencidosBloqueo = 2,
     required this.onVehiculoSelected,
   });
 
@@ -181,6 +185,8 @@ class VehiculoSelectionSheet extends StatelessWidget {
     final subtextColor = isDarkMode
         ? Colors.grey.shade400
         : Colors.grey.shade600;
+    final vencidos = vencidosPorVehiculo[vehiculo.id] ?? 0;
+    final bloqueado = vencidos >= maxVencidosBloqueo;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -194,12 +200,16 @@ class VehiculoSelectionSheet extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: AppColors.accent.withValues(alpha: isDarkMode ? 0.25 : 0.15),
+          color: bloqueado
+              ? Colors.red.withValues(alpha: 0.35)
+              : AppColors.accent.withValues(alpha: isDarkMode ? 0.25 : 0.15),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accent.withValues(alpha: isDarkMode ? 0.15 : 0.08),
+            color: bloqueado
+                ? Colors.red.withValues(alpha: 0.12)
+                : AppColors.accent.withValues(alpha: isDarkMode ? 0.15 : 0.08),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -213,7 +223,9 @@ class VehiculoSelectionSheet extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
+          onTap: bloqueado
+              ? null
+              : () {
             Navigator.pop(context);
             onVehiculoSelected(vehiculo);
           },
@@ -323,15 +335,40 @@ class VehiculoSelectionSheet extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (vencidos > 0) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: bloqueado
+                                ? Colors.red.withValues(alpha: 0.12)
+                                : Colors.orange.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            bloqueado
+                                ? '$vencidos documentos vencidos · bloqueado'
+                                : '$vencidos documento(s) vencido(s)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: bloqueado ? Colors.red : Colors.orange,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
 
                 // Icono de flecha
                 Icon(
-                  Iconsax.arrow_right_3_copy,
+                  bloqueado ? Icons.lock_outline : Iconsax.arrow_right_3_copy,
                   size: 18,
-                  color: AppColors.accent,
+                  color: bloqueado ? Colors.red : AppColors.accent,
                 ),
               ],
             ),

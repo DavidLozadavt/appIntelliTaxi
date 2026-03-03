@@ -11,6 +11,7 @@ import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/documentos_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/historial_servicios_conductor_screen.dart';
+import 'package:intellitaxi/features/conductor/presentation/mis_vehiculos_screen.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/documentos_provider.dart';
 import 'package:intellitaxi/features/sanciones/providers/sancion_provider.dart';
@@ -272,6 +273,7 @@ class MyApp extends StatelessWidget {
               '/home': (_) => const NavigationScreen(),
               '/notifications': (_) => const NotificationScreen(),
               '/mis-documentos': (_) => const DocumentosScreen(),
+              '/mis-vehiculos': (_) => const MisVehiculosScreen(),
               '/historial-conductor': (_) =>
                   const HistorialServiciosConductorScreen(),
               '/historial-pasajero': (_) =>

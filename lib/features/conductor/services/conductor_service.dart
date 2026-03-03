@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/conductor/data/documento_conductor_model.dart';
+import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,6 +46,47 @@ class ConductorService {
     } catch (e) {
       AppLogger.d('⚠️ Error obteniendo vehículos del conductor: $e');
       rethrow;
+    }
+  }
+
+  /// Obtiene los documentos de un vehículo
+  Future<List<DocumentoVehiculo>> getDocumentosVehiculo(int idVehiculo) async {
+    try {
+      final response = await _dio.get('get_documents_by_vehiculo/$idVehiculo');
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data;
+        return data
+            .map((json) => DocumentoVehiculo.fromJson(json))
+            .toList();
+      }
+      throw Exception(
+        'Error al obtener documentos del vehículo: ${response.statusCode}',
+      );
+    } catch (e) {
+      AppLogger.d('⚠️ Error obteniendo documentos del vehículo $idVehiculo: $e');
+      rethrow;
+    }
+  }
+
+  /// Verifica si un vehículo tiene documentos vencidos y debe bloquearse
+  Future<Map<String, dynamic>> verificarBloqueoVehiculo(int idVehiculo) async {
+    try {
+      final docs = await getDocumentosVehiculo(idVehiculo);
+      final vencidos = docs.where((d) => d.estaVencido).toList();
+      final porVencer = docs.where((d) => d.estaPorVencer).toList();
+      return {
+        'bloqueado': vencidos.isNotEmpty,
+        'vencidos': vencidos,
+        'porVencer': porVencer,
+        'documentos': docs,
+      };
+    } catch (e) {
+      return {
+        'bloqueado': false,
+        'vencidos': <DocumentoVehiculo>[],
+        'porVencer': <DocumentoVehiculo>[],
+        'documentos': <DocumentoVehiculo>[],
+      };
     }
   }
 
@@ -170,6 +212,35 @@ class ConductorService {
       }
     } catch (e) {
       AppLogger.d('⚠️ Error actualizando documento: $e');
+      rethrow;
+    }
+  }
+
+  /// Actualiza un documento de vehículo
+  Future<void> actualizarDocumentoVehiculo({
+    required int idDocumento,
+    required String filePath,
+    required String fechaVigencia,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'idDocumento': idDocumento,
+        'rutaFile': await MultipartFile.fromFile(filePath),
+        'fecha_vigencia': fechaVigencia,
+      });
+
+      final response = await _dio.post(
+        'update_documento_vehiculo',
+        data: formData,
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception(
+          'Error al actualizar documento de vehículo: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      AppLogger.d('⚠️ Error actualizando documento de vehículo: $e');
       rethrow;
     }
   }

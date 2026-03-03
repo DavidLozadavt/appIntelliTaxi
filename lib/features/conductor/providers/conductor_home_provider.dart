@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
+import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
@@ -618,6 +619,21 @@ class ConductorHomeProvider extends ChangeNotifier {
     } catch (e) {
       AppLogger.d('❌ Error verificando documentos: $e');
       return {'vencidos': [], 'porVencer': []};
+    }
+  }
+
+  /// Verifica si un vehículo debe bloquearse por documentos vencidos.
+  Future<Map<String, dynamic>> verificarBloqueoVehiculo(int idVehiculo) async {
+    try {
+      return await _conductorService.verificarBloqueoVehiculo(idVehiculo);
+    } catch (e) {
+      AppLogger.d('❌ Error verificando bloqueo de vehículo: $e');
+      return {
+        'bloqueado': false,
+        'vencidos': <DocumentoVehiculo>[],
+        'porVencer': <DocumentoVehiculo>[],
+        'documentos': <DocumentoVehiculo>[],
+      };
     }
   }
 

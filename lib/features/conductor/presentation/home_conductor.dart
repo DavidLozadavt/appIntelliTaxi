@@ -366,13 +366,40 @@ class _HomeConductorState extends State<HomeConductor> {
       return;
     }
 
+    final Map<int, int> vencidosPorVehiculo = {};
+    for (final vehiculo in _provider.vehiculosDisponibles) {
+      final bloqueo = await _provider.verificarBloqueoVehiculo(vehiculo.id);
+      final vencidos = (bloqueo['vencidos'] as List?)?.length ?? 0;
+      vencidosPorVehiculo[vehiculo.id] = vencidos;
+    }
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => VehiculoSelectionSheet(
         vehiculos: _provider.vehiculosDisponibles,
+        vencidosPorVehiculo: vencidosPorVehiculo,
+        maxVencidosBloqueo: 2,
         onVehiculoSelected: (vehiculo) async {
+          final vencidos = vencidosPorVehiculo[vehiculo.id] ?? 0;
+          final bloqueado = vencidos >= 2;
+
+          if (bloqueado) {
+            if (!mounted) return;
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text(
+                  'No puedes seleccionar este vehículo: tiene $vencidos documentos vencidos',
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+            return;
+          }
+
           // Seleccionar vehículo e iniciar turno
           _provider.seleccionarVehiculo(vehiculo);
           final turnoIniciado = await _provider.iniciarTurno(vehiculo.id);

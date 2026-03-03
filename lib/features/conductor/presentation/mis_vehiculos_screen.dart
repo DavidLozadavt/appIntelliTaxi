@@ -1,0 +1,524 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
+import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+
+class MisVehiculosScreen extends StatefulWidget {
+  const MisVehiculosScreen({super.key});
+
+  @override
+  State<MisVehiculosScreen> createState() => _MisVehiculosScreenState();
+}
+
+class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
+  final ConductorService _service = ConductorService();
+  bool _isLoading = true;
+  String? _error;
+  final Set<int> _expandedVehiculos = <int>{};
+
+  List<VehiculoConductor> _vehiculos = [];
+  final Map<int, List<DocumentoVehiculo>> _docsByVehiculo = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
+      final vehiculos = await _service.getVehiculosConductor();
+      final Map<int, List<DocumentoVehiculo>> docsMap = {};
+
+      for (final v in vehiculos) {
+        try {
+          docsMap[v.id] = await _service.getDocumentosVehiculo(v.id);
+        } catch (_) {
+          docsMap[v.id] = [];
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _vehiculos = vehiculos;
+        _docsByVehiculo
+          ..clear()
+          ..addAll(docsMap);
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  bool _estaBloqueado(VehiculoConductor vehiculo) {
+    final docs = _docsByVehiculo[vehiculo.id] ?? const <DocumentoVehiculo>[];
+    return docs.any((d) => d.estaVencido);
+  }
+
+  Future<void> _editarDocumentoVehiculo(DocumentoVehiculo doc) async {
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditarDocumentoVehiculoSheet(documento: doc),
+    );
+    if (ok == true) {
+      await _cargar();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Mis Vehículos'),
+        actions: [
+          IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(child: Text('Error: $_error'))
+          : _vehiculos.isEmpty
+          ? const Center(child: Text('No tienes vehículos asignados'))
+          : RefreshIndicator(
+              onRefresh: _cargar,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildResumenGlobal(),
+                  const SizedBox(height: 12),
+                  ..._vehiculos.map(_buildVehiculoCard),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildResumenGlobal() {
+    final bloqueados = _vehiculos.where(_estaBloqueado).length;
+    if (bloqueados == 0) {
+      return Card(
+        color: AppColors.green.withValues(alpha: 0.12),
+        child: const ListTile(
+          leading: Icon(Icons.verified, color: AppColors.green),
+          title: Text('Todos tus vehículos están habilitados'),
+        ),
+      );
+    }
+    return Card(
+      color: Colors.red.withValues(alpha: 0.12),
+      child: ListTile(
+        leading: const Icon(Icons.block, color: Colors.red),
+        title: Text('$bloqueados vehículo(s) bloqueado(s)'),
+        subtitle: const Text(
+          'Si un vehículo tiene documentos vencidos no puede operar',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVehiculoCard(VehiculoConductor vehiculo) {
+    final docs = _docsByVehiculo[vehiculo.id] ?? const <DocumentoVehiculo>[];
+    final bloqueado = _estaBloqueado(vehiculo);
+    final expanded = _expandedVehiculos.contains(vehiculo.id);
+    final isPrincipal =
+        _vehiculos.isNotEmpty && _vehiculos.first.id == vehiculo.id;
+    final titulo = [
+      vehiculo.marca?.marca ?? '',
+      vehiculo.modelo?.modelo ?? '',
+    ].where((e) => e.trim().isNotEmpty).join(' ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: bloqueado
+              ? Colors.red.withValues(alpha: 0.35)
+              : Colors.grey.withValues(alpha: 0.2),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          setState(() {
+            if (expanded) {
+              _expandedVehiculos.remove(vehiculo.id);
+            } else {
+              _expandedVehiculos.add(vehiculo.id);
+            }
+          });
+        },
+        child: Column(
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              child: Container(
+                height: 170,
+                color: Colors.grey.shade200,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: bloqueado ? Colors.red : AppColors.green,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.circle,
+                              size: 8,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              bloqueado ? 'BLOQUEADO' : 'ACTIVO',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child:
+                          vehiculo.rutaUrl != null && vehiculo.rutaUrl!.isNotEmpty
+                          ? Image.network(
+                              vehiculo.rutaUrl!,
+                              fit: BoxFit.contain,
+                              width: 230,
+                              errorBuilder: (_, _, _) =>
+                                  const Icon(Icons.directions_car, size: 84),
+                            )
+                          : const Icon(Icons.directions_car, size: 84),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isPrincipal ? 'VEHÍCULO PRINCIPAL' : 'VEHÍCULO ASIGNADO',
+                    style: const TextStyle(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    titulo.isEmpty ? vehiculo.nombreCompleto : titulo,
+                    style: const TextStyle(
+                      fontSize: 32 / 1.7,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Divider(color: Colors.grey.shade300, height: 1),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMetaItem('PLACA', vehiculo.placa),
+                      ),
+                      Expanded(
+                        child: _buildMetaItem(
+                          'COMBUSTIBLE',
+                          (vehiculo.tipoCombustible ?? '').trim().isEmpty
+                              ? 'No definido'
+                              : vehiculo.tipoCombustible!,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(
+                        'Documentos (${docs.length})',
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        expanded
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: Colors.grey.shade700,
+                      ),
+                    ],
+                  ),
+                  if (expanded) ...[
+                    const SizedBox(height: 8),
+                    if (docs.isEmpty)
+                      const ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.description_outlined),
+                        title: Text('Sin documentos registrados para este vehículo'),
+                      )
+                    else
+                      ...docs.map(_buildDocTile),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetaItem(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 28 / 1.6, fontWeight: FontWeight.w800),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDocTile(DocumentoVehiculo doc) {
+    final vencido = doc.estaVencido;
+    final porVencer = doc.estaPorVencer;
+    final color = vencido
+        ? Colors.red
+        : porVencer
+        ? Colors.orange
+        : AppColors.green;
+
+    String estado = 'Vigente';
+    if (vencido) estado = 'Vencido';
+    if (porVencer) estado = 'Por vencer';
+
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(Icons.badge_outlined, color: color),
+      title: Text(doc.tituloDocumento),
+      subtitle: Text('Vigencia: ${doc.fechaVigencia ?? 'No definida'}'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            estado,
+            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+          ),
+          IconButton(
+            tooltip: 'Editar documento',
+            onPressed: () => _editarDocumentoVehiculo(doc),
+            icon: const Icon(Icons.edit_outlined, size: 20),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditarDocumentoVehiculoSheet extends StatefulWidget {
+  final DocumentoVehiculo documento;
+
+  const _EditarDocumentoVehiculoSheet({required this.documento});
+
+  @override
+  State<_EditarDocumentoVehiculoSheet> createState() =>
+      _EditarDocumentoVehiculoSheetState();
+}
+
+class _EditarDocumentoVehiculoSheetState
+    extends State<_EditarDocumentoVehiculoSheet> {
+  final ConductorService _service = ConductorService();
+  final ImagePicker _picker = ImagePicker();
+  final TextEditingController _fechaController = TextEditingController();
+  File? _archivo;
+  bool _guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fechaController.text = widget.documento.fechaVigencia ?? '';
+  }
+
+  @override
+  void dispose() {
+    _fechaController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickArchivo() async {
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+    if (file == null) return;
+    setState(() => _archivo = File(file.path));
+  }
+
+  Future<void> _pickFecha() async {
+    final now = DateTime.now();
+    final current =
+        DateTime.tryParse(_fechaController.text) ?? now.add(const Duration(days: 30));
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 10),
+      locale: const Locale('es', 'ES'),
+    );
+    if (picked == null) return;
+    _fechaController.text = DateFormat('yyyy-MM-dd').format(picked);
+    setState(() {});
+  }
+
+  Future<void> _guardar() async {
+    if (_archivo == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona el archivo del documento')),
+      );
+      return;
+    }
+    if (_fechaController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona la fecha de vigencia')),
+      );
+      return;
+    }
+
+    try {
+      setState(() => _guardando = true);
+      await _service.actualizarDocumentoVehiculo(
+        idDocumento: widget.documento.id,
+        filePath: _archivo!.path,
+        fechaVigencia: _fechaController.text.trim(),
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Documento actualizado correctamente'),
+          backgroundColor: AppColors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        16 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Editar ${widget.documento.tituloDocumento}',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: _guardando ? null : _pickArchivo,
+            icon: const Icon(Icons.upload_file_outlined),
+            label: Text(
+              _archivo == null ? 'Seleccionar archivo' : 'Archivo seleccionado',
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _fechaController,
+            readOnly: true,
+            onTap: _guardando ? null : _pickFecha,
+            decoration: const InputDecoration(
+              labelText: 'Fecha vigencia',
+              suffixIcon: Icon(Icons.calendar_today_outlined),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _guardando ? null : _guardar,
+              child: _guardando
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Guardar cambios'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
