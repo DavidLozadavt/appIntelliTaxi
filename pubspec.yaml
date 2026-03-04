@@ -56,6 +56,7 @@ dependencies:
   audioplayers: ^6.1.0
   url_launcher: ^6.3.1
   flutter_overlay_window: ^0.5.0
+  tutorial_coach_mark: ^1.2.13
 
   firebase_core: any
   intl: any
