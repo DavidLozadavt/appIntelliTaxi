@@ -143,15 +143,29 @@ class ServicioTrackingService {
     required int servicioId,
     required int conductorId,
     required String estado,
+    double? destinoFinalLat,
+    double? destinoFinalLng,
+    String? destinoFinalAddress,
   }) async {
     try {
+      final payload = <String, dynamic>{
+        'servicio_id': servicioId,
+        'conductor_id': conductorId,
+        'estado': estado,
+      };
+      if (destinoFinalLat != null) {
+        payload['destino_final_lat'] = destinoFinalLat;
+      }
+      if (destinoFinalLng != null) {
+        payload['destino_final_lng'] = destinoFinalLng;
+      }
+      if (destinoFinalAddress != null) {
+        payload['destino_final_address'] = destinoFinalAddress;
+      }
+
       await _dio.post(
         'servicios/cambiar-estado',
-        data: {
-          'servicio_id': servicioId,
-          'conductor_id': conductorId,
-          'estado': estado,
-        },
+        data: payload,
       );
 
       AppLogger.d('✅ Estado cambiado a: $estado');
@@ -167,16 +181,30 @@ class ServicioTrackingService {
     required int servicioId,
     required int conductorId,
     required String estado,
+    double? destinoFinalLat,
+    double? destinoFinalLng,
+    String? destinoFinalAddress,
   }) async {
     try {
+      final payload = <String, dynamic>{
+        'servicio_id': servicioId,
+        'conductor_id': conductorId,
+        'estado': estado,
+      };
+      if (destinoFinalLat != null) {
+        payload['destino_final_lat'] = destinoFinalLat;
+      }
+      if (destinoFinalLng != null) {
+        payload['destino_final_lng'] = destinoFinalLng;
+      }
+      if (destinoFinalAddress != null) {
+        payload['destino_final_address'] = destinoFinalAddress;
+      }
+
       final dio = DioClient.getInstance();
       await dio.post(
         'servicios/cambiar-estado',
-        data: {
-          'servicio_id': servicioId,
-          'conductor_id': conductorId,
-          'estado': estado,
-        },
+        data: payload,
       );
 
       AppLogger.d('✅ Estado cambiado a: $estado');

@@ -910,6 +910,7 @@ class _HomePasajeroState extends State<HomePasajero> {
         const SizedBox(height: 24),
 
         if (showInlineActions &&
+            _serviceType != 'taxi' &&
             _selectedOrigin != null &&
             _selectedDestination != null &&
             _routeInfo == null)
@@ -1002,14 +1003,16 @@ class _HomePasajeroState extends State<HomePasajero> {
     String label;
     VoidCallback? onPressed;
     Color color;
+    final hasOrigin = _selectedOrigin != null;
+    final hasDestination = _selectedDestination != null;
+    final hasRoute = _routeInfo != null;
 
-    if (_selectedOrigin != null &&
-        _selectedDestination != null &&
-        _routeInfo == null) {
+    if (_serviceType != 'taxi' && hasOrigin && hasDestination && !hasRoute) {
       label = 'Reintentar ruta';
       onPressed = _drawRoute;
       color = Colors.deepOrange;
-    } else if (_routeInfo != null) {
+    } else if (hasOrigin &&
+        (_serviceType == 'taxi' || (hasDestination && hasRoute))) {
       label = _serviceType == 'taxi'
           ? 'Solicitar viaje'
           : 'Solicitar domicilio';
@@ -1018,7 +1021,9 @@ class _HomePasajeroState extends State<HomePasajero> {
           ? Colors.green.shade600
           : Colors.orange.shade600;
     } else {
-      label = 'Selecciona origen y destino';
+      label = _serviceType == 'taxi'
+          ? 'Selecciona origen (destino opcional)'
+          : 'Selecciona origen y destino';
       onPressed = null;
       color = Colors.grey;
     }
@@ -2082,16 +2087,45 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   void _requestRide() {
-    if (_routeInfo == null) return;
     _handleRideConfirmation();
   }
 
   Future<void> _handleRideConfirmation() async {
     final isDelivery = _serviceType == 'domicilio';
+    final origin = _selectedOrigin;
+    final destination = _selectedDestination;
+    final route = _routeInfo;
     final pasajeroId =
         Provider.of<AuthProvider>(context, listen: false).idPersona ?? 0;
 
     if (!mounted) return;
+    if (origin == null) {
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Selecciona el punto de origen'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (isDelivery && destination == null) {
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Para domicilio debes seleccionar destino'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (isDelivery && route == null) {
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo calcular la ruta del domicilio'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (pasajeroId <= 0) {
       _scaffoldMessenger?.showSnackBar(
         const SnackBar(
@@ -2121,20 +2155,20 @@ class _HomePasajeroState extends State<HomePasajero> {
           ? await _rideRequestService.sendDirectOffer(
               conductorId: selectedConductor!.conductorId,
               pasajeroId: pasajeroId,
-              origin: _selectedOrigin!,
-              destination: _selectedDestination!,
-              distancia: _routeInfo!.distance,
-              duracionEstimada: _routeInfo!.duration,
+              origin: origin,
+              destination: destination,
+              distancia: route?.distance,
+              duracionEstimada: route?.duration,
               // Flujo taxímetro: sin negociación de precio en app
               precioOfrecido: 0,
             )
           : await _rideRequestService.requestRide(
-              origin: _selectedOrigin!,
-              destination: _selectedDestination!,
-              distance: _routeInfo!.distance,
-              distanceValue: _routeInfo!.distanceValue,
-              duration: _routeInfo!.duration,
-              durationValue: _routeInfo!.durationValue,
+              origin: origin,
+              destination: destination,
+              distance: route?.distance,
+              distanceValue: route?.distanceValue,
+              duration: route?.duration,
+              durationValue: route?.durationValue,
               // No se envía precio porque funciona con taxímetro
               serviceType: isDelivery ? 'domicilio' : 'taxi',
             );
@@ -2178,12 +2212,13 @@ class _HomePasajeroState extends State<HomePasajero> {
                 datosServicio: {
                   if (selectedConductor != null)
                     'conductor_id': selectedConductor.conductorId,
-                  'origen_lat': _selectedOrigin!.lat,
-                  'origen_lng': _selectedOrigin!.lng,
-                  'origen_address': _selectedOrigin!.address,
-                  'destino_lat': _selectedDestination!.lat,
-                  'destino_lng': _selectedDestination!.lng,
-                  'destino_address': _selectedDestination!.address,
+                  'origen_lat': origin.lat,
+                  'origen_lng': origin.lng,
+                  'origen_address': origin.address,
+                  'destino_lat': destination?.lat,
+                  'destino_lng': destination?.lng,
+                  'destino_address':
+                      destination?.address ?? 'Destino no definido',
                   'precio_ofrecido': 0,
                   // No se envía precio porque funciona con taxímetro
                 },
@@ -2251,8 +2286,8 @@ class _HomePasajeroState extends State<HomePasajero> {
 
     final canSendDirectNow =
         _selectedOrigin != null &&
-        _selectedDestination != null &&
-        _routeInfo != null;
+        (_serviceType == 'taxi' ||
+            (_selectedDestination != null && _routeInfo != null));
 
     if (!canSendDirectNow) {
       return;

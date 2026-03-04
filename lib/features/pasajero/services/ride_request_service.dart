@@ -12,11 +12,11 @@ class RideRequestService {
   /// 📌 SOLICITAR SERVICIO DE VIAJE
   Future<Map<String, dynamic>> requestRide({
     required TripLocation origin,
-    required TripLocation destination,
-    required String distance,
-    required int distanceValue, // en metros
-    required String duration,
-    required int durationValue, // en segundos
+    TripLocation? destination,
+    String? distance,
+    int? distanceValue, // en metros
+    String? duration,
+    int? durationValue, // en segundos
     double? estimatedPrice, // Opcional porque funciona con taxímetro
     required String serviceType, // 'taxi' o 'domicilio'
   }) async {
@@ -30,11 +30,11 @@ class RideRequestService {
       'origin_place_id': origin.placeId,
 
       // Información del destino
-      'destination_lat': destination.lat,
-      'destination_lng': destination.lng,
-      'destination_address': destination.address,
-      'destination_name': destination.name,
-      'destination_place_id': destination.placeId,
+      'destination_lat': destination?.lat,
+      'destination_lng': destination?.lng,
+      'destination_address': destination?.address,
+      'destination_name': destination?.name,
+      'destination_place_id': destination?.placeId,
 
       // Información de la ruta
       'distance': distance, // Ej: "8,7 km"
@@ -81,21 +81,21 @@ class RideRequestService {
     required int conductorId,
     required int pasajeroId,
     required TripLocation origin,
-    required TripLocation destination,
+    TripLocation? destination,
     double precioOfrecido = 0,
-    required String distancia,
-    required String duracionEstimada,
+    String? distancia,
+    String? duracionEstimada,
     String? mensaje,
   }) async {
     final requestData = <String, dynamic>{
       'conductor_id': conductorId,
       'pasajero_id': pasajeroId,
       'origen': origin.address,
-      'destino': destination.address,
+      'destino': destination?.address,
       'origen_lat': origin.lat,
       'origen_lng': origin.lng,
-      'destino_lat': destination.lat,
-      'destino_lng': destination.lng,
+      'destino_lat': destination?.lat,
+      'destino_lng': destination?.lng,
       'precio_ofrecido': precioOfrecido,
       'distancia': distancia,
       'duracion_estimada': duracionEstimada,
@@ -108,7 +108,7 @@ class RideRequestService {
       AppLogger.d('   pasajero_id: $pasajeroId');
       AppLogger.d('   precio_ofrecido (taxímetro): $precioOfrecido');
       AppLogger.d('   origen: ${origin.address}');
-      AppLogger.d('   destino: ${destination.address}');
+      AppLogger.d('   destino: ${destination?.address ?? 'A convenir'}');
     }
 
     try {

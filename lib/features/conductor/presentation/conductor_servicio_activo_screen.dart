@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
@@ -118,6 +119,38 @@ class _ConductorServicioActivoScreenState
     final rawId = widget.servicio['id'];
     if (rawId is int) return rawId;
     return int.tryParse(rawId?.toString() ?? '') ?? 0;
+  }
+
+  bool _tieneDestinoDefinido() {
+    final lat = _parseDouble(widget.servicio['destino_lat']);
+    final lng = _parseDouble(widget.servicio['destino_lng']);
+    return lat != 0.0 && lng != 0.0;
+  }
+
+  Future<String?> _resolverDireccionDesdeCoordenadas(LatLng punto) async {
+    try {
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/geocode/json?'
+        'latlng=${punto.latitude},${punto.longitude}'
+        '&key=${AppConfig.googleMapsApiKey}'
+        '&language=es',
+      );
+      final response = await http.get(url);
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body);
+      if (data is Map<String, dynamic> &&
+          data['status'] == 'OK' &&
+          data['results'] is List &&
+          (data['results'] as List).isNotEmpty) {
+        final first = (data['results'] as List).first;
+        if (first is Map<String, dynamic>) {
+          return first['formatted_address']?.toString();
+        }
+      }
+    } catch (_) {
+      // Silencioso: si falla geocoding se usa fallback.
+    }
+    return null;
   }
 
   String _resolverEstadoInicial(Map<String, dynamic> servicio) {
@@ -412,10 +445,13 @@ class _ConductorServicioActivoScreenState
     final destinoLat = _parseDouble(widget.servicio['destino_lat']);
     final destinoLng = _parseDouble(widget.servicio['destino_lng']);
 
+    final tieneDestino = _tieneDestinoDefinido();
     setState(() {
-      _destinoActual = _estadoUiEfectivo == 'en_curso'
-          ? LatLng(destinoLat, destinoLng)
-          : LatLng(origenLat, origenLng);
+      if (_estadoUiEfectivo == 'en_curso' && tieneDestino) {
+        _destinoActual = LatLng(destinoLat, destinoLng);
+      } else {
+        _destinoActual = LatLng(origenLat, origenLng);
+      }
     });
 
     // Obtener ubicación actual
@@ -612,19 +648,22 @@ class _ConductorServicioActivoScreenState
         ),
       );
 
-      // Destino final (siempre visible)
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('destino_final'),
-          position: LatLng(destinoLat, destinoLng),
-          icon: _destinoFinalDot ?? BitmapDescriptor.defaultMarker,
-          infoWindow: InfoWindow(
-            title: 'Destino Final',
-            snippet: widget.servicio['destino_address'],
+      // Destino final (solo si existe destino definido)
+      if (_tieneDestinoDefinido()) {
+        _markers.add(
+          Marker(
+            markerId: const MarkerId('destino_final'),
+            position: LatLng(destinoLat, destinoLng),
+            icon: _destinoFinalDot ?? BitmapDescriptor.defaultMarker,
+            infoWindow: InfoWindow(
+              title: 'Destino Final',
+              snippet:
+                  widget.servicio['destino_address'] ?? 'Destino no definido',
+            ),
+            anchor: const Offset(0.5, 0.5),
           ),
-          anchor: const Offset(0.5, 0.5),
-        ),
-      );
+        );
+      }
 
       // Mi ubicación (conductor) con icono del carro
       if (_miUbicacion != null) {
@@ -686,10 +725,27 @@ class _ConductorServicioActivoScreenState
   Future<void> _cambiarEstado(String nuevoEstado) async {
     setState(() => _isLoading = true);
 
+    double? destinoFinalLat;
+    double? destinoFinalLng;
+    String? destinoFinalAddress;
+    if (nuevoEstado == 'finalizado' &&
+        !_tieneDestinoDefinido() &&
+        _miUbicacion != null) {
+      destinoFinalLat = _miUbicacion!.latitude;
+      destinoFinalLng = _miUbicacion!.longitude;
+      final resolved = await _resolverDireccionDesdeCoordenadas(_miUbicacion!);
+      destinoFinalAddress =
+          resolved ??
+          'Destino final (${destinoFinalLat.toStringAsFixed(5)}, ${destinoFinalLng.toStringAsFixed(5)})';
+    }
+
     final success = await ServicioTrackingService.cambiarEstadoStatic(
       servicioId: widget.servicio['id'],
       conductorId: widget.conductorId,
       estado: nuevoEstado,
+      destinoFinalLat: destinoFinalLat,
+      destinoFinalLng: destinoFinalLng,
+      destinoFinalAddress: destinoFinalAddress,
     );
 
     setState(() => _isLoading = false);
@@ -703,14 +759,22 @@ class _ConductorServicioActivoScreenState
           widget.servicio['idEstado'] = 21;
         } else if (nuevoEstado == 'finalizado') {
           widget.servicio['idEstado'] = 22;
+          if (!_tieneDestinoDefinido() &&
+              destinoFinalLat != null &&
+              destinoFinalLng != null) {
+            widget.servicio['destino_lat'] = destinoFinalLat;
+            widget.servicio['destino_lng'] = destinoFinalLng;
+            widget.servicio['destino_address'] =
+                destinoFinalAddress ?? widget.servicio['destino_address'];
+          }
         }
 
         // Si llegó al punto de recogida, cambiar destino al final
-        if (nuevoEstado == 'llegue') {
+        if (nuevoEstado == 'llegue' && _tieneDestinoDefinido()) {
           final destinoLat = _parseDouble(widget.servicio['destino_lat']);
           final destinoLng = _parseDouble(widget.servicio['destino_lng']);
           _destinoActual = LatLng(destinoLat, destinoLng);
-        } else if (nuevoEstado == 'en_curso') {
+        } else if (nuevoEstado == 'en_curso' && _tieneDestinoDefinido()) {
           final destinoLat = _parseDouble(widget.servicio['destino_lat']);
           final destinoLng = _parseDouble(widget.servicio['destino_lng']);
           _destinoActual = LatLng(destinoLat, destinoLng);
@@ -723,7 +787,7 @@ class _ConductorServicioActivoScreenState
         tipo: 'conductor',
         estado: nuevoEstado,
         origen: widget.servicio['origen_address'] ?? 'Origen',
-        destino: widget.servicio['destino_address'] ?? 'Destino',
+        destino: widget.servicio['destino_address'] ?? 'A convenir',
       );
 
       _mostrarMensaje(_getMensajeEstado(nuevoEstado));
@@ -1227,7 +1291,7 @@ class _ConductorServicioActivoScreenState
     final destinoPrincipal =
         (destinoName?.toString().trim().isNotEmpty ?? false)
         ? destinoName.toString()
-        : (destinoAddress ?? 'Sin lugar');
+        : (destinoAddress ?? 'A convenir');
 
     return Column(
       children: [
