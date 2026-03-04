@@ -15,6 +15,7 @@ import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 import 'package:intellitaxi/features/pasajero/services/ride_request_service.dart';
+import 'package:intellitaxi/features/pasajero/services/repeat_trip_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/pasajero/widgets/driver_offer_card.dart';
@@ -149,6 +150,7 @@ class _HomePasajeroState extends State<HomePasajero> {
     // Listeners
     _originController.addListener(_onOriginChanged);
     _destinationController.addListener(_onDestinationChanged);
+    RepeatTripService.instance.addListener(_onRepeatTripRequested);
   }
 
   @override
@@ -195,6 +197,7 @@ class _HomePasajeroState extends State<HomePasajero> {
     // Remover listeners de los controladores de texto ANTES de disponer
     _originController.removeListener(_onOriginChanged);
     _destinationController.removeListener(_onDestinationChanged);
+    RepeatTripService.instance.removeListener(_onRepeatTripRequested);
 
     // Desconectar servicio de conductores
     _pusherConductoresService?.disconnect();
@@ -299,6 +302,75 @@ class _HomePasajeroState extends State<HomePasajero> {
     } finally {
       _tutorialInProgress = false;
     }
+  }
+
+  void _onRepeatTripRequested() {
+    _tryApplyPendingRepeatTrip();
+  }
+
+  Future<void> _tryApplyPendingRepeatTrip() async {
+    if (!mounted) return;
+    if (_currentPosition == null) return;
+
+    final pending = RepeatTripService.instance.pendingTrip;
+    if (pending == null) return;
+
+    final originRaw = pending['origen'];
+    final destinationRaw = pending['destino'];
+    if (originRaw is! Map || destinationRaw is! Map) {
+      RepeatTripService.instance.clearPending();
+      return;
+    }
+
+    final origin = _tripLocationFromMap(Map<String, dynamic>.from(originRaw));
+    final destination = _tripLocationFromMap(
+      Map<String, dynamic>.from(destinationRaw),
+    );
+    if (destination == null) {
+      RepeatTripService.instance.clearPending();
+      return;
+    }
+
+    _setStateSafe(() {
+      if (origin != null) {
+        _selectedOrigin = origin;
+        _originController.removeListener(_onOriginChanged);
+        _originController.text = origin.name;
+        _originController.addListener(_onOriginChanged);
+      }
+      _selectedDestination = destination;
+      _destinationController.text = destination.name;
+      _destinationPredictions = [];
+      _isSearchingDestination = false;
+      _upsertDestinationMarker(destination);
+    });
+
+    _updateAllDriverMarkers();
+    await _saveRecentDestination(destination);
+
+    if (_selectedOrigin != null) {
+      await _drawRoute(showLoadingSnack: false);
+    }
+
+    if (mounted && _sheetController.isAttached) {
+      await _sheetController.animateTo(
+        _sheetMidSize,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    if (mounted) {
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Viaje anterior cargado'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    RepeatTripService.instance.clearPending();
   }
 
   // ========== MÉTODOS DE SERVICIO ACTIVO ==========
@@ -1510,6 +1582,7 @@ class _HomePasajeroState extends State<HomePasajero> {
 
         // Cargar conductores disponibles
         _loadAvailableDrivers();
+        _tryApplyPendingRepeatTrip();
         _tryShowPassengerTutorial();
       }
     } catch (e) {

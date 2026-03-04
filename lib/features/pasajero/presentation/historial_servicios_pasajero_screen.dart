@@ -6,6 +6,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/features/rides/data/historial_servicio_model.dart';
 import 'package:intellitaxi/features/rides/services/historial_servicio_service.dart';
 import 'package:intellitaxi/features/rides/presentation/historial_calificaciones_screen.dart';
+import 'package:intellitaxi/features/pasajero/services/repeat_trip_service.dart';
 import 'package:intl/intl.dart';
 
 /// Pantalla de historial de servicios para el pasajero
@@ -24,18 +25,16 @@ class _HistorialServiciosPasajeroScreenState
 
   late TabController _tabController;
   List<HistorialServicio> _servicios = [];
-  EstadisticasServicios? _estadisticas;
   PaginacionInfo? _paginacion;
   bool _isLoading = true;
   bool _isLoadingMore = false;
   String? _error;
   int _currentPage = 1;
-  final String _filtroSeleccionado = 'hoy'; // Filtro por defecto
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 1, vsync: this);
     _cargarDatos();
   }
 
@@ -72,14 +71,6 @@ class _HistorialServiciosPasajeroScreenState
         pasajeroId: pasajeroId,
         page: loadMore ? _currentPage + 1 : 1,
       );
-
-      // Cargar estadísticas solo la primera vez o cuando cambie el filtro
-      if (!loadMore) {
-        _estadisticas = await _historialService.obtenerEstadisticasPasajero(
-          pasajeroId: pasajeroId,
-          filtro: _filtroSeleccionado,
-        );
-      }
 
       if (mounted) {
         setState(() {
@@ -121,10 +112,7 @@ class _HistorialServiciosPasajeroScreenState
           indicatorWeight: 3,
           labelColor: AppColors.accent,
           unselectedLabelColor: Colors.grey,
-          tabs: const [
-            Tab(icon: Icon(Iconsax.clock_copy), text: 'Historial'),
-            Tab(icon: Icon(Iconsax.chart_copy), text: 'Estadísticas'),
-          ],
+          tabs: const [Tab(icon: Icon(Iconsax.clock_copy), text: 'Historial')],
         ),
         actions: [
           IconButton(
@@ -151,7 +139,7 @@ class _HistorialServiciosPasajeroScreenState
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [_buildHistorialTab(), _buildEstadisticasTab()],
+        children: [_buildHistorialTab()],
       ),
     );
   }
@@ -608,165 +596,6 @@ class _HistorialServiciosPasajeroScreenState
     );
   }
 
-  Widget _buildEstadisticasTab() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_estadisticas == null) {
-      return const Center(child: Text('No hay estadísticas disponibles'));
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.1,
-        children: [
-          _buildEstadisticaCard(
-            icon: Iconsax.car_copy,
-            titulo: 'Viajes',
-            valor: _estadisticas!.totalServicios.toString(),
-            color: Colors.blue,
-          ),
-          _buildEstadisticaCard(
-            icon: Iconsax.money_copy,
-            titulo: 'Gasto',
-            valor: _estadisticas!.ingresosFormateado,
-            color: Colors.green,
-          ),
-          if (_estadisticas!.promedioCalificacion != null)
-            _buildEstadisticaCard(
-              icon: Iconsax.star_1_copy,
-              titulo: 'Calificación',
-              valor: _estadisticas!.promedioCalificacion!.toStringAsFixed(1),
-              subtitulo: '${_estadisticas!.totalCalificaciones}',
-              color: Colors.amber,
-            ),
-          if (_estadisticas!.distanciaTotalKm != null)
-            _buildEstadisticaCard(
-              icon: Iconsax.map_copy,
-              titulo: 'Distancia',
-              valor:
-                  '${_estadisticas!.distanciaTotalKm!.toStringAsFixed(0)} km',
-              color: Colors.purple,
-            ),
-          if (_estadisticas!.tiempoPromedioMinutos != null)
-            _buildEstadisticaCard(
-              icon: Iconsax.clock_copy,
-              titulo: 'Tiempo',
-              valor:
-                  '${_estadisticas!.tiempoPromedioMinutos!.toStringAsFixed(0)} min',
-              color: Colors.orange,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEstadisticaCard({
-    required IconData icon,
-    required String titulo,
-    required String valor,
-    String? subtitulo,
-    required Color color,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            color.withValues(alpha: 0.08),
-            color.withValues(alpha: 0.03),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    color.withValues(alpha: 0.2),
-                    color.withValues(alpha: 0.3),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.3),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Icon(icon, color: color, size: 26),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              titulo,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey.shade600,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                valor,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                  letterSpacing: -0.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            if (subtitulo != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                subtitulo,
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey.shade500,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildLoadMoreButton() {
     if (_isLoadingMore) {
       return const Padding(
@@ -831,12 +660,38 @@ class _HistorialServiciosPasajeroScreenState
   }
 
   void _repetirViaje(HistorialServicio servicio) {
-    // Cerrar la pantalla actual y volver al home con los datos del viaje
-    Navigator.of(context).pop({
-      'repetirViaje': true,
-      'origen': servicio.origen,
-      'destino': servicio.destino,
-    });
+    final origen = servicio.origen;
+    final destino = servicio.destino;
+
+    if (destino.lat == null || destino.lng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Este viaje no tiene destino válido para repetir'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final payload = <String, dynamic>{
+      'origen': {
+        'name': origen.nombreODireccion,
+        'address': origen.direccion,
+        'lat': origen.lat,
+        'lng': origen.lng,
+        'isCurrentLocation': false,
+      },
+      'destino': {
+        'name': destino.nombreODireccion,
+        'address': destino.direccion,
+        'lat': destino.lat,
+        'lng': destino.lng,
+        'isCurrentLocation': false,
+      },
+    };
+
+    RepeatTripService.instance.setPendingTrip(payload);
+    Navigator.of(context).pop();
   }
 
   String _formatearFecha(DateTime fecha) {
