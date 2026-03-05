@@ -143,9 +143,10 @@ class _HomeConductorState extends State<HomeConductor> {
             TargetContent(
               align: ContentAlign.bottom,
               child: const _TutorialBubble(
-                title: 'Mapa de operación',
+                title: 'Paso 1: Mapa de operación',
                 text:
                     'Aquí ves tu ubicación en tiempo real mientras recibes servicios.',
+                hint: 'Ubícate primero en el mapa',
               ),
             ),
           ],
@@ -157,9 +158,10 @@ class _HomeConductorState extends State<HomeConductor> {
             TargetContent(
               align: ContentAlign.bottom,
               child: const _TutorialBubble(
-                title: 'Tu estado',
+                title: 'Paso 2: Tu estado',
                 text:
                     'Toca aquí para ponerte en línea o desconectarte del sistema.',
+                hint: 'Si estás disponible, ponte En Línea',
               ),
             ),
           ],
@@ -171,9 +173,10 @@ class _HomeConductorState extends State<HomeConductor> {
             TargetContent(
               align: ContentAlign.left,
               child: const _TutorialBubble(
-                title: 'Actualizar ubicación',
+                title: 'Paso 3: Actualizar ubicación',
                 text:
                     'Usa este botón para refrescar tu ubicación si cambias de zona.',
+                hint: 'Tócalo si notas desfase en ubicación',
               ),
             ),
           ],
@@ -184,8 +187,12 @@ class _HomeConductorState extends State<HomeConductor> {
         targets: targets,
         colorShadow: Colors.black,
         opacityShadow: 0.75,
-        textSkip: 'Saltar',
-        paddingFocus: 10,
+        textSkip: 'Cerrar',
+        alignSkip: Alignment.topRight,
+        paddingFocus: 12,
+        pulseEnable: true,
+        focusAnimationDuration: const Duration(milliseconds: 420),
+        unFocusAnimationDuration: const Duration(milliseconds: 220),
         onFinish: () async {
           await prefs.setBool(prefKey, true);
           _tutorialShown = true;
@@ -911,8 +918,9 @@ class _HomeConductorState extends State<HomeConductor> {
 class _TutorialBubble extends StatelessWidget {
   final String title;
   final String text;
+  final String? hint;
 
-  const _TutorialBubble({required this.title, required this.text});
+  const _TutorialBubble({required this.title, required this.text, this.hint});
 
   @override
   Widget build(BuildContext context) {
@@ -944,6 +952,17 @@ class _TutorialBubble extends StatelessWidget {
               height: 1.3,
             ),
           ),
+          if (hint != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              hint!,
+              style: const TextStyle(
+                color: Color(0xFF8AC6FF),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );

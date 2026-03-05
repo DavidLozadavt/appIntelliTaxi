@@ -246,9 +246,10 @@ class _HomePasajeroState extends State<HomePasajero> {
             TargetContent(
               align: ContentAlign.bottom,
               child: const _TutorialBubble(
-                title: 'Mapa en tiempo real',
+                title: 'Paso 1: Mapa en tiempo real',
                 text:
-                    'Aquí ves tu ubicación y conductores cercanos. Toca el mapa para fijar destino.',
+                    'Aquí ves tu ubicación y los carros cercanos. Toca el mapa para fijar destino rápido.',
+                hint: 'Toca cualquier punto del mapa para continuar',
               ),
             ),
           ],
@@ -260,9 +261,10 @@ class _HomePasajeroState extends State<HomePasajero> {
             TargetContent(
               align: ContentAlign.top,
               child: const _TutorialBubble(
-                title: '¿A dónde vas?',
+                title: 'Paso 2: Define tu viaje',
                 text:
-                    'Abre este panel para buscar origen/destino o pedir taxi con destino opcional.',
+                    'Abre este panel para ajustar origen o destino. En taxi el destino también puede quedar opcional.',
+                hint: 'Toca este panel para abrir opciones',
               ),
             ),
           ],
@@ -274,9 +276,10 @@ class _HomePasajeroState extends State<HomePasajero> {
             TargetContent(
               align: ContentAlign.top,
               child: const _TutorialBubble(
-                title: 'Solicitar servicio',
+                title: 'Paso 3: Solicitar servicio',
                 text:
                     'Cuando tengas origen listo, usa este botón para pedir tu viaje.',
+                hint: 'Cuando quieras, pulsa este botón',
               ),
             ),
           ],
@@ -287,8 +290,12 @@ class _HomePasajeroState extends State<HomePasajero> {
         targets: targets,
         colorShadow: Colors.black,
         opacityShadow: 0.75,
-        textSkip: 'Saltar',
-        paddingFocus: 10,
+        textSkip: 'Cerrar',
+        alignSkip: Alignment.topRight,
+        paddingFocus: 12,
+        pulseEnable: true,
+        focusAnimationDuration: const Duration(milliseconds: 420),
+        unFocusAnimationDuration: const Duration(milliseconds: 220),
         onFinish: () async {
           await prefs.setBool(prefKey, true);
           _tutorialShown = true;
@@ -1317,7 +1324,7 @@ class _HomePasajeroState extends State<HomePasajero> {
 
   Future<BitmapDescriptor?> _getMarkerIconFromUrl(String imageUrl) async {
     try {
-      const double markerSize = 64.0;
+      const double markerSize = 46.0;
       const double shadowOffset = 1.0;
       const double outerInset = 2.0;
       const double imageInset = 4.0;
@@ -2762,8 +2769,9 @@ class _HomePasajeroState extends State<HomePasajero> {
 class _TutorialBubble extends StatelessWidget {
   final String title;
   final String text;
+  final String? hint;
 
-  const _TutorialBubble({required this.title, required this.text});
+  const _TutorialBubble({required this.title, required this.text, this.hint});
 
   @override
   Widget build(BuildContext context) {
@@ -2795,6 +2803,17 @@ class _TutorialBubble extends StatelessWidget {
               height: 1.3,
             ),
           ),
+          if (hint != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              hint!,
+              style: const TextStyle(
+                color: Color(0xFF8AC6FF),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );
