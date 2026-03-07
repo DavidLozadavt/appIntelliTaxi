@@ -63,13 +63,8 @@ class ServicioPusherService {
 
       // Suscribirse solo al canal SECONDARY (sin bloquear)
       AppLogger.d('🔌 Suscribiendo al canal SECONDARY...');
-      PusherService.subscribeSecondary(_channelName!)
-          .then((_) {
-            AppLogger.d('✅ Canal SECONDARY suscrito exitosamente');
-          })
-          .catchError((error) {
-            AppLogger.d('❌ Error al suscribir SECONDARY: $error');
-          });
+      await PusherService.subscribeSecondary(_channelName!);
+      AppLogger.d('✅ Canal SECONDARY suscrito exitosamente');
 
       _isConnected = true;
       AppLogger.d('\n${'=' * 80}');
@@ -113,14 +108,16 @@ class ServicioPusherService {
   Future<void> desconectar() async {
     if (_channelName != null && _isConnected) {
       try {
-        await PusherService.unsubscribe(_channelName!);
+        await PusherService.unsubscribeSecondary(_channelName!);
 
         // Desregistrar eventos
-        PusherService.unregisterEventHandler('$_channelName:servicio.aceptado');
-        PusherService.unregisterEventHandler(
+        PusherService.unregisterEventHandlerSecondary(
+          '$_channelName:servicio.aceptado',
+        );
+        PusherService.unregisterEventHandlerSecondary(
           '$_channelName:conductor.ubicacion.actualizada',
         );
-        PusherService.unregisterEventHandler(
+        PusherService.unregisterEventHandlerSecondary(
           '$_channelName:servicio.estado.cambiado',
         );
 

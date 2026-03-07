@@ -192,7 +192,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _elapsedSeconds = 0;
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_estadoServicio == 'buscando') {
+      if (isBuscando) {
         _elapsedSeconds++;
         notifyListeners();
       } else {
@@ -201,7 +201,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     });
 
     _timeoutTimer = Timer(Duration(seconds: _maxWaitingSeconds), () {
-      if (_estadoServicio == 'buscando') {
+      if (isBuscando) {
         AppLogger.d(
           '⏰ TIMEOUT: No se encontró conductor en $_maxWaitingSeconds segundos',
         );

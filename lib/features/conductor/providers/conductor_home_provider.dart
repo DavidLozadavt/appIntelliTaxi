@@ -107,6 +107,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Registrar handlers para variantes del evento de nuevas solicitudes
       for (final eventName in const [
         'nueva-solicitud',
+        'nueva_solicitud',
         'nueva-oferta',
         'nueva_oferta',
       ]) {
@@ -174,6 +175,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       AppLogger.d('🔌 Desconectándose de Pusher...');
       for (final eventName in const [
         'nueva-solicitud',
+        'nueva_solicitud',
         'nueva-oferta',
         'nueva_oferta',
       ]) {
@@ -247,16 +249,28 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   Map<String, dynamic> _parsePayload(dynamic data) {
+    Map<String, dynamic> payload;
     if (data is String) {
-      return json.decode(data) as Map<String, dynamic>;
+      payload = json.decode(data) as Map<String, dynamic>;
+    } else if (data is Map<String, dynamic>) {
+      payload = data;
+    } else if (data is Map) {
+      payload = Map<String, dynamic>.from(data);
+    } else {
+      throw Exception('Payload no soportado: ${data.runtimeType}');
     }
-    if (data is Map<String, dynamic>) {
-      return data;
+
+    if (payload['data'] is Map) {
+      return Map<String, dynamic>.from(payload['data'] as Map);
     }
-    if (data is Map) {
-      return Map<String, dynamic>.from(data);
+    if (payload['solicitud'] is Map) {
+      return Map<String, dynamic>.from(payload['solicitud'] as Map);
     }
-    throw Exception('Payload no soportado: ${data.runtimeType}');
+    if (payload['servicio'] is Map) {
+      return Map<String, dynamic>.from(payload['servicio'] as Map);
+    }
+
+    return payload;
   }
 
   Map<String, dynamic> _normalizarOfertaDirecta(Map<String, dynamic> raw) {
@@ -735,8 +749,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? _obtenerSolicitudId(Map<String, dynamic> solicitud) {
     final rawId =
         solicitud['solicitud_id'] ??
+        solicitud['solicitudId'] ??
         solicitud['servicio_id'] ??
+        solicitud['servicioId'] ??
         solicitud['id'] ??
+        solicitud['ride_id'] ??
         solicitud['request_id'] ??
         solicitud['temp_id'];
     return rawId?.toString();

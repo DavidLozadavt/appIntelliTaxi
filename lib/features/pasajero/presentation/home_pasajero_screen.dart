@@ -185,9 +185,11 @@ class _HomePasajeroState extends State<HomePasajero> {
     }
 
     PusherService.unsubscribeSecondary('solicitudes-servicio');
-    PusherService.unregisterEventHandlerSecondary(
-      'solicitudes-servicio:nueva-solicitud',
-    );
+    for (final eventName in const ['nueva-solicitud', 'nueva_solicitud']) {
+      PusherService.unregisterEventHandlerSecondary(
+        'solicitudes-servicio:$eventName',
+      );
+    }
 
     // Remover listeners de los controladores de texto ANTES de disponer
     _originController.removeListener(_onOriginChanged);
@@ -2432,11 +2434,13 @@ class _HomePasajeroState extends State<HomePasajero> {
       // Suscribirse al canal de solicitudes-servicio (conexión secundaria)
       await PusherService.subscribeSecondary('solicitudes-servicio');
 
-      // Registrar el handler para nueva solicitud
-      PusherService.registerEventHandlerSecondary(
-        'solicitudes-servicio:nueva-solicitud',
-        _manejarNuevaSolicitud,
-      );
+      // Registrar handlers para variantes del evento
+      for (final eventName in const ['nueva-solicitud', 'nueva_solicitud']) {
+        PusherService.registerEventHandlerSecondary(
+          'solicitudes-servicio:$eventName',
+          _manejarNuevaSolicitud,
+        );
+      }
 
       AppLogger.d(
         '✅ Pusher configurado - Esperando confirmación en canal solicitudes-servicio',
