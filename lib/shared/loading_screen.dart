@@ -55,7 +55,7 @@ class _LoadingScreenState extends State<LoadingScreen>
                 ],
               ),
               child: Image.asset(
-                'assets/images/intellitaxi.png',
+                'assets/images/logoTaxbel.webp',
                 height: 48,
                 width: 48,
               ),

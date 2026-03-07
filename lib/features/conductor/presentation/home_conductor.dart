@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.dart';
@@ -41,11 +39,6 @@ class _HomeConductorState extends State<HomeConductor> {
 
   // Marcador personalizado
   BitmapDescriptor? _dotMarker;
-  final GlobalKey _tutorialMapKey = GlobalKey();
-  final GlobalKey _tutorialStatusKey = GlobalKey();
-  final GlobalKey _tutorialLocationKey = GlobalKey();
-  bool _tutorialShown = false;
-  bool _tutorialInProgress = false;
 
   @override
   void initState() {
@@ -115,98 +108,6 @@ class _HomeConductorState extends State<HomeConductor> {
 
   List<Sancion> get _sancionesActivas =>
       _sanciones.where((s) => s.estaActiva).toList();
-
-  Future<void> _tryShowConductorTutorial() async {
-    if (!mounted || _tutorialShown || _tutorialInProgress) return;
-    if (_provider.currentPosition == null) return;
-
-    _tutorialInProgress = true;
-    try {
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      final uid = auth.user?.id ?? 0;
-      final prefs = await SharedPreferences.getInstance();
-      final prefKey = 'tutorial_conductor_home_v1_$uid';
-      final alreadySeen = prefs.getBool(prefKey) ?? false;
-      if (alreadySeen) {
-        _tutorialShown = true;
-        return;
-      }
-
-      await Future.delayed(const Duration(milliseconds: 220));
-      if (!mounted) return;
-
-      final targets = <TargetFocus>[
-        TargetFocus(
-          identify: 'mapa_conductor',
-          keyTarget: _tutorialMapKey,
-          contents: [
-            TargetContent(
-              align: ContentAlign.bottom,
-              child: const _TutorialBubble(
-                title: 'Paso 1: Mapa de operación',
-                text:
-                    'Aquí ves tu ubicación en tiempo real mientras recibes servicios.',
-                hint: 'Ubícate primero en el mapa',
-              ),
-            ),
-          ],
-        ),
-        TargetFocus(
-          identify: 'estado_conductor',
-          keyTarget: _tutorialStatusKey,
-          contents: [
-            TargetContent(
-              align: ContentAlign.bottom,
-              child: const _TutorialBubble(
-                title: 'Paso 2: Tu estado',
-                text:
-                    'Toca aquí para ponerte en línea o desconectarte del sistema.',
-                hint: 'Si estás disponible, ponte En Línea',
-              ),
-            ),
-          ],
-        ),
-        TargetFocus(
-          identify: 'ubicacion_conductor',
-          keyTarget: _tutorialLocationKey,
-          contents: [
-            TargetContent(
-              align: ContentAlign.left,
-              child: const _TutorialBubble(
-                title: 'Paso 3: Actualizar ubicación',
-                text:
-                    'Usa este botón para refrescar tu ubicación si cambias de zona.',
-                hint: 'Tócalo si notas desfase en ubicación',
-              ),
-            ),
-          ],
-        ),
-      ];
-
-      TutorialCoachMark(
-        targets: targets,
-        colorShadow: Colors.black,
-        opacityShadow: 0.75,
-        textSkip: 'Cerrar',
-        alignSkip: Alignment.topRight,
-        paddingFocus: 12,
-        pulseEnable: true,
-        focusAnimationDuration: const Duration(milliseconds: 420),
-        unFocusAnimationDuration: const Duration(milliseconds: 220),
-        onFinish: () async {
-          await prefs.setBool(prefKey, true);
-          _tutorialShown = true;
-        },
-        onSkip: () {
-          prefs.setBool(prefKey, true);
-          _tutorialShown = true;
-          return true;
-        },
-      ).show(context: context);
-    } finally {
-      _tutorialInProgress = false;
-    }
-  }
 
   double get _porcentajeRiesgo {
     final activas = _sancionesActivas;
@@ -654,11 +555,6 @@ class _HomeConductorState extends State<HomeConductor> {
       value: _provider,
       child: Consumer<ConductorHomeProvider>(
         builder: (context, provider, child) {
-          if (provider.currentPosition != null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              _tryShowConductorTutorial();
-            });
-          }
           return Stack(
             children: [
               // Mapa de Google Maps
@@ -670,7 +566,6 @@ class _HomeConductorState extends State<HomeConductor> {
                     )
                   : RepaintBoundary(
                       child: StandardMap(
-                        key: _tutorialMapKey,
                         initialPosition: LatLng(
                           provider.currentPosition!.latitude,
                           provider.currentPosition!.longitude,
@@ -709,7 +604,6 @@ class _HomeConductorState extends State<HomeConductor> {
                         ? AppColors.accent.withValues(alpha: 0.3)
                         : Colors.grey.withValues(alpha: 0.3),
                     child: InkWell(
-                      key: _tutorialStatusKey,
                       onTap: _cambiarEstadoConductor,
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
@@ -778,7 +672,6 @@ class _HomeConductorState extends State<HomeConductor> {
                   top: 16,
                   right: 16,
                   child: FloatingActionButton.small(
-                    key: _tutorialLocationKey,
                     onPressed: () => provider.initializeLocation(),
                     backgroundColor: Colors.white,
                     elevation: 4,
@@ -910,60 +803,6 @@ class _HomeConductorState extends State<HomeConductor> {
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class _TutorialBubble extends StatelessWidget {
-  final String title;
-  final String text;
-  final String? hint;
-
-  const _TutorialBubble({required this.title, required this.text, this.hint});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 290),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            text,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              height: 1.3,
-            ),
-          ),
-          if (hint != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              hint!,
-              style: const TextStyle(
-                color: Color(0xFF8AC6FF),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }

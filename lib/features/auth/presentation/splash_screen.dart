@@ -193,7 +193,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ],
                   ),
                   child: Image.asset(
-                    'assets/images/intellitaxi.png',
+                    'assets/images/logoTaxbel.webp',
                     height: size.height * 0.25,
                   ),
                 );

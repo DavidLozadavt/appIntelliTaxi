@@ -78,6 +78,51 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inputBorderColor = isDark
+        ? Colors.white.withValues(alpha: 0.45)
+        : Colors.black.withValues(alpha: 0.18);
+    final inputFillColor = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.02);
+
+    InputDecoration buildInputDecoration({
+      required String label,
+      Widget? suffixIcon,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: inputFillColor,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: inputBorderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: inputBorderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: Colors.orange,
+            width: 1.4,
+          ),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.redAccent),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: Colors.redAccent,
+            width: 1.4,
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: SingleChildScrollView(
@@ -90,45 +135,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const SizedBox(height: 40),
-
-                  Image.asset('assets/images/intellitaxi.png', height: 120),
-
+                  Image.asset('assets/images/logoTaxbel.webp', height: 120),
                   const SizedBox(height: 20),
-
                   const Text(
-                    "Login",
+                    '¡Bienvenido!',
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
-
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Inicia sesión para continuar',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
                   const SizedBox(height: 20),
-
                   TextFormField(
                     controller: _emailController,
-                    decoration: InputDecoration(
-                      labelText: 'Email',
-                      filled: true,
-                      // fillColor: Colors.orange.shade50,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
+                    decoration: buildInputDecoration(label: 'Correo electrónico'),
                     validator: (value) =>
                         value!.isEmpty ? 'Ingrese su email' : null,
                   ),
-
                   const SizedBox(height: 10),
-
                   TextFormField(
                     controller: _passwordController,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      filled: true,
-                      // fillColor: Colors.orange.shade50,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
+                    decoration: buildInputDecoration(
+                      label: 'Contraseña',
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword
@@ -147,13 +176,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     validator: (value) =>
                         value!.isEmpty ? 'Ingrese su contraseña' : null,
                   ),
-
                   const SizedBox(height: 10),
-
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Checkbox(
                             value: _rememberMe,
@@ -163,22 +190,34 @@ class _LoginScreenState extends State<LoginScreen> {
                               });
                             },
                           ),
-                          const Text("Recuérdame"),
+                          const Text('Recuérdame'),
                         ],
                       ),
-                      TextButton(
-                        onPressed: () {},
-                        child: const Text(
-                          "Olvidó Su Contraseña?",
-                          style: TextStyle(fontSize: 13),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {},
+                            style: TextButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8),
+                              minimumSize: const Size(0, 36),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Text(
+                              '¿Olvidaste tu contraseña?',
+                              style: TextStyle(fontSize: 13),
+                              maxLines: 2,
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 20),
-
-                  // Botón Login
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -197,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: Colors.white,
                             )
                           : const Text(
-                              "Login",
+                              'Ingresar',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
@@ -205,18 +244,17 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      const Text("No tienes una cuenta? "),
+                      const Text('¿Aún no tienes una cuenta? '),
                       TextButton(
                         onPressed: () {
                           Navigator.pushNamed(context, '/register');
                         },
-                        child: const Text("Regístrate aquí"),
+                        child: const Text('Crear cuenta'),
                       ),
                     ],
                   ),

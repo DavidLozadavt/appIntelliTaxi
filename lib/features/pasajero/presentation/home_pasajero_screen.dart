@@ -9,7 +9,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
@@ -122,11 +121,7 @@ class _HomePasajeroState extends State<HomePasajero> {
   String _currentLocationAddress = 'Mi ubicación actual';
   bool _prefsLoaded = false;
   List<TripLocation> _recentDestinations = [];
-  final GlobalKey _tutorialMapKey = GlobalKey();
-  final GlobalKey _tutorialWhereToKey = GlobalKey();
-  final GlobalKey _tutorialCtaKey = GlobalKey();
-  bool _tutorialShown = false;
-  bool _tutorialInProgress = false;
+  bool _notificationPermissionRequestedInSession = false;
 
   bool get _isExpanded => _sheetVisualState != _SheetVisualState.compact;
 
@@ -217,98 +212,6 @@ class _HomePasajeroState extends State<HomePasajero> {
   void _setStateSafe(VoidCallback fn) {
     if (_isDisposed || !mounted) return;
     setState(fn);
-  }
-
-  Future<void> _tryShowPassengerTutorial() async {
-    if (!mounted || _tutorialShown || _tutorialInProgress) return;
-    if (_currentPosition == null) return;
-
-    _tutorialInProgress = true;
-    try {
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      final uid = auth.user?.id ?? 0;
-      final prefs = await SharedPreferences.getInstance();
-      final prefKey = 'tutorial_pasajero_home_v1_$uid';
-      final alreadySeen = prefs.getBool(prefKey) ?? false;
-      if (alreadySeen) {
-        _tutorialShown = true;
-        return;
-      }
-
-      await Future.delayed(const Duration(milliseconds: 220));
-      if (!mounted) return;
-
-      final targets = <TargetFocus>[
-        TargetFocus(
-          identify: 'mapa',
-          keyTarget: _tutorialMapKey,
-          contents: [
-            TargetContent(
-              align: ContentAlign.bottom,
-              child: const _TutorialBubble(
-                title: 'Paso 1: Mapa en tiempo real',
-                text:
-                    'Aquí ves tu ubicación y los carros cercanos. Toca el mapa para fijar destino rápido.',
-                hint: 'Toca cualquier punto del mapa para continuar',
-              ),
-            ),
-          ],
-        ),
-        TargetFocus(
-          identify: 'destino',
-          keyTarget: _tutorialWhereToKey,
-          contents: [
-            TargetContent(
-              align: ContentAlign.top,
-              child: const _TutorialBubble(
-                title: 'Paso 2: Define tu viaje',
-                text:
-                    'Abre este panel para ajustar origen o destino. En taxi el destino también puede quedar opcional.',
-                hint: 'Toca este panel para abrir opciones',
-              ),
-            ),
-          ],
-        ),
-        TargetFocus(
-          identify: 'cta',
-          keyTarget: _tutorialCtaKey,
-          contents: [
-            TargetContent(
-              align: ContentAlign.top,
-              child: const _TutorialBubble(
-                title: 'Paso 3: Solicitar servicio',
-                text:
-                    'Cuando tengas origen listo, usa este botón para pedir tu viaje.',
-                hint: 'Cuando quieras, pulsa este botón',
-              ),
-            ),
-          ],
-        ),
-      ];
-
-      TutorialCoachMark(
-        targets: targets,
-        colorShadow: Colors.black,
-        opacityShadow: 0.75,
-        textSkip: 'Cerrar',
-        alignSkip: Alignment.topRight,
-        paddingFocus: 12,
-        pulseEnable: true,
-        focusAnimationDuration: const Duration(milliseconds: 420),
-        unFocusAnimationDuration: const Duration(milliseconds: 220),
-        onFinish: () async {
-          await prefs.setBool(prefKey, true);
-          _tutorialShown = true;
-        },
-        onSkip: () {
-          prefs.setBool(prefKey, true);
-          _tutorialShown = true;
-          return true;
-        },
-      ).show(context: context);
-    } finally {
-      _tutorialInProgress = false;
-    }
   }
 
   void _onRepeatTripRequested() {
@@ -752,7 +655,6 @@ class _HomePasajeroState extends State<HomePasajero> {
                 ),
               )
             : StandardMap(
-                key: _tutorialMapKey,
                 initialPosition: LatLng(
                   _currentPosition!.latitude,
                   _currentPosition!.longitude,
@@ -887,7 +789,6 @@ class _HomePasajeroState extends State<HomePasajero> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: InkWell(
-        key: _tutorialWhereToKey,
         borderRadius: BorderRadius.circular(14),
         onTap: _openQuickRequestFlow,
         child: Column(
@@ -1205,7 +1106,6 @@ class _HomePasajeroState extends State<HomePasajero> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: SizedBox(
-          key: _tutorialCtaKey,
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
@@ -1589,8 +1489,8 @@ class _HomePasajeroState extends State<HomePasajero> {
 
         // Cargar conductores disponibles
         _loadAvailableDrivers();
+        await _requestNotificationPermissionAfterLocation();
         _tryApplyPendingRepeatTrip();
-        _tryShowPassengerTutorial();
       }
     } catch (e) {
       if (mounted) {
@@ -1599,6 +1499,18 @@ class _HomePasajeroState extends State<HomePasajero> {
           _locationMessage = 'Error al obtener ubicación';
         });
       }
+    }
+  }
+
+  Future<void> _requestNotificationPermissionAfterLocation() async {
+    if (!mounted || _notificationPermissionRequestedInSession) return;
+    _notificationPermissionRequestedInSession = true;
+    try {
+      final status = await Permission.notification.status;
+      if (status.isGranted || status.isPermanentlyDenied) return;
+      await Permission.notification.request();
+    } catch (_) {
+      // Silencioso: no bloquear flujo de ubicación por fallo de permisos de notificación.
     }
   }
 
@@ -2763,59 +2675,5 @@ class _HomePasajeroState extends State<HomePasajero> {
       _showOffer = false;
       _currentOffer = null;
     });
-  }
-}
-
-class _TutorialBubble extends StatelessWidget {
-  final String title;
-  final String text;
-  final String? hint;
-
-  const _TutorialBubble({required this.title, required this.text, this.hint});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 290),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            text,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              height: 1.3,
-            ),
-          ),
-          if (hint != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              hint!,
-              style: const TextStyle(
-                color: Color(0xFF8AC6FF),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }

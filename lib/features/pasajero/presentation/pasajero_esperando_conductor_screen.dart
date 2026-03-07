@@ -793,7 +793,7 @@ class _PasajeroEsperandoConductorScreenState
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Image.asset('assets/images/intellitaxi.png'),
+            child: Image.asset('assets/images/logoTaxbel.webp'),
           ),
         ],
       ),

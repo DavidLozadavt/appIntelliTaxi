@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -27,6 +28,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   // Estado online/offline
   bool _isOnline = false;
+  bool _notificationPermissionRequestedInSession = false;
 
   // Vehículos y turnos
   VehiculoConductor? _vehiculoSeleccionado;
@@ -439,6 +441,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _isLoadingLocation = false;
       _locationMessage = 'Ubicación obtenida';
       if (!_isDisposed) notifyListeners();
+      await _requestNotificationPermissionAfterLocation();
 
       AppLogger.d(
         '📍 Ubicación obtenida: ${position.latitude}, ${position.longitude}',
@@ -451,6 +454,18 @@ class ConductorHomeProvider extends ChangeNotifier {
       _isLoadingLocation = false;
       _locationMessage = 'Error obteniendo ubicación: ${e.toString()}';
       if (!_isDisposed) notifyListeners();
+    }
+  }
+
+  Future<void> _requestNotificationPermissionAfterLocation() async {
+    if (_isDisposed || _notificationPermissionRequestedInSession) return;
+    _notificationPermissionRequestedInSession = true;
+    try {
+      final status = await Permission.notification.status;
+      if (status.isGranted || status.isPermanentlyDenied) return;
+      await Permission.notification.request();
+    } catch (_) {
+      // Silencioso: no bloquear la app por permisos de notificaciones.
     }
   }
 

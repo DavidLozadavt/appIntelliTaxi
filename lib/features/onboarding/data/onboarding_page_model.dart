@@ -30,7 +30,7 @@ final List<OnboardingPageModel> onboardingPages = [
     title: 'Eficiencia Inteligente',
     description:
         'Pide tu transporte en segundos. Rapidez y simplicidad redefinidas para tu comodidad.',
-    imagePath: 'assets/images/intellitaxi.png',
+    imagePath: 'assets/images/logoTaxbel.webp',
     imageAlignment: Alignment.topCenter,
   ),
 ];
