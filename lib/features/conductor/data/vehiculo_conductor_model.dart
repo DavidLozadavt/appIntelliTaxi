@@ -59,21 +59,21 @@ class VehiculoConductor {
 
   factory VehiculoConductor.fromJson(Map<String, dynamic> json) {
     return VehiculoConductor(
-      id: json['id'] ?? 0,
+      id: _asInt(json['id']),
       placa: json['placa']?.toString() ?? '',
       chasis: json['chasis']?.toString(),
       serie: json['serie']?.toString(),
       numPuestos: json['numPuestos']?.toString() ?? '4',
       runt: json['runt']?.toString(),
       foto: json['foto']?.toString(),
-      idModelo: json['idModelo'] ?? 0,
-      idTipo: json['idTipo'] ?? 0,
-      idMarca: json['idMarca'] ?? 0,
-      idEstado: json['idEstado'] ?? 0,
-      idEmpresa: json['idEmpresa'] ?? 0,
+      idModelo: _asInt(json['idModelo']),
+      idTipo: _asInt(json['idTipo']),
+      idMarca: _asInt(json['idMarca']),
+      idEstado: _asInt(json['idEstado']),
+      idEmpresa: _asInt(json['idEmpresa']),
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',
-      idClaseVehiculo: json['idClaseVehiculo'] ?? 0,
+      idClaseVehiculo: _asInt(json['idClaseVehiculo']),
       tipoCombustible: json['tipoCombustible']?.toString(),
       motor: json['motor']?.toString(),
       color: json['color']?.toString(),
@@ -156,7 +156,7 @@ class Marca {
 
   factory Marca.fromJson(Map<String, dynamic> json) {
     return Marca(
-      id: json['id'] ?? 0,
+      id: _asInt(json['id']),
       marca: json['marca']?.toString() ?? '',
       descripcion: json['descripcion']?.toString(),
       codigo: json['codigo']?.toString(),
@@ -186,7 +186,7 @@ class Modelo {
 
   factory Modelo.fromJson(Map<String, dynamic> json) {
     return Modelo(
-      id: json['id'] ?? 0,
+      id: _asInt(json['id']),
       modelo: json['modelo']?.toString() ?? '',
       descripcion: json['descripcion']?.toString(),
     );
@@ -206,7 +206,7 @@ class TipoVehiculo {
 
   factory TipoVehiculo.fromJson(Map<String, dynamic> json) {
     return TipoVehiculo(
-      id: json['id'] ?? 0,
+      id: _asInt(json['id']),
       tipo: json['tipo']?.toString() ?? '',
       descripcion: json['descripcion']?.toString(),
     );
@@ -226,7 +226,7 @@ class Estado {
 
   factory Estado.fromJson(Map<String, dynamic> json) {
     return Estado(
-      id: json['id'] ?? 0,
+      id: _asInt(json['id']),
       estado: json['estado']?.toString() ?? '',
       descripcion: json['descripcion']?.toString(),
     );
@@ -272,20 +272,24 @@ class AsignacionPropietario {
 
   factory AsignacionPropietario.fromJson(Map<String, dynamic> json) {
     return AsignacionPropietario(
-      id: json['id'] ?? 0,
-      idPropietario: json['idPropietario'],
+      id: _asInt(json['id']),
+      idPropietario: json['idPropietario'] == null
+          ? null
+          : _asInt(json['idPropietario']),
       fechaAsignacion: json['fechaAsignacion']?.toString() ?? '',
-      idVehiculo: json['idVehiculo'] ?? 0,
+      idVehiculo: _asInt(json['idVehiculo']),
       porcentaje: json['porcentaje']?.toString(),
       observacion: json['observacion']?.toString(),
-      idEstado: json['idEstado'] ?? 0,
-      idAfiliacion: json['idAfiliacion'] ?? 0,
+      idEstado: _asInt(json['idEstado']),
+      idAfiliacion: _asInt(json['idAfiliacion']),
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',
       administrador: json['administrador']?.toString() ?? 'No',
       estado: json['estado']?.toString() ?? '',
       propietario: json['propietario'],
-      afiliacion: Afiliacion.fromJson(json['afiliacion']),
+      afiliacion: Afiliacion.fromJson(
+        Map<String, dynamic>.from(json['afiliacion'] ?? const {}),
+      ),
     );
   }
 
@@ -317,7 +321,7 @@ class Afiliacion {
 
   factory Afiliacion.fromJson(Map<String, dynamic> json) {
     return Afiliacion(
-      id: json['id'] ?? 0,
+      id: _asInt(json['id']),
       numero: json['numero']?.toString() ?? '',
     );
   }
@@ -325,4 +329,15 @@ class Afiliacion {
   Map<String, dynamic> toJson() {
     return {'id': id, 'numero': numero};
   }
+}
+
+int _asInt(dynamic value, [int fallback = 0]) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) {
+    final parsed = int.tryParse(value.trim());
+    if (parsed != null) return parsed;
+  }
+  return fallback;
 }

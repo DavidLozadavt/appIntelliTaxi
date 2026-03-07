@@ -27,9 +27,9 @@ class TurnoActivo {
 
   factory TurnoActivo.fromJson(Map<String, dynamic> json) {
     return TurnoActivo(
-      id: json['id'] ?? 0,
-      idConductor: json['idConductor'] ?? 0,
-      idVehiculo: json['idVehiculo'] ?? 0,
+      id: _asInt(json['id']),
+      idConductor: _asInt(json['idConductor']),
+      idVehiculo: _asInt(json['idVehiculo']),
       fechaTurno: json['fechaTurno']?.toString() ?? '',
       horaInicio: json['horaInicio']?.toString() ?? '',
       horaFin: json['horaFin']?.toString(),
@@ -62,4 +62,15 @@ class TurnoActivo {
   }
 
   bool get estaActivo => estado == 'ACTIVO' && horaFin == null;
+}
+
+int _asInt(dynamic value, [int fallback = 0]) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) {
+    final parsed = int.tryParse(value.trim());
+    if (parsed != null) return parsed;
+  }
+  return fallback;
 }

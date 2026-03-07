@@ -104,16 +104,22 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       await PusherService.subscribeSecondary('solicitudes-servicio');
 
-      // Registrar el handler para el evento
-      PusherService.registerEventHandlerSecondary(
-        'solicitudes-servicio:nueva-solicitud',
-        (data) {
-          AppLogger.d('🔔 Evento recibido: nueva-solicitud');
-          if (data != null) {
-            _procesarNuevaSolicitud(data);
-          }
-        },
-      );
+      // Registrar handlers para variantes del evento de nuevas solicitudes
+      for (final eventName in const [
+        'nueva-solicitud',
+        'nueva-oferta',
+        'nueva_oferta',
+      ]) {
+        PusherService.registerEventHandlerSecondary(
+          'solicitudes-servicio:$eventName',
+          (data) {
+            AppLogger.d('🔔 Evento recibido: $eventName');
+            if (data != null) {
+              _procesarNuevaSolicitud(data);
+            }
+          },
+        );
+      }
 
       final ids = await _obtenerIdsConductorSesion();
       if (ids.isNotEmpty) {
@@ -166,9 +172,15 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> desconectarPusher() async {
     try {
       AppLogger.d('🔌 Desconectándose de Pusher...');
-      PusherService.unregisterEventHandlerSecondary(
-        'solicitudes-servicio:nueva-solicitud',
-      );
+      for (final eventName in const [
+        'nueva-solicitud',
+        'nueva-oferta',
+        'nueva_oferta',
+      ]) {
+        PusherService.unregisterEventHandlerSecondary(
+          'solicitudes-servicio:$eventName',
+        );
+      }
       await PusherService.unsubscribeSecondary('solicitudes-servicio');
 
       for (final key in _offerHandlerKeys) {
