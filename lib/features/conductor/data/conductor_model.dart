@@ -49,23 +49,17 @@ class Conductor {
     }
 
     return Conductor(
-      conductorId: conductorId,
+      conductorId: _asInt(conductorId),
       nombre: nombre,
       telefono: json['telefono'] ?? json['conductor_telefono'],
       foto: foto,
-      calificacion: calificacion != null
-          ? (calificacion is String
-                ? double.parse(calificacion)
-                : calificacion.toDouble())
-          : 5.0,
-      lat: lat != null
-          ? (lat is String ? double.parse(lat) : lat.toDouble())
-          : 0.0,
-      lng: lng != null
-          ? (lng is String ? double.parse(lng) : lng.toDouble())
-          : 0.0,
+      calificacion: _asDouble(calificacion, 5.0),
+      lat: _asDouble(lat),
+      lng: _asDouble(lng),
       vehiculo: vehiculo,
-      distanciaKm: json['distancia_km']?.toDouble(),
+      distanciaKm: json['distancia_km'] != null
+          ? _asDouble(json['distancia_km'])
+          : null,
       estado: json['estado'] ?? 'disponible',
     );
   }
@@ -115,4 +109,27 @@ class Vehiculo {
 
     return parts.isEmpty ? 'Vehículo' : parts.join(' ');
   }
+}
+
+int _asInt(dynamic value, [int fallback = 0]) {
+  if (value == null) return fallback;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) {
+    final parsed = int.tryParse(value.trim());
+    if (parsed != null) return parsed;
+  }
+  return fallback;
+}
+
+double _asDouble(dynamic value, [double fallback = 0.0]) {
+  if (value == null) return fallback;
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  if (value is String) {
+    final normalized = value.trim().replaceAll(',', '.');
+    final parsed = double.tryParse(normalized);
+    if (parsed != null) return parsed;
+  }
+  return fallback;
 }

@@ -793,6 +793,13 @@ class _PasajeroEsperandoConductorScreenState
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
             ),
+            // Tin de marca en modo claro para mantener identidad visual.
+            foregroundDecoration: Theme.of(context).brightness == Brightness.dark
+                ? null
+                : BoxDecoration(
+                    color: AppColors.brandWine.withValues(alpha: 0.6),
+                    backgroundBlendMode: BlendMode.modulate,
+                  ),
             child: Image.asset('assets/images/logoTaxbel.webp'),
           ),
         ],

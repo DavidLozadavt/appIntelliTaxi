@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -167,6 +168,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   Widget _buildSplashContent(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -184,7 +186,7 @@ class _SplashScreenState extends State<SplashScreen>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.orange.withValues(
+                        color: AppColors.brandWine.withValues(
                           alpha: _glowAnimation.value * 0.2,
                         ),
                         blurRadius: 20 * _glowAnimation.value,
@@ -195,6 +197,8 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Image.asset(
                     'assets/images/logoTaxbel.webp',
                     height: size.height * 0.25,
+                    color: isDark ? null : AppColors.brandWine,
+                    colorBlendMode: isDark ? null : BlendMode.modulate,
                   ),
                 );
               },
@@ -211,9 +215,9 @@ class _SplashScreenState extends State<SplashScreen>
             return ShaderMask(
               shaderCallback: (bounds) => LinearGradient(
                 colors: const [
-                  Colors.orange,
-                  Colors.deepOrange,
-                  Colors.orangeAccent,
+                  AppColors.brandWineLight,
+                  AppColors.brandWine,
+                  AppColors.brandWineDark,
                 ],
                 stops: const [0.0, 0.5, 1.0],
                 begin: Alignment.topLeft,
@@ -230,7 +234,7 @@ class _SplashScreenState extends State<SplashScreen>
                       letterSpacing: 1.5,
                       shadows: [
                         Shadow(
-                          color: Colors.orange.withValues(alpha: 0.2),
+                          color: AppColors.brandWine.withValues(alpha: 0.2),
                           blurRadius: 5,
                           offset: const Offset(0, 2),
                         ),

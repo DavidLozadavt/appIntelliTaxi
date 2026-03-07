@@ -15,6 +15,8 @@ class OnboardingPageWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isBrandLogo = page.imagePath.contains('logoTaxbel.webp');
 
     return Container(
       color: const Color(0xFF17130D),
@@ -33,10 +35,21 @@ class OnboardingPageWidget extends StatelessWidget {
                     child: FractionallySizedBox(
                       widthFactor: 0.99,
                       heightFactor: 0.95,
-                      child: Image.asset(
-                        page.imagePath,
-                        fit: BoxFit.contain,
-                        alignment: page.imageAlignment,
+                      child: ColorFiltered(
+                        colorFilter: (!isDark && isBrandLogo)
+                            ? const ColorFilter.mode(
+                                AppColors.brandWine,
+                                BlendMode.modulate,
+                              )
+                            : const ColorFilter.mode(
+                                Colors.transparent,
+                                BlendMode.srcOver,
+                              ),
+                        child: Image.asset(
+                          page.imagePath,
+                          fit: BoxFit.contain,
+                          alignment: page.imageAlignment,
+                        ),
                       ),
                     ),
                   ),

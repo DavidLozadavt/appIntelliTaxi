@@ -54,10 +54,21 @@ class _LoadingScreenState extends State<LoadingScreen>
                   ),
                 ],
               ),
-              child: Image.asset(
-                'assets/images/logoTaxbel.webp',
-                height: 48,
-                width: 48,
+              child: ColorFiltered(
+                colorFilter: theme.brightness == Brightness.dark
+                    ? const ColorFilter.mode(
+                        Colors.transparent,
+                        BlendMode.srcOver,
+                      )
+                    : const ColorFilter.mode(
+                        AppColors.brandWine,
+                        BlendMode.modulate,
+                      ),
+                child: Image.asset(
+                  'assets/images/logoTaxbel.webp',
+                  height: 48,
+                  width: 48,
+                ),
               ),
             ),
 

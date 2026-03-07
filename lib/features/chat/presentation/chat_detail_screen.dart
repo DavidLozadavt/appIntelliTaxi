@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:intellitaxi/core/permissions/permissions_service.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/features/chat/widgets/build_message_bubble_widget.dart';
 import 'package:intellitaxi/features/chat/widgets/user_avatar_widget.dart';
@@ -175,6 +176,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Consumer<ChatProvider>(
       builder: (context, chatProvider, child) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -229,7 +231,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 alignment: Alignment.center,
                 scale: 3.3,
                 colorFilter: ColorFilter.mode(
-                  Colors.white.withValues(alpha: 0.3), //
+                  isDark
+                      ? Colors.white.withValues(alpha: 0.3)
+                      : AppColors.brandWine.withValues(alpha: 0.14), //
                   BlendMode.modulate,
                 ),
               ),

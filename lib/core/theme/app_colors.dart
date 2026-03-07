@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
+  static const Color brandWine = Color(0xFF7B1E3A);
+  static const Color brandWineLight = Color(0xFF9F3A5A);
+  static const Color brandWineDark = Color(0xFF5D132C);
+
   // Modo claro
-  static const Color primary = Color(0xFFFFC502);
-  static const Color secondary = Color(0xFFFFDC4A);
-  static const Color accent = Color(0xFFFF6605);
+  static const Color primary = brandWine;
+  static const Color secondary = brandWineLight;
+  static const Color accent = brandWine;
 
   // Modo oscuro - Colores principales
-  static const Color primaryDark = Color(0xFFB38602);
+  static const Color primaryDark = brandWineDark;
   static const Color darkSurface = Color(0xFF000000);
   static const Color darkBackground = Color(0xFF000000);
   static const Color darkCard = Color(0xFF1A1A1A);

@@ -1,5 +1,6 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
@@ -105,10 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Colors.orange,
-            width: 1.4,
-          ),
+          borderSide: const BorderSide(color: AppColors.brandWine, width: 1.4),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -135,7 +133,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const SizedBox(height: 40),
-                  Image.asset('assets/images/logoTaxbel.webp', height: 120),
+                  ColorFiltered(
+                    colorFilter: isDark
+                        ? const ColorFilter.mode(
+                            Colors.transparent,
+                            BlendMode.srcOver,
+                          )
+                        : const ColorFilter.mode(
+                            AppColors.brandWine,
+                            BlendMode.modulate,
+                          ),
+                    child: Image.asset(
+                      'assets/images/logoTaxbel.webp',
+                      height: 120,
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   const Text(
                     '¡Bienvenido!',
@@ -224,7 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: ElevatedButton(
                       onPressed: authProvider.isLoading ? null : _login,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
+                        backgroundColor: AppColors.brandWine,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(25),
                         ),

@@ -205,7 +205,15 @@ class ConductorHomeProvider extends ChangeNotifier {
     try {
       final raw = _parsePayload(data);
       final solicitud = isDirectOffer ? _normalizarOfertaDirecta(raw) : raw;
-      final solicitudId = _obtenerSolicitudId(solicitud);
+      var solicitudId = _obtenerSolicitudId(solicitud);
+      if (solicitudId == null || solicitudId.isEmpty) {
+        solicitudId = _generarSolicitudTemporalId();
+        solicitud['temp_id'] = solicitudId;
+        solicitud['solicitud_id'] = solicitud['solicitud_id'] ?? solicitudId;
+        solicitud['servicio_id'] = solicitud['servicio_id'] ?? solicitudId;
+        solicitud['id'] = solicitud['id'] ?? solicitudId;
+        AppLogger.d('ℹ️ Solicitud sin id, asignando temporal: $solicitudId');
+      }
       AppLogger.d('📩 Solicitud decodificada: $solicitudId');
 
       // Verificar si ya existe la solicitud
@@ -214,11 +222,6 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
       if (yaExiste) {
         AppLogger.d('⚠️ Solicitud ya existe: $solicitudId');
-        return;
-      }
-
-      if (solicitudId == null || solicitudId.isEmpty) {
-        AppLogger.d('⚠️ Solicitud descartada: no contiene id válido');
         return;
       }
 
@@ -734,7 +737,8 @@ class ConductorHomeProvider extends ChangeNotifier {
         solicitud['solicitud_id'] ??
         solicitud['servicio_id'] ??
         solicitud['id'] ??
-        solicitud['request_id'];
+        solicitud['request_id'] ??
+        solicitud['temp_id'];
     return rawId?.toString();
   }
 
@@ -813,5 +817,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     return (scoreDistancia * 0.55) +
         (scorePrecio * 0.35) +
         (scoreRecencia * 0.10);
+  }
+
+  String _generarSolicitudTemporalId() {
+    return 'temp_${DateTime.now().microsecondsSinceEpoch}';
   }
 }
