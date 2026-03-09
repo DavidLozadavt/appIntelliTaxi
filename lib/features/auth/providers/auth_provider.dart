@@ -157,7 +157,7 @@ class AuthProvider with ChangeNotifier {
       isLoading = true;
       notifyListeners();
 
-      await _authService.updateProfile(
+      final response = await _authService.updateProfile(
         personaId: personaId,
         identificacion: identificacion,
         nombre1: nombre1,
@@ -171,8 +171,18 @@ class AuthProvider with ChangeNotifier {
         fotoPath: fotoPath,
       );
 
-      // Recargar datos del usuario
-      await loadUserFromStorage();
+      _applyProfileUpdateToSession(
+        response: response,
+        identificacion: identificacion,
+        nombre1: nombre1,
+        apellido1: apellido1,
+        fechaNac: fechaNac,
+        direccion: direccion,
+        email: email,
+        celular: celular,
+        sexo: sexo,
+        idTipoIdentificacion: idTipoIdentificacion,
+      );
 
       isLoading = false;
       notifyListeners();
@@ -183,5 +193,67 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  void _applyProfileUpdateToSession({
+    required Map<String, dynamic> response,
+    required String identificacion,
+    required String nombre1,
+    required String apellido1,
+    required String fechaNac,
+    required String direccion,
+    required String email,
+    required String celular,
+    required String sexo,
+    required int idTipoIdentificacion,
+  }) {
+    if (_authData == null) return;
+
+    final authMap = _authData!.toJson();
+    final userMap =
+        (authMap['user'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final personaMap =
+        (userMap['persona'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+
+    personaMap['identificacion'] = identificacion;
+    personaMap['nombre1'] = nombre1;
+    personaMap['apellido1'] = apellido1;
+    personaMap['fechaNac'] = fechaNac;
+    personaMap['direccion'] = direccion;
+    personaMap['email'] = email;
+    personaMap['celular'] = celular;
+    personaMap['sexo'] = sexo;
+    personaMap['idTipoIdentificacion'] = idTipoIdentificacion;
+    userMap['email'] = email;
+
+    final personaUpdated = _extractPersonaFromUpdateResponse(response);
+    if (personaUpdated != null) {
+      personaMap.addAll(personaUpdated);
+    }
+
+    userMap['persona'] = personaMap;
+    authMap['user'] = userMap;
+
+    _authData = AuthResponse.fromJson(authMap);
+    _authService.saveUserData(_authData!);
+  }
+
+  Map<String, dynamic>? _extractPersonaFromUpdateResponse(
+    Map<String, dynamic> response,
+  ) {
+    final user = response['user'];
+    if (user is Map && user['persona'] is Map) {
+      return Map<String, dynamic>.from(user['persona'] as Map);
+    }
+
+    final data = response['data'];
+    if (data is Map && data['user'] is Map) {
+      final userData = data['user'] as Map;
+      if (userData['persona'] is Map) {
+        return Map<String, dynamic>.from(userData['persona'] as Map);
+      }
+    }
+
+    return null;
   }
 }

@@ -459,12 +459,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           // Email
                           _buildTextField(
                             controller: _emailController,
-                            label: 'Correo Electrónico',
+                            label: 'Correo o Cédula',
                             icon: Iconsax.sms_copy,
-                            keyboardType: TextInputType.emailAddress,
+                            keyboardType: TextInputType.text,
                             validator: (value) {
-                              if (value!.isEmpty) return 'Ingrese su email';
-                              if (!value.contains('@')) return 'Email inválido';
+                              if (value!.isEmpty) {
+                                return 'Ingrese correo o cédula';
+                              }
                               return null;
                             },
                           ),
