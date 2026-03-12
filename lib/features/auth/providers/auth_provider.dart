@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../data/auth_model.dart';
 
 class AuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
+  static const String _activeRoleKey = 'active_role';
   bool isLoading = false;
 
   AuthResponse? _authData;
   AuthResponse? get authData => _authData;
+  String? _activeRole;
+  String? get activeRole => _activeRole;
 
   User? get user => _authData?.user;
   Company? get company => _authData?.company;
@@ -26,6 +30,17 @@ class AuthProvider with ChangeNotifier {
   List<String> get roles => _authData?.roles ?? [];
   List<String> get permissions => _authData?.permissions ?? [];
   bool get isAdmin => roles.contains('Admin');
+  bool get hasConductorRole => roles.any(_isConductorRole);
+  bool get hasPasajeroRole => roles.any(_isPasajeroRole);
+  bool get canSwitchRole =>
+      _availableAppRoles.contains('CONDUCTOR') &&
+      _availableAppRoles.contains('PASAJERO');
+  List<String> get _availableAppRoles {
+    final result = <String>[];
+    if (hasConductorRole) result.add('CONDUCTOR');
+    if (hasPasajeroRole) result.add('PASAJERO');
+    return result;
+  }
 
   Future<bool> login(
     String email,
@@ -46,6 +61,7 @@ class AuthProvider with ChangeNotifier {
       _authData = response;
       await _authService.saveToken(response.token);
       await _authService.saveUserData(response);
+      await _syncActiveRoleFromStorage();
 
       if (rememberMe) {
         await _authService.saveCredentials(email, password);
@@ -73,6 +89,9 @@ class AuthProvider with ChangeNotifier {
 
       await _authService.clearSession();
       _authData = null;
+      _activeRole = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_activeRoleKey);
 
       isLoading = false;
       notifyListeners();
@@ -89,6 +108,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> loadUserFromStorage() async {
     _authData = await _authService.getSavedUserData();
+    await _syncActiveRoleFromStorage();
     notifyListeners();
   }
 
@@ -255,5 +275,57 @@ class AuthProvider with ChangeNotifier {
     }
 
     return null;
+  }
+
+  Future<void> setActiveRole(String role) async {
+    final normalized = role.toUpperCase();
+    if (!_availableAppRoles.contains(normalized)) return;
+    if (_activeRole == normalized) return;
+
+    _activeRole = normalized;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_activeRoleKey, normalized);
+    notifyListeners();
+  }
+
+  Future<void> _syncActiveRoleFromStorage() async {
+    if (_authData == null) {
+      _activeRole = null;
+      return;
+    }
+
+    final available = _availableAppRoles;
+    if (available.isEmpty) {
+      _activeRole = null;
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_activeRoleKey)?.toUpperCase();
+
+    if (stored != null && available.contains(stored)) {
+      _activeRole = stored;
+      return;
+    }
+
+    if (available.length == 1) {
+      _activeRole = available.first;
+      await prefs.setString(_activeRoleKey, _activeRole!);
+      return;
+    }
+
+    // Si tiene ambos roles y aún no eligió uno, forzar selección en UI.
+    _activeRole = null;
+    await prefs.remove(_activeRoleKey);
+  }
+
+  bool _isConductorRole(String role) {
+    final r = role.toUpperCase();
+    return r == 'CONDUCTOR' || r == 'MOTORISTA' || r == 'DRIVER';
+  }
+
+  bool _isPasajeroRole(String role) {
+    final r = role.toUpperCase();
+    return r == 'PASAJERO' || r == 'PASSENGER' || r == 'CLIENTE';
   }
 }
