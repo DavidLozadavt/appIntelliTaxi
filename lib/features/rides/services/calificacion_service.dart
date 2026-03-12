@@ -7,6 +7,14 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 class CalificacionService {
   final Dio _dio = DioClient.getInstance();
 
+  int _toInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
   /// 📌 CREAR NUEVA CALIFICACIÓN
   Future<CalificacionServicio> crearCalificacion({
     required int idServicio,
@@ -93,8 +101,8 @@ class CalificacionService {
         'calificaciones': (calificaciones['data'] as List? ?? [])
             .map((item) => CalificacionServicio.fromJson(item))
             .toList(),
-        'total': calificaciones['total'] ?? 0,
-        'current_page': calificaciones['current_page'] ?? 1,
+        'total': _toInt(calificaciones['total']),
+        'current_page': _toInt(calificaciones['current_page'] ?? 1),
         'estadisticas': EstadisticasCalificacion.fromJson({
           'estadisticas': estadisticas,
         }),

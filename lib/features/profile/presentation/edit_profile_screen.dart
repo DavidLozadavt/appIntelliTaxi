@@ -60,7 +60,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _selectedTipoId = widget.persona.idTipoIdentificacion ?? 1;
 
     // Cargar sexo
-    _selectedSexo = widget.persona.sexo ?? 'M';
+    final sexo = widget.persona.sexo?.toUpperCase();
+    _selectedSexo = (sexo == 'M' || sexo == 'F' || sexo == 'O') ? sexo! : 'O';
 
     // Cargar fecha de nacimiento
     if (widget.persona.fechaNac != null &&
@@ -757,6 +758,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: _buildSexoOption('F', 'Femenino', Iconsax.woman_copy),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildSexoOption('O', 'Otro', Iconsax.user_copy),
             ),
           ],
         ),

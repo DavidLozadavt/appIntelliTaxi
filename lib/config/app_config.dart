@@ -18,7 +18,7 @@ class AppConfig {
   static String get pusherCluster => dotenv.env['PUSHER_CLUSTER'] ?? 'mt1';
 
   // Pusher Configuration (Secondary)
-  static String get pusherSecondaryAppKey => 'ca114d8aebe3cf11454b';
+  static String get pusherSecondaryAppKey => dotenv.env['PUSHER_SECONDARY_APP_KEY'] ?? '';
   static String get pusherSecondaryCluster => 'mt1';
 
   // Configuración de la app

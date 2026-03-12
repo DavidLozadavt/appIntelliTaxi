@@ -29,12 +29,12 @@ class MensajeTaxi {
 
   factory MensajeTaxi.fromJson(Map<String, dynamic> json) {
     return MensajeTaxi(
-      id: json['id'] ?? 0,
-      servicioId: json['servicio_id'] ?? 0,
-      remitenteId: json['remitente_id'] ?? 0,
+      id: _toInt(json['id']),
+      servicioId: _toInt(json['servicio_id']),
+      remitenteId: _toInt(json['remitente_id']),
       remitenteNombre: json['remitente_nombre'] ?? 'Usuario',
       remitenteFoto: json['remitente_foto'],
-      destinatarioId: json['destinatario_id'] ?? 0,
+      destinatarioId: _toInt(json['destinatario_id']),
       mensaje: json['mensaje'] ?? '',
       tipo: json['tipo'] ?? 'texto',
       leido: json['leido'] ?? false,
@@ -50,12 +50,12 @@ class MensajeTaxi {
   /// Factory para mensajes que llegan por Pusher
   factory MensajeTaxi.fromPusher(Map<String, dynamic> json) {
     return MensajeTaxi(
-      id: json['id'] ?? 0,
-      servicioId: json['servicio_id'] ?? 0,
-      remitenteId: json['remitente_id'] ?? 0,
+      id: _toInt(json['id']),
+      servicioId: _toInt(json['servicio_id']),
+      remitenteId: _toInt(json['remitente_id']),
       remitenteNombre: json['remitente_nombre'] ?? 'Usuario',
       remitenteFoto: json['remitente_foto'],
-      destinatarioId: json['destinatario_id'] ?? 0,
+      destinatarioId: _toInt(json['destinatario_id']),
       mensaje: json['mensaje'] ?? '',
       tipo: json['tipo'] ?? 'texto',
       leido: false,
@@ -110,4 +110,11 @@ class MensajeTaxi {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+}
+
+int _toInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
 }

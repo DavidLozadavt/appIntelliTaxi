@@ -1,4 +1,20 @@
 /// Modelo de calificación de servicios
+int _toInt(dynamic value) {
+  if (value == null) return 0;
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
+}
+
+double _toDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is double) return value;
+  if (value is int) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? 0.0;
+  return 0.0;
+}
+
 class CalificacionServicio {
   final int id;
   final int idServicio;
@@ -25,13 +41,21 @@ class CalificacionServicio {
   });
 
   factory CalificacionServicio.fromJson(Map<String, dynamic> json) {
+    final idServicioRaw = json['idServicio'] ?? json['id_servicio'];
+    final idUsuarioCalificaRaw =
+        json['idUsuarioCalifica'] ?? json['id_usuario_califica'];
+    final idUsuarioCalificadoRaw =
+        json['idUsuarioCalificado'] ?? json['id_usuario_calificado'];
+    final tipoCalificacionRaw =
+        json['tipoCalificacion'] ?? json['tipo_calificacion'];
+
     return CalificacionServicio(
-      id: json['id'] ?? 0,
-      idServicio: json['idServicio'] ?? 0,
-      idUsuarioCalifica: json['idUsuarioCalifica'] ?? 0,
-      idUsuarioCalificado: json['idUsuarioCalificado'] ?? 0,
-      tipoCalificacion: json['tipoCalificacion'] ?? '',
-      calificacion: json['calificacion'] ?? 0,
+      id: _toInt(json['id']),
+      idServicio: _toInt(idServicioRaw),
+      idUsuarioCalifica: _toInt(idUsuarioCalificaRaw),
+      idUsuarioCalificado: _toInt(idUsuarioCalificadoRaw),
+      tipoCalificacion: tipoCalificacionRaw?.toString() ?? '',
+      calificacion: _toInt(json['calificacion']),
       comentario: json['comentario'],
       fechaCalificacion: json['fecha_calificacion'] != null
           ? DateTime.parse(json['fecha_calificacion'])
@@ -86,7 +110,7 @@ class UsuarioCalifica {
 
   factory UsuarioCalifica.fromJson(Map<String, dynamic> json) {
     return UsuarioCalifica(
-      id: json['id'] ?? 0,
+      id: _toInt(json['id']),
       nombre: json['nombre'] ?? '',
       email: json['email'],
     );
@@ -103,7 +127,7 @@ class UsuarioCalificado {
 
   factory UsuarioCalificado.fromJson(Map<String, dynamic> json) {
     return UsuarioCalificado(
-      id: json['id'] ?? 0,
+      id: _toInt(json['id']),
       nombre: json['nombre'] ?? '',
       email: json['email'],
     );
@@ -129,14 +153,14 @@ class EstadisticasCalificacion {
     final distribucion = estadisticas['distribucion'] ?? {};
 
     return EstadisticasCalificacion(
-      promedio: (estadisticas['promedio'] ?? 0.0).toDouble(),
-      total: estadisticas['total'] ?? 0,
+      promedio: _toDouble(estadisticas['promedio']),
+      total: _toInt(estadisticas['total']),
       distribucion: {
-        '5_estrellas': distribucion['5_estrellas'] ?? 0,
-        '4_estrellas': distribucion['4_estrellas'] ?? 0,
-        '3_estrellas': distribucion['3_estrellas'] ?? 0,
-        '2_estrellas': distribucion['2_estrellas'] ?? 0,
-        '1_estrella': distribucion['1_estrella'] ?? 0,
+        '5_estrellas': _toInt(distribucion['5_estrellas']),
+        '4_estrellas': _toInt(distribucion['4_estrellas']),
+        '3_estrellas': _toInt(distribucion['3_estrellas']),
+        '2_estrellas': _toInt(distribucion['2_estrellas']),
+        '1_estrella': _toInt(distribucion['1_estrella']),
       },
       ultimasCalificaciones: [],
     );
@@ -162,8 +186,8 @@ class PromedioCalificacion {
     final ultimas = data['ultimas_calificaciones'] as List? ?? [];
 
     return PromedioCalificacion(
-      promedio: (data['promedio'] ?? 0.0).toDouble(),
-      totalCalificaciones: data['total_calificaciones'] ?? 0,
+      promedio: _toDouble(data['promedio']),
+      totalCalificaciones: _toInt(data['total_calificaciones']),
       tipo: data['tipo'] ?? '',
       ultimasCalificaciones: ultimas
           .map((item) => CalificacionServicio.fromJson(item))

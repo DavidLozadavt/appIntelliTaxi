@@ -28,7 +28,11 @@ class ChatTaxiService {
       );
 
       if (response.statusCode == 201 && response.data['success'] == true) {
-        return MensajeTaxi.fromJson(response.data['data']);
+        final data = response.data['data'];
+        final payload = data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map);
+        return MensajeTaxi.fromJson(payload);
       }
 
       AppLogger.d('Error enviando mensaje: ${response.data['message']}');
@@ -52,7 +56,7 @@ class ChatTaxiService {
 
       if (response.statusCode == 200 && response.data['success'] == true) {
         return (response.data['data'] as List)
-            .map((m) => MensajeTaxi.fromJson(m))
+            .map((m) => MensajeTaxi.fromJson(Map<String, dynamic>.from(m)))
             .toList();
       }
 
@@ -145,11 +149,17 @@ class ChatTaxiService {
       final keyNuevoMensaje = '$channelName:nuevo.mensaje';
       PusherService.registerEventHandlerSecondary(keyNuevoMensaje, (data) {
         try {
-          final jsonData = data is String ? jsonDecode(data) : data;
+          final decoded = data is String ? jsonDecode(data) : data;
+          final jsonData = decoded is Map<String, dynamic>
+              ? decoded
+              : Map<String, dynamic>.from(decoded as Map);
           final mensaje = MensajeTaxi.fromPusher(jsonData);
           onNuevoMensaje(mensaje);
-        } catch (e) {
+        } catch (e, st) {
           AppLogger.d('Error parseando mensaje: $e');
+          AppLogger.d('Payload tipo: ${data.runtimeType}');
+          AppLogger.d('Payload valor: $data');
+          AppLogger.d('Stack: $st');
         }
       });
 
@@ -158,10 +168,13 @@ class ChatTaxiService {
         final keyMensajeLeido = '$channelName:mensaje.leido';
         PusherService.registerEventHandlerSecondary(keyMensajeLeido, (data) {
           try {
-            final jsonData = data is String ? jsonDecode(data) : data;
+            final decoded = data is String ? jsonDecode(data) : data;
+            final jsonData = decoded is Map<String, dynamic>
+                ? decoded
+                : Map<String, dynamic>.from(decoded as Map);
             onMensajeLeido(
-              jsonData['mensaje_id'] ?? 0,
-              jsonData['leido_por'] ?? 0,
+              _toInt(jsonData['mensaje_id']),
+              _toInt(jsonData['leido_por']),
             );
           } catch (e) {
             AppLogger.d('Error parseando mensaje leído: $e');
@@ -204,4 +217,11 @@ class ChatTaxiService {
   void dispose() {
     // No cerrar _dio porque es una instancia compartida
   }
+}
+
+int _toInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
 }

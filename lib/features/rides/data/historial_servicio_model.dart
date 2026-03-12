@@ -9,6 +9,17 @@ double _parseDouble(dynamic value) {
   return 0.0;
 }
 
+/// Helper para parsear valores que pueden venir como string o número a int
+int _parseInt(dynamic value) {
+  if (value == null) return 0;
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  if (value is String) {
+    return int.tryParse(value) ?? 0;
+  }
+  return 0;
+}
+
 /// Modelo para el historial de servicios
 class HistorialServicio {
   final int id;
@@ -59,14 +70,16 @@ class HistorialServicio {
         : (estadoRaw?.toString() ?? '');
 
     return HistorialServicio(
-      id: json['id'] ?? 0,
+      id: _parseInt(json['id']),
       fechaServicio: json['fecha_servicio'] != null
           ? DateTime.parse(json['fecha_servicio']).toLocal()
           : DateTime.now(),
       finServicio: json['fin_servicio'] != null
           ? DateTime.parse(json['fin_servicio']).toLocal()
           : null,
-      duracionMinutos: json['duracion_minutos'],
+      duracionMinutos: json['duracion_minutos'] != null
+          ? _parseInt(json['duracion_minutos'])
+          : null,
       origen: UbicacionServicio.fromJson(json['origen'] ?? {}),
       destino: UbicacionServicio.fromJson(json['destino'] ?? {}),
       distancia: json['distancia'],
@@ -153,7 +166,7 @@ class PersonaServicio {
 
   factory PersonaServicio.fromJson(Map<String, dynamic> json) {
     return PersonaServicio(
-      id: json['id'] ?? 0,
+      id: _parseInt(json['id']),
       nombre: json['nombre'] ?? 'Sin nombre',
       telefono: json['telefono'],
       fotoPerfil: json['foto_perfil'],
@@ -204,7 +217,7 @@ class CalificacionServicioHistorial {
 
   factory CalificacionServicioHistorial.fromJson(Map<String, dynamic> json) {
     return CalificacionServicioHistorial(
-      puntuacion: json['puntuacion'] ?? json['calificacion'] ?? 0,
+      puntuacion: _parseInt(json['puntuacion'] ?? json['calificacion']),
       comentario: json['comentario'],
       fecha: json['fecha'] != null
           ? DateTime.parse(json['fecha']).toLocal()
@@ -245,10 +258,10 @@ class PaginacionInfo {
 
   factory PaginacionInfo.fromJson(Map<String, dynamic> json) {
     return PaginacionInfo(
-      total: json['total'] ?? 0,
-      perPage: json['per_page'] ?? 20,
-      currentPage: json['current_page'] ?? 1,
-      lastPage: json['last_page'] ?? 1,
+      total: _parseInt(json['total']),
+      perPage: _parseInt(json['per_page'] ?? 20),
+      currentPage: _parseInt(json['current_page'] ?? 1),
+      lastPage: _parseInt(json['last_page'] ?? 1),
     );
   }
 
@@ -283,12 +296,12 @@ class EstadisticasServicios {
     if (data['distribucion_calificaciones'] != null) {
       final dist = data['distribucion_calificaciones'] as Map;
       distribucion = dist.map(
-        (key, value) => MapEntry(key.toString(), value as int),
+        (key, value) => MapEntry(key.toString(), _parseInt(value)),
       );
     }
 
     return EstadisticasServicios(
-      totalServicios: data['total_servicios'] ?? 0,
+      totalServicios: _parseInt(data['total_servicios']),
       totalIngresos: data['ingresos_totales'] != null
           ? _parseDouble(data['ingresos_totales'])
           : (data['gasto_total'] != null
@@ -297,7 +310,9 @@ class EstadisticasServicios {
       promedioCalificacion: data['promedio_calificacion'] != null
           ? _parseDouble(data['promedio_calificacion'])
           : null,
-      totalCalificaciones: data['total_calificaciones'],
+      totalCalificaciones: data['total_calificaciones'] != null
+          ? _parseInt(data['total_calificaciones'])
+          : null,
       distribucionCalificaciones: distribucion,
       tiempoPromedioMinutos: data['tiempo_promedio_servicio_minutos'] != null
           ? _parseDouble(data['tiempo_promedio_servicio_minutos'])
