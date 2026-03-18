@@ -6,6 +6,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
+import 'package:intellitaxi/core/services/voice_alert_service.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
@@ -25,6 +27,12 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _isLoadingLocation = true;
   String _locationMessage =
       'Estableciendo conexión satelital para rastreo en tiempo real...';
+  String? _zonaActual;
+  Timer? _liveLocationTicker;
+  Position? _lastAreaResolvedPosition;
+  DateTime? _lastAreaResolvedAt;
+  final ReverseGeocodingService _reverseGeocodingService =
+      ReverseGeocodingService();
 
   // Estado online/offline
   bool _isOnline = false;
@@ -52,6 +60,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   Position? get currentPosition => _currentPosition;
   bool get isLoadingLocation => _isLoadingLocation;
   String get locationMessage => _locationMessage;
+  String? get zonaActual => _zonaActual;
   bool get isOnline => _isOnline;
   VehiculoConductor? get vehiculoSeleccionado => _vehiculoSeleccionado;
   List<VehiculoConductor> get vehiculosDisponibles => _vehiculosDisponibles;
@@ -86,6 +95,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     _timersExpiracion.clear();
     _tickerExpiracionUI?.cancel();
     _tickerExpiracionUI = null;
+    _liveLocationTicker?.cancel();
+    _liveLocationTicker = null;
+    VoiceAlertService.dispose();
     desconectarPusher();
     super.dispose();
   }
@@ -216,6 +228,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         solicitud['id'] = solicitud['id'] ?? solicitudId;
         AppLogger.d('ℹ️ Solicitud sin id, asignando temporal: $solicitudId');
       }
+      solicitud['_local_id'] = solicitudId;
       AppLogger.d('📩 Solicitud decodificada: $solicitudId');
 
       // Verificar si ya existe la solicitud
@@ -232,6 +245,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       // Reproducir sonido de notificación
       _reproducirSonidoNotificacion();
+      VoiceAlertService.announceNewService();
 
       final ttlSegundos = _resolverTtlSegundos(solicitud);
       _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
@@ -323,9 +337,18 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Expira una solicitud después del tiempo límite
   void _expirarSolicitud(String solicitudId) {
     AppLogger.d('⏱️ Solicitud expirada: $solicitudId');
-    _solicitudesActivas.removeWhere(
-      (s) => _obtenerSolicitudId(s) == solicitudId,
+    final index = _solicitudesActivas.indexWhere(
+      (s) =>
+          (s['_local_id']?.toString() == solicitudId) ||
+          (_obtenerSolicitudId(s) == solicitudId),
     );
+    if (index != -1) {
+      _solicitudesActivas.removeAt(index);
+    } else {
+      _solicitudesActivas.removeWhere(
+        (s) => _obtenerSolicitudId(s) == solicitudId,
+      );
+    }
     _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion.remove(solicitudId);
     _detenerTickerSiNoHaySolicitudes();
@@ -470,6 +493,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       _isLoadingLocation = false;
       _locationMessage = 'Ubicación obtenida';
       if (!_isDisposed) notifyListeners();
+      _iniciarSeguimientoUbicacion();
+      _actualizarZonaActual(position, force: true);
       await _requestNotificationPermissionAfterLocation();
 
       AppLogger.d(
@@ -484,6 +509,62 @@ class ConductorHomeProvider extends ChangeNotifier {
       _locationMessage = 'Error obteniendo ubicación: ${e.toString()}';
       if (!_isDisposed) notifyListeners();
     }
+  }
+
+  void _iniciarSeguimientoUbicacion() {
+    _liveLocationTicker?.cancel();
+    _liveLocationTicker = Timer.periodic(const Duration(seconds: 15), (_) {
+      _refrescarUbicacion();
+    });
+  }
+
+  Future<void> _refrescarUbicacion() async {
+    if (_isDisposed) return;
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      _currentPosition = position;
+      _actualizarZonaActual(position);
+      if (!_isDisposed) notifyListeners();
+    } catch (_) {
+      // Silencioso: no interrumpir la experiencia por fallos intermitentes GPS.
+    }
+  }
+
+  Future<void> _actualizarZonaActual(
+    Position position, {
+    bool force = false,
+  }) async {
+    final lastPos = _lastAreaResolvedPosition;
+    final lastAt = _lastAreaResolvedAt;
+    if (!force && lastPos != null && lastAt != null) {
+      final movedMeters = Geolocator.distanceBetween(
+        lastPos.latitude,
+        lastPos.longitude,
+        position.latitude,
+        position.longitude,
+      );
+      final elapsed = DateTime.now().difference(lastAt);
+      if (movedMeters < 180 && elapsed < const Duration(seconds: 40)) {
+        return;
+      }
+    }
+
+    _lastAreaResolvedPosition = position;
+    _lastAreaResolvedAt = DateTime.now();
+
+    final area = await _reverseGeocodingService.resolveAreaName(
+      lat: position.latitude,
+      lng: position.longitude,
+    );
+    if (area == null || area.isEmpty) return;
+    if (_zonaActual == area) return;
+    _zonaActual = area;
+    if (!_isDisposed) notifyListeners();
   }
 
   Future<void> _requestNotificationPermissionAfterLocation() async {
@@ -506,6 +587,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       final vehiculos = await _conductorService.getVehiculosConductor();
       if (_isDisposed) return;
       _vehiculosDisponibles = vehiculos;
+      _sincronizarVehiculoSeleccionadoConTurno();
       if (!_isDisposed) notifyListeners();
     } catch (e) {
       AppLogger.d('❌ Error cargando vehículos: $e');
@@ -528,6 +610,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (turno != null) {
         _turnoActivo = turno;
         _isOnline = true;
+        _sincronizarVehiculoSeleccionadoConTurno();
 
         // Conectar a Pusher automáticamente si hay turno activo
         await conectarPusher();
@@ -582,6 +665,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       _turnoActivo = turno;
       _isOnline = true;
+      _sincronizarVehiculoSeleccionadoConTurno();
 
       // Conectar a Pusher después de iniciar el turno
       await conectarPusher();
@@ -630,6 +714,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       _turnoActivo = null;
       _isOnline = false;
+      _vehiculoSeleccionado = null;
       _solicitudesActivas.clear();
       _expiracionPorSolicitud.clear();
       _tickerExpiracionUI?.cancel();
@@ -653,6 +738,25 @@ class ConductorHomeProvider extends ChangeNotifier {
     } else {
       // Desactivándose: finalizar turno
       await finalizarTurno();
+    }
+  }
+
+  void _sincronizarVehiculoSeleccionadoConTurno() {
+    if (_turnoActivo == null) return;
+
+    final idVehiculoTurno = _turnoActivo!.idVehiculo;
+    final match = _vehiculosDisponibles
+        .where((v) => v.id == idVehiculoTurno)
+        .toList();
+
+    if (match.isNotEmpty) {
+      _vehiculoSeleccionado = match.first;
+      return;
+    }
+
+    // Fallback: usar vehículo embebido del turno cuando la lista aún no llega.
+    if (_turnoActivo!.vehiculo != null) {
+      _vehiculoSeleccionado = _turnoActivo!.vehiculo;
     }
   }
 
@@ -732,6 +836,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (_tickerExpiracionUI != null) return;
     _tickerExpiracionUI = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_isDisposed) return;
+      _purgarSolicitudesExpiradas();
       _detenerTickerSiNoHaySolicitudes();
       if (_tickerExpiracionUI != null) {
         notifyListeners();
@@ -748,6 +853,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   String? _obtenerSolicitudId(Map<String, dynamic> solicitud) {
     final rawId =
+        solicitud['_local_id'] ??
         solicitud['solicitud_id'] ??
         solicitud['solicitudId'] ??
         solicitud['servicio_id'] ??
@@ -838,5 +944,18 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   String _generarSolicitudTemporalId() {
     return 'temp_${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  void _purgarSolicitudesExpiradas() {
+    if (_expiracionPorSolicitud.isEmpty) return;
+    final now = DateTime.now();
+    final expiradas = _expiracionPorSolicitud.entries
+        .where((entry) => !entry.value.isAfter(now))
+        .map((entry) => entry.key)
+        .toList();
+
+    for (final solicitudId in expiradas) {
+      _expirarSolicitud(solicitudId);
+    }
   }
 }

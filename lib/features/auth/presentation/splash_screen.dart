@@ -252,7 +252,7 @@ class _SplashScreenState extends State<SplashScreen>
                           child: Container(
                             width: 3,
                             height: 35,
-                            color: Colors.orange,
+                            color: AppColors.brandWine,
                           ),
                         );
                       },
@@ -288,15 +288,15 @@ class _SplashScreenState extends State<SplashScreen>
                         borderRadius: BorderRadius.circular(10),
                         gradient: LinearGradient(
                           colors: [
-                            Colors.orange,
-                            Colors.deepOrange,
-                            Colors.orange,
+                            AppColors.brandWineLight,
+                            AppColors.brandWine,
+                            AppColors.brandWineDark,
                           ],
                           stops: [0.0, _glowAnimation.value, 1.0],
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.orange.withValues(alpha: 0.3),
+                            color: AppColors.brandWine.withValues(alpha: 0.3),
                             blurRadius: 5,
                             spreadRadius: 1,
                           ),

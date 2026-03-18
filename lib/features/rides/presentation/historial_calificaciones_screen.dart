@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/rides/data/calificacion_model.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_widgets.dart';
@@ -190,12 +191,12 @@ class _HistorialCalificacionesScreenState
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.deepOrange.shade400, Colors.deepOrange.shade600],
+          colors: [AppColors.brandWineLight, AppColors.brandWineDark],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.deepOrange.withValues(alpha: 0.3),
+            color: AppColors.brandWine.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -216,11 +217,11 @@ class _HistorialCalificacionesScreenState
               ),
               const Row(
                 children: [
-                  Icon(Icons.star, color: Colors.amber, size: 24),
-                  Icon(Icons.star, color: Colors.amber, size: 24),
-                  Icon(Icons.star, color: Colors.amber, size: 24),
-                  Icon(Icons.star, color: Colors.amber, size: 24),
-                  Icon(Icons.star, color: Colors.amber, size: 24),
+                  Icon(Icons.star, color: Colors.white, size: 24),
+                  Icon(Icons.star, color: Colors.white, size: 24),
+                  Icon(Icons.star, color: Colors.white, size: 24),
+                  Icon(Icons.star, color: Colors.white, size: 24),
+                  Icon(Icons.star, color: Colors.white, size: 24),
                 ],
               ),
               const SizedBox(height: 4),
@@ -284,7 +285,7 @@ class _HistorialCalificacionesScreenState
             ),
           ),
           const SizedBox(width: 4),
-          const Icon(Icons.star, color: Colors.amber, size: 12),
+          const Icon(Icons.star, color: Colors.white, size: 12),
           const SizedBox(width: 6),
           Expanded(
             child: Container(
@@ -298,7 +299,7 @@ class _HistorialCalificacionesScreenState
                 widthFactor: porcentaje / 100,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.amber,
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),

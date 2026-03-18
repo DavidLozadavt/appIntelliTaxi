@@ -43,8 +43,11 @@ class _HomeConductorState extends State<HomeConductor> {
   @override
   void initState() {
     super.initState();
-    _provider = ConductorHomeProvider();
-    _provider.initialize();
+    _provider = context.read<ConductorHomeProvider>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _provider.initialize();
+    });
     _cargarSanciones();
     _crearDotMarker();
   }
@@ -133,7 +136,6 @@ class _HomeConductorState extends State<HomeConductor> {
   void dispose() {
     _bannerTimer?.cancel();
     _mapController?.dispose();
-    _provider.dispose();
     super.dispose();
   }
 
@@ -144,6 +146,21 @@ class _HomeConductorState extends State<HomeConductor> {
             solicitud['request_id'] ??
             '')
         .toString();
+  }
+
+  Future<void> _centrarMapaEnUbicacionActual(
+    ConductorHomeProvider provider,
+  ) async {
+    await provider.initializeLocation();
+    final pos = provider.currentPosition;
+    final controller = _mapController;
+    if (pos == null || controller == null) return;
+
+    await controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: LatLng(pos.latitude, pos.longitude), zoom: 17),
+      ),
+    );
   }
 
   /// Acepta la solicitud de servicio
@@ -551,259 +568,307 @@ class _HomeConductorState extends State<HomeConductor> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: _provider,
-      child: Consumer<ConductorHomeProvider>(
-        builder: (context, provider, child) {
-          return Stack(
-            children: [
-              // Mapa de Google Maps
-              provider.currentPosition == null
-                  ? LocationStatusView(
-                      isLoading: provider.isLoadingLocation,
-                      message: provider.locationMessage,
-                      onRetry: provider.initializeLocation,
-                    )
-                  : RepaintBoundary(
-                      child: StandardMap(
-                        initialPosition: LatLng(
-                          provider.currentPosition!.latitude,
-                          provider.currentPosition!.longitude,
-                        ),
-                        zoom: 15,
-                        markers: {
-                          Marker(
-                            markerId: const MarkerId('current_location'),
-                            position: LatLng(
-                              provider.currentPosition!.latitude,
-                              provider.currentPosition!.longitude,
-                            ),
-                            infoWindow: const InfoWindow(
-                              title: 'Tu ubicación',
-                              snippet: 'Estás aquí',
-                            ),
-                            icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
-                            anchor: const Offset(0.5, 0.5),
-                          ),
-                        },
-                        onMapCreated: (controller) {
-                          _mapController = controller;
-                        },
+    return Consumer<ConductorHomeProvider>(
+      builder: (context, provider, child) {
+        return Stack(
+          children: [
+            // Mapa de Google Maps
+            provider.currentPosition == null
+                ? LocationStatusView(
+                    isLoading: provider.isLoadingLocation,
+                    message: provider.locationMessage,
+                    onRetry: provider.initializeLocation,
+                  )
+                : RepaintBoundary(
+                    child: StandardMap(
+                      initialPosition: LatLng(
+                        provider.currentPosition!.latitude,
+                        provider.currentPosition!.longitude,
                       ),
-                    ),
-
-              // Chip de estado del conductor (superior izquierda)
-              if (provider.currentPosition != null)
-                Positioned(
-                  top: 16,
-                  left: 16,
-                  child: Material(
-                    elevation: 4,
-                    borderRadius: BorderRadius.circular(20),
-                    shadowColor: provider.isOnline
-                        ? AppColors.accent.withValues(alpha: 0.3)
-                        : Colors.grey.withValues(alpha: 0.3),
-                    child: InkWell(
-                      onTap: _cambiarEstadoConductor,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: provider.isOnline
-                                ? [AppColors.accent, Colors.orangeAccent]
-                                : [Colors.grey.shade400, Colors.grey.shade600],
+                      zoom: 17,
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: false,
+                      compassEnabled: true,
+                      zoomControlsEnabled: false,
+                      mapPadding: EdgeInsets.only(
+                        top: 80,
+                        bottom: provider.solicitudesOrdenadas.isNotEmpty
+                            ? 140
+                            : 24,
+                      ),
+                      markers: {
+                        Marker(
+                          markerId: const MarkerId('current_location'),
+                          position: LatLng(
+                            provider.currentPosition!.latitude,
+                            provider.currentPosition!.longitude,
                           ),
-                          borderRadius: BorderRadius.circular(20),
+                          infoWindow: const InfoWindow(
+                            title: 'Tu ubicación',
+                            snippet: 'Estás aquí',
+                          ),
+                          icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
+                          anchor: const Offset(0.5, 0.5),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              provider.isOnline
-                                  ? Icons.check_circle
-                                  : Icons.cancel,
+                      },
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                      },
+                    ),
+                  ),
+
+            // Chip de estado del conductor (superior izquierda)
+            if (provider.currentPosition != null)
+              Positioned(
+                top: 16,
+                left: 16,
+                child: Material(
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(20),
+                  shadowColor: provider.isOnline
+                      ? AppColors.accent.withValues(alpha: 0.3)
+                      : Colors.grey.withValues(alpha: 0.3),
+                  child: InkWell(
+                    onTap: _cambiarEstadoConductor,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: provider.isOnline
+                              ? [AppColors.accent, AppColors.accent]
+                              : [Colors.grey.shade400, Colors.grey.shade600],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            provider.isOnline
+                                ? Icons.check_circle
+                                : Icons.cancel,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            provider.isOnline ? 'En Línea' : 'Desconectado',
+                            style: const TextStyle(
                               color: Colors.white,
-                              size: 18,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
                             ),
+                          ),
+                          if (provider.vehiculoSeleccionado != null) ...[
                             const SizedBox(width: 6),
-                            Text(
-                              provider.isOnline ? 'En Línea' : 'Desconectado',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.25),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                provider.vehiculoSeleccionado!.placa,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                            if (provider.vehiculoSeleccionado != null) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
+                          ],
+                          if (provider.zonaActual != null &&
+                              provider.zonaActual!.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              constraints: const BoxConstraints(maxWidth: 140),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.location_on,
+                                    size: 12,
+                                    color: Colors.white.withValues(alpha: 0.95),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      provider.zonaActual!,
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.95,
+                                        ),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // Banner de sanciones
+            if (_sancionesActivas.isNotEmpty && _bannerVisible)
+              Positioned(
+                top: 60,
+                left: 16,
+                right: 16,
+                child: _buildSancionesBanner(),
+              ),
+
+            // Vista híbrida tipo inDriver: solicitud principal + cola scrolleable
+            if (provider.solicitudesOrdenadas.isNotEmpty)
+              Positioned(
+                top: 100,
+                left: 0,
+                right: 0,
+                bottom: 20,
+                child: RepaintBoundary(
+                  child: Builder(
+                    builder: (context) {
+                      final solicitudes = provider.solicitudesOrdenadas;
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: solicitudes.length,
+                        itemBuilder: (context, index) {
+                          final solicitud = solicitudes[index];
+                          final solicitudId = _getSolicitudId(solicitud);
+
+                          if (solicitudId.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final esPrincipal = index == 0;
+                          final segundosRestantes = provider
+                              .obtenerSegundosRestantes(solicitudId);
+
+                          return Column(
+                            children: [
+                              if (esPrincipal)
+                                Container(
+                                  width: double.infinity,
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.95,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    'Solicitud recomendada',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.black,
+                                    ),
+                                  ),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.25),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  provider.vehiculoSeleccionado!.placa,
-                                  style: const TextStyle(
+                              Dismissible(
+                                key: Key('solicitud_$solicitudId'),
+                                direction: DismissDirection.horizontal,
+                                onDismissed: (direction) {
+                                  provider.rechazarSolicitud(solicitudId);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Solicitud descartada'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                                background: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  alignment: Alignment.centerLeft,
+                                  padding: const EdgeInsets.only(left: 20),
+                                  child: const Icon(
+                                    Icons.delete,
                                     color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
+                                    size: 32,
+                                  ),
+                                ),
+                                secondaryBackground: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20),
+                                  child: const Icon(
+                                    Icons.delete,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: SolicitudServicioCard(
+                                    solicitud: solicitud,
+                                    segundosRestantes: segundosRestantes,
+                                    destacada: esPrincipal,
+                                    onAceptar: () =>
+                                        _aceptarSolicitud(solicitudId),
+                                    onRechazar: () =>
+                                        _rechazarSolicitud(solicitudId),
                                   ),
                                 ),
                               ),
                             ],
-                          ],
-                        ),
-                      ),
-                    ),
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
+              ),
 
-              // Botón de recarga de ubicación
-              if (provider.currentPosition != null)
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: FloatingActionButton.small(
-                    onPressed: () => provider.initializeLocation(),
-                    backgroundColor: Colors.white,
-                    elevation: 4,
-                    child: const Icon(Icons.my_location, color: Colors.blue),
-                  ),
+            // Botón de recarga de ubicación (fijo abajo a la derecha)
+            // Va al final del Stack para quedar por encima de las tarjetas.
+            if (provider.currentPosition != null)
+              Positioned(
+                right: 16,
+                bottom: provider.solicitudesOrdenadas.isNotEmpty ? 140 : 24,
+                child: FloatingActionButton.small(
+                  onPressed: () => _centrarMapaEnUbicacionActual(provider),
+                  backgroundColor: Colors.white.withValues(alpha: 0.88),
+                  elevation: 4,
+                  child: const Icon(Icons.my_location, color: AppColors.accent),
                 ),
-
-              // Banner de sanciones
-              if (_sancionesActivas.isNotEmpty && _bannerVisible)
-                Positioned(
-                  top: 60,
-                  left: 16,
-                  right: 16,
-                  child: _buildSancionesBanner(),
-                ),
-
-              // Vista híbrida tipo inDriver: solicitud principal + cola scrolleable
-              if (provider.solicitudesOrdenadas.isNotEmpty)
-                Positioned(
-                  top: 100,
-                  left: 0,
-                  right: 0,
-                  bottom: 20,
-                  child: RepaintBoundary(
-                    child: Builder(
-                      builder: (context) {
-                        final solicitudes = provider.solicitudesOrdenadas;
-                        return ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          physics: const BouncingScrollPhysics(),
-                          itemCount: solicitudes.length,
-                          itemBuilder: (context, index) {
-                            final solicitud = solicitudes[index];
-                            final solicitudId = _getSolicitudId(solicitud);
-
-                            if (solicitudId.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
-
-                            final esPrincipal = index == 0;
-                            final segundosRestantes = provider
-                                .obtenerSegundosRestantes(solicitudId);
-
-                            return Column(
-                              children: [
-                                if (esPrincipal)
-                                  Container(
-                                    width: double.infinity,
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.95,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Text(
-                                      'Solicitud recomendada',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.black,
-                                      ),
-                                    ),
-                                  ),
-                                Dismissible(
-                                  key: Key('solicitud_$solicitudId'),
-                                  direction: DismissDirection.horizontal,
-                                  onDismissed: (direction) {
-                                    provider.rechazarSolicitud(solicitudId);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Solicitud descartada'),
-                                        duration: Duration(seconds: 1),
-                                      ),
-                                    );
-                                  },
-                                  background: Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red,
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    alignment: Alignment.centerLeft,
-                                    padding: const EdgeInsets.only(left: 20),
-                                    child: const Icon(
-                                      Icons.delete,
-                                      color: Colors.white,
-                                      size: 32,
-                                    ),
-                                  ),
-                                  secondaryBackground: Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red,
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    alignment: Alignment.centerRight,
-                                    padding: const EdgeInsets.only(right: 20),
-                                    child: const Icon(
-                                      Icons.delete,
-                                      color: Colors.white,
-                                      size: 32,
-                                    ),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: SolicitudServicioCard(
-                                      solicitud: solicitud,
-                                      segundosRestantes: segundosRestantes,
-                                      destacada: esPrincipal,
-                                      onAceptar: () =>
-                                          _aceptarSolicitud(solicitudId),
-                                      onRechazar: () =>
-                                          _rechazarSolicitud(solicitudId),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
-      ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

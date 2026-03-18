@@ -17,6 +17,7 @@ class StandardMap extends StatelessWidget {
   final Function(LatLng)? onTap;
   final Function(LatLng)? onLongPress;
   final MapType mapType;
+  final EdgeInsets mapPadding;
 
   const StandardMap({
     super.key,
@@ -34,6 +35,7 @@ class StandardMap extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.mapType = MapType.normal,
+    this.mapPadding = const EdgeInsets.only(top: 80, bottom: 100),
   });
 
   @override
@@ -57,7 +59,7 @@ class StandardMap extends StatelessWidget {
       onCameraIdle: onCameraIdle,
       onTap: onTap,
       onLongPress: onLongPress,
-      padding: const EdgeInsets.only(top: 80, bottom: 100),
+      padding: mapPadding,
     );
   }
 }
