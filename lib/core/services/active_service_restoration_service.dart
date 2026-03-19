@@ -120,11 +120,10 @@ class ActiveServiceRestorationService {
       return null;
     }
 
-    final roles = authProvider.roles;
-    AppLogger.d('🔍 [Restoration] Roles del usuario: $roles');
+    AppLogger.d('🔍 [Restoration] Roles del usuario: ${authProvider.roles}');
 
     // Si es conductor, verificar servicio activo de conductor
-    if (roles.contains('conductor') || roles.contains('CONDUCTOR')) {
+    if (authProvider.hasConductorRole) {
       final servicioActivoConductor = await verificarServicioActivoConductor();
       if (servicioActivoConductor != null) {
         return servicioActivoConductor;
@@ -132,9 +131,7 @@ class ActiveServiceRestorationService {
     }
 
     // Si es pasajero, verificar servicio activo de pasajero
-    if (roles.contains('pasajero') ||
-        roles.contains('PASAJERO') ||
-        roles.contains('passenger')) {
+    if (authProvider.hasPasajeroRole) {
       final servicioActivoPasajero = await verificarServicioActivoPasajero();
       if (servicioActivoPasajero != null) {
         return servicioActivoPasajero;

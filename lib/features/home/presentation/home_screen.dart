@@ -55,13 +55,13 @@ class _HomeScreenState extends State<HomeScreen> {
         Widget body;
 
         // Verificar rol activo/conductor
-        if (activeRole == 'CONDUCTOR' ||
+        if (activeRole == AuthProvider.roleConductor ||
             (!authProvider.canSwitchRole && authProvider.hasConductorRole)) {
           AppLogger.d('✅ HomeScreen: Mostrando pantalla de CONDUCTOR');
           body = const HomeConductor(stories: []);
         }
         // Verificar rol activo/pasajero
-        else if (activeRole == 'PASAJERO' ||
+        else if (activeRole == AuthProvider.rolePasajero ||
             (!authProvider.canSwitchRole && authProvider.hasPasajeroRole)) {
           AppLogger.d('✅ HomeScreen: Mostrando pantalla de PASAJERO');
           body = const HomePasajero(stories: []);
@@ -313,14 +313,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 16),
                     buildRoleCard(
-                      role: 'PASAJERO',
+                      role: AuthProvider.rolePasajero,
                       title: 'Pasajero',
                       subtitle: 'Solicitar viaje y gestionar servicios.',
                       icon: Icons.person_outline,
                     ),
                     const SizedBox(height: 12),
                     buildRoleCard(
-                      role: 'CONDUCTOR',
+                      role: AuthProvider.roleConductor,
                       title: 'Conductor',
                       subtitle: 'Recibir solicitudes y trabajar en turno.',
                       icon: Icons.local_taxi_outlined,

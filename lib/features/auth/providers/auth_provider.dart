@@ -4,6 +4,8 @@ import '../services/auth_service.dart';
 import '../data/auth_model.dart';
 
 class AuthProvider with ChangeNotifier {
+  static const String roleConductor = 'CONDUCTOR-INTELLITAXI';
+  static const String rolePasajero = 'PASAJERO-INTELLITAXI';
   final AuthService _authService = AuthService();
   static const String _activeRoleKey = 'active_role';
   bool isLoading = false;
@@ -33,12 +35,12 @@ class AuthProvider with ChangeNotifier {
   bool get hasConductorRole => roles.any(_isConductorRole);
   bool get hasPasajeroRole => roles.any(_isPasajeroRole);
   bool get canSwitchRole =>
-      _availableAppRoles.contains('CONDUCTOR') &&
-      _availableAppRoles.contains('PASAJERO');
+      _availableAppRoles.contains(roleConductor) &&
+      _availableAppRoles.contains(rolePasajero);
   List<String> get _availableAppRoles {
     final result = <String>[];
-    if (hasConductorRole) result.add('CONDUCTOR');
-    if (hasPasajeroRole) result.add('PASAJERO');
+    if (hasConductorRole) result.add(roleConductor);
+    if (hasPasajeroRole) result.add(rolePasajero);
     return result;
   }
 
@@ -278,7 +280,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> setActiveRole(String role) async {
-    final normalized = role.toUpperCase();
+    final normalized = _normalizeAppRole(role);
     if (!_availableAppRoles.contains(normalized)) return;
     if (_activeRole == normalized) return;
 
@@ -301,7 +303,8 @@ class AuthProvider with ChangeNotifier {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_activeRoleKey)?.toUpperCase();
+    final storedRaw = prefs.getString(_activeRoleKey);
+    final stored = storedRaw == null ? null : _normalizeAppRole(storedRaw);
 
     if (stored != null && available.contains(stored)) {
       _activeRole = stored;
@@ -321,11 +324,23 @@ class AuthProvider with ChangeNotifier {
 
   bool _isConductorRole(String role) {
     final r = role.toUpperCase();
-    return r == 'CONDUCTOR' || r == 'MOTORISTA' || r == 'DRIVER';
+    return r == roleConductor ||
+        r == 'CONDUCTOR' ||
+        r == 'MOTORISTA' ||
+        r == 'DRIVER';
   }
 
   bool _isPasajeroRole(String role) {
     final r = role.toUpperCase();
-    return r == 'PASAJERO' || r == 'PASSENGER' || r == 'CLIENTE';
+    return r == rolePasajero ||
+        r == 'PASAJERO' ||
+        r == 'PASSENGER' ||
+        r == 'CLIENTE';
+  }
+
+  String _normalizeAppRole(String role) {
+    if (_isConductorRole(role)) return roleConductor;
+    if (_isPasajeroRole(role)) return rolePasajero;
+    return role.toUpperCase();
   }
 }

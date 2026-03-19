@@ -23,26 +23,26 @@ class CustomDrawer extends StatelessWidget {
         title: 'Mis Servicios Terminados',
         icon: Iconsax.task_square_copy,
         route: '/historial-conductor',
-        allowedRoles: ["CONDUCTOR"],
+        allowedRoles: [AuthProvider.roleConductor],
       ),
       DrawerItem(
         title: 'Mis Calificaciones',
         icon: Iconsax.star_1_copy,
         route: '/calificaciones-conductor',
-        allowedRoles: ["CONDUCTOR"],
+        allowedRoles: [AuthProvider.roleConductor],
       ),
       // Opciones de historial y calificaciones para pasajero
       DrawerItem(
         title: 'Mis Viajes',
         icon: Iconsax.routing_2_copy,
         route: '/historial-pasajero',
-        allowedRoles: ["PASAJERO"],
+        allowedRoles: [AuthProvider.rolePasajero],
       ),
       DrawerItem(
         title: 'Mis Calificaciones',
         icon: Iconsax.star_1_copy,
         route: '/calificaciones-pasajero',
-        allowedRoles: ["PASAJERO"],
+        allowedRoles: [AuthProvider.rolePasajero],
       ),
       // Opciones existentes
       // DrawerItem(
@@ -61,19 +61,19 @@ class CustomDrawer extends StatelessWidget {
         title: 'Mis Sanciones',
         icon: Iconsax.warning_2_copy,
         route: '/mis-sanciones',
-        allowedRoles: ["CONDUCTOR"],
+        allowedRoles: [AuthProvider.roleConductor],
       ),
       DrawerItem(
         title: 'Mis Documentos',
         icon: Iconsax.document_text_copy,
         route: '/mis-documentos',
-        allowedRoles: ["MOTORISTA", "CONDUCTOR"],
+        allowedRoles: ["MOTORISTA", AuthProvider.roleConductor],
       ),
       DrawerItem(
         title: 'Mis Vehículos',
         icon: Iconsax.car_copy,
         route: '/mis-vehiculos',
-        allowedRoles: ["CONDUCTOR"],
+        allowedRoles: [AuthProvider.roleConductor],
       ),
       // DrawerItem(
       //   title: 'Kanban',
@@ -417,7 +417,7 @@ class CustomDrawer extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 16),
                                   buildRoleCard(
-                                    role: 'PASAJERO',
+                                    role: AuthProvider.rolePasajero,
                                     title: 'Pasajero',
                                     subtitle:
                                         'Solicitar viaje y gestionar servicios.',
@@ -425,7 +425,7 @@ class CustomDrawer extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 12),
                                   buildRoleCard(
-                                    role: 'CONDUCTOR',
+                                    role: AuthProvider.roleConductor,
                                     title: 'Conductor',
                                     subtitle:
                                         'Recibir solicitudes y trabajar en turno.',

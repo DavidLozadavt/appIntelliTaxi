@@ -59,6 +59,7 @@ class PlacesService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         AppLogger.d('📦 Response data status: ${data['status']}');
+        _metrics.trackStatus('textsearch', data['status']?.toString());
 
         if (data['status'] == 'OK') {
           final results = (data['results'] as List)
@@ -156,6 +157,7 @@ class PlacesService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         AppLogger.d('📦 Response data status: ${data['status']}');
+        _metrics.trackStatus('autocomplete', data['status']?.toString());
 
         if (data['status'] == 'OK') {
           final predictions = (data['predictions'] as List)
@@ -225,6 +227,7 @@ class PlacesService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         AppLogger.d('📦 Response data status: ${data['status']}');
+        _metrics.trackStatus('details', data['status']?.toString());
 
         if (data['status'] == 'OK') {
           final placeDetails = PlaceDetails.fromJson(data['result']);
@@ -312,6 +315,7 @@ class _PlacesMetrics {
   int detailsApiCalls = 0;
   int detailsCacheHits = 0;
   int _lastLoggedTotal = 0;
+  final Map<String, int> statusCounters = {};
 
   void logIfNeeded() {
     final total = totalApiCalls + totalCacheHits;
@@ -327,6 +331,19 @@ class _PlacesMetrics {
       searchApiCalls + autocompleteApiCalls + detailsApiCalls;
   int get totalCacheHits =>
       searchCacheHits + autocompleteCacheHits + detailsCacheHits;
+
+  void trackStatus(String operation, String? status) {
+    final normalized = (status == null || status.isEmpty) ? 'UNKNOWN' : status;
+    final key = '$operation:$normalized';
+    statusCounters[key] = (statusCounters[key] ?? 0) + 1;
+
+    if (normalized != 'OK' && normalized != 'ZERO_RESULTS') {
+      AppLogger.w(
+        'Places API status no exitoso | op=$operation status=$normalized counters=$statusCounters',
+        tag: 'MapsMetrics',
+      );
+    }
+  }
 
   double get cacheHitRate {
     final denominator = totalApiCalls + totalCacheHits;
