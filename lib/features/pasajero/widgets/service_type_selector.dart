@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 
 /// Widget para seleccionar el tipo de servicio (Taxi o Domicilio)
 class ServiceTypeSelector extends StatelessWidget {
@@ -71,12 +72,12 @@ class _ServiceTypeButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
-              ? (type == 'taxi' ? Colors.deepOrange : Colors.green.shade600)
+              ? (type == 'taxi' ? AppColors.primary : Colors.green.shade600)
               : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected
-                ? (type == 'taxi' ? Colors.deepOrange : Colors.green.shade600)
+                ? (type == 'taxi' ? AppColors.primary : Colors.green.shade600)
                 : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
             width: 2,
           ),

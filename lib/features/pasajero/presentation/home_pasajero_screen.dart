@@ -1020,7 +1020,7 @@ class _HomePasajeroState extends State<HomePasajero> {
                 onPressed: _requestRide,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _serviceType == 'taxi'
-                      ? Colors.green.shade600
+                      ? AppColors.primary
                       : Colors.orange.shade600,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
@@ -1093,7 +1093,7 @@ class _HomePasajeroState extends State<HomePasajero> {
           : 'Solicitar domicilio';
       onPressed = _requestRide;
       color = _serviceType == 'taxi'
-          ? Colors.green.shade600
+          ? AppColors.primary
           : Colors.orange.shade600;
     } else {
       label = _serviceType == 'taxi'
@@ -1145,11 +1145,16 @@ class _HomePasajeroState extends State<HomePasajero> {
                     size: 18,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
