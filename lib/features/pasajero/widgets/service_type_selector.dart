@@ -15,30 +15,41 @@ class ServiceTypeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _ServiceTypeButton(
-            type: 'taxi',
-            icon: Iconsax.car_copy,
-            title: 'Taxi',
-            subtitle: 'Viaje rápido',
-            isSelected: selectedType == 'taxi',
-            onTap: () => onTypeChanged('taxi'),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ServiceTypeButton(
+              type: 'taxi',
+              icon: Iconsax.car_copy,
+              title: 'Taxi',
+              subtitle: 'Viaje rápido',
+              isSelected: selectedType == 'taxi',
+              onTap: () => onTypeChanged('taxi'),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _ServiceTypeButton(
-            type: 'domicilio',
-            icon: Iconsax.shopping_bag_copy,
-            title: 'Domicilio',
-            subtitle: 'Envío rápido',
-            isSelected: selectedType == 'domicilio',
-            onTap: () => onTypeChanged('domicilio'),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _ServiceTypeButton(
+              type: 'domicilio',
+              icon: Iconsax.shopping_bag_copy,
+              title: 'Domicilio',
+              subtitle: 'Envío rápido',
+              isSelected: selectedType == 'domicilio',
+              onTap: () => onTypeChanged('domicilio'),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -64,35 +75,56 @@ class _ServiceTypeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final activeColor = type == 'taxi' ? AppColors.primary : AppColors.secondary;
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? (type == 'taxi' ? AppColors.primary : Colors.green.shade600)
-              : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? (type == 'taxi' ? AppColors.primary : Colors.green.shade600)
-                : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
-            width: 2,
-          ),
+              ? (isDark ? Colors.white : Colors.white)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+          border: isSelected
+              ? Border.all(color: activeColor.withValues(alpha: 0.12))
+              : null,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: activeColor.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 22,
-              color: isSelected
-                  ? Colors.white
-                  : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? activeColor.withValues(alpha: 0.12)
+                    : (isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.white.withValues(alpha: 0.7)),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 18,
+                color: isSelected
+                    ? activeColor
+                    : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+              ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -101,9 +133,9 @@ class _ServiceTypeButton extends StatelessWidget {
                   title,
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w700,
                     color: isSelected
-                        ? Colors.white
+                        ? activeColor
                         : (isDark
                               ? Colors.grey.shade300
                               : Colors.grey.shade800),
@@ -112,9 +144,9 @@ class _ServiceTypeButton extends StatelessWidget {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 9.5,
                     color: isSelected
-                        ? Colors.white.withValues(alpha: 0.9)
+                        ? activeColor.withValues(alpha: 0.72)
                         : (isDark
                               ? Colors.grey.shade500
                               : Colors.grey.shade600),

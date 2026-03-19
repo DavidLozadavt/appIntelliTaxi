@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
 
 /// Widget reutilizable para campos de búsqueda de ubicación (origen/destino)
 class LocationSearchField extends StatelessWidget {
@@ -39,36 +40,79 @@ class LocationSearchField extends StatelessWidget {
       children: [
         Container(
           decoration: BoxDecoration(
-            color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(12),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.04)
+                : AppColors.primary.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-              width: 1,
+              color: controller.text.isNotEmpty
+                  ? AppColors.primary.withValues(alpha: 0.18)
+                  : (isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : AppColors.primary.withValues(alpha: 0.08)),
+              width: 1.1,
             ),
           ),
-          child: TextField(
-            controller: controller,
-            focusNode: focusNode,
-            onTap: onTap,
-            style: TextStyle(color: theme.textTheme.bodyLarge?.color),
-            decoration: InputDecoration(
-              hintText: label,
-              hintStyle: TextStyle(
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+          child: Row(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 14),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : AppColors.primary.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: iconColor, size: 22),
+                ),
               ),
-              prefixIcon: Icon(icon, color: iconColor),
-              suffixIcon: controller.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Iconsax.close_circle_copy),
-                      onPressed: onClear,
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 14,
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  onTap: onTap,
+                  style: TextStyle(
+                    color: theme.textTheme.bodyLarge?.color,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: label.toUpperCase(),
+                    labelStyle: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.9,
+                      color: isDark
+                          ? Colors.grey.shade400
+                          : AppColors.primary.withValues(alpha: 0.7),
+                    ),
+                    hintText: label == 'Origen'
+                        ? 'Tu ubicación actual'
+                        : '¿A dónde vamos?',
+                    hintStyle: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade500,
+                    ),
+                    suffixIcon: controller.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Iconsax.close_circle_copy),
+                            onPressed: onClear,
+                            color: AppColors.primary.withValues(alpha: 0.7),
+                          )
+                        : null,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 16,
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
 
@@ -83,9 +127,11 @@ class LocationSearchField extends StatelessWidget {
             margin: const EdgeInsets.only(top: 8),
             decoration: BoxDecoration(
               color: theme.cardColor,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                color: isDark
+                    ? Colors.grey.shade700
+                    : AppColors.primary.withValues(alpha: 0.12),
                 width: 1,
               ),
             ),
