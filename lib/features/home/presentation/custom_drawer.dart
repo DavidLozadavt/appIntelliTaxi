@@ -26,6 +26,12 @@ class CustomDrawer extends StatelessWidget {
         allowedRoles: [AuthProvider.roleConductor],
       ),
       DrawerItem(
+        title: 'Entregas',
+        icon: Iconsax.box_1_copy,
+        route: '/entregas',
+        allowedRoles: [AuthProvider.roleConductor],
+      ),
+      DrawerItem(
         title: 'Mis Calificaciones',
         icon: Iconsax.star_1_copy,
         route: '/calificaciones-conductor',
@@ -203,46 +209,50 @@ class CustomDrawer extends StatelessWidget {
 
           const SizedBox(height: 8),
 
-          // ITEMS mejorados
-          ...visibleDrawerItems.map(
-            (item) => Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
+          // ITEMS mejorados (scrollable)
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                ...visibleDrawerItems.map(
+                  (item) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(item.icon, color: AppColors.accent, size: 22),
+                      ),
+                      title: Text(
+                        item.title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      trailing: Icon(
+                        Iconsax.arrow_right_3_copy,
+                        size: 18,
+                        color: Colors.grey.shade400,
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, item.route);
+                      },
+                    ),
                   ),
-                  child: Icon(item.icon, color: AppColors.accent, size: 22),
                 ),
-                title: Text(
-                  item.title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                trailing: Icon(
-                  Iconsax.arrow_right_3_copy,
-                  size: 18,
-                  color: Colors.grey.shade400,
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(context, item.route);
-                },
-              ),
-            ),
-          ),
 
-          if (auth.canSwitchRole)
+                if (auth.canSwitchRole)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
@@ -450,8 +460,9 @@ class CustomDrawer extends StatelessWidget {
                 },
               ),
             ),
-
-          const Spacer(),
+              ],
+            ),
+          ),
 
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),

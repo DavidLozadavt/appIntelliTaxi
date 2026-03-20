@@ -86,7 +86,7 @@ class _ServiceTypeButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? (isDark ? Colors.white : Colors.white)
+              ? activeColor.withValues(alpha: isDark ? 0.18 : 0.12)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(18),
           border: isSelected
@@ -110,7 +110,7 @@ class _ServiceTypeButton extends StatelessWidget {
               height: 32,
               decoration: BoxDecoration(
                 color: isSelected
-                    ? activeColor.withValues(alpha: 0.12)
+                    ? Colors.white.withValues(alpha: 0.2)
                     : (isDark
                           ? Colors.white.withValues(alpha: 0.08)
                           : Colors.white.withValues(alpha: 0.7)),
@@ -120,7 +120,7 @@ class _ServiceTypeButton extends StatelessWidget {
                 icon,
                 size: 18,
                 color: isSelected
-                    ? activeColor
+                    ? Colors.white
                     : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
               ),
             ),
@@ -135,7 +135,7 @@ class _ServiceTypeButton extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: isSelected
-                        ? activeColor
+                        ? Colors.white
                         : (isDark
                               ? Colors.grey.shade300
                               : Colors.grey.shade800),
@@ -146,7 +146,7 @@ class _ServiceTypeButton extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 9.5,
                     color: isSelected
-                        ? activeColor.withValues(alpha: 0.72)
+                        ? Colors.white.withValues(alpha: 0.72)
                         : (isDark
                               ? Colors.grey.shade500
                               : Colors.grey.shade600),
