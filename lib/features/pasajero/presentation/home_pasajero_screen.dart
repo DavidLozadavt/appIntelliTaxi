@@ -84,6 +84,7 @@ class _HomePasajeroState extends State<HomePasajero> {
   List<PlacePrediction> _destinationPredictions = [];
   bool _isSearchingOrigin = false;
   bool _isSearchingDestination = false;
+  bool _isSubmittingRide = false;
   Timer? _originSearchDebounce;
   Timer? _destinationSearchDebounce;
   int _originSearchRequestId = 0;
@@ -1084,14 +1085,16 @@ class _HomePasajeroState extends State<HomePasajero> {
 
     if (_serviceType != 'taxi' && hasOrigin && hasDestination && !hasRoute) {
       label = 'Reintentar ruta';
-      onPressed = _drawRoute;
+      onPressed = _isSubmittingRide ? null : _drawRoute;
       color = Colors.deepOrange;
     } else if (hasOrigin &&
         (_serviceType == 'taxi' || (hasDestination && hasRoute))) {
-      label = _serviceType == 'taxi'
-          ? 'Solicitar viaje'
-          : 'Solicitar domicilio';
-      onPressed = _requestRide;
+      label = _isSubmittingRide
+          ? 'Enviando solicitud...'
+          : (_serviceType == 'taxi'
+                ? 'Solicitar viaje'
+                : 'Solicitar domicilio');
+      onPressed = _isSubmittingRide ? null : _requestRide;
       color = _serviceType == 'taxi'
           ? AppColors.primary
           : Colors.orange.shade600;
@@ -2181,10 +2184,13 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   void _requestRide() {
+    if (_isSubmittingRide) return;
     _handleRideConfirmation();
   }
 
   Future<void> _handleRideConfirmation() async {
+    if (_isSubmittingRide) return;
+
     final isDelivery = _serviceType == 'domicilio';
     final origin = _selectedOrigin;
     final destination = _selectedDestination;
@@ -2232,6 +2238,8 @@ class _HomePasajeroState extends State<HomePasajero> {
 
     final bool isDirectFlow = _selectedDirectDriver != null;
     final Conductor? selectedConductor = _selectedDirectDriver;
+
+    _setStateSafe(() => _isSubmittingRide = true);
 
     showDialog(
       context: context,
@@ -2357,6 +2365,10 @@ class _HomePasajeroState extends State<HomePasajero> {
             duration: const Duration(seconds: 4),
           ),
         );
+      }
+    } finally {
+      if (mounted) {
+        _setStateSafe(() => _isSubmittingRide = false);
       }
     }
   }
