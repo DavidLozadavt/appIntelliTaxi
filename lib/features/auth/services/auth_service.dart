@@ -40,30 +40,22 @@ class AuthService {
 
   /// 📌 REGISTER
   Future<Map<String, dynamic>> register({
-    required String identificacion,
     required String nombre1,
     required String apellido1,
-    required String fechaNac,
     required String direccion,
     required String email,
     required String celular,
-    required String sexo,
-    required int idTipoIdentificacion,
     required String password,
     required String passwordConfirmation,
     String? fotoPath,
   }) async {
     try {
       FormData formData = FormData.fromMap({
-        'identificacion': identificacion,
         'nombre1': nombre1,
         'apellido1': apellido1,
-        'fechaNac': fechaNac,
         'direccion': direccion,
         'email': email,
         'celular': celular,
-        'sexo': sexo,
-        'idTipoIdentificacion': idTipoIdentificacion,
         'password': password,
         'password_confirmation': passwordConfirmation,
         if (fotoPath != null)
