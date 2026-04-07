@@ -24,6 +24,8 @@ import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:dio/dio.dart';
+import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
@@ -53,6 +55,8 @@ class _ConductorServicioActivoScreenState
       ServicioNotificacionForeground();
   final DriverOverlayService _driverOverlayService =
       DriverOverlayService.instance;
+  final ActiveServiceRestorationService _restoration =
+      ActiveServiceRestorationService();
 
   String _estadoActual = 'aceptado';
   LatLng? _miUbicacion;
@@ -100,12 +104,89 @@ class _ConductorServicioActivoScreenState
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _driverOverlayService.hide();
+      unawaited(_sincronizarServicioRemotoEnResume());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       if (!_driverOverlayService.isRequestingPermission) {
         _driverOverlayService.show(servicioId: _safeServiceId());
       }
     }
+  }
+
+  Future<void> _sincronizarServicioRemotoEnResume() async {
+    if (_terminalNavigationInProgress || !mounted) return;
+    final sid = _safeServiceId();
+    if (sid <= 0) return;
+    try {
+      final bundle = await _restoration.obtenerServicioActivoConductorOCerrado();
+      if (!mounted || _terminalNavigationInProgress) return;
+      if (bundle == null) {
+        _terminalNavigationInProgress = true;
+        await _salirPorServicioCerradoRemoto();
+        return;
+      }
+      final serv = bundle['servicio'];
+      if (serv is! Map<String, dynamic>) return;
+      final rid = serv['id'] is int
+          ? serv['id'] as int
+          : int.tryParse(serv['id']?.toString() ?? '') ?? 0;
+      if (rid != sid) return;
+
+      setState(() {
+        widget.servicio.addAll(serv);
+        final idEst = serv['idEstado'] is int
+            ? serv['idEstado'] as int
+            : int.tryParse(serv['idEstado']?.toString() ?? '');
+        if (idEst != null) widget.servicio['idEstado'] = idEst;
+        final ui =
+            _estadoDesdeId(idEst) ?? _normalizarEstadoBackend(serv['estado']);
+        if (ui != null) _estadoActual = ui;
+        _actualizarDestinoSegunEstado(ui);
+      });
+
+      await _guardarServicioActivo();
+      _actualizarMarcadores();
+      unawaited(_dibujarRuta());
+    } on DioException {
+      // Fallo de red: no cerrar pantalla
+    } catch (e) {
+      AppLogger.d('⚠️ Resume sync servicio conductor: $e');
+    }
+  }
+
+  void _actualizarDestinoSegunEstado(String? ui) {
+    if (ui == null) return;
+    if ((ui == 'llegue' || ui == 'en_curso') && _tieneDestinoDefinido()) {
+      final destinoLat = _parseDouble(widget.servicio['destino_lat']);
+      final destinoLng = _parseDouble(widget.servicio['destino_lng']);
+      _destinoActual = LatLng(destinoLat, destinoLng);
+    } else if (ui == 'en_camino' || ui == 'aceptado') {
+      final oLa = _parseDouble(widget.servicio['origen_lat']);
+      final oLng = _parseDouble(widget.servicio['origen_lng']);
+      if (oLa != 0 && oLng != 0) {
+        _destinoActual = LatLng(oLa, oLng);
+      }
+    }
+  }
+
+  Future<void> _salirPorServicioCerradoRemoto() async {
+    try {
+      _trackingService.detenerSeguimiento();
+      await _notificacionService.cancelarNotificacion(
+        _safeServiceId(),
+        tipo: 'conductor',
+      );
+      await _persistencia.limpiarServicioActivo();
+    } catch (_) {}
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('El servicio ya no está activo en el servidor'),
+        backgroundColor: Colors.grey,
+      ),
+    );
+    Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
   }
 
   Future<void> _requestOverlayPermissionSafely() async {
@@ -167,10 +248,11 @@ class _ConductorServicioActivoScreenState
       case 1:
       case 2:
         return 'aceptado';
+      case 19:
+        return 'en_camino';
       case 3:
       case 20:
         return 'llegue';
-      case 4:
       case 21:
         return 'en_curso';
       case 6:
@@ -230,11 +312,12 @@ class _ConductorServicioActivoScreenState
     switch (idEstado) {
       case 1:
       case 2:
-      case 20:
         return 'aceptado';
+      case 19:
+        return 'en_camino';
       case 3:
+      case 20:
         return 'llegue';
-      case 4:
       case 21:
         return 'en_curso';
       case 6:
@@ -485,20 +568,66 @@ class _ConductorServicioActivoScreenState
 
   void _manejarEventoEstadoServicio(dynamic event) {
     try {
-      final Map<String, dynamic> data = event is String
+      Map<String, dynamic> data = event is String
           ? Map<String, dynamic>.from(jsonDecode(event))
           : Map<String, dynamic>.from(event as Map);
+      if (data['data'] is Map) {
+        data = Map<String, dynamic>.from(data['data'] as Map);
+      }
 
-      final estado = _normalizarEstadoBackend(data['estado']);
+      final estadoNombre = data['estado']?.toString();
       final estadoIdRaw = data['estado_id'];
       final estadoId = estadoIdRaw is int
           ? estadoIdRaw
           : int.tryParse(estadoIdRaw?.toString() ?? '');
 
-      if (estado == 'cancelado' || estadoId == 6) {
+      if (!mounted || _terminalNavigationInProgress) return;
+
+      if (estadoId != null) {
+        widget.servicio['idEstado'] = estadoId;
+      }
+      if (estadoNombre != null && estadoNombre.isNotEmpty) {
+        widget.servicio['estado'] = estadoNombre;
+      }
+
+      final estadoUi =
+          _normalizarEstadoBackend(estadoNombre) ?? _estadoDesdeId(estadoId);
+
+      if (estadoUi == 'cancelado' || estadoId == 6) {
         _terminalNavigationInProgress = true;
         _salirPorServicioCancelado();
+        return;
       }
+
+      if (estadoUi == 'finalizado' || estadoId == 22) {
+        _terminalNavigationInProgress = true;
+        setState(() => _estadoActual = 'finalizado');
+        Future<void>.delayed(const Duration(seconds: 1), () {
+          if (mounted) unawaited(_finalizarServicio());
+        });
+        return;
+      }
+
+      setState(() {
+        if (estadoUi != null) {
+          _estadoActual = estadoUi;
+        }
+        _actualizarDestinoSegunEstado(estadoUi);
+      });
+
+      unawaited(_guardarServicioActivo());
+      _actualizarMarcadores();
+      unawaited(_dibujarRuta());
+
+      unawaited(
+        _notificacionService.actualizarNotificacion(
+          servicioId: _safeServiceId(),
+          tipo: 'conductor',
+          estado: estadoUi ?? _estadoActual,
+          origen: widget.servicio['origen_address'] ?? 'Origen',
+          destino: widget.servicio['destino_address'] ?? 'A convenir',
+        ),
+      );
     } catch (e) {
       AppLogger.d('⚠️ Error procesando servicio.estado.cambiado: $e');
     }
@@ -754,7 +883,9 @@ class _ConductorServicioActivoScreenState
       setState(() {
         _estadoActual = nuevoEstado;
         if (nuevoEstado == 'llegue') {
-          widget.servicio['idEstado'] = 3;
+          widget.servicio['idEstado'] = 20;
+        } else if (nuevoEstado == 'en_camino') {
+          widget.servicio['idEstado'] = 19;
         } else if (nuevoEstado == 'en_curso') {
           widget.servicio['idEstado'] = 21;
         } else if (nuevoEstado == 'finalizado') {
@@ -778,12 +909,18 @@ class _ConductorServicioActivoScreenState
           final destinoLat = _parseDouble(widget.servicio['destino_lat']);
           final destinoLng = _parseDouble(widget.servicio['destino_lng']);
           _destinoActual = LatLng(destinoLat, destinoLng);
+        } else if (nuevoEstado == 'en_camino') {
+          final oLa = _parseDouble(widget.servicio['origen_lat']);
+          final oLng = _parseDouble(widget.servicio['origen_lng']);
+          if (oLa != 0 && oLng != 0) {
+            _destinoActual = LatLng(oLa, oLng);
+          }
         }
       });
 
       // Actualizar notificación persistente
       await _notificacionService.actualizarNotificacion(
-        servicioId: widget.servicio['id'],
+        servicioId: _safeServiceId(),
         tipo: 'conductor',
         estado: nuevoEstado,
         origen: widget.servicio['origen_address'] ?? 'Origen',

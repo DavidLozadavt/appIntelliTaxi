@@ -91,7 +91,7 @@ Future<void> main() async {
 
 Future<void> _bootstrapRuntimeServices() async {
   try {
-    await FirebaseMsg().initFCM().timeout(const Duration(seconds: 8));
+    await FirebaseMsg().initFCM().timeout(const Duration(seconds: 60));
   } catch (e, st) {
     AppLogger.e(
       'No se pudo inicializar FCM en segundo plano de arranque',
@@ -102,7 +102,7 @@ Future<void> _bootstrapRuntimeServices() async {
   }
 
   try {
-    await PusherService.initialize().timeout(const Duration(seconds: 8));
+    await PusherService.initialize().timeout(const Duration(seconds: 60));
   } catch (e, st) {
     AppLogger.e(
       'No se pudo inicializar Pusher en segundo plano de arranque',

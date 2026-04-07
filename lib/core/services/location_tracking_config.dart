@@ -6,6 +6,6 @@ class LocationTrackingConfig {
   static const double minDistanceMeters = 8.0;
 
   // Timeouts de red.
-  static const int connectTimeoutSeconds = 10;
-  static const int receiveTimeoutSeconds = 10;
+  static const int connectTimeoutSeconds = 60;
+  static const int receiveTimeoutSeconds = 60;
 }

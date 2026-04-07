@@ -177,6 +177,44 @@ class ActiveServiceRestorationService {
     };
   }
 
+  /// Respuesta 200 con datos o `null` si el backend responde 404 (sin servicio activo).
+  /// Propaga [DioException] en fallos de red para no confundir con “servicio cerrado”.
+  Future<Map<String, dynamic>?> obtenerServicioActivoConductorOCerrado() async {
+    try {
+      final response = await _dio.get('taxi/servicio-activo-conductor');
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data;
+        if (data is Map &&
+            data['success'] == true &&
+            data['data'] is Map) {
+          final inner = Map<String, dynamic>.from(data['data'] as Map);
+          final rawServicio = inner['servicio'];
+          if (rawServicio is Map) {
+            final servicio = _normalizarServicio(
+              Map<String, dynamic>.from(rawServicio),
+            );
+            return {
+              'tipo': 'conductor',
+              'servicio': servicio,
+              'vehiculo': inner['vehiculo'],
+              'pasajero': inner['pasajero'],
+            };
+          }
+        }
+      }
+      return null;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        AppLogger.d(
+          'ℹ️ [Restoration] servicio-activo-conductor 404 (sin servicio)',
+        );
+        return null;
+      }
+      rethrow;
+    }
+  }
+
   /// Determina si un servicio está activo basándose en el idEstado
   /// Estados NO activos: cancelado, finalizado
   /// Estados activos: todos los demás con finServicio = null
@@ -194,13 +232,8 @@ class ActiveServiceRestorationService {
       return false;
     }
 
-    // Estados que indican que el servicio NO está activo
-    // Ajustar según los IDs de estados en tu BD
-    final estadosInactivos = [
-      5,
-      6,
-      7,
-    ]; // Ejemplo: 5=cancelado, 6=finalizado, 7=rechazado
+    // Estados que indican que el servicio NO está activo (taxi móvil)
+    final estadosInactivos = [5, 6, 7, 22, 23];
 
     if (idEstado != null && estadosInactivos.contains(idEstado)) {
       AppLogger.d('ℹ️ [Restoration] Servicio con estado inactivo: $idEstado');

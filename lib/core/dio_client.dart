@@ -12,8 +12,9 @@ class DioClient {
       _dio = Dio(
         BaseOptions(
           baseUrl: AppConfig.baseUrl,
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10),
+          connectTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 60),
           followRedirects: false, // No seguir redirecciones automáticamente
           validateStatus: (status) {
             // Aceptar respuestas 200-299

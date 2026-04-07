@@ -27,7 +27,8 @@ class HomeConductor extends StatefulWidget {
   State<HomeConductor> createState() => _HomeConductorState();
 }
 
-class _HomeConductorState extends State<HomeConductor> {
+class _HomeConductorState extends State<HomeConductor>
+    with WidgetsBindingObserver {
   GoogleMapController? _mapController;
   late ConductorHomeProvider _provider;
 
@@ -43,6 +44,7 @@ class _HomeConductorState extends State<HomeConductor> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _provider = context.read<ConductorHomeProvider>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -134,9 +136,17 @@ class _HomeConductorState extends State<HomeConductor> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _bannerTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_provider.sincronizarSolicitudesPublicadasConductor());
+    }
   }
 
   String _getSolicitudId(Map<String, dynamic> solicitud) {

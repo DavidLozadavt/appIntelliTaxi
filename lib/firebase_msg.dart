@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/main.dart';
@@ -5,21 +6,94 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
+/// Payload `data` de FCM taxi (backend: FCMServiceIntelliTaxi).
+bool _isTaxiServiceNotificationData(Map<String, dynamic> data) {
+  final route = data['route']?.toString().toLowerCase().trim() ?? '';
+  if (route == 'servicio') return true;
+  final tipo = data['tipo']?.toString().toLowerCase() ?? '';
+  if (tipo.contains('nueva_solicitud_servicio')) return true;
+  if (tipo.contains('servicio_asignado')) return true;
+  return false;
+}
+
+bool _isCalificacionNotificationData(Map<String, dynamic> data) {
+  final tipo = data['tipo']?.toString().toLowerCase() ?? '';
+  return tipo.contains('calificacion');
+}
+
+void navigateFromFcmData(Map<String, dynamic>? data) {
+  if (data == null || data.isEmpty) {
+    AppLogger.d('📱 FCM sin data; fallback chat');
+    navigatorKey.currentState?.pushNamed('/chat');
+    return;
+  }
+  if (_isCalificacionNotificationData(data)) {
+    AppLogger.d('🔔 FCM → notificaciones (calificación)');
+    navigatorKey.currentState?.pushNamed('/notifications');
+    return;
+  }
+  if (_isTaxiServiceNotificationData(data)) {
+    AppLogger.d('🚕 FCM → inicio (solicitud / servicio taxi)');
+    navigatorKey.currentState?.pushNamed('/home');
+    return;
+  }
+  AppLogger.d('📱 FCM tipo no taxi; fallback chat');
+  navigatorKey.currentState?.pushNamed('/chat');
+}
+
+/// Parsea payload de notificación local (JSON) o heurística si era `Map.toString()`.
+Map<String, dynamic>? _parseNotificationPayloadString(String? payload) {
+  if (payload == null || payload.trim().isEmpty) return null;
+  try {
+    final decoded = jsonDecode(payload);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+  } catch (_) {}
+  final tipo = RegExp(
+    r'''tipo['"]?\s*[:=]\s*['"]?([^,'"}\s]+)''',
+  ).firstMatch(payload)?.group(1);
+  final route = RegExp(
+    r'''route['"]?\s*[:=]\s*['"]?([^,'"}\s]+)''',
+  ).firstMatch(payload)?.group(1);
+  final sid = RegExp(
+    r'''servicio_id['"]?\s*[:=]\s*['"]?([^,'"}\s]+)''',
+  ).firstMatch(payload)?.group(1);
+  if (tipo != null || route != null || sid != null) {
+    return {
+      if (tipo != null) 'tipo': tipo,
+      if (route != null) 'route': route,
+      if (sid != null) 'servicio_id': sid,
+    };
+  }
+  return null;
+}
+
 void onNotificationTap(NotificationResponse notificationResponse) {
-  // Obtener el payload (datos de la notificación)
   final payload = notificationResponse.payload;
   AppLogger.d('📱 Notificación tocada. Payload: $payload');
 
-  // Si el payload contiene información del tipo de notificación
-  if (payload != null && payload.contains('tipo')) {
-    if (payload.contains('calificacion') || payload.contains('CALIFICACION')) {
-      AppLogger.d('🔔 Navegando a pantalla de notificaciones (calificación)');
-      navigatorKey.currentState?.pushNamed('/notifications');
-      return;
-    }
+  final data = _parseNotificationPayloadString(payload);
+  if (data != null) {
+    navigateFromFcmData(data);
+    return;
   }
 
-  // Por defecto, ir a chat
+  if (payload != null &&
+      (payload.contains('nueva_solicitud_servicio') ||
+          payload.contains('servicio_asignado') ||
+          payload.contains("'route': servicio") ||
+          payload.contains('"route":"servicio"'))) {
+    navigateFromFcmData({'tipo': 'nueva_solicitud_servicio'});
+    return;
+  }
+
+  if (payload != null &&
+      (payload.contains('calificacion') ||
+          payload.contains('CALIFICACION'))) {
+    navigatorKey.currentState?.pushNamed('/notifications');
+    return;
+  }
+
   navigatorKey.currentState?.pushNamed('/chat');
 }
 
@@ -47,15 +121,9 @@ class FirebaseMsg {
         'Notificación abierta desde segundo plano: ${message.notification?.title}',
       );
       AppLogger.d('Data: ${message.data}');
-
-      // Verificar si es notificación de calificación
-      final tipo = message.data['tipo']?.toString().toLowerCase();
-      if (tipo != null && tipo.contains('calificacion')) {
-        AppLogger.d('🔔 Navegando a pantalla de notificaciones (calificación)');
-        navigatorKey.currentState?.pushNamed('/notifications');
-      } else {
-        navigatorKey.currentState?.pushNamed('/chat');
-      }
+      navigateFromFcmData(
+        message.data.isEmpty ? null : Map<String, dynamic>.from(message.data),
+      );
     });
 
     _handleTerminatedStateNotification();
@@ -76,15 +144,11 @@ class FirebaseMsg {
         'App abierta desde estado terminado por notificación: ${initialMessage.notification?.title}',
       );
       AppLogger.d('Data: ${initialMessage.data}');
-
-      // Verificar si es notificación de calificación
-      final tipo = initialMessage.data['tipo']?.toString().toLowerCase();
-      if (tipo != null && tipo.contains('calificacion')) {
-        AppLogger.d('🔔 Navegando a pantalla de notificaciones (calificación)');
-        navigatorKey.currentState?.pushNamed('/notifications');
-      } else {
-        navigatorKey.currentState?.pushNamed('/chat');
-      }
+      navigateFromFcmData(
+        initialMessage.data.isEmpty
+            ? null
+            : Map<String, dynamic>.from(initialMessage.data),
+      );
     }
   }
 
@@ -200,8 +264,7 @@ class FirebaseMsg {
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
     );
 
-    // Pasar los datos de la notificación como payload (convertir a String)
-    String payload = message.data.toString();
+    final payload = jsonEncode(message.data);
 
     await localNotifications.show(
       id: 0,

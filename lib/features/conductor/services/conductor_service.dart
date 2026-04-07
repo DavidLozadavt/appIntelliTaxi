@@ -351,6 +351,26 @@ class ConductorService {
     }
   }
 
+  /// Solicitudes publicadas (estado 4) de la empresa del conductor — sincronización con backend.
+  Future<List<Map<String, dynamic>>> listarSolicitudesPublicadasConductor() async {
+    try {
+      final response = await _dio.get('taxi/solicitudes-publicadas-conductor');
+      if (response.statusCode != 200 || response.data == null) {
+        return [];
+      }
+      final data = response.data;
+      if (data is! Map) return [];
+      final raw = data['solicitudes'];
+      if (raw is! List) return [];
+      return raw
+          .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>))
+          .toList();
+    } catch (e) {
+      AppLogger.d('⚠️ Error listando solicitudes publicadas: $e');
+      rethrow;
+    }
+  }
+
   /// Cancelar servicio activo
   Future<Map<String, dynamic>> cancelarServicio({
     required int servicioId,

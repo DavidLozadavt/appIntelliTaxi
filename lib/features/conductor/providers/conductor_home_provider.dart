@@ -48,6 +48,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   final Map<String, Timer> _timersExpiracion = {};
   final Map<String, DateTime> _expiracionPorSolicitud = {};
   Timer? _tickerExpiracionUI;
+  Timer? _syncSolicitudesTimer;
   bool _suscritoAPusher = false;
   final Set<String> _offerChannels = {};
   final Set<String> _offerHandlerKeys = {};
@@ -95,6 +96,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _timersExpiracion.clear();
     _tickerExpiracionUI?.cancel();
     _tickerExpiracionUI = null;
+    _detenerSincronizacionSolicitudes();
     _liveLocationTicker?.cancel();
     _liveLocationTicker = null;
     VoiceAlertService.dispose();
@@ -175,15 +177,61 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       _suscritoAPusher = true;
+      _iniciarSincronizacionSolicitudes();
+      unawaited(sincronizarSolicitudesPublicadasConductor());
       AppLogger.d('✅ Suscrito correctamente al canal de solicitudes');
     } catch (e) {
       AppLogger.d('❌ Error al conectarse a Pusher: $e');
     }
   }
 
+  void _iniciarSincronizacionSolicitudes() {
+    _syncSolicitudesTimer?.cancel();
+    _syncSolicitudesTimer = Timer.periodic(const Duration(seconds: 50), (_) {
+      if (!_isDisposed && _suscritoAPusher && _isOnline) {
+        sincronizarSolicitudesPublicadasConductor();
+      }
+    });
+  }
+
+  void _detenerSincronizacionSolicitudes() {
+    _syncSolicitudesTimer?.cancel();
+    _syncSolicitudesTimer = null;
+  }
+
+  /// Alinea la cola local con el backend (otro conductor aceptó, realtime perdido, etc.).
+  Future<void> sincronizarSolicitudesPublicadasConductor() async {
+    if (_isDisposed || !_isOnline) return;
+    try {
+      final list = await _conductorService.listarSolicitudesPublicadasConductor();
+      final serverIds = <String>{};
+      for (final m in list) {
+        final sid = m['servicio_id'] ?? m['solicitud_id'] ?? m['id'];
+        if (sid != null) serverIds.add(sid.toString());
+      }
+
+      for (final s in List<Map<String, dynamic>>.from(_solicitudesActivas)) {
+        final id = _obtenerSolicitudId(s);
+        if (id == null || id.isEmpty || id.startsWith('temp_')) continue;
+        if (int.tryParse(id) == null) continue;
+        if (!serverIds.contains(id)) {
+          rechazarSolicitud(id);
+        }
+      }
+
+      for (final m in list) {
+        _procesarNuevaSolicitud(m, fromSync: true);
+      }
+      if (!_isDisposed) notifyListeners();
+    } catch (e) {
+      AppLogger.d('⚠️ Sync solicitudes publicadas: $e');
+    }
+  }
+
   /// Desconecta de Pusher
   Future<void> desconectarPusher() async {
     try {
+      _detenerSincronizacionSolicitudes();
       AppLogger.d('🔌 Desconectándose de Pusher...');
       for (final eventName in const [
         'nueva-solicitud',
@@ -215,7 +263,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Procesa una nueva solicitud recibida de Pusher
-  void _procesarNuevaSolicitud(dynamic data, {bool isDirectOffer = false}) {
+  void _procesarNuevaSolicitud(
+    dynamic data, {
+    bool isDirectOffer = false,
+    bool fromSync = false,
+  }) {
     try {
       final raw = _parsePayload(data);
       final solicitud = isDirectOffer ? _normalizarOfertaDirecta(raw) : raw;
@@ -243,9 +295,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Agregar solicitud a la lista
       _solicitudesActivas.add(solicitud);
 
-      // Reproducir sonido de notificación
-      _reproducirSonidoNotificacion();
-      VoiceAlertService.announceNewService();
+      if (!fromSync) {
+        _reproducirSonidoNotificacion();
+        VoiceAlertService.announceNewService();
+      }
 
       final ttlSegundos = _resolverTtlSegundos(solicitud);
       _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
