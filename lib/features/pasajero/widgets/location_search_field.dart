@@ -15,6 +15,8 @@ class LocationSearchField extends StatelessWidget {
   final VoidCallback onClear;
   final FocusNode? focusNode;
   final VoidCallback? onTap;
+  /// Enter / acción de teclado (ej. buscar dirección escrita)
+  final ValueChanged<String>? onFieldSubmitted;
 
   const LocationSearchField({
     super.key,
@@ -28,6 +30,7 @@ class LocationSearchField extends StatelessWidget {
     required this.onClear,
     this.focusNode,
     this.onTap,
+    this.onFieldSubmitted,
   });
 
   @override
@@ -74,6 +77,10 @@ class LocationSearchField extends StatelessWidget {
                   controller: controller,
                   focusNode: focusNode,
                   onTap: onTap,
+                  textInputAction: onFieldSubmitted != null
+                      ? TextInputAction.search
+                      : TextInputAction.done,
+                  onSubmitted: onFieldSubmitted,
                   style: TextStyle(
                     color: theme.textTheme.bodyLarge?.color,
                     fontSize: 18,

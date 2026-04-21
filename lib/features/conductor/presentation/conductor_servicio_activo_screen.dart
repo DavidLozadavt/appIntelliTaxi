@@ -26,6 +26,7 @@ import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
+import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
@@ -67,6 +68,8 @@ class _ConductorServicioActivoScreenState
   BitmapDescriptor? _carIcon;
   StreamSubscription<Position>? _locationSubscription;
   bool _terminalNavigationInProgress = false;
+  /// Evita doble `pushNamedAndRemoveUntil` (p. ej. cancel manual + evento Pusher).
+  bool _homeNavigationScheduled = false;
 
   // 📏 Control de altura del BottomSheet
   double _sheetHeight = 0.40;
@@ -186,7 +189,7 @@ class _ConductorServicioActivoScreenState
         backgroundColor: Colors.grey,
       ),
     );
-    Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+    await _navegarAlHomeRaiz();
   }
 
   Future<void> _requestOverlayPermissionSafely() async {
@@ -200,6 +203,37 @@ class _ConductorServicioActivoScreenState
     final rawId = widget.servicio['id'];
     if (rawId is int) return rawId;
     return int.tryParse(rawId?.toString() ?? '') ?? 0;
+  }
+
+  /// Vuelve al home: cierra overlay flotante (Android), deja de escuchar Pusher y reemplaza la pila
+  /// por [NavigationScreen] (mismo módulo que usa el pasajero tras cancelar).
+  Future<void> _navegarAlHomeRaiz() async {
+    if (_homeNavigationScheduled) return;
+    _homeNavigationScheduled = true;
+    _terminalNavigationInProgress = true;
+    try {
+      _desuscribirEventosServicio();
+    } catch (_) {}
+    try {
+      await _driverOverlayService.hide();
+    } catch (_) {}
+
+    // Sin setState el overlay de cancelación (Colors.black54) sigue pintado aunque _isLoading sea false.
+    _isLoading = false;
+    if (mounted) {
+      setState(() {});
+    }
+
+    navigateReplacingStackWithHome(
+      context: mounted ? context : null,
+      onSettled: (ok) {
+        if (ok) return;
+        _homeNavigationScheduled = false;
+        _terminalNavigationInProgress = false;
+        AppLogger.d('⚠️ _navegarAlHomeRaiz: navegación no aplicada, flags liberados');
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   bool _tieneDestinoDefinido() {
@@ -947,7 +981,7 @@ class _ConductorServicioActivoScreenState
 
     // Cancelar notificación
     await _notificacionService.cancelarNotificacion(
-      widget.servicio['id'],
+      _safeServiceId(),
       tipo: 'conductor',
     );
 
@@ -959,17 +993,14 @@ class _ConductorServicioActivoScreenState
       await _mostrarDialogoCalificacionPasajero();
     }
 
-    // Navegar al home (reemplazar todas las rutas)
-    if (mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-    }
+    await _navegarAlHomeRaiz();
   }
 
   Future<void> _salirPorServicioCancelado() async {
     try {
       _trackingService.detenerSeguimiento();
       await _notificacionService.cancelarNotificacion(
-        widget.servicio['id'],
+        _safeServiceId(),
         tipo: 'conductor',
       );
       await _persistencia.limpiarServicioActivo();
@@ -984,7 +1015,7 @@ class _ConductorServicioActivoScreenState
         backgroundColor: Colors.grey,
       ),
     );
-    Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+    await _navegarAlHomeRaiz();
   }
 
   /// Muestra el diálogo para calificar al pasajero
@@ -1741,6 +1772,11 @@ class _ConductorServicioActivoScreenState
       );
 
       if (exitoso) {
+        // Quitar overlay de “cancelando” antes de awaits largos para no dejar UI negra.
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+
         // Detener tracking
         _trackingService.detenerSeguimiento();
 
@@ -1755,18 +1791,14 @@ class _ConductorServicioActivoScreenState
 
         if (!mounted) return;
 
-        // Mostrar mensaje de éxito
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           const SnackBar(
             content: Text('Servicio cancelado exitosamente'),
             backgroundColor: AppColors.green,
           ),
         );
 
-        // Volver de forma robusta al home para evitar pantalla negra
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil('/home', (route) => false);
+        await _navegarAlHomeRaiz();
       } else {
         throw Exception('No se pudo cancelar el servicio');
       }
@@ -1774,7 +1806,8 @@ class _ConductorServicioActivoScreenState
       if (!mounted) return;
       _mostrarError('Error al cancelar: ${e.toString()}');
     } finally {
-      if (mounted) {
+      // Siempre bajar loading si sigue activo (evita overlay negro si la navegación falla o queda a medias).
+      if (mounted && _isLoading) {
         setState(() => _isLoading = false);
       }
     }

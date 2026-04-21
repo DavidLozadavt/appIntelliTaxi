@@ -325,14 +325,31 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             (servicio['vehiculo'] as Map<String, dynamic>?) ??
             root['vehiculo'] as Map<String, dynamic>?;
 
+        final estadoObj = servicio['estado'];
+        final idEstadoRaw =
+            servicio['idEstado'] ??
+            servicio['id_estado'] ??
+            (estadoObj is Map ? estadoObj['id'] : null);
         final estadoRaw =
-            servicio['estado']?['estado'] ??
-            servicio['estado'] ??
-            root['estado']?['estado'] ??
-            root['estado'];
-        final estadoNormalizado = PasajeroServicioMapper.normalizeEstado(
+            estadoObj is Map
+                ? estadoObj['estado']
+                : estadoObj ??
+                    root['estado']?['estado'] ??
+                    root['estado'];
+        var estadoNormalizado = PasajeroServicioMapper.normalizeEstado(
           estadoRaw,
         );
+        final idEstado = idEstadoRaw is int
+            ? idEstadoRaw
+            : int.tryParse(idEstadoRaw?.toString() ?? '');
+        if (idEstado == 6) {
+          estadoNormalizado = 'cancelado';
+        } else if (idEstado == 5 ||
+            idEstado == 7 ||
+            idEstado == 22 ||
+            idEstado == 23) {
+          estadoNormalizado = 'finalizado';
+        }
         _estadoServicio = estadoNormalizado;
 
         if (conductorId != null && conductorData != null) {
@@ -363,6 +380,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             await _restaurarUbicacionConductorPersistida();
           }
 
+          notifyListeners();
+        } else {
+          // Sin conductor pero el estado pudo pasar a cancelado/finalizado (p. ej. tras cancelar en otro cliente).
           notifyListeners();
         }
       }
@@ -486,8 +506,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 🚫 Cancela el servicio
-  Future<void> cancelarServicio({required String motivo}) async {
+  /// 🚫 Cancela el servicio. Devuelve `true` si el servidor confirmó; si falla la red o el API (p. ej. 500), devuelve `false` sin lanzar para que la UI pueda volver al inicio de forma segura.
+  Future<bool> cancelarServicio({required String motivo}) async {
     try {
       final dio = DioClient.getInstance();
       await dio.post(
@@ -495,9 +515,16 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         data: {'servicio_id': servicioId, 'motivo': motivo},
       );
       AppLogger.d('✅ PROVIDER: Servicio cancelado');
+      // Evita que el refresh/Pusher sigan en "buscando" y disparen otra salida mientras la UI navega.
+      _cancelarTimeout();
+      _refreshTimer?.cancel();
+      _refreshTimer = null;
+      _estadoServicio = 'cancelado';
+      notifyListeners();
+      return true;
     } catch (e) {
       AppLogger.d('❌ Error cancelando servicio: $e');
-      rethrow;
+      return false;
     }
   }
 
