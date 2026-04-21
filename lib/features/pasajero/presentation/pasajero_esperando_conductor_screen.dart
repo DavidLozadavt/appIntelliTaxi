@@ -11,6 +11,7 @@ import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
@@ -34,6 +35,8 @@ class _PasajeroEsperandoConductorScreenState
   bool _driverCameraCentered = false;
   bool _terminalFlowStarted = false;
   bool _timeoutDialogShown = false;
+  /// Evita que el post-frame dispare salida remota mientras cancelamos manualmente (misma petición).
+  bool _cancelacionManualEnCurso = false;
 
   // 📏 Control de altura del BottomSheet
   double _sheetHeight = 0.45;
@@ -65,24 +68,21 @@ class _PasajeroEsperandoConductorScreenState
       await Future.delayed(const Duration(milliseconds: 500));
 
       if (mounted) {
-        // Navegar al home (reemplazar todas las rutas)
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil('/home', (route) => false);
+        navigateReplacingStackWithHome(context: context);
       }
     }
   }
 
   Future<void> _manejarServicioCancelado() async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
       const SnackBar(
         content: Text('❌ El servicio fue cancelado'),
         backgroundColor: Colors.grey,
         duration: Duration(seconds: 2),
       ),
     );
-    Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+    navigateReplacingStackWithHome(context: context);
   }
 
   Future<void> _llamarConductor(String? telefono) async {
@@ -198,65 +198,87 @@ class _PasajeroEsperandoConductorScreenState
   Future<void> _cancelarServicio(
     PasajeroServicioActivoProvider provider,
   ) async {
-    try {
-      // Determinar el motivo según el estado
-      String motivo;
-      if (provider.estadoServicio == 'buscando') {
-        motivo = 'Cancelado por el pasajero - No se encontró conductor';
-      } else {
-        motivo = 'Cancelado por el pasajero';
-      }
+    if (_cancelacionManualEnCurso) return;
+    _cancelacionManualEnCurso = true;
+    _terminalFlowStarted = true;
 
-      // Mostrar loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => Center(
-          child: Card(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildCustomLoader(size: 54),
-                  SizedBox(height: 16),
-                  Text('Cancelando solicitud...'),
-                ],
-              ),
+    String motivo;
+    if (provider.estadoServicio == 'buscando') {
+      motivo = 'Cancelado por el pasajero - No se encontró conductor';
+    } else {
+      motivo = 'Cancelado por el pasajero';
+    }
+
+    if (!mounted) {
+      _cancelacionManualEnCurso = false;
+      _terminalFlowStarted = false;
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (ctx) => Center(
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildCustomLoader(size: 54),
+                const SizedBox(height: 16),
+                Text(
+                  'Cancelando solicitud...',
+                  style: Theme.of(ctx).textTheme.bodyLarge,
+                ),
+              ],
             ),
           ),
         ),
-      );
+      ),
+    );
 
-      // Llamar al provider para cancelar
-      await provider.cancelarServicio(motivo: motivo);
-
-      if (!mounted) return;
-
-      // Cerrar loading
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-
-      // Volver de forma robusta al home (mapa inicial del pasajero)
-      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+    var okRemoto = false;
+    try {
+      okRemoto = await provider.cancelarServicio(motivo: motivo);
     } catch (e) {
       AppLogger.d('❌ Error cancelando servicio: $e');
+      okRemoto = false;
+    }
 
-      if (!mounted) return;
+    if (!mounted) {
+      _cancelacionManualEnCurso = false;
+      _terminalFlowStarted = false;
+      return;
+    }
 
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context); // Cerrar loading
-      }
+    // Cierra el overlay de “Cancelando…” sin asumir qué hay encima de la pila.
+    try {
+      Navigator.of(context, rootNavigator: true).pop();
+    } catch (e) {
+      AppLogger.d('⚠️ Cerrando diálogo de cancelación: $e');
+    }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al cancelar: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
+    if (!okRemoto) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo confirmar la cancelación en el servidor. '
+            'Puedes revisar tu servicio en el mapa o intentar de nuevo.',
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
         ),
       );
     }
+
+    if (!mounted) {
+      _cancelacionManualEnCurso = false;
+      _terminalFlowStarted = false;
+      return;
+    }
+    navigateReplacingStackWithHome(context: context);
   }
 
   @override
@@ -284,7 +306,8 @@ class _PasajeroEsperandoConductorScreenState
 
             if (_terminalFlowStarted) return;
 
-            if (provider.estadoServicio == 'cancelado') {
+            if (provider.estadoServicio == 'cancelado' &&
+                !_cancelacionManualEnCurso) {
               _terminalFlowStarted = true;
               _manejarServicioCancelado();
             } else if (provider.estadoServicio == 'finalizado') {

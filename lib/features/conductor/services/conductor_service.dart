@@ -387,9 +387,11 @@ class ConductorService {
       );
 
       AppLogger.d('✅ Servicio cancelado exitosamente');
-      return response.data is Map<String, dynamic>
-          ? response.data
-          : {'success': true};
+      final body = response.data;
+      if (body is Map) {
+        return Map<String, dynamic>.from(body);
+      }
+      return {'success': true};
     } catch (e) {
       AppLogger.d('❌ Error cancelando servicio: $e');
       rethrow;

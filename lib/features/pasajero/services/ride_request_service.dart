@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -19,6 +20,8 @@ class RideRequestService {
     int? durationValue, // en segundos
     double? estimatedPrice, // Opcional porque funciona con taxímetro
     required String serviceType, // 'taxi' o 'domicilio'
+    /// Notas del pasajero (p. ej. detalle de domicilio); el backend las guarda en observaciones.
+    String? notas,
   }) async {
     // Preparar los datos según el formato del backend
     final Map<String, dynamic> requestData = {
@@ -45,6 +48,10 @@ class RideRequestService {
       // Tipo de servicio
       'service_type': serviceType, // 'taxi' o 'domicilio'
     };
+    final n = notas?.trim();
+    if (n != null && n.isNotEmpty) {
+      requestData['notas'] = n;
+    }
 
     // 🔍 LOGS EN CONSOLA - Mostrar los datos que se van a enviar
     _logRequestData(requestData);
@@ -73,6 +80,88 @@ class RideRequestService {
         );
       }
       throw Exception('Error de conexión al solicitar el servicio');
+    }
+  }
+
+  /// Servicio programado vía `taxi/solicitud-telefonica` con `service_type: programado`
+  /// (rama backend que persiste en `serviciosProgramados`).
+  Future<Map<String, dynamic>> requestProgramadoViaPhone({
+    required int pasajeroId,
+    required TripLocation origin,
+    TripLocation? destination,
+    required DateTime scheduledAt,
+    required String modality, // 'taxi' o 'domicilio' (se refleja en notas)
+    String? distance,
+    int? distanceValue,
+    String? duration,
+    int? durationValue,
+    double estimatedPrice = 0,
+    String? celular,
+    String? nombreCliente,
+    String? notasExtra,
+  }) async {
+    // Misma semántica que web: `input type="date"` → yyyy-MM-dd, `type="time"` → HH:mm (local al dispositivo).
+    final local = scheduledAt.toLocal();
+    final dateStr = DateFormat('yyyy-MM-dd').format(local);
+    final timeStr = DateFormat('HH:mm').format(local);
+
+    final modalidadLabel = modality == 'domicilio' ? 'Domicilio' : 'Taxi';
+    final notas = [
+      'Modalidad: $modalidadLabel',
+      if (notasExtra != null && notasExtra.trim().isNotEmpty) notasExtra.trim(),
+    ].join('\n');
+
+    final Map<String, dynamic> requestData = {
+      'pasajero_id': pasajeroId,
+      'service_type': 'programado',
+      'origin_lat': origin.lat,
+      'origin_lng': origin.lng,
+      'origin_address': origin.address,
+      'origin_name': origin.name,
+      'origin_place_id': origin.placeId,
+      'destination_lat': destination?.lat,
+      'destination_lng': destination?.lng,
+      'destination_address': destination?.address,
+      'destination_name': destination?.name,
+      'destination_place_id': destination?.placeId,
+      'distance': distance,
+      'distance_value': distanceValue,
+      'duration': duration,
+      'duration_value': durationValue,
+      'estimated_price': estimatedPrice,
+      'fecha_programada': dateStr,
+      'hora_programada': timeStr,
+      if (celular != null && celular.trim().isNotEmpty) 'celular': celular.trim(),
+      if (nombreCliente != null && nombreCliente.trim().isNotEmpty)
+        'nombre_cliente': nombreCliente.trim(),
+      'notas': notas,
+    };
+
+    _logRequestData(requestData);
+
+    try {
+      final response =
+          await _dio.post('taxi/solicitud-telefonica', data: requestData);
+      _logResponse(response.data);
+      return response.data is Map<String, dynamic>
+          ? response.data as Map<String, dynamic>
+          : <String, dynamic>{'success': true, 'data': response.data};
+    } on DioException catch (e) {
+      _logError(e);
+      if (e.response?.data != null && e.response?.data is Map) {
+        final map = e.response!.data as Map<String, dynamic>;
+        final errors = map['errors'];
+        if (errors is Map) {
+          final first = errors.values.first;
+          if (first is List && first.isNotEmpty) {
+            throw Exception(first.first.toString());
+          }
+        }
+        throw Exception(
+          map['message']?.toString() ?? 'No se pudo agendar el servicio',
+        );
+      }
+      throw Exception('Error de conexión al agendar el servicio');
     }
   }
 

@@ -16,7 +16,10 @@ import 'package:intellitaxi/features/conductor/data/turno_model.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 
 /// Provider para gestionar toda la lógica de la pantalla home del conductor
-/// Incluye: ubicación, turnos, vehículos, solicitudes de servicio y conexión a Pusher
+/// Incluye: ubicación, turnos, vehículos, solicitudes de servicio y conexión a Pusher.
+/// [kOportunidadConductorSegundos]: tiempo máximo y valor por defecto del contador de oportunidad (TTL).
+const int kOportunidadConductorSegundos = 60;
+
 class ConductorHomeProvider extends ChangeNotifier {
   // Servicios
   final ConductorService _conductorService = ConductorService();
@@ -362,7 +365,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       'status': 'oferta_directa',
       'clase_vehiculo': 'taxi',
       'timestamp': raw['timestamp'] ?? DateTime.now().toIso8601String(),
-      'ttl_segundos': raw['ttl_segundos'] ?? 25,
+      'ttl_segundos': raw['ttl_segundos'] ?? kOportunidadConductorSegundos,
     };
   }
 
@@ -379,7 +382,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Configurar timer de expiración para una solicitud
-  void _configurarTimerExpiracion(String solicitudId, {int ttlSegundos = 20}) {
+  void _configurarTimerExpiracion(
+    String solicitudId, {
+    int ttlSegundos = kOportunidadConductorSegundos,
+  }) {
     _timersExpiracion[solicitudId]?.cancel();
 
     _timersExpiracion[solicitudId] = Timer(Duration(seconds: ttlSegundos), () {
@@ -881,8 +887,10 @@ class ConductorHomeProvider extends ChangeNotifier {
         solicitud['ttl'] ??
         solicitud['tiempo_restante'];
     final ttl = int.tryParse(ttlRaw?.toString() ?? '');
-    if (ttl == null || ttl <= 0) return 20;
-    return ttl > 90 ? 90 : ttl;
+    if (ttl == null || ttl <= 0) return kOportunidadConductorSegundos;
+    return ttl > kOportunidadConductorSegundos
+        ? kOportunidadConductorSegundos
+        : ttl;
   }
 
   void _iniciarTickerExpiracionUI() {
