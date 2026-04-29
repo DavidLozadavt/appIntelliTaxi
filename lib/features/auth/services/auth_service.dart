@@ -120,8 +120,16 @@ class AuthService {
 
   String _extractDioErrorMessage(DioException e, {required String fallback}) {
     final data = e.response?.data;
+    AppLogger.d('AuthService DioException status=${e.response?.statusCode}');
+    AppLogger.d('AuthService DioException body=$data');
 
     if (data is Map<String, dynamic>) {
+      final detailedError = _extractFirstValidationError(data['errors']) ??
+          _extractFirstValidationError(data['details']);
+      if (detailedError != null) {
+        return detailedError;
+      }
+
       final backendError = data['error'];
       if (backendError is String && backendError.trim().isNotEmpty) {
         return backendError;
@@ -132,16 +140,6 @@ class AuthService {
         return backendMessage;
       }
 
-      final errors = data['errors'];
-      if (errors is Map && errors.isNotEmpty) {
-        final firstValue = errors.values.first;
-        if (firstValue is List && firstValue.isNotEmpty) {
-          final firstError = firstValue.first;
-          if (firstError is String && firstError.trim().isNotEmpty) {
-            return firstError;
-          }
-        }
-      }
     }
 
     if (data is String && data.trim().isNotEmpty) {
@@ -149,6 +147,21 @@ class AuthService {
     }
 
     return fallback;
+  }
+
+  String? _extractFirstValidationError(dynamic source) {
+    if (source is! Map || source.isEmpty) return null;
+    final firstValue = source.values.first;
+    if (firstValue is List && firstValue.isNotEmpty) {
+      final firstError = firstValue.first;
+      if (firstError is String && firstError.trim().isNotEmpty) {
+        return firstError;
+      }
+    }
+    if (firstValue is String && firstValue.trim().isNotEmpty) {
+      return firstValue;
+    }
+    return null;
   }
 
   /// 📌 Guardar token
