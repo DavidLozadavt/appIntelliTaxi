@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -21,10 +22,21 @@ bool _isCalificacionNotificationData(Map<String, dynamic> data) {
   return tipo.contains('calificacion');
 }
 
+bool _isAppUpdateNotificationData(Map<String, dynamic> data) {
+  final type = data['type']?.toString().toLowerCase().trim() ?? '';
+  final tipo = data['tipo']?.toString().toLowerCase().trim() ?? '';
+  return type == 'app_update' || tipo == 'app_update';
+}
+
 void navigateFromFcmData(Map<String, dynamic>? data) {
   if (data == null || data.isEmpty) {
     AppLogger.d('📱 FCM sin data; fallback chat');
     navigatorKey.currentState?.pushNamed('/chat');
+    return;
+  }
+  if (_isAppUpdateNotificationData(data)) {
+    AppLogger.d('⬆️ FCM → actualización de app');
+    AppUpdateService.instance.handlePushData(data);
     return;
   }
   if (_isCalificacionNotificationData(data)) {
@@ -59,11 +71,11 @@ Map<String, dynamic>? _parseNotificationPayloadString(String? payload) {
     r'''servicio_id['"]?\s*[:=]\s*['"]?([^,'"}\s]+)''',
   ).firstMatch(payload)?.group(1);
   if (tipo != null || route != null || sid != null) {
-    return {
-      if (tipo != null) 'tipo': tipo,
-      if (route != null) 'route': route,
-      if (sid != null) 'servicio_id': sid,
-    };
+    final parsedData = <String, dynamic>{};
+    if (tipo != null) parsedData['tipo'] = tipo;
+    if (route != null) parsedData['route'] = route;
+    if (sid != null) parsedData['servicio_id'] = sid;
+    return parsedData;
   }
   return null;
 }
@@ -88,8 +100,7 @@ void onNotificationTap(NotificationResponse notificationResponse) {
   }
 
   if (payload != null &&
-      (payload.contains('calificacion') ||
-          payload.contains('CALIFICACION'))) {
+      (payload.contains('calificacion') || payload.contains('CALIFICACION'))) {
     navigatorKey.currentState?.pushNamed('/notifications');
     return;
   }
@@ -242,6 +253,11 @@ class FirebaseMsg {
 
   Future<void> _handleForegroundNotification(RemoteMessage message) async {
     AppLogger.d('Notificación en primer plano: ${message.notification}');
+    if (_isAppUpdateNotificationData(message.data)) {
+      await AppUpdateService.instance.handlePushData(
+        Map<String, dynamic>.from(message.data),
+      );
+    }
     await _showNotification(message);
   }
 

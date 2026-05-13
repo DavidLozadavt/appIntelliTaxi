@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
+import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -49,6 +50,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
         if (success) {
+          final updateResult = await AppUpdateService.instance.checkForUpdate();
+          if (!mounted || updateResult.shouldBlock) return;
           Navigator.pushReplacementNamed(context, '/home');
         }
       } catch (e) {
@@ -114,10 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: Colors.redAccent,
-            width: 1.4,
-          ),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1.4),
         ),
       );
     }
@@ -161,7 +161,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 20),
                   TextFormField(
                     controller: _emailController,
-                    decoration: buildInputDecoration(label: 'Correo electrónico'),
+                    decoration: buildInputDecoration(
+                      label: 'Correo electrónico',
+                    ),
                     validator: (value) =>
                         value!.isEmpty ? 'Ingrese su email' : null,
                   ),
@@ -212,8 +214,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: TextButton(
                             onPressed: () {},
                             style: TextButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                               minimumSize: const Size(0, 36),
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               visualDensity: VisualDensity.compact,

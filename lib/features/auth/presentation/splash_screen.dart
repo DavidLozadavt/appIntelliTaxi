@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -109,6 +110,15 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _checkLogin() async {
     final sw = Stopwatch()..start();
     try {
+      final updateResult = await AppUpdateService.instance
+          .checkForUpdate()
+          .timeout(const Duration(seconds: 4));
+      if (!mounted) return;
+      if (updateResult.shouldBlock) {
+        _navigationWatchdogTimer?.cancel();
+        return;
+      }
+
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final token = await authProvider.getSavedToken().timeout(
         const Duration(seconds: 3),
