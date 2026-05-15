@@ -6,6 +6,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/performance_monitor_service.dart';
+import 'package:intellitaxi/core/services/background_location_service.dart';
 
 import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
@@ -21,6 +22,7 @@ import 'package:intellitaxi/features/sanciones/presentation/sanciones_screen.dar
 import 'package:intellitaxi/features/conductor/providers/servicio_activo_provider.dart';
 import 'package:intellitaxi/features/pasajero/presentation/historial_servicios_pasajero_screen.dart';
 import 'package:intellitaxi/features/rides/presentation/historial_calificaciones_screen.dart';
+import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 // import 'package:intellitaxi/features/pasajero/providers/pasajero_home_provider.dart';
 import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart';
 
@@ -90,6 +92,32 @@ Future<void> main() async {
 }
 
 Future<void> _bootstrapRuntimeServices() async {
+  try {
+    await BackgroundLocationService.initialize().timeout(
+      const Duration(seconds: 30),
+    );
+  } catch (e, st) {
+    AppLogger.e(
+      'No se pudo inicializar BackgroundLocationService',
+      tag: 'Bootstrap',
+      error: e,
+      stackTrace: st,
+    );
+  }
+
+  try {
+    await ServicioNotificacionForeground().inicializar().timeout(
+      const Duration(seconds: 30),
+    );
+  } catch (e, st) {
+    AppLogger.e(
+      'No se pudo inicializar ServicioNotificacionForeground',
+      tag: 'Bootstrap',
+      error: e,
+      stackTrace: st,
+    );
+  }
+
   try {
     await FirebaseMsg().initFCM().timeout(const Duration(seconds: 60));
   } catch (e, st) {

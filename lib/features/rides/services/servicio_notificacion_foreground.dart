@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// Servicio para manejar notificaciones foreground persistentes
 /// Muestra un widget/notificación persistente cuando hay un servicio activo
@@ -13,7 +15,7 @@ class ServicioNotificacionForeground {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
-  final bool _enabled = false;
+  final bool _enabled = true;
 
   /// Inicializa el servicio de notificaciones
   Future<void> inicializar() async {
@@ -37,11 +39,33 @@ class ServicioNotificacionForeground {
       );
 
       await _notificationsPlugin.initialize(settings: initSettings);
+      await _requestPermissionsIfNeeded();
 
       _initialized = true;
       AppLogger.d('✅ Servicio de notificaciones foreground inicializado');
     } catch (e) {
       AppLogger.d('⚠️ Error inicializando notificaciones foreground: $e');
+    }
+  }
+
+  Future<void> _requestPermissionsIfNeeded() async {
+    try {
+      if (kIsWeb) return;
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final status = await Permission.notification.status;
+        if (!status.isGranted) {
+          await Permission.notification.request();
+        }
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin
+            >()
+            ?.requestPermissions(alert: true, badge: true, sound: false);
+      }
+    } catch (e) {
+      AppLogger.d('⚠️ Error solicitando permisos de notificación: $e');
     }
   }
 
