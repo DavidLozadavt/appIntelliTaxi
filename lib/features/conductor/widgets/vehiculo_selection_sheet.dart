@@ -44,7 +44,7 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
       top: false,
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.50,
+          maxHeight: MediaQuery.of(context).size.height * 0.65,
         ),
         decoration: BoxDecoration(
           color: backgroundColor,

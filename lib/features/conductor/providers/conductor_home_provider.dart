@@ -56,6 +56,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   final Set<String> _offerChannels = {};
   final Set<String> _offerHandlerKeys = {};
   String? _lastAcceptError;
+  String? _lastTurnoError;
 
   // Control de dispose
   bool _isDisposed = false;
@@ -71,6 +72,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   TurnoActivo? get turnoActivo => _turnoActivo;
   List<Map<String, dynamic>> get solicitudesActivas => _solicitudesActivas;
   String? get lastAcceptError => _lastAcceptError;
+  String? get lastTurnoError => _lastTurnoError;
   List<Map<String, dynamic>> get solicitudesOrdenadas {
     final solicitudes = List<Map<String, dynamic>>.from(_solicitudesActivas);
     solicitudes.sort((a, b) => _calcularScore(b).compareTo(_calcularScore(a)));
@@ -691,6 +693,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Inicia un turno con el vehículo seleccionado
   Future<bool> iniciarTurno(int idVehiculo) async {
     try {
+      _lastTurnoError = null;
       // Obtener ubicación actual
       Position? position = _currentPosition;
 
@@ -732,7 +735,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
+      _lastTurnoError = e.toString().replaceAll('Exception: ', '').trim();
       AppLogger.d('❌ Error iniciando turno: $e');
+      if (!_isDisposed) notifyListeners();
       return false;
     }
   }

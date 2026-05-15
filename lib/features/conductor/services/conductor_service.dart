@@ -152,6 +152,9 @@ class ConductorService {
       } else {
         throw Exception('Error al iniciar turno: ${response.statusCode}');
       }
+    } on DioException catch (e) {
+      AppLogger.d('⚠️ Error iniciando turno: $e');
+      throw Exception(_extractErrorMessage(e, 'No se pudo iniciar el turno'));
     } catch (e) {
       AppLogger.d('⚠️ Error iniciando turno: $e');
       rethrow;
@@ -396,5 +399,29 @@ class ConductorService {
       AppLogger.d('❌ Error cancelando servicio: $e');
       rethrow;
     }
+  }
+
+  String _extractErrorMessage(DioException e, String fallback) {
+    final data = e.response?.data;
+
+    if (data is Map) {
+      final dynamic message = data['message'] ?? data['error'];
+      if (message != null && message.toString().trim().isNotEmpty) {
+        return message.toString().trim();
+      }
+
+      final errors = data['errors'];
+      if (errors is Map && errors.isNotEmpty) {
+        final firstError = errors.values.first;
+        if (firstError is List && firstError.isNotEmpty) {
+          return firstError.first.toString();
+        }
+        if (firstError != null) {
+          return firstError.toString();
+        }
+      }
+    }
+
+    return fallback;
   }
 }

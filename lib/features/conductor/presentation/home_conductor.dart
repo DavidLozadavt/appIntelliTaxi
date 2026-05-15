@@ -442,9 +442,138 @@ class _HomeConductorState extends State<HomeConductor>
 
             // Verificar documentos después de iniciar turno
             _verificarDocumentos();
+          } else if (mounted) {
+            final errorMessage = _provider.lastTurnoError;
+            if (_esVehiculoOcupadoError(errorMessage)) {
+              await _mostrarVehiculoOcupadoDialog(errorMessage!);
+            } else {
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    errorMessage?.isNotEmpty == true
+                        ? errorMessage!
+                        : 'No se pudo iniciar el turno con este vehiculo',
+                  ),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
           }
         },
       ),
+    );
+  }
+
+  bool _esVehiculoOcupadoError(String? message) {
+    if (message == null || message.trim().isEmpty) return false;
+    final normalized = message.toLowerCase();
+    return normalized.contains('ya tiene un turno activo') &&
+        normalized.contains('otro conductor');
+  }
+
+  Future<void> _mostrarVehiculoOcupadoDialog(String message) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
+        final surfaceColor = isDark ? AppColors.darkCard : Colors.white;
+        final bodyColor =
+            isDark
+                ? AppColors.darkOnSurface.withValues(alpha: 0.78)
+                : Colors.black87;
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Iconsax.warning_2_copy,
+                          color: Colors.orange,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Text(
+                          'Vehiculo en uso',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    message,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.4,
+                      color: bodyColor,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      'Es posible que el mismo vehiculo este asignado a mas de un conductor, pero solo uno puede tener el turno activo al mismo tiempo.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.35,
+                        color: bodyColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text('Entendido'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -673,7 +802,8 @@ class _HomeConductorState extends State<HomeConductor>
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          if (provider.vehiculoSeleccionado != null) ...[
+                          if (provider.isOnline &&
+                              provider.vehiculoSeleccionado != null) ...[
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(

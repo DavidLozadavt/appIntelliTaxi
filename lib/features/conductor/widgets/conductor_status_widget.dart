@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_location_service.dart';
 import 'package:intellitaxi/features/conductor/services/turno_service.dart';
 import 'package:geolocator/geolocator.dart';
@@ -17,6 +18,7 @@ class ConductorStatusWidget extends StatefulWidget {
 }
 
 class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
+  final ConductorService _conductorService = ConductorService();
   final ConductorLocationService _locationService = ConductorLocationService();
   final TurnoService _turnoService = TurnoService();
 
@@ -25,11 +27,33 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
   Position? _lastPosition;
   String _statusMessage = 'Fuera de línea';
   int? _turnoActivo;
+  String? _placaVehiculo;
 
   @override
   void initState() {
     super.initState();
+    _cargarPlacaVehiculo();
     _checkPermissions();
+  }
+
+  Future<void> _cargarPlacaVehiculo() async {
+    try {
+      final vehiculos = await _conductorService.getVehiculosConductor();
+      String? placa;
+      for (final vehiculo in vehiculos) {
+        if (vehiculo.id == widget.idVehiculo) {
+          placa = vehiculo.placa;
+          break;
+        }
+      }
+      if (mounted && placa != null && placa.isNotEmpty) {
+        setState(() {
+          _placaVehiculo = placa;
+        });
+      }
+    } catch (e) {
+      AppLogger.d('⚠️ No se pudo cargar la placa del vehículo: $e');
+    }
   }
 
   /// Verifica permisos de ubicación
@@ -154,7 +178,9 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
       setState(() {
         _isOnline = true;
         _isLoading = false;
-        _statusMessage = 'En línea - Turno #${_turnoActivo ?? ""}';
+        _statusMessage = _placaVehiculo?.isNotEmpty == true
+            ? 'En linea con ${_placaVehiculo!}'
+            : 'En linea - Turno #${_turnoActivo ?? ""}';
       });
 
       // 3. Actualizar posición en UI
@@ -336,6 +362,42 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
 
             const SizedBox(height: 20),
 
+            if (_isOnline && _placaVehiculo?.isNotEmpty == true) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: _isOnline
+                      ? Colors.green.withValues(alpha: 0.12)
+                      : Colors.grey.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Iconsax.car_copy,
+                      size: 14,
+                      color: _isOnline ? Colors.green : Colors.grey.shade700,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _placaVehiculo!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: _isOnline ? Colors.green : Colors.grey.shade700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // Botón principal
             SizedBox(
               width: double.infinity,
@@ -349,9 +411,13 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
                   ),
                 ),
                 child: Text(
-                  _isOnline ? '🔴 Finalizar Turno' : '🟢 Iniciar Turno',
+                  _isOnline
+                      ? (_placaVehiculo?.isNotEmpty == true
+                            ? '🔴 Finalizar turno • ${_placaVehiculo!}'
+                            : '🔴 Finalizar Turno')
+                      : '🟢 Iniciar Turno',
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
