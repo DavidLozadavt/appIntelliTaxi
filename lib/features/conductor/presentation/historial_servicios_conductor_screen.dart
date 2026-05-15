@@ -624,37 +624,28 @@ class _HistorialServiciosConductorScreenState
                 if (servicio.calificacion != null)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+                      horizontal: 10,
+                      vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.amber.shade300, Colors.amber.shade500],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.amber.shade200,
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      color: const Color(0xFFF3E6B3),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(
                           Iconsax.star_1_copy,
-                          color: Colors.white,
-                          size: 16,
+                          color: Color(0xFF7A5A00),
+                          size: 15,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           servicio.calificacion!.puntuacion.toString(),
                           style: const TextStyle(
-                            fontSize: 15,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: Color(0xFF7A5A00),
                           ),
                         ),
                       ],

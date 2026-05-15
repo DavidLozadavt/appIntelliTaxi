@@ -27,6 +27,7 @@ import 'package:intellitaxi/features/conductor/services/conductores_service.dart
 import 'package:intellitaxi/features/conductor/services/pusher_conductores_service.dart';
 import 'package:intellitaxi/features/pasajero/travel_assistant/travel_assistant_screen.dart';
 import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart';
+import 'package:intellitaxi/features/pasajero/widgets/no_drivers_available_dialog.dart';
 import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
 import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
@@ -2248,6 +2249,33 @@ class _HomePasajeroState extends State<HomePasajero> {
     _handleRideConfirmation();
   }
 
+  bool _isNoDriversAvailableMessage(String message) {
+    final normalized = message.toLowerCase();
+    return normalized.contains('no tiene carros disponibles') ||
+        normalized.contains('no hay carros disponibles') ||
+        normalized.contains('no hay conductores disponibles') ||
+        normalized.contains('sin conductores disponibles');
+  }
+
+  Future<void> _showNoDriversAvailableDialog(String message) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return NoDriversAvailableDialog(
+          message: message,
+          onClose: () => Navigator.of(dialogContext).pop(),
+          onRetry: () {
+            Navigator.of(dialogContext).pop();
+            _requestRide();
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _handleRideConfirmation() async {
     if (_isSubmittingRide) return;
 
@@ -2416,15 +2444,19 @@ class _HomePasajeroState extends State<HomePasajero> {
       await Future.delayed(const Duration(milliseconds: 200));
 
       if (mounted && _scaffoldMessenger != null) {
-        _scaffoldMessenger!.showSnackBar(
-          SnackBar(
-            content: Text(
-              'Error: ${e.toString().replaceAll('Exception: ', '')}',
+        final errorMessage = e.toString().replaceAll('Exception: ', '').trim();
+
+        if (_isNoDriversAvailableMessage(errorMessage)) {
+          await _showNoDriversAvailableDialog(errorMessage);
+        } else {
+          _scaffoldMessenger!.showSnackBar(
+            SnackBar(
+              content: Text('Error: $errorMessage'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
             ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+          );
+        }
       }
     } finally {
       if (mounted) {

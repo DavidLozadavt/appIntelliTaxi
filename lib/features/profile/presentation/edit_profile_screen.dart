@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/data/auth_model.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -141,6 +142,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               title: const Text('Elegir de Galería'),
               onTap: () async {
                 Navigator.pop(context);
+                final hasPermission = await _requestGalleryPermission();
+                if (!hasPermission) return;
                 final XFile? image = await _picker.pickImage(
                   source: ImageSource.gallery,
                   maxWidth: 1024,
@@ -158,6 +161,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
       ),
     );
+  }
+
+  Future<bool> _requestGalleryPermission() async {
+    Permission permission;
+    if (Platform.isIOS) {
+      permission = Permission.photos;
+    } else {
+      permission = Permission.photos;
+    }
+
+    final status = await permission.request();
+
+    if (status.isGranted || status.isLimited) {
+      return true;
+    }
+
+    if (!mounted) return false;
+
+    if (status.isPermanentlyDenied || status.isRestricted) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Permiso requerido'),
+          content: const Text(
+            'Necesitamos acceso a tu galeria para seleccionar una foto de perfil. Puedes habilitarlo desde ajustes.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await openAppSettings();
+              },
+              child: const Text('Abrir ajustes'),
+            ),
+          ],
+        ),
+      );
+      return false;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Debes permitir el acceso a la galeria para continuar'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return false;
   }
 
   String _formatDate(DateTime date) {
@@ -784,23 +838,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           color: isSelected ? AppColors.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.white : Colors.grey,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
                 color: isSelected ? Colors.white : Colors.grey,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                size: 20,
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.grey,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

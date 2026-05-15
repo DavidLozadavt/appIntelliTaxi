@@ -8,6 +8,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.dart';
 import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.dart';
+import 'package:intellitaxi/features/conductor/widgets/no_assigned_vehicles_dialog.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
@@ -384,11 +385,10 @@ class _HomeConductorState extends State<HomeConductor>
     final messenger = ScaffoldMessenger.of(context);
 
     if (_provider.vehiculosDisponibles.isEmpty) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('No tienes vehículos asignados'),
-          backgroundColor: Colors.red,
-        ),
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => const NoAssignedVehiclesDialog(),
       );
       return;
     }
