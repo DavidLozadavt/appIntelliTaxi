@@ -25,7 +25,7 @@ import 'package:intellitaxi/features/pasajero/presentation/pasajero_esperando_co
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 import 'package:intellitaxi/features/conductor/services/conductores_service.dart';
 import 'package:intellitaxi/features/conductor/services/pusher_conductores_service.dart';
-import 'package:intellitaxi/features/pasajero/travel_assistant/travel_assistant_screen.dart';
+// import 'package:intellitaxi/features/pasajero/travel_assistant/travel_assistant_screen.dart';
 import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart';
 import 'package:intellitaxi/features/pasajero/widgets/no_drivers_available_dialog.dart';
 import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
@@ -916,64 +916,64 @@ class _HomePasajeroState extends State<HomePasajero> {
           },
         ),
 
-        const SizedBox(height: 10),
-        Material(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.06)
-              : AppColors.primary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(16),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () {
-              Navigator.push<void>(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => const TravelAssistantScreen(),
-                ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.chat_bubble_outline_rounded,
-                    color: isDark ? Colors.white70 : AppColors.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Asistente de viajes',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                        Text(
-                          'Solicita con chat guiado (taxi, domicilio o programado)',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark
-                                ? Colors.grey.shade500
-                                : Colors.grey.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: isDark ? Colors.white38 : Colors.grey,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        // const SizedBox(height: 10),
+        // Material(
+        //   color: isDark
+        //       ? Colors.white.withValues(alpha: 0.06)
+        //       : AppColors.primary.withValues(alpha: 0.06),
+        //   borderRadius: BorderRadius.circular(16),
+        //   child: InkWell(
+        //     borderRadius: BorderRadius.circular(16),
+        //     onTap: () {
+        //       Navigator.push<void>(
+        //         context,
+        //         MaterialPageRoute<void>(
+        //           builder: (_) => const TravelAssistantScreen(),
+        //         ),
+        //       );
+        //     },
+        //     child: Padding(
+        //       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        //       child: Row(
+        //         children: [
+        //           Icon(
+        //             Icons.chat_bubble_outline_rounded,
+        //             color: isDark ? Colors.white70 : AppColors.primary,
+        //           ),
+        //           const SizedBox(width: 12),
+        //           Expanded(
+        //             child: Column(
+        //               crossAxisAlignment: CrossAxisAlignment.start,
+        //               children: [
+        //                 Text(
+        //                   'Asistente de viajes',
+        //                   style: TextStyle(
+        //                     fontWeight: FontWeight.w700,
+        //                     fontSize: 15,
+        //                     color: isDark ? Colors.white : Colors.black87,
+        //                   ),
+        //                 ),
+        //                 Text(
+        //                   'Solicita con chat guiado (taxi, domicilio o programado)',
+        //                   style: TextStyle(
+        //                     fontSize: 12,
+        //                     color: isDark
+        //                         ? Colors.grey.shade500
+        //                         : Colors.grey.shade700,
+        //                   ),
+        //                 ),
+        //               ],
+        //             ),
+        //           ),
+        //           Icon(
+        //             Icons.chevron_right_rounded,
+        //             color: isDark ? Colors.white38 : Colors.grey,
+        //           ),
+        //         ],
+        //       ),
+        //     ),
+        //   ),
+        // ),
 
         const SizedBox(height: 14),
 
