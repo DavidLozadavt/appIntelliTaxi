@@ -16,11 +16,11 @@ class OnboardingPageModel {
   });
 }
 
-// Páginas del onboarding de IntelliTaxi
+// Páginas del onboarding de TaxbelUrbano
 final List<OnboardingPageModel> onboardingPages = [
   OnboardingPageModel(
     title: 'Bienvenido a',
-    highlightedText: 'IntelliTaxi',
+    highlightedText: 'TaxbelUrbano',
     description:
         'La experiencia de transporte premium impulsada por inteligencia y eficiencia.',
     imagePath: 'assets/images/mock3.png',
