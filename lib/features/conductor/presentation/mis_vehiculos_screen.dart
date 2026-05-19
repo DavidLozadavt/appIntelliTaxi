@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
+import 'package:intellitaxi/features/conductor/presentation/propietarios_vehiculo_screen.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:image_picker/image_picker.dart';
@@ -80,6 +81,26 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
     if (ok == true) {
       await _cargar();
     }
+  }
+
+  void _verPropietarios(VehiculoConductor vehiculo) {
+    final idAfiliacion = vehiculo.asignacionPrincipal?.idAfiliacion;
+    if (idAfiliacion == null || idAfiliacion == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Este vehículo no tiene afiliación registrada'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PropietariosVehiculoScreen(vehiculo: vehiculo),
+      ),
+    );
   }
 
   @override
@@ -182,55 +203,94 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
                 top: Radius.circular(14),
               ),
               child: Container(
-                height: 170,
+                height: 218,
                 color: Colors.grey.shade200,
-                child: Stack(
+                child: Column(
                   children: [
-                    Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: bloqueado ? Colors.red : AppColors.green,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.circle,
-                              size: 8,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              bloqueado ? 'BLOQUEADO' : 'ACTIVO',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
+                    Expanded(
+                      child: Center(
+                        child:
+                            vehiculo.rutaUrl != null &&
+                                vehiculo.rutaUrl!.isNotEmpty
+                            ? Image.network(
+                                vehiculo.rutaUrl!,
+                                fit: BoxFit.contain,
+                                width: 230,
+                                errorBuilder: (_, _, _) =>
+                                    const Icon(Icons.directions_car, size: 84),
+                              )
+                            : const Icon(Icons.directions_car, size: 84),
                       ),
                     ),
-                    Center(
-                      child:
-                          vehiculo.rutaUrl != null &&
-                              vehiculo.rutaUrl!.isNotEmpty
-                          ? Image.network(
-                              vehiculo.rutaUrl!,
-                              fit: BoxFit.contain,
-                              width: 230,
-                              errorBuilder: (_, _, _) =>
-                                  const Icon(Icons.directions_car, size: 84),
-                            )
-                          : const Icon(Icons.directions_car, size: 84),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).cardColor.withValues(alpha: 0.94),
+                        border: Border(
+                          top: BorderSide(
+                            color: Colors.black.withValues(alpha: 0.06),
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _verPropietarios(vehiculo),
+                              icon: const Icon(Icons.person_outline, size: 17),
+                              label: const Text('Propietarios'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.primary,
+                                side: BorderSide(
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.35,
+                                  ),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 9,
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              color: bloqueado ? Colors.red : AppColors.green,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.circle,
+                                  size: 8,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  bloqueado ? 'BLOQUEADO' : 'ACTIVO',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

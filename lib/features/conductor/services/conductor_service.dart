@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/conductor/data/documento_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
+import 'package:intellitaxi/features/conductor/data/propietario_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -63,6 +64,32 @@ class ConductorService {
     } catch (e) {
       AppLogger.d(
         '⚠️ Error obteniendo documentos del vehículo $idVehiculo: $e',
+      );
+      rethrow;
+    }
+  }
+
+  /// Obtiene propietarios asociados a la afiliación del vehículo
+  Future<List<AfiliacionPropietariosVehiculo>> getPropietariosByAfiliacion(
+    int idAfiliacion,
+  ) async {
+    try {
+      final response = await _dio.get('get_propietarios_by_id/$idAfiliacion');
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data;
+        return data
+            .whereType<Map>()
+            .map(
+              (json) => AfiliacionPropietariosVehiculo.fromJson(
+                Map<String, dynamic>.from(json),
+              ),
+            )
+            .toList();
+      }
+      throw Exception('Error al obtener propietarios: ${response.statusCode}');
+    } catch (e) {
+      AppLogger.d(
+        '⚠️ Error obteniendo propietarios de afiliación $idAfiliacion: $e',
       );
       rethrow;
     }
