@@ -117,11 +117,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 Row(
                   children: [
-                    IconButton(
-                      icon:  Icon(Icons.emergency, color: Colors.red.shade400),
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/emergencias'),
-                    ),
+                    // IconButton(
+                    //   icon:  Icon(Icons.emergency, color: Colors.red.shade400),
+                    //   onPressed: () =>
+                    //       Navigator.pushNamed(context, '/emergencias'),
+                    // ),
                     IconButton(
                       icon: const Icon(Icons.notifications_none),
                       onPressed: () =>

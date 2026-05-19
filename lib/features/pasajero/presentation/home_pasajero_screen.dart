@@ -33,6 +33,7 @@ import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/pasajero/widgets/waiting_for_driver_dialog.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 
 class HomePasajero extends StatefulWidget {
@@ -74,12 +75,15 @@ class _HomePasajeroState extends State<HomePasajero> {
   final PlacesService _placesService = PlacesService();
   final RoutesService _routesService = RoutesService();
   final RideRequestService _rideRequestService = RideRequestService();
+  final ReverseGeocodingService _reverseGeocodingService =
+      ReverseGeocodingService();
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final FocusNode _destinationFocusNode = FocusNode();
 
   TripLocation? _selectedOrigin;
   TripLocation? _selectedDestination;
+  String? _selectedDestinationArea;
   RouteInfo? _routeInfo;
 
   List<PlacePrediction> _originPredictions = [];
@@ -254,6 +258,7 @@ class _HomePasajeroState extends State<HomePasajero> {
         _originController.addListener(_onOriginChanged);
       }
       _selectedDestination = destination;
+      _selectedDestinationArea = null;
       _destinationController.text = destination.name;
       _destinationPredictions = [];
       _isSearchingDestination = false;
@@ -262,6 +267,12 @@ class _HomePasajeroState extends State<HomePasajero> {
 
     _updateAllDriverMarkers();
     await _saveRecentDestination(destination);
+    final area = await _resolveDestinationArea(destination);
+    if (!mounted || _selectedDestination != destination) return;
+    _setStateSafe(() {
+      _selectedDestinationArea = area;
+      _upsertDestinationMarker(destination);
+    });
 
     if (_selectedOrigin != null) {
       await _drawRoute(showLoadingSnack: false);
@@ -787,9 +798,11 @@ class _HomePasajeroState extends State<HomePasajero> {
     final title = _serviceType == 'taxi' ? '¿A dónde vas?' : 'Enviar domicilio';
     final subtitle = _routeInfo != null
         ? '${_routeInfo!.distance} • Cobro por taxímetro'
-        : (_selectedOrigin != null
-              ? 'Desde ${_selectedOrigin!.name}'
-              : 'Toca para seleccionar destino');
+        : (_selectedDestination != null
+              ? _destinationSummaryText(_selectedDestination!)
+              : (_selectedOrigin != null
+                    ? 'Desde ${_selectedOrigin!.name}'
+                    : 'Toca para seleccionar destino'));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -887,6 +900,93 @@ class _HomePasajeroState extends State<HomePasajero> {
     );
   }
 
+  Widget _buildSelectedDestinationSummary() {
+    final destination = _selectedDestination;
+    if (destination == null) return const SizedBox.shrink();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final area = _selectedDestinationArea?.trim();
+    final hasArea = area != null && area.isNotEmpty;
+    final address = destination.address.trim();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : AppColors.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: isDark ? 0.16 : 0.10),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.location_on,
+              color: AppColors.primary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  destination.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+                if (hasArea) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    'Barrio: $area',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ],
+                if (address.isNotEmpty && address != destination.name) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    address,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isDark
+                          ? Colors.grey.shade300
+                          : Colors.grey.shade700,
+                      fontSize: 12,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildExpandedContent({
     ScrollController? scrollController,
     bool showInlineActions = true,
@@ -974,7 +1074,6 @@ class _HomePasajeroState extends State<HomePasajero> {
         //     ),
         //   ),
         // ),
-
         const SizedBox(height: 14),
 
         // Campo de origen
@@ -1011,11 +1110,17 @@ class _HomePasajeroState extends State<HomePasajero> {
             _setStateSafe(() {
               _destinationController.clear();
               _selectedDestination = null;
+              _selectedDestinationArea = null;
               _destinationPredictions = [];
               _clearRoute();
             });
           },
         ),
+
+        if (_selectedDestination != null) ...[
+          const SizedBox(height: 10),
+          _buildSelectedDestinationSummary(),
+        ],
 
         if (_selectedDestination != null) ...[
           const SizedBox(height: 10),
@@ -1650,6 +1755,36 @@ class _HomePasajeroState extends State<HomePasajero> {
     );
   }
 
+  String _destinationSummaryText(TripLocation destination) {
+    final area = _selectedDestinationArea?.trim();
+    if (area != null && area.isNotEmpty) {
+      return '${destination.name} • Barrio: $area';
+    }
+    if (destination.address.trim().isNotEmpty &&
+        destination.address != destination.name) {
+      return '${destination.name} • ${destination.address}';
+    }
+    return destination.name;
+  }
+
+  String _destinationMarkerSnippet(TripLocation destination) {
+    final area = _selectedDestinationArea?.trim();
+    final address = destination.address.trim();
+    if (area != null && area.isNotEmpty) {
+      return address.isNotEmpty && address != destination.name
+          ? 'Barrio: $area • $address'
+          : 'Barrio: $area';
+    }
+    return address.isNotEmpty ? address : destination.name;
+  }
+
+  Future<String?> _resolveDestinationArea(TripLocation destination) {
+    return _reverseGeocodingService.resolveAreaName(
+      lat: destination.lat,
+      lng: destination.lng,
+    );
+  }
+
   void _upsertDestinationMarker(TripLocation destination) {
     final nextMarkers = <Marker>{};
     for (final marker in _markers) {
@@ -1659,7 +1794,7 @@ class _HomePasajeroState extends State<HomePasajero> {
     nextMarkers.add(
       _buildDestinationMarker(
         LatLng(destination.lat, destination.lng),
-        destination.name,
+        _destinationMarkerSnippet(destination),
       ),
     );
     _markers = nextMarkers;
@@ -1711,9 +1846,12 @@ class _HomePasajeroState extends State<HomePasajero> {
       lng: latLng.longitude,
       isCurrentLocation: false,
     );
+    final area = await _resolveDestinationArea(destination);
+    if (!mounted) return;
 
     _setStateSafe(() {
       _selectedDestination = destination;
+      _selectedDestinationArea = area;
       _destinationController.text = destination.name;
       _destinationPredictions = [];
       _isSearchingDestination = false;
@@ -1850,8 +1988,12 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   Future<void> _applyDestinationLocation(TripLocation destination) async {
+    final area = await _resolveDestinationArea(destination);
+    if (!mounted) return;
+
     _setStateSafe(() {
       _selectedDestination = destination;
+      _selectedDestinationArea = area;
       _destinationController.text = destination.name;
       _isSearchingDestination = false;
       _destinationPredictions = [];
@@ -2017,14 +2159,19 @@ class _HomePasajeroState extends State<HomePasajero> {
     );
 
     if (details != null && mounted) {
+      final destination = TripLocation.fromPlaceDetails(
+        placeId: prediction.placeId,
+        name: details.name,
+        address: details.address,
+        lat: details.lat,
+        lng: details.lng,
+      );
+      final area = await _resolveDestinationArea(destination);
+      if (!mounted) return;
+
       _setStateSafe(() {
-        _selectedDestination = TripLocation.fromPlaceDetails(
-          placeId: prediction.placeId,
-          name: details.name,
-          address: details.address,
-          lat: details.lat,
-          lng: details.lng,
-        );
+        _selectedDestination = destination;
+        _selectedDestinationArea = area;
         _destinationController.text = prediction.mainText;
         _destinationPredictions = [];
         _isSearchingDestination = false;
@@ -2128,7 +2275,7 @@ class _HomePasajeroState extends State<HomePasajero> {
         newMarkers.add(
           _buildDestinationMarker(
             destinationLatLng,
-            _selectedDestination!.name,
+            _destinationMarkerSnippet(_selectedDestination!),
           ),
         );
 
@@ -2220,6 +2367,7 @@ class _HomePasajeroState extends State<HomePasajero> {
       _polylines = {};
       _markers = {};
       _selectedDestination = null;
+      _selectedDestinationArea = null;
       _destinationController.clear();
     });
 
@@ -2421,6 +2569,7 @@ class _HomePasajeroState extends State<HomePasajero> {
                 _selectedDirectDriver = null;
                 _selectedOrigin = null;
                 _selectedDestination = null;
+                _selectedDestinationArea = null;
                 _routeInfo = null;
                 _polylines.clear();
                 _markers.clear();
