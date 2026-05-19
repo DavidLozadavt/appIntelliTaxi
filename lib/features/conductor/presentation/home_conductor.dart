@@ -424,6 +424,21 @@ class _HomeConductorState extends State<HomeConductor>
         vehiculos: _provider.vehiculosDisponibles,
         vencidosPorVehiculo: vencidosPorVehiculo,
         maxVencidosBloqueo: 2,
+        onRefresh: () async {
+          await _provider.cargarVehiculos();
+          final refreshedVencidosPorVehiculo = <int, int>{};
+          for (final vehiculo in _provider.vehiculosDisponibles) {
+            final bloqueo = await _provider.verificarBloqueoVehiculo(
+              vehiculo.id,
+            );
+            final vencidos = (bloqueo['vencidos'] as List?)?.length ?? 0;
+            refreshedVencidosPorVehiculo[vehiculo.id] = vencidos;
+          }
+          return VehiculoSelectionRefreshData(
+            vehiculos: _provider.vehiculosDisponibles,
+            vencidosPorVehiculo: refreshedVencidosPorVehiculo,
+          );
+        },
         onVehiculoSelected: (vehiculo) async {
           final vencidos = vencidosPorVehiculo[vehiculo.id] ?? 0;
           final bloqueado =

@@ -3,10 +3,21 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 
+class VehiculoSelectionRefreshData {
+  final List<VehiculoConductor> vehiculos;
+  final Map<int, int> vencidosPorVehiculo;
+
+  const VehiculoSelectionRefreshData({
+    required this.vehiculos,
+    required this.vencidosPorVehiculo,
+  });
+}
+
 class VehiculoSelectionSheet extends StatefulWidget {
   final List<VehiculoConductor> vehiculos;
   final Map<int, int> vencidosPorVehiculo;
   final int maxVencidosBloqueo;
+  final Future<VehiculoSelectionRefreshData> Function()? onRefresh;
   final Function(VehiculoConductor) onVehiculoSelected;
 
   const VehiculoSelectionSheet({
@@ -14,6 +25,7 @@ class VehiculoSelectionSheet extends StatefulWidget {
     required this.vehiculos,
     this.vencidosPorVehiculo = const {},
     this.maxVencidosBloqueo = 2,
+    this.onRefresh,
     required this.onVehiculoSelected,
   });
 
@@ -23,6 +35,27 @@ class VehiculoSelectionSheet extends StatefulWidget {
 
 class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
   bool _selectionLocked = false;
+  late List<VehiculoConductor> _vehiculos;
+  late Map<int, int> _vencidosPorVehiculo;
+
+  @override
+  void initState() {
+    super.initState();
+    _vehiculos = [...widget.vehiculos];
+    _vencidosPorVehiculo = {...widget.vencidosPorVehiculo};
+  }
+
+  Future<void> _handleRefresh() async {
+    final refresh = widget.onRefresh;
+    if (refresh == null) return;
+
+    final data = await refresh();
+    if (!mounted) return;
+    setState(() {
+      _vehiculos = [...data.vehiculos];
+      _vencidosPorVehiculo = {...data.vencidosPorVehiculo};
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,38 +110,49 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
             ),
             const SizedBox(height: 8),
             Flexible(
-              child: widget.vehiculos.isEmpty
-                  ? _buildEmptyState()
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      children: [
-                        if (disponibles.isNotEmpty) ...[
-                          _buildSectionTitle(
-                            title: 'Listos para iniciar turno',
-                            subtitle:
-                                'Toca cualquiera para empezar mas rapido.',
-                            color: AppColors.primary,
-                          ),
-                          const SizedBox(height: 8),
-                          ...disponibles.map(
-                            (vehiculo) => _buildVehiculoCard(context, vehiculo),
-                          ),
+              child: RefreshIndicator(
+                color: AppColors.primary,
+                onRefresh: _handleRefresh,
+                child: _vehiculos.isEmpty
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        children: [_buildEmptyState()],
+                      )
+                    : ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        children: [
+                          if (disponibles.isNotEmpty) ...[
+                            _buildSectionTitle(
+                              title: 'Listos para iniciar turno',
+                              subtitle:
+                                  'Toca cualquiera para empezar mas rapido.',
+                              color: AppColors.primary,
+                            ),
+                            const SizedBox(height: 8),
+                            ...disponibles.map(
+                              (vehiculo) =>
+                                  _buildVehiculoCard(context, vehiculo),
+                            ),
+                          ],
+                          if (bloqueados.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            _buildSectionTitle(
+                              title: 'No disponibles ahora',
+                              subtitle:
+                                  'Tienen documentos vencidos o restricciones.',
+                              color: Colors.orange,
+                            ),
+                            const SizedBox(height: 8),
+                            ...bloqueados.map(
+                              (vehiculo) =>
+                                  _buildVehiculoCard(context, vehiculo),
+                            ),
+                          ],
                         ],
-                        if (bloqueados.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          _buildSectionTitle(
-                            title: 'No disponibles ahora',
-                            subtitle:
-                                'Tienen documentos vencidos o restricciones.',
-                            color: Colors.orange,
-                          ),
-                          const SizedBox(height: 8),
-                          ...bloqueados.map(
-                            (vehiculo) => _buildVehiculoCard(context, vehiculo),
-                          ),
-                        ],
-                      ],
-                    ),
+                      ),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -308,7 +352,7 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
     final subtextColor = isDarkMode
         ? Colors.grey.shade400
         : Colors.grey.shade600;
-    final vencidos = widget.vencidosPorVehiculo[vehiculo.id] ?? 0;
+    final vencidos = _vencidosPorVehiculo[vehiculo.id] ?? 0;
     final bloqueado = _isBloqueado(vehiculo);
     final vinculacionActiva = vehiculo.puedeOperarPorVinculacion;
 
@@ -641,13 +685,13 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
   }
 
   bool _isBloqueado(VehiculoConductor vehiculo) {
-    final vencidos = widget.vencidosPorVehiculo[vehiculo.id] ?? 0;
+    final vencidos = _vencidosPorVehiculo[vehiculo.id] ?? 0;
     return vencidos >= widget.maxVencidosBloqueo ||
         !vehiculo.puedeOperarPorVinculacion;
   }
 
   List<VehiculoConductor> _orderedVehiculos() {
-    final sorted = [...widget.vehiculos]
+    final sorted = [..._vehiculos]
       ..sort((a, b) {
         final bloqueadoA = _isBloqueado(a);
         final bloqueadoB = _isBloqueado(b);
