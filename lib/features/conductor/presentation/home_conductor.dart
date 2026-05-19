@@ -907,31 +907,55 @@ class _HomeConductorState extends State<HomeConductor>
                             provider.isOnline ? 'En Línea' : 'Desconectado',
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 13,
+                              fontSize: 15,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           if (provider.isOnline &&
                               provider.vehiculoSeleccionado != null) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.25),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Text(
-                                provider.vehiculoSeleccionado!.placa,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                           Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.yellow.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            provider.vehiculoSeleccionado!.placa,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
                             ),
-                          ],
+                          ),
+                        ),
+
+                        const SizedBox(width: 8),
+
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            provider.zonaActual ?? 'Sin zona',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                           if (provider.isOnline &&
                               provider.zonaActual != null &&
                               provider.zonaActual!.isNotEmpty) ...[
@@ -965,8 +989,8 @@ class _HomeConductorState extends State<HomeConductor>
                                         color: Colors.white.withValues(
                                           alpha: 0.95,
                                         ),
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                   ),

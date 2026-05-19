@@ -386,8 +386,8 @@ class _ConductorStatusWidgetState extends State<ConductorStatusWidget> {
                     Text(
                       _placaVehiculo!,
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                         color: _isOnline ? Colors.green : Colors.grey.shade700,
                         letterSpacing: 0.5,
                       ),
