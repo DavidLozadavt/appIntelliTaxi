@@ -8,6 +8,8 @@ class StandardMap extends StatelessWidget {
   final Set<Marker> markers;
   final Set<Polyline> polylines;
   final double zoom;
+  final double tilt;
+  final double bearing;
   final bool myLocationEnabled;
   final bool myLocationButtonEnabled;
   final bool zoomControlsEnabled;
@@ -26,6 +28,8 @@ class StandardMap extends StatelessWidget {
     this.markers = const {},
     this.polylines = const {},
     this.zoom = 14.0,
+    this.tilt = 0.0,
+    this.bearing = 0.0,
     this.myLocationEnabled = true,
     this.myLocationButtonEnabled = false,
     this.zoomControlsEnabled = false,
@@ -46,6 +50,8 @@ class StandardMap extends StatelessWidget {
       initialCameraPosition: CameraPosition(
         target: initialPosition,
         zoom: zoom,
+        tilt: tilt,
+        bearing: bearing,
       ),
       style: isDark ? MapStyles.darkMapStyle : MapStyles.lightMapStyle,
       markers: markers,

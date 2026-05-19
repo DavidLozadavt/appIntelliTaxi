@@ -70,7 +70,7 @@ class _HomeConductorState extends State<HomeConductor>
     const double s = 36;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const color = Color(0xFFFF6B35); // Naranja
+    const color = AppColors.primary;
 
     // Sombra
     canvas.drawCircle(
@@ -86,7 +86,7 @@ class _HomeConductorState extends State<HomeConductor>
       s / 3,
       Paint()..color = Colors.white,
     );
-    // Círculo interior naranja
+    // Círculo interior principal
     canvas.drawCircle(
       const Offset(s / 2, s / 2),
       s / 4,
@@ -457,6 +457,7 @@ class _HomeConductorState extends State<HomeConductor>
 
             // Verificar documentos después de iniciar turno
             _verificarDocumentos();
+            unawaited(_centrarMapaEnUbicacionActual(_provider));
           } else if (mounted) {
             final errorMessage = _provider.lastTurnoError;
             if (_esVehiculoOcupadoError(errorMessage)) {
@@ -483,6 +484,7 @@ class _HomeConductorState extends State<HomeConductor>
                       ),
                     );
                     _verificarDocumentos();
+                    unawaited(_centrarMapaEnUbicacionActual(_provider));
                   } else {
                     messenger.showSnackBar(
                       SnackBar(
@@ -840,9 +842,11 @@ class _HomeConductorState extends State<HomeConductor>
                             provider.currentPosition!.latitude,
                             provider.currentPosition!.longitude,
                           ),
-                          infoWindow: const InfoWindow(
+                          infoWindow: InfoWindow(
                             title: 'Tu ubicación',
-                            snippet: 'Estás aquí',
+                            snippet: provider.zonaActual?.isNotEmpty == true
+                                ? provider.zonaActual
+                                : 'Estás aquí',
                           ),
                           icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
                           anchor: const Offset(0.5, 0.5),
@@ -850,6 +854,9 @@ class _HomeConductorState extends State<HomeConductor>
                       },
                       onMapCreated: (controller) {
                         _mapController = controller;
+                        if (provider.isOnline) {
+                          unawaited(_centrarMapaEnUbicacionActual(provider));
+                        }
                       },
                     ),
                   ),
@@ -869,6 +876,9 @@ class _HomeConductorState extends State<HomeConductor>
                     onTap: _cambiarEstadoConductor,
                     borderRadius: BorderRadius.circular(20),
                     child: Container(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.sizeOf(context).width - 32,
+                      ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 8,
@@ -881,8 +891,10 @@ class _HomeConductorState extends State<HomeConductor>
                         ),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Icon(
                             provider.isOnline
@@ -891,7 +903,6 @@ class _HomeConductorState extends State<HomeConductor>
                             color: Colors.white,
                             size: 18,
                           ),
-                          const SizedBox(width: 6),
                           Text(
                             provider.isOnline ? 'En Línea' : 'Desconectado',
                             style: const TextStyle(
@@ -902,7 +913,6 @@ class _HomeConductorState extends State<HomeConductor>
                           ),
                           if (provider.isOnline &&
                               provider.vehiculoSeleccionado != null) ...[
-                            const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 6,
@@ -922,11 +932,13 @@ class _HomeConductorState extends State<HomeConductor>
                               ),
                             ),
                           ],
-                          if (provider.zonaActual != null &&
+                          if (provider.isOnline &&
+                              provider.zonaActual != null &&
                               provider.zonaActual!.isNotEmpty) ...[
-                            const SizedBox(width: 8),
                             Container(
-                              constraints: const BoxConstraints(maxWidth: 140),
+                              constraints: BoxConstraints(
+                                maxWidth: MediaQuery.sizeOf(context).width - 60,
+                              ),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
                                 vertical: 4,
@@ -946,15 +958,15 @@ class _HomeConductorState extends State<HomeConductor>
                                   const SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
-                                      provider.zonaActual!,
+                                      'Barrio: ${provider.zonaActual!}',
                                       overflow: TextOverflow.ellipsis,
                                       maxLines: 1,
                                       style: TextStyle(
                                         color: Colors.white.withValues(
                                           alpha: 0.95,
                                         ),
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
                                   ),
