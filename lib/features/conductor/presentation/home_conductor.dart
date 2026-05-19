@@ -480,10 +480,9 @@ class _HomeConductorState extends State<HomeConductor>
       builder: (dialogContext) {
         final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
         final surfaceColor = isDark ? AppColors.darkCard : Colors.white;
-        final bodyColor =
-            isDark
-                ? AppColors.darkOnSurface.withValues(alpha: 0.78)
-                : Colors.black87;
+        final bodyColor = isDark
+            ? AppColors.darkOnSurface.withValues(alpha: 0.78)
+            : Colors.black87;
 
         return Dialog(
           backgroundColor: Colors.transparent,
@@ -993,19 +992,37 @@ class _HomeConductorState extends State<HomeConductor>
                 ),
               ),
 
-            // Botón de recarga de ubicación (fijo abajo a la derecha)
-            // Va al final del Stack para quedar por encima de las tarjetas.
-            if (provider.currentPosition != null)
-              Positioned(
-                right: 16,
-                bottom: provider.solicitudesOrdenadas.isNotEmpty ? 140 : 24,
-                child: FloatingActionButton.small(
-                  onPressed: () => _centrarMapaEnUbicacionActual(provider),
-                  backgroundColor: Colors.white.withValues(alpha: 0.88),
-                  elevation: 4,
-                  child: const Icon(Icons.my_location, color: AppColors.accent),
-                ),
-              ),
+            // ─────────────────────────────────────────────────────────────
+    // Reemplaza los dos Positioned de FABs al final del Stack por esto:
+    // ─────────────────────────────────────────────────────────────
+
+    // Botón de emergencias (encima del de ubicación)
+    if (provider.currentPosition != null)
+      Positioned(
+        right: 16,
+        bottom: provider.solicitudesOrdenadas.isNotEmpty ? 196 : 80,
+        child: FloatingActionButton.small(
+          heroTag: 'fab_emergencias',
+          onPressed: () => Navigator.pushNamed(context, '/emergencias'),
+          backgroundColor: Colors.red.shade600,
+          elevation: 4,
+          child: const Icon(Icons.emergency, color: Colors.white),
+        ),
+      ),
+
+    // Botón de centrar mapa en ubicación actual
+    if (provider.currentPosition != null)
+      Positioned(
+        right: 16,
+        bottom: provider.solicitudesOrdenadas.isNotEmpty ? 140 : 24,
+        child: FloatingActionButton.small(
+          heroTag: 'fab_ubicacion',
+          onPressed: () => _centrarMapaEnUbicacionActual(provider),
+          backgroundColor: Colors.white.withValues(alpha: 0.88),
+          elevation: 4,
+          child: const Icon(Icons.my_location, color: AppColors.accent),
+        ),
+      ),
           ],
         );
       },

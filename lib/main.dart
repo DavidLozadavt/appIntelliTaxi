@@ -15,6 +15,8 @@ import 'package:intellitaxi/features/conductor/presentation/historial_servicios_
 import 'package:intellitaxi/features/conductor/presentation/mis_vehiculos_screen.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/documentos_provider.dart';
+import 'package:intellitaxi/features/emergencias/presentation/emergencias_screen.dart';
+import 'package:intellitaxi/features/emergencias/providers/emergencia_provider.dart';
 import 'package:intellitaxi/features/sanciones/providers/sancion_provider.dart';
 import 'package:intellitaxi/features/entregas/presentation/entregas_screen.dart';
 import 'package:intellitaxi/features/sanciones/presentation/sanciones_screen.dart';
@@ -37,6 +39,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; 
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
 import 'features/auth/providers/auth_provider.dart';
@@ -183,15 +186,51 @@ void _setupPerformanceOptimizations() {
     );
     return true;
   };
-
-  // Limitar la tasa de refresco si no es necesario 120Hz
-  // SchedulerBinding.instance.addPostFrameCallback((_) {
-  //   SchedulerBinding.instance.platformDispatcher.onReportTimings = (timings) {};
-  // });
 }
 
-class MyApp extends StatelessWidget {
+// ─────────────────────────────────────────────
+// 👇 CAMBIO: StatelessWidget → StatefulWidget
+// ─────────────────────────────────────────────
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WakelockPlus.enable(); // Pantalla activa al arrancar
+  }
+
+  @override
+  void dispose() {
+    WakelockPlus.disable();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // App vuelve al frente → reactivar pantalla
+        WakelockPlus.enable();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        // App en segundo plano → liberar wakelock
+        WakelockPlus.disable();
+        break;
+      default:
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -232,6 +271,11 @@ class MyApp extends StatelessWidget {
         //   create: (_) => PasajeroHomeProvider(),
         //   lazy: true,
         // ),
+
+        ChangeNotifierProvider(
+          create: (_) => EmergenciaProvider(),
+          lazy: true,
+        ),
       ],
 
       child: Consumer2<ConnectivityProvider, ThemeProvider>(
@@ -327,6 +371,7 @@ class MyApp extends StatelessWidget {
               '/mis-sanciones': (_) => const SancionesScreen(),
               '/entregas': (_) => const EntregasScreen(),
               // '/vinculaciones-propietario': (_) => TransportePropietario(),
+              '/emergencias': (_) => const EmergenciasScreen(),
             },
           );
         },
