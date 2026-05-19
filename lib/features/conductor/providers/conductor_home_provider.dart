@@ -740,6 +740,19 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<bool> iniciarTurno(int idVehiculo) async {
     try {
       _lastTurnoError = null;
+      VehiculoConductor? vehiculo;
+      for (final item in _vehiculosDisponibles) {
+        if (item.id == idVehiculo) {
+          vehiculo = item;
+          break;
+        }
+      }
+      if (vehiculo != null && !vehiculo.puedeOperarPorVinculacion) {
+        throw Exception(
+          'No puedes operar este vehículo: ${vehiculo.motivoBloqueoVinculacion}',
+        );
+      }
+
       // Obtener ubicación actual
       Position? position = _currentPosition;
 

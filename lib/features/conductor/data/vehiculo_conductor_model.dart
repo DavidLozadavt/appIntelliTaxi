@@ -135,6 +135,42 @@ class VehiculoConductor {
     }
     return placa;
   }
+
+  AsignacionPropietario? get asignacionPrincipal {
+    if (asignacionPropietarios.isEmpty) return null;
+    final administradores = asignacionPropietarios
+        .where((a) => a.administrador.toUpperCase() == 'SI')
+        .toList();
+    return administradores.isNotEmpty
+        ? administradores.first
+        : asignacionPropietarios.first;
+  }
+
+  String get estadoVinculacion {
+    final estado =
+        asignacionPrincipal?.afiliacion.estado?.trim().toUpperCase() ??
+        asignacionPrincipal?.estado.trim().toUpperCase();
+    return estado == null || estado.isEmpty ? 'SIN VINCULACION' : estado;
+  }
+
+  String? get observacionVinculacion {
+    final observacionAfiliacion = asignacionPrincipal?.afiliacion.observaciones
+        ?.trim();
+    if (observacionAfiliacion != null && observacionAfiliacion.isNotEmpty) {
+      return observacionAfiliacion;
+    }
+    final observacion = asignacionPrincipal?.observacion?.trim();
+    return observacion == null || observacion.isEmpty ? null : observacion;
+  }
+
+  bool get vinculacionActiva => estadoVinculacion == 'ACTIVO';
+
+  bool get puedeOperarPorVinculacion => vinculacionActiva;
+
+  String get motivoBloqueoVinculacion {
+    if (!vinculacionActiva) return 'vinculación $estadoVinculacion';
+    return '';
+  }
 }
 
 class Marca {
@@ -316,18 +352,32 @@ class AsignacionPropietario {
 class Afiliacion {
   final int id;
   final String numero;
+  final String? estado;
+  final String? observaciones;
 
-  Afiliacion({required this.id, required this.numero});
+  Afiliacion({
+    required this.id,
+    required this.numero,
+    this.estado,
+    this.observaciones,
+  });
 
   factory Afiliacion.fromJson(Map<String, dynamic> json) {
     return Afiliacion(
       id: _asInt(json['id']),
       numero: json['numero']?.toString() ?? '',
+      estado: json['estado']?.toString(),
+      observaciones: json['observaciones']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() {
-    return {'id': id, 'numero': numero};
+    return {
+      'id': id,
+      'numero': numero,
+      'estado': estado,
+      'observaciones': observaciones,
+    };
   }
 }
 

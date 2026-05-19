@@ -426,15 +426,17 @@ class _HomeConductorState extends State<HomeConductor>
         maxVencidosBloqueo: 2,
         onVehiculoSelected: (vehiculo) async {
           final vencidos = vencidosPorVehiculo[vehiculo.id] ?? 0;
-          final bloqueado = vencidos >= 2;
+          final bloqueado =
+              vencidos >= 2 || !vehiculo.puedeOperarPorVinculacion;
 
           if (bloqueado) {
             if (!mounted) return;
+            final mensaje = !vehiculo.puedeOperarPorVinculacion
+                ? 'No puedes operar este vehículo: ${vehiculo.motivoBloqueoVinculacion}'
+                : 'No puedes seleccionar este vehículo: tiene $vencidos documentos vencidos';
             messenger.showSnackBar(
               SnackBar(
-                content: Text(
-                  'No puedes seleccionar este vehículo: tiene $vencidos documentos vencidos',
-                ),
+                content: Text(mensaje),
                 backgroundColor: Colors.red,
                 duration: const Duration(seconds: 4),
               ),

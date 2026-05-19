@@ -310,6 +310,7 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
         : Colors.grey.shade600;
     final vencidos = widget.vencidosPorVehiculo[vehiculo.id] ?? 0;
     final bloqueado = _isBloqueado(vehiculo);
+    final vinculacionActiva = vehiculo.puedeOperarPorVinculacion;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -427,6 +428,7 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
                                 _buildStatusBadge(
                                   bloqueado: bloqueado,
                                   vencidos: vencidos,
+                                  vehiculo: vehiculo,
                                 ),
                               ],
                             ),
@@ -477,8 +479,32 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
                               color: subtextColor,
                               isDarkMode: isDarkMode,
                             ),
+                          _buildMetaPill(
+                            icon: vinculacionActiva
+                                ? Icons.verified_user_outlined
+                                : Icons.warning_amber_outlined,
+                            label: vinculacionActiva
+                                ? 'Vinculación ACTIVA'
+                                : vehiculo.motivoBloqueoVinculacion,
+                            color: vinculacionActiva
+                                ? AppColors.green
+                                : Colors.orange,
+                            isDarkMode: isDarkMode,
+                          ),
                         ],
                       ),
+                      if (!vinculacionActiva &&
+                          vehiculo.observacionVinculacion != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          vehiculo.observacionVinculacion!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange.shade700,
+                          ),
+                        ),
+                      ],
                       if (!bloqueado) ...[
                         const SizedBox(height: 10),
                         Text(
@@ -501,7 +527,11 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
     );
   }
 
-  Widget _buildStatusBadge({required bool bloqueado, required int vencidos}) {
+  Widget _buildStatusBadge({
+    required bool bloqueado,
+    required int vencidos,
+    required VehiculoConductor vehiculo,
+  }) {
     final color = bloqueado ? Colors.orange : AppColors.green;
     final background = bloqueado
         ? Colors.orange.withValues(alpha: 0.14)
@@ -515,7 +545,9 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
       ),
       child: Text(
         bloqueado
-            ? '$vencidos doc. vencido${vencidos == 1 ? '' : 's'}'
+            ? !vehiculo.puedeOperarPorVinculacion
+                  ? vehiculo.motivoBloqueoVinculacion.toUpperCase()
+                  : '$vencidos doc. vencido${vencidos == 1 ? '' : 's'}'
             : 'Disponible',
         style: TextStyle(
           fontSize: 11,
@@ -610,7 +642,8 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
 
   bool _isBloqueado(VehiculoConductor vehiculo) {
     final vencidos = widget.vencidosPorVehiculo[vehiculo.id] ?? 0;
-    return vencidos >= widget.maxVencidosBloqueo;
+    return vencidos >= widget.maxVencidosBloqueo ||
+        !vehiculo.puedeOperarPorVinculacion;
   }
 
   List<VehiculoConductor> _orderedVehiculos() {

@@ -66,7 +66,8 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
 
   bool _estaBloqueado(VehiculoConductor vehiculo) {
     final docs = _docsByVehiculo[vehiculo.id] ?? const <DocumentoVehiculo>[];
-    return docs.any((d) => d.estaVencido);
+    return docs.any((d) => d.estaVencido) ||
+        !vehiculo.puedeOperarPorVinculacion;
   }
 
   Future<void> _editarDocumentoVehiculo(DocumentoVehiculo doc) async {
@@ -127,7 +128,7 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
         leading: const Icon(Icons.block, color: Colors.red),
         title: Text('$bloqueados vehículo(s) bloqueado(s)'),
         subtitle: const Text(
-          'Si un vehículo tiene documentos vencidos no puede operar',
+          'Si un vehículo tiene documentos vencidos o vinculación no activa no puede operar',
         ),
       ),
     );
@@ -136,6 +137,7 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
   Widget _buildVehiculoCard(VehiculoConductor vehiculo) {
     final docs = _docsByVehiculo[vehiculo.id] ?? const <DocumentoVehiculo>[];
     final bloqueado = _estaBloqueado(vehiculo);
+    final vinculacionActiva = vehiculo.puedeOperarPorVinculacion;
     final expanded = _expandedVehiculos.contains(vehiculo.id);
     final isPrincipal =
         _vehiculos.isNotEmpty && _vehiculos.first.id == vehiculo.id;
@@ -272,6 +274,8 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
+                  _buildVinculacionInfo(vehiculo, vinculacionActiva),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Text(
@@ -334,6 +338,63 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildVinculacionInfo(
+    VehiculoConductor vehiculo,
+    bool vinculacionActiva,
+  ) {
+    final color = vinculacionActiva ? AppColors.green : Colors.orange;
+    final observacion = vehiculo.observacionVinculacion;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            vinculacionActiva
+                ? Icons.verified_user_outlined
+                : Icons.warning_amber_outlined,
+            color: color,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Vinculación: ${vehiculo.estadoVinculacion}',
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+                if (observacion != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    observacion,
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
