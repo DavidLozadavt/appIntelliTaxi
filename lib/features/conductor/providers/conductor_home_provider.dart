@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:intellitaxi/features/conductor/services/turno_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -23,6 +24,7 @@ const int kOportunidadConductorSegundos = 60;
 class ConductorHomeProvider extends ChangeNotifier {
   // Servicios
   final ConductorService _conductorService = ConductorService();
+  final TurnoService _turnoService = TurnoService();
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   // Estado de ubicación
@@ -208,7 +210,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> sincronizarSolicitudesPublicadasConductor() async {
     if (_isDisposed || !_isOnline) return;
     try {
-      final list = await _conductorService.listarSolicitudesPublicadasConductor();
+      final list = await _conductorService
+          .listarSolicitudesPublicadasConductor();
       final serverIds = <String>{};
       for (final m in list) {
         final sid = m['servicio_id'] ?? m['solicitud_id'] ?? m['id'];
@@ -766,25 +769,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Llamar al servicio para finalizar turno
       await _conductorService.finalizarTurno(_turnoActivo!.id);
 
-      // Limpiar SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('turno_activo_id');
-      await prefs.remove('turno_vehiculo_id');
-      await prefs.remove('turno_fecha');
-      await prefs.remove('turno_hora_inicio');
-
-      // Desconectar de Pusher
-      await desconectarPusher();
-
-      _turnoActivo = null;
-      _isOnline = false;
-      _vehiculoSeleccionado = null;
-      _solicitudesActivas.clear();
-      _expiracionPorSolicitud.clear();
-      _tickerExpiracionUI?.cancel();
-      _tickerExpiracionUI = null;
-
-      if (!_isDisposed) notifyListeners();
+      await _limpiarTurnoActivoLocal();
       return true;
     } catch (e) {
       AppLogger.d('❌ Error finalizando turno: $e');
@@ -1023,5 +1008,43 @@ class ConductorHomeProvider extends ChangeNotifier {
     for (final solicitudId in expiradas) {
       _expirarSolicitud(solicitudId);
     }
+  }
+
+  Future<bool> finalizarTurnoActivoAnterior() async {
+    try {
+      final finalizado = await _turnoService.finalizarTurnoActivo();
+
+      if (!finalizado) return false;
+
+      await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
+      return true;
+    } catch (e) {
+      AppLogger.d('❌ Error finalizando turno anterior: $e');
+      return false;
+    }
+  }
+
+  Future<void> _limpiarTurnoActivoLocal({
+    bool clearSelectedVehicle = true,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('turno_activo_id');
+    await prefs.remove('turno_vehiculo_id');
+    await prefs.remove('turno_fecha');
+    await prefs.remove('turno_hora_inicio');
+
+    await desconectarPusher();
+
+    _turnoActivo = null;
+    _isOnline = false;
+    if (clearSelectedVehicle) {
+      _vehiculoSeleccionado = null;
+    }
+    _solicitudesActivas.clear();
+    _expiracionPorSolicitud.clear();
+    _tickerExpiracionUI?.cancel();
+    _tickerExpiracionUI = null;
+
+    if (!_isDisposed) notifyListeners();
   }
 }

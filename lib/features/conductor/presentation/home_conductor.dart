@@ -427,8 +427,8 @@ class _HomeConductorState extends State<HomeConductor>
             return;
           }
 
-          // Seleccionar vehículo e iniciar turno
-          _provider.seleccionarVehiculo(vehiculo);
+          // Iniciar turno; el provider sincroniza el vehículo seleccionado
+          // cuando el turno queda activo.
           final turnoIniciado = await _provider.iniciarTurno(vehiculo.id);
 
           if (turnoIniciado && mounted) {
@@ -445,7 +445,49 @@ class _HomeConductorState extends State<HomeConductor>
           } else if (mounted) {
             final errorMessage = _provider.lastTurnoError;
             if (_esVehiculoOcupadoError(errorMessage)) {
-              await _mostrarVehiculoOcupadoDialog(errorMessage!);
+              final continuar = await _mostrarVehiculoOcupadoDialog(
+                errorMessage!,
+              );
+
+              if (continuar == true) {
+                final finalizado = await _provider
+                    .finalizarTurnoActivoAnterior();
+                if (!mounted) return;
+
+                if (finalizado) {
+                  final reintento = await _provider.iniciarTurno(vehiculo.id);
+                  if (!mounted) return;
+
+                  if (reintento) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Turno iniciado con vehículo ${vehiculo.placa}',
+                        ),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    _verificarDocumentos();
+                  } else {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          _provider.lastTurnoError ??
+                              'No se pudo iniciar el turno',
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                } else {
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('No se pudo finalizar el turno anterior'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             } else {
               messenger.showSnackBar(
                 SnackBar(
@@ -468,18 +510,22 @@ class _HomeConductorState extends State<HomeConductor>
   bool _esVehiculoOcupadoError(String? message) {
     if (message == null || message.trim().isEmpty) return false;
     final normalized = message.toLowerCase();
-    return normalized.contains('ya tiene un turno activo') &&
-        normalized.contains('otro conductor');
+    return normalized.contains('turno activo') ||
+        normalized.contains('turno abierto') ||
+        (normalized.contains('vehiculo') && normalized.contains('ocupado')) ||
+        (normalized.contains('vehículo') && normalized.contains('ocupado'));
   }
 
-  Future<void> _mostrarVehiculoOcupadoDialog(String message) async {
-    if (!mounted) return;
+  Future<bool?> _mostrarVehiculoOcupadoDialog(String message) async {
+    if (!mounted) return false;
 
-    await showDialog<void>(
+    return showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final isDark = Theme.of(dialogContext).brightness == Brightness.dark;
+
         final surfaceColor = isDark ? AppColors.darkCard : Colors.white;
+
         final bodyColor = isDark
             ? AppColors.darkOnSurface.withValues(alpha: 0.78)
             : Colors.black87;
@@ -512,10 +558,12 @@ class _HomeConductorState extends State<HomeConductor>
                           size: 24,
                         ),
                       ),
+
                       const SizedBox(width: 14),
+
                       const Expanded(
                         child: Text(
-                          'Vehiculo en uso',
+                          'Turno activo detectado',
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
@@ -524,7 +572,9 @@ class _HomeConductorState extends State<HomeConductor>
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 16),
+
                   Text(
                     message,
                     style: TextStyle(
@@ -533,16 +583,18 @@ class _HomeConductorState extends State<HomeConductor>
                       color: bodyColor,
                     ),
                   ),
+
                   const SizedBox(height: 14),
+
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
+                      color: Colors.orange.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Text(
-                      'Es posible que el mismo vehiculo este asignado a mas de un conductor, pero solo uno puede tener el turno activo al mismo tiempo.',
+                      'Parece que tienes un turno abierto desde otro dispositivo o una sesión anterior.',
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.35,
@@ -550,22 +602,55 @@ class _HomeConductorState extends State<HomeConductor>
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+
+                  const SizedBox(height: 20),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 44),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: () {
+                            Navigator.pop(dialogContext, false);
+                          },
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Cancelar',
+                              maxLines: 1,
+                              softWrap: false,
+                            ),
+                          ),
                         ),
                       ),
-                      child: const Text('Entendido'),
-                    ),
+
+                      const SizedBox(width: 12),
+
+                      Expanded(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(0, 44),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: () {
+                            Navigator.pop(dialogContext, true);
+                          },
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Finalizar',
+                              maxLines: 1,
+                              softWrap: false,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -579,12 +664,9 @@ class _HomeConductorState extends State<HomeConductor>
   /// Cambia el estado del conductor (online/offline)
   Future<void> _cambiarEstadoConductor() async {
     if (!_provider.isOnline) {
-      // Activándose: debe seleccionar vehículo primero
-      if (_provider.vehiculoSeleccionado == null) {
-        await _mostrarSelectorVehiculo();
-      } else {
-        await _provider.toggleOnlineStatus();
-      }
+      // Activándose: abrir siempre el selector para evitar reintentos
+      // silenciosos si antes se canceló un diálogo de turno activo.
+      await _mostrarSelectorVehiculo();
     } else {
       // Desactivándose: finalizar turno
       final success = await _provider.finalizarTurno();
@@ -992,37 +1074,32 @@ class _HomeConductorState extends State<HomeConductor>
                 ),
               ),
 
-            // ─────────────────────────────────────────────────────────────
-    // Reemplaza los dos Positioned de FABs al final del Stack por esto:
-    // ─────────────────────────────────────────────────────────────
+            if (provider.currentPosition != null)
+              Positioned(
+                right: 16,
+                bottom: provider.solicitudesOrdenadas.isNotEmpty ? 196 : 80,
+                child: FloatingActionButton.small(
+                  heroTag: 'fab_emergencias',
+                  onPressed: () => Navigator.pushNamed(context, '/emergencias'),
+                  backgroundColor: Colors.red.shade600,
+                  elevation: 4,
+                  child: const Icon(Icons.emergency, color: Colors.white),
+                ),
+              ),
 
-    // Botón de emergencias (encima del de ubicación)
-    if (provider.currentPosition != null)
-      Positioned(
-        right: 16,
-        bottom: provider.solicitudesOrdenadas.isNotEmpty ? 196 : 80,
-        child: FloatingActionButton.small(
-          heroTag: 'fab_emergencias',
-          onPressed: () => Navigator.pushNamed(context, '/emergencias'),
-          backgroundColor: Colors.red.shade600,
-          elevation: 4,
-          child: const Icon(Icons.emergency, color: Colors.white),
-        ),
-      ),
-
-    // Botón de centrar mapa en ubicación actual
-    if (provider.currentPosition != null)
-      Positioned(
-        right: 16,
-        bottom: provider.solicitudesOrdenadas.isNotEmpty ? 140 : 24,
-        child: FloatingActionButton.small(
-          heroTag: 'fab_ubicacion',
-          onPressed: () => _centrarMapaEnUbicacionActual(provider),
-          backgroundColor: Colors.white.withValues(alpha: 0.88),
-          elevation: 4,
-          child: const Icon(Icons.my_location, color: AppColors.accent),
-        ),
-      ),
+            // Botón de centrar mapa en ubicación actual
+            if (provider.currentPosition != null)
+              Positioned(
+                right: 16,
+                bottom: provider.solicitudesOrdenadas.isNotEmpty ? 140 : 24,
+                child: FloatingActionButton.small(
+                  heroTag: 'fab_ubicacion',
+                  onPressed: () => _centrarMapaEnUbicacionActual(provider),
+                  backgroundColor: Colors.white.withValues(alpha: 0.88),
+                  elevation: 4,
+                  child: const Icon(Icons.my_location, color: AppColors.accent),
+                ),
+              ),
           ],
         );
       },

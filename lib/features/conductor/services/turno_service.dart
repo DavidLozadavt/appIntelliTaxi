@@ -208,6 +208,30 @@ class TurnoService {
       return false;
     }
   }
+
+  Future<bool> finalizarTurnoActivo() async {
+    try {
+      final response = await _dio.post('turnos/finalizar-activo');
+
+      if (response.statusCode == null ||
+          response.statusCode! < 200 ||
+          response.statusCode! >= 300) {
+        return false;
+      }
+
+      final data = response.data;
+      if (data is Map && data['success'] == false) {
+        return false;
+      }
+
+      return true;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final message = data is Map ? data['message']?.toString() : null;
+
+      throw Exception(message ?? 'Error al finalizar turno activo');
+    }
+  }
 }
 
 /// Modelo de respuesta del turno

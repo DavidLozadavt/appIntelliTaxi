@@ -22,6 +22,8 @@ class VehiculoSelectionSheet extends StatefulWidget {
 }
 
 class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
+  bool _selectionLocked = false;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -89,8 +91,7 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
                           ),
                           const SizedBox(height: 8),
                           ...disponibles.map(
-                            (vehiculo) =>
-                                _buildVehiculoCard(context, vehiculo),
+                            (vehiculo) => _buildVehiculoCard(context, vehiculo),
                           ),
                         ],
                         if (bloqueados.isNotEmpty) ...[
@@ -103,8 +104,7 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
                           ),
                           const SizedBox(height: 8),
                           ...bloqueados.map(
-                            (vehiculo) =>
-                                _buildVehiculoCard(context, vehiculo),
+                            (vehiculo) => _buildVehiculoCard(context, vehiculo),
                           ),
                         ],
                       ],
@@ -185,11 +185,7 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
                 ),
               ],
             ),
-            child: const Icon(
-              Iconsax.car_copy,
-              color: Colors.white,
-              size: 24,
-            ),
+            child: const Icon(Iconsax.car_copy, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -364,6 +360,8 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
           onTap: bloqueado
               ? null
               : () {
+                  if (_selectionLocked) return;
+                  _selectionLocked = true;
                   Navigator.pop(context);
                   widget.onVehiculoSelected(vehiculo);
                 },
@@ -382,7 +380,8 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
                         : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: vehiculo.rutaUrl != null && vehiculo.rutaUrl!.isNotEmpty
+                  child:
+                      vehiculo.rutaUrl != null && vehiculo.rutaUrl!.isNotEmpty
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(14),
                           child: Image.network(
@@ -438,7 +437,9 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
                                 ? Icons.lock_outline_rounded
                                 : Iconsax.arrow_right_3_copy,
                             size: 18,
-                            color: bloqueado ? Colors.orange : AppColors.primary,
+                            color: bloqueado
+                                ? Colors.orange
+                                : AppColors.primary,
                           ),
                         ],
                       ),
