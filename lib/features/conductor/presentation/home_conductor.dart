@@ -15,6 +15,7 @@ import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/emergencias/providers/emergencia_provider.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
 import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
@@ -29,9 +30,11 @@ class HomeConductor extends StatefulWidget {
 }
 
 class _HomeConductorState extends State<HomeConductor>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   GoogleMapController? _mapController;
   late ConductorHomeProvider _provider;
+  late final AnimationController _emergencyPulseController;
+  late final Animation<double> _emergencyPulseAnimation;
 
   // Sanciones
   final SancionService _sancionService = SancionService();
@@ -47,6 +50,14 @@ class _HomeConductorState extends State<HomeConductor>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _provider = context.read<ConductorHomeProvider>();
+    _emergencyPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _emergencyPulseAnimation = CurvedAnimation(
+      parent: _emergencyPulseController,
+      curve: Curves.easeInOut,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _provider.initialize();
@@ -139,6 +150,7 @@ class _HomeConductorState extends State<HomeConductor>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _bannerTimer?.cancel();
+    _emergencyPulseController.dispose();
     _mapController?.dispose();
     super.dispose();
   }
@@ -146,6 +158,9 @@ class _HomeConductorState extends State<HomeConductor>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (_provider.currentPosition == null) {
+        unawaited(_provider.initializeLocation());
+      }
       unawaited(_provider.sincronizarSolicitudesPublicadasConductor());
     }
   }
@@ -797,7 +812,9 @@ class _HomeConductorState extends State<HomeConductor>
                 ? LocationStatusView(
                     isLoading: provider.isLoadingLocation,
                     message: provider.locationMessage,
-                    onRetry: provider.initializeLocation,
+                    onRetry: provider.handleLocationRecoveryAction,
+                    actionLabel: provider.locationActionLabel,
+                    actionIcon: provider.locationActionIcon,
                   )
                 : RepaintBoundary(
                     child: StandardMap(
@@ -1078,12 +1095,60 @@ class _HomeConductorState extends State<HomeConductor>
               Positioned(
                 right: 16,
                 bottom: provider.solicitudesOrdenadas.isNotEmpty ? 196 : 80,
-                child: FloatingActionButton.small(
-                  heroTag: 'fab_emergencias',
-                  onPressed: () => Navigator.pushNamed(context, '/emergencias'),
-                  backgroundColor: Colors.red.shade600,
-                  elevation: 4,
-                  child: const Icon(Icons.emergency, color: Colors.white),
+                child: Consumer<EmergenciaProvider>(
+                  builder: (context, emergenciaProvider, _) {
+                    if (!emergenciaProvider.estaEnEmergencia) {
+                      return FloatingActionButton.small(
+                        heroTag: 'fab_emergencias',
+                        onPressed: () =>
+                            Navigator.pushNamed(context, '/emergencias'),
+                        backgroundColor: Colors.red.shade600,
+                        elevation: 4,
+                        child: const Icon(Icons.emergency, color: Colors.white),
+                      );
+                    }
+
+                    return AnimatedBuilder(
+                      animation: _emergencyPulseAnimation,
+                      builder: (context, child) {
+                        final pulse = _emergencyPulseAnimation.value;
+                        return Transform.scale(
+                          scale: 1 + (pulse * 0.05),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.red.withValues(
+                                    alpha: 0.28 - (pulse * 0.12),
+                                  ),
+                                  blurRadius: 14 + (pulse * 14),
+                                  spreadRadius: 2 + (pulse * 5),
+                                ),
+                              ],
+                            ),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: FloatingActionButton.extended(
+                        heroTag: 'fab_emergencias',
+                        onPressed: () =>
+                            Navigator.pushNamed(context, '/emergencias'),
+                        backgroundColor: Colors.red.shade700,
+                        foregroundColor: Colors.white,
+                        elevation: 6,
+                        icon: const Icon(Icons.emergency_share),
+                        label: const Text(
+                          'EN EMERGENCIA',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
 

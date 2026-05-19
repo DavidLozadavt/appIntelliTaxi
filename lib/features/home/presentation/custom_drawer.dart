@@ -25,12 +25,12 @@ class CustomDrawer extends StatelessWidget {
         route: '/historial-conductor',
         allowedRoles: [AuthProvider.roleConductor],
       ),
-      DrawerItem(
-        title: 'Entregas',
-        icon: Iconsax.box_1_copy,
-        route: '/entregas',
-        allowedRoles: [AuthProvider.roleConductor],
-      ),
+      // DrawerItem(
+      //   title: 'Entregas',
+      //   icon: Iconsax.box_1_copy,
+      //   route: '/entregas',
+      //   allowedRoles: [AuthProvider.roleConductor],
+      // ),
       DrawerItem(
         title: 'Mis Calificaciones',
         icon: Iconsax.star_1_copy,

@@ -4,6 +4,8 @@ class LocationStatusView extends StatelessWidget {
   final bool isLoading;
   final String message;
   final VoidCallback onRetry;
+  final String actionLabel;
+  final IconData actionIcon;
   final String loadingTitle;
   final String unavailableTitle;
 
@@ -12,6 +14,8 @@ class LocationStatusView extends StatelessWidget {
     required this.isLoading,
     required this.message,
     required this.onRetry,
+    this.actionLabel = 'Reintentar conexión',
+    this.actionIcon = Icons.refresh_rounded,
     this.loadingTitle = 'Conectando GPS',
     this.unavailableTitle = 'Ubicación no disponible',
   });
@@ -157,12 +161,12 @@ class LocationStatusView extends StatelessWidget {
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.refresh_rounded, size: 22),
-                      SizedBox(width: 10),
+                    children: [
+                      Icon(actionIcon, size: 22),
+                      const SizedBox(width: 10),
                       Text(
-                        'Reintentar conexión',
-                        style: TextStyle(
+                        actionLabel,
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.3,

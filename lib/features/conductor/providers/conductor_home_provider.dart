@@ -67,6 +67,23 @@ class ConductorHomeProvider extends ChangeNotifier {
   Position? get currentPosition => _currentPosition;
   bool get isLoadingLocation => _isLoadingLocation;
   String get locationMessage => _locationMessage;
+  bool get locationServiceDisabled =>
+      _locationMessage.toLowerCase().contains('deshabilitado');
+  bool get locationPermissionPermanentlyDenied =>
+      _locationMessage.toLowerCase().contains('permanentemente');
+  String get locationActionLabel {
+    if (locationServiceDisabled) return 'Activar ubicación';
+    if (locationPermissionPermanentlyDenied) return 'Abrir ajustes';
+    return 'Reintentar conexión';
+  }
+
+  IconData get locationActionIcon {
+    if (locationServiceDisabled || locationPermissionPermanentlyDenied) {
+      return Icons.settings_rounded;
+    }
+    return Icons.refresh_rounded;
+  }
+
   String? get zonaActual => _zonaActual;
   bool get isOnline => _isOnline;
   VehiculoConductor? get vehiculoSeleccionado => _vehiculoSeleccionado;
@@ -505,6 +522,32 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     await _getCurrentLocation();
+  }
+
+  Future<void> handleLocationRecoveryAction() async {
+    if (_isDisposed) return;
+
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _isLoadingLocation = false;
+      _locationMessage =
+          'Activa la ubicación del dispositivo y vuelve a IntelliTaxi.';
+      if (!_isDisposed) notifyListeners();
+      await Geolocator.openLocationSettings();
+      return;
+    }
+
+    final permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.deniedForever) {
+      _isLoadingLocation = false;
+      _locationMessage =
+          'Activa el permiso de ubicación para IntelliTaxi en ajustes.';
+      if (!_isDisposed) notifyListeners();
+      await openAppSettings();
+      return;
+    }
+
+    await initializeLocation();
   }
 
   /// Verifica y solicita permisos de ubicación
