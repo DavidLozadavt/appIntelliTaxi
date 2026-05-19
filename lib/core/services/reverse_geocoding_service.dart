@@ -1,4 +1,4 @@
- import 'dart:convert';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -19,19 +19,32 @@ class ReverseGeocodingService {
     if (key.isEmpty) return null;
 
     try {
-      final url = Uri.parse('$_baseUrl?latlng=$lat,$lng&key=$key&language=es');
+      final url = Uri.parse(
+        '$_baseUrl?latlng=$lat,$lng&key=$key&language=es&region=co',
+      );
       final response = await http.get(url);
       if (response.statusCode != 200) return null;
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
+      AppLogger.d('📍 GEOCODE RESPONSE: ${response.body}');
       if (data['status'] != 'OK') return null;
 
       final results = data['results'] as List<dynamic>? ?? [];
       for (final item in results) {
         final result = item is Map<String, dynamic>
+        
             ? item
             : Map<String, dynamic>.from(item as Map);
         final components = result['address_components'] as List<dynamic>? ?? [];
+        final resultTypes = (result['types'] as List<dynamic>? ?? [])
+    .map((e) => e.toString())
+    .toList();
+
+if (resultTypes.contains('plus_code') ||
+    resultTypes.contains('postal_code') ||
+    resultTypes.contains('administrative_area_level_2')) {
+  continue;
+}
 
         // 1) Prioridad alta: barrio/sector/localidad pequeña.
         final neighborhood = _firstComponentValue(
@@ -42,8 +55,6 @@ class ReverseGeocodingService {
             'sublocality_level_1',
             'sublocality_level_2',
             'sublocality_level_3',
-            'administrative_area_level_4',
-            'administrative_area_level_3',
           ],
         );
         if (neighborhood != null && neighborhood.isNotEmpty) {
@@ -53,7 +64,13 @@ class ReverseGeocodingService {
         // 2) Si no hay barrio, usar vía o zona de calle.
         final route = _firstComponentValue(
           components,
-          acceptedTypes: const ['route', 'street_address', 'premise'],
+          acceptedTypes: const [
+            'route',
+            'point_of_interest',
+            'establishment',
+            'street_address',
+            'premise',
+          ],
         );
         if (route != null &&
             route.isNotEmpty &&
