@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_status_widget.dart';
+// import 'package:intellitaxi/features/conductor/widgets/conductor_status_widget.dart';
 
 class ConductorHomePage extends StatefulWidget {
   final int idVehiculo;
@@ -25,7 +25,7 @@ class _ConductorHomePageState extends State<ConductorHomePage> {
             const SizedBox(height: 20),
 
             // Widget de control de estado
-            ConductorStatusWidget(idVehiculo: widget.idVehiculo),
+            // ConductorStatusWidget(idVehiculo: widget.idVehiculo),
 
             const SizedBox(height: 20),
 

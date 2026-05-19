@@ -17,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _roleDialogShown = false;
+  bool _welcomeShown = false;
 
   @override
   void initState() {
@@ -49,6 +50,15 @@ class _HomeScreenState extends State<HomeScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             _mostrarSelectorRol(context, authProvider, canDismiss: false);
+          });
+        }
+
+        if (!_welcomeShown &&
+            (!authProvider.canSwitchRole || authProvider.activeRole != null)) {
+          _welcomeShown = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _mostrarSaludoBienvenida(user.persona.nombre1);
           });
         }
 
@@ -189,6 +199,31 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+  void _mostrarSaludoBienvenida(String nombre) {
+    final nombreLimpio = nombre.trim();
+    final saludo = nombreLimpio.isEmpty
+        ? 'Hola de nuevo. Qué bueno verte por aquí.'
+        : 'Hola de nuevo, $nombreLimpio. Qué bueno verte por aquí.';
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            saludo,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.primary,
+          duration: const Duration(seconds: 3),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+        ),
+      );
   }
 
   Future<void> _mostrarSelectorRol(
