@@ -26,7 +26,7 @@ class ReverseGeocodingService {
       if (response.statusCode != 200) return null;
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      AppLogger.d('📍 GEOCODE RESPONSE: ${response.body}');
+      // AppLogger.d('📍 GEOCODE RESPONSE: ${response.body}');
       if (data['status'] != 'OK') return null;
 
       final results = data['results'] as List<dynamic>? ?? [];
