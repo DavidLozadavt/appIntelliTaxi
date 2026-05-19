@@ -55,15 +55,15 @@ class ConductorService {
       final response = await _dio.get('get_documents_by_vehiculo/$idVehiculo');
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data;
-        return data
-            .map((json) => DocumentoVehiculo.fromJson(json))
-            .toList();
+        return data.map((json) => DocumentoVehiculo.fromJson(json)).toList();
       }
       throw Exception(
         'Error al obtener documentos del vehículo: ${response.statusCode}',
       );
     } catch (e) {
-      AppLogger.d('⚠️ Error obteniendo documentos del vehículo $idVehiculo: $e');
+      AppLogger.d(
+        '⚠️ Error obteniendo documentos del vehículo $idVehiculo: $e',
+      );
       rethrow;
     }
   }
@@ -194,13 +194,17 @@ class ConductorService {
   Future<void> actualizarDocumento({
     required int idDocumento,
     required String filePath,
-    required String fechaVigencia,
+    String? fechaVigencia,
+    int? idTipoDocumento,
+    int? idConductor,
   }) async {
     try {
       final formData = FormData.fromMap({
         'idDocumento': idDocumento,
+        'idTipoDocumento': ?idTipoDocumento,
+        'idConductor': ?idConductor,
         'rutaFile': await MultipartFile.fromFile(filePath),
-        'fecha_vigencia': fechaVigencia,
+        'fecha_vigencia': ?fechaVigencia,
       });
 
       final response = await _dio.post(
@@ -355,7 +359,8 @@ class ConductorService {
   }
 
   /// Solicitudes publicadas (estado 4) de la empresa del conductor — sincronización con backend.
-  Future<List<Map<String, dynamic>>> listarSolicitudesPublicadasConductor() async {
+  Future<List<Map<String, dynamic>>>
+  listarSolicitudesPublicadasConductor() async {
     try {
       final response = await _dio.get('taxi/solicitudes-publicadas-conductor');
       if (response.statusCode != 200 || response.data == null) {

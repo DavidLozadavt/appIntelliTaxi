@@ -9,6 +9,7 @@ import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DocumentosScreen extends StatefulWidget {
   const DocumentosScreen({super.key});
@@ -33,7 +34,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
       setState(() => _isLoading = true);
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final conductorId = authProvider.user?.id;
+      final conductorId = authProvider.user?.persona.id;
 
       if (conductorId == null) return;
 
@@ -73,18 +74,40 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     }
   }
 
+  Future<void> _abrirDocumento(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _mostrarErrorAbrirDocumento();
+      return;
+    }
+
+    final opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    if (!opened && mounted) {
+      _mostrarErrorAbrirDocumento();
+    }
+  }
+
+  void _mostrarErrorAbrirDocumento() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No se pudo abrir el documento'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Calcular porcentaje de completitud
+    // Calcular porcentaje de documentos cargados
     final totalDocumentos = _documentos.length;
-    final documentosVigentes = _documentos.where((doc) {
-      final estado = doc.estadoVigencia?.toUpperCase() ?? 'VIGENTE';
-      return estado == 'VIGENTE';
-    }).length;
+    final documentosCargados = _documentos
+        .where((doc) => doc.estaCargado)
+        .length;
     final porcentaje = totalDocumentos > 0
-        ? (documentosVigentes / totalDocumentos)
+        ? (documentosCargados / totalDocumentos)
         : 0.0;
 
     return Scaffold(
@@ -112,7 +135,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                   // Indicador de progreso circular
                   _buildProgressIndicator(
                     porcentaje,
-                    documentosVigentes,
+                    documentosCargados,
                     totalDocumentos,
                     isDark,
                   ),
@@ -229,7 +252,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                       Expanded(
                         child: Text(
                           porcentaje >= 1.0
-                              ? 'Documentos completos'
+                              ? 'Documentos cargados'
                               : porcentaje >= 0.7
                               ? 'Revisa tus documentos'
                               : 'Actualiza urgentemente',
@@ -245,7 +268,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                   const SizedBox(height: 8),
                   Text(
                     porcentaje >= 1.0
-                        ? 'Todos tus documentos están vigentes y al día.'
+                        ? 'Tus documentos están cargados. Revisa las alertas si falta vigencia.'
                         : 'Tienes ${total - completados} documento(s) que necesita atención.',
                     style: TextStyle(
                       fontSize: 13,
@@ -318,6 +341,25 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     final diasRestantes =
         documento.diasRestantesCalculados ?? documento.diasRestantes;
     final estadoVigencia = documento.estadoVigencia?.toUpperCase() ?? 'VIGENTE';
+    final estaNoCargado = !documento.estaCargado;
+    final estaSinFecha =
+        documento.estaCargado &&
+        documento.requiereVigencia &&
+        estadoVigencia == 'SIN_FECHA_VIGENCIA';
+    final estaCargadoSinVigencia =
+        documento.estaCargado && !documento.requiereVigencia;
+    final estadoLabel = estaNoCargado
+        ? 'NO CARGADO'
+        : estaCargadoSinVigencia
+        ? 'CARGADO'
+        : estaSinFecha
+        ? 'SIN FECHA'
+        : estadoVigencia;
+    final vigenciaLabel = documento.requiereVigencia
+        ? documento.fechaVigenciaDisplay ?? 'Sin fecha de vigencia'
+        : 'No requiere vigencia';
+    final mostrarMensajeAlerta =
+        documento.mensajeAlerta != null && !estaCargadoSinVigencia;
 
     // Lógica de colores según el backend:
     // VENCIDO: dias_restantes < 0 -> ROJO
@@ -327,7 +369,19 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
     IconData estadoIcon;
     double progreso;
 
-    if (estadoVigencia == 'VENCIDO' ||
+    if (estaNoCargado) {
+      estadoColor = Colors.grey;
+      estadoIcon = Icons.upload_file_outlined;
+      progreso = 0.0;
+    } else if (estaCargadoSinVigencia) {
+      estadoColor = AppColors.green;
+      estadoIcon = Icons.check_circle;
+      progreso = 1.0;
+    } else if (estaSinFecha) {
+      estadoColor = Colors.orange;
+      estadoIcon = Icons.event_busy_outlined;
+      progreso = 0.5;
+    } else if (estadoVigencia == 'VENCIDO' ||
         (diasRestantes != null && diasRestantes < 0)) {
       estadoColor = Colors.red;
       estadoIcon = Icons.error;
@@ -434,7 +488,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                             Icon(estadoIcon, size: 14, color: estadoColor),
                             const SizedBox(width: 4),
                             Text(
-                              estadoVigencia,
+                              estadoLabel,
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -476,7 +530,9 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Vigencia: ${documento.fechaVigencia ?? 'No especificada'}',
+                      documento.requiereVigencia
+                          ? 'Vigencia: $vigenciaLabel'
+                          : vigenciaLabel,
                       style: TextStyle(
                         fontSize: 13,
                         color: isDark
@@ -487,7 +543,7 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                   ),
                 ],
               ),
-              if (documento.mensajeAlerta != null) ...[
+              if (mostrarMensajeAlerta) ...[
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -524,6 +580,20 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                   ),
                 ),
               ],
+              if (documento.rutaUrl.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => _abrirDocumento(documento.rutaUrl),
+                    icon: const Icon(Iconsax.eye_copy, size: 18),
+                    label: const Text('Ver documento'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -548,12 +618,35 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
   DateTime? _selectedDate;
   bool _isUploading = false;
 
+  Future<void> _abrirDocumento() async {
+    final uri = Uri.tryParse(widget.documento.rutaUrl);
+    if (uri == null) {
+      _mostrarErrorAbrirDocumento();
+      return;
+    }
+
+    final opened = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    if (!opened) {
+      _mostrarErrorAbrirDocumento();
+    }
+  }
+
+  void _mostrarErrorAbrirDocumento() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No se pudo abrir el documento'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
-    if (widget.documento.fechaVigencia != null) {
+    if (widget.documento.fechaVigenciaDisplay != null) {
       try {
-        _selectedDate = DateTime.parse(widget.documento.fechaVigencia!);
+        _selectedDate = DateTime.parse(widget.documento.fechaVigenciaDisplay!);
       } catch (e) {
         AppLogger.d('Error parsing date: $e');
       }
@@ -605,10 +698,19 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
   }
 
   Future<void> _actualizarDocumento() async {
-    if (_selectedFile == null || _selectedDate == null) {
+    if (_selectedFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Selecciona un archivo y una fecha de vigencia'),
+          content: Text('Selecciona el archivo del documento'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    if (widget.documento.requiereVigencia && _selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecciona una fecha de vigencia'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -620,8 +722,12 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
     try {
       await _conductorService.actualizarDocumento(
         idDocumento: widget.documento.id,
+        idTipoDocumento: widget.documento.idTipoDocumento,
+        idConductor: widget.documento.idConductor,
         filePath: _selectedFile!.path,
-        fechaVigencia: DateFormat('yyyy-MM-dd').format(_selectedDate!),
+        fechaVigencia: _selectedDate == null
+            ? null
+            : DateFormat('yyyy-MM-dd').format(_selectedDate!),
       );
 
       if (mounted) {
@@ -755,13 +861,69 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                             ? Colors.grey.shade800
                             : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.accent.withValues(alpha: 0.18),
+                        ),
                       ),
-                      child: Image.network(
-                        widget.documento.rutaUrl,
-                        height: 150,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) =>
-                            const Icon(Iconsax.document_copy, size: 100),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              color: AppColors.accent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.picture_as_pdf_outlined,
+                              color: AppColors.accent,
+                              size: 34,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget
+                                      .documento
+                                      .tipoDocumento
+                                      .tituloDocumento,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark
+                                        ? Colors.white
+                                        : Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  !widget.documento.requiereVigencia
+                                      ? 'No requiere vigencia'
+                                      : widget.documento.fechaVigenciaDisplay ==
+                                            null
+                                      ? 'Cargado sin fecha de vigencia'
+                                      : 'Vigencia: ${widget.documento.fechaVigenciaDisplay}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark
+                                        ? Colors.grey.shade400
+                                        : Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Ver documento',
+                            onPressed: _abrirDocumento,
+                            icon: const Icon(Iconsax.eye_copy),
+                            color: AppColors.accent,
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -827,56 +989,83 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Fecha de vigencia
-                  Text(
-                    'Fecha de vigencia:',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isDark
-                          ? Colors.grey.shade400
-                          : Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: _pickDate,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
+                  if (widget.documento.requiereVigencia) ...[
+                    // Fecha de vigencia
+                    Text(
+                      'Fecha de vigencia:',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                         color: isDark
-                            ? Colors.grey.shade800
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.accent.withValues(alpha: 0.3),
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: _pickDate,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.grey.shade800
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.accent.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Iconsax.calendar_1_copy,
+                              color: AppColors.accent,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              _selectedDate != null
+                                  ? DateFormat(
+                                      'dd/MM/yyyy',
+                                    ).format(_selectedDate!)
+                                  : 'Seleccionar fecha',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: _selectedDate != null
+                                    ? (isDark ? Colors.white : Colors.black87)
+                                    : Colors.grey.shade500,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Row(
+                    ),
+                  ] else
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppColors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.green.withValues(alpha: 0.28),
+                        ),
+                      ),
+                      child: const Row(
                         children: [
                           Icon(
-                            Iconsax.calendar_1_copy,
-                            color: AppColors.accent,
+                            Iconsax.info_circle_copy,
+                            color: AppColors.green,
                           ),
-                          const SizedBox(width: 12),
-                          Text(
-                            _selectedDate != null
-                                ? DateFormat(
-                                    'dd/MM/yyyy',
-                                  ).format(_selectedDate!)
-                                : 'Seleccionar fecha',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: _selectedDate != null
-                                  ? (isDark ? Colors.white : Colors.black87)
-                                  : Colors.grey.shade500,
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Este documento no requiere fecha de vigencia.',
+                              style: TextStyle(fontWeight: FontWeight.w600),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
                   const SizedBox(height: 32),
 
                   // Botón actualizar

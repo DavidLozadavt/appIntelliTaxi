@@ -5,6 +5,7 @@ class DocumentoConductor {
   final int idConductor;
   final int idTipoDocumento;
   final String? fechaVigencia;
+  final String? fechaFinVigencia;
   final String createdAt;
   final String updatedAt;
   final int idEstado;
@@ -16,6 +17,7 @@ class DocumentoConductor {
   final int? diasRestantesCalculados;
   final String? estadoVigencia;
   final String? mensajeAlerta;
+  final bool diligenciado;
 
   DocumentoConductor({
     required this.id,
@@ -24,6 +26,7 @@ class DocumentoConductor {
     required this.idConductor,
     required this.idTipoDocumento,
     this.fechaVigencia,
+    this.fechaFinVigencia,
     required this.createdAt,
     required this.updatedAt,
     required this.idEstado,
@@ -34,34 +37,83 @@ class DocumentoConductor {
     this.diasRestantesCalculados,
     this.estadoVigencia,
     this.mensajeAlerta,
+    this.diligenciado = false,
   });
 
   factory DocumentoConductor.fromJson(Map<String, dynamic> json) {
+    final tipoDocumentoJson = json['tipo_documento'] ?? json['tipoDocumento'];
     return DocumentoConductor(
-      id: json['id'],
+      id: _asInt(json['id']),
       fechaCarga: json['fechaCarga']?.toString() ?? '',
       ruta: json['ruta']?.toString() ?? '',
-      idConductor: json['idConductor'],
-      idTipoDocumento: json['idTipoDocumento'],
+      idConductor: _asInt(json['idConductor']),
+      idTipoDocumento: _asInt(json['idTipoDocumento']),
       fechaVigencia: json['fecha_vigencia']?.toString(),
+      fechaFinVigencia: json['fecha_fin_vigencia']?.toString(),
       createdAt: json['created_at']?.toString() ?? '',
       updatedAt: json['updated_at']?.toString() ?? '',
-      idEstado: json['idEstado'],
+      idEstado: _asInt(json['idEstado']),
       numeroDocumento: json['numeroDocumento']?.toString(),
       rutaUrl: json['rutaUrl']?.toString() ?? '',
-      tipoDocumento: TipoDocumento.fromJson(json['tipo_documento']),
+      tipoDocumento: tipoDocumentoJson is Map<String, dynamic>
+          ? TipoDocumento.fromJson(tipoDocumentoJson)
+          : TipoDocumento.empty(),
       fechaActual: json['fecha_actual']?.toString(),
-      diasRestantesCalculados: json['dias_restantes'],
+      diasRestantesCalculados: _asNullableInt(json['dias_restantes']),
       estadoVigencia: json['estado_vigencia']?.toString(),
       mensajeAlerta: json['mensaje_alerta']?.toString(),
+      diligenciado: _asBool(json['diligenciado']),
     );
   }
 
+  static int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static int? _asNullableInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  static bool _asBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final text = value?.toString().trim().toLowerCase();
+    return text == 'true' || text == '1' || text == 'si' || text == 'sí';
+  }
+
+  bool get estaCargado =>
+      diligenciado || id > 0 || ruta.isNotEmpty || rutaUrl.isNotEmpty;
+
+  bool get requiereVigencia {
+    final titulo = tipoDocumento.tituloDocumento.toUpperCase();
+    if (titulo.contains('IDENTIFICACION') ||
+        titulo.contains('IDENTIFICACIÓN') ||
+        titulo.contains('CEDULA') ||
+        titulo.contains('CÉDULA')) {
+      return false;
+    }
+
+    final tipoFecha = tipoDocumento.tipoFecha?.trim().toUpperCase();
+    if (tipoFecha == null || tipoFecha.isEmpty) return true;
+    return tipoFecha != 'N/A' &&
+        tipoFecha != 'NA' &&
+        tipoFecha != 'NO APLICA' &&
+        tipoFecha != 'SIN FECHA';
+  }
+
+  String? get fechaVigenciaDisplay => fechaFinVigencia ?? fechaVigencia;
+
   /// Calcula los días restantes hasta que venza el documento
   int? get diasRestantes {
-    if (fechaVigencia == null) return null;
+    final fecha = fechaVigenciaDisplay;
+    if (fecha == null) return null;
     try {
-      final vigencia = DateTime.parse(fechaVigencia!);
+      final vigencia = DateTime.parse(fecha);
       final ahora = DateTime.now();
       return vigencia.difference(ahora).inDays;
     } catch (e) {
@@ -71,6 +123,7 @@ class DocumentoConductor {
 
   /// Verifica si el documento está por vencer (usa el estado del servidor si está disponible)
   bool get estaPorVencer {
+    if (!requiereVigencia) return false;
     if (estadoVigencia != null) {
       return estadoVigencia!.toUpperCase() == 'POR VENCER';
     }
@@ -80,6 +133,7 @@ class DocumentoConductor {
 
   /// Verifica si el documento está vencido (usa el estado del servidor si está disponible)
   bool get estaVencido {
+    if (!requiereVigencia) return false;
     if (estadoVigencia != null) {
       return estadoVigencia!.toUpperCase() == 'VENCIDO';
     }
@@ -107,12 +161,21 @@ class TipoDocumento {
     this.tipoFecha,
   });
 
+  factory TipoDocumento.empty() {
+    return TipoDocumento(
+      id: 0,
+      tituloDocumento: 'Documento',
+      descripcion: '',
+      idEstado: 0,
+    );
+  }
+
   factory TipoDocumento.fromJson(Map<String, dynamic> json) {
     return TipoDocumento(
-      id: json['id'],
+      id: DocumentoConductor._asInt(json['id']),
       tituloDocumento: json['tituloDocumento']?.toString() ?? '',
       descripcion: json['descripcion']?.toString() ?? '',
-      idEstado: json['idEstado'],
+      idEstado: DocumentoConductor._asInt(json['idEstado']),
       createdAt: json['created_at']?.toString(),
       updatedAt: json['updated_at']?.toString(),
       tipoFecha: json['tipoFecha']?.toString(),

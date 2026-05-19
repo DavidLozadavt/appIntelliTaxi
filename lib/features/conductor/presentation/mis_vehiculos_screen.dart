@@ -176,7 +176,9 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
         child: Column(
           children: [
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(14),
+              ),
               child: Container(
                 height: 170,
                 color: Colors.grey.shade200,
@@ -217,7 +219,8 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
                     ),
                     Center(
                       child:
-                          vehiculo.rutaUrl != null && vehiculo.rutaUrl!.isNotEmpty
+                          vehiculo.rutaUrl != null &&
+                              vehiculo.rutaUrl!.isNotEmpty
                           ? Image.network(
                               vehiculo.rutaUrl!,
                               fit: BoxFit.contain,
@@ -257,9 +260,7 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Expanded(
-                        child: _buildMetaItem('PLACA', vehiculo.placa),
-                      ),
+                      Expanded(child: _buildMetaItem('PLACA', vehiculo.placa)),
                       Expanded(
                         child: _buildMetaItem(
                           'COMBUSTIBLE',
@@ -296,7 +297,9 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         leading: Icon(Icons.description_outlined),
-                        title: Text('Sin documentos registrados para este vehículo'),
+                        title: Text(
+                          'Sin documentos registrados para este vehículo',
+                        ),
                       )
                     else
                       ...docs.map(_buildDocTile),
@@ -325,7 +328,10 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
         const SizedBox(height: 3),
         Text(
           value,
-          style: const TextStyle(fontSize: 28 / 1.6, fontWeight: FontWeight.w800),
+          style: const TextStyle(
+            fontSize: 28 / 1.6,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ],
     );
@@ -389,7 +395,7 @@ class _EditarDocumentoVehiculoSheetState
   @override
   void initState() {
     super.initState();
-    _fechaController.text = widget.documento.fechaVigencia ?? '';
+    _fechaController.text = widget.documento.fechaVigenciaDisplay ?? '';
   }
 
   @override
@@ -410,13 +416,26 @@ class _EditarDocumentoVehiculoSheetState
   Future<void> _pickFecha() async {
     final now = DateTime.now();
     final current =
-        DateTime.tryParse(_fechaController.text) ?? now.add(const Duration(days: 30));
+        DateTime.tryParse(_fechaController.text) ??
+        now.add(const Duration(days: 30));
     final picked = await showDatePicker(
       context: context,
       initialDate: current,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 10),
       locale: const Locale('es', 'ES'),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              secondary: AppColors.secondary,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked == null) return;
     _fechaController.text = DateFormat('yyyy-MM-dd').format(picked);
@@ -466,55 +485,279 @@ class _EditarDocumentoVehiculoSheetState
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? AppColors.darkCard : Colors.white;
+    final mutedSurface = isDark ? Colors.grey.shade900 : Colors.grey.shade100;
+    final primaryText = isDark ? Colors.white : Colors.black87;
+    final secondaryText = isDark ? Colors.grey.shade400 : Colors.grey.shade700;
+
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.fromLTRB(
-        16,
-        16,
-        16,
-        16 + MediaQuery.of(context).viewInsets.bottom,
+      height: MediaQuery.of(context).size.height * 0.72,
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Editar ${widget.documento.tituloDocumento}',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 14),
-          OutlinedButton.icon(
-            onPressed: _guardando ? null : _pickArchivo,
-            icon: const Icon(Icons.upload_file_outlined),
-            label: Text(
-              _archivo == null ? 'Seleccionar archivo' : 'Archivo seleccionado',
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.primary, AppColors.secondary],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.description_outlined,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Actualizar documento',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.documento.tituloDocumento,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _fechaController,
-            readOnly: true,
-            onTap: _guardando ? null : _pickFecha,
-            decoration: const InputDecoration(
-              labelText: 'Fecha vigencia',
-              suffixIcon: Icon(Icons.calendar_today_outlined),
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _guardando ? null : _guardar,
-              child: _guardando
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Guardar cambios'),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                20 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Documento actual',
+                    style: TextStyle(
+                      color: secondaryText,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: mutedSurface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.picture_as_pdf_outlined,
+                          color: AppColors.primary,
+                          size: 30,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.documento.tituloDocumento,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: primaryText,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Vigencia: ${widget.documento.fechaVigenciaDisplay ?? 'No definida'}',
+                                style: TextStyle(color: secondaryText),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Nuevo archivo',
+                    style: TextStyle(
+                      color: secondaryText,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: _guardando ? null : _pickArchivo,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 176,
+                      decoration: BoxDecoration(
+                        color: mutedSurface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.35),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: _archivo == null
+                          ? Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.add_photo_alternate_outlined,
+                                  color: AppColors.primary,
+                                  size: 44,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Seleccionar archivo',
+                                  style: TextStyle(
+                                    color: primaryText,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Toca para cargar una nueva imagen',
+                                  style: TextStyle(color: secondaryText),
+                                ),
+                              ],
+                            )
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.file(_archivo!, fit: BoxFit.contain),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Fecha de vigencia',
+                    style: TextStyle(
+                      color: secondaryText,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _fechaController,
+                    readOnly: true,
+                    onTap: _guardando ? null : _pickFecha,
+                    style: TextStyle(
+                      color: primaryText,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: mutedSurface,
+                      prefixIcon: const Icon(
+                        Icons.calendar_today_outlined,
+                        color: AppColors.primary,
+                      ),
+                      suffixIcon: const Icon(Icons.keyboard_arrow_down),
+                      hintText: 'Seleccionar fecha',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: AppColors.primary.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: AppColors.primary,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  ElevatedButton.icon(
+                    onPressed: _guardando ? null : _guardar,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: AppColors.primary.withValues(
+                        alpha: 0.45,
+                      ),
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: _guardando
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_circle_outline),
+                    label: Text(
+                      _guardando ? 'Guardando...' : 'Guardar cambios',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
