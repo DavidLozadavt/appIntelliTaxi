@@ -16,6 +16,9 @@ class DocumentosAlertDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     final hayVencidos = documentosVencidos.isNotEmpty;
     final hayPorVencer = documentosPorVencer.isNotEmpty;
 
@@ -23,18 +26,23 @@ class DocumentosAlertDialog extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final Color colorPrincipal =
+        hayVencidos ? colors.error : colors.tertiary;
+
     return PopScope(
-      canPop: false, // No permitir cerrar con el botón de atrás
+      canPop: false,
       child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
         child: Container(
           decoration: BoxDecoration(
-            // gradient: LinearGradient(
-            //   begin: Alignment.topCenter,
-            //   end: Alignment.bottomCenter,
-            //   colors: [Colors.white, Colors.grey.shade50],
-            // ),
+            gradient: LinearGradient(
+              colors: [
+                colors.surface,
+                colors.surface.withValues(alpha: 0.95),
+              ],
+            ),
             borderRadius: BorderRadius.circular(24),
           ),
           padding: const EdgeInsets.all(24),
@@ -43,29 +51,21 @@ class DocumentosAlertDialog extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Icono de alerta con animación
+                // ICONO
                 Container(
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: hayVencidos
-                          ? [
-                              Colors.red.withValues(alpha: 0.15),
-                              Colors.red.withValues(alpha: 0.05),
-                            ]
-                          : [
-                              Colors.orange.withValues(alpha: 0.15),
-                              Colors.orange.withValues(alpha: 0.05),
-                            ],
+                      colors: [
+                        colorPrincipal.withValues(alpha: 0.15),
+                        colorPrincipal.withValues(alpha: 0.05),
+                      ],
                     ),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: (hayVencidos ? Colors.red : Colors.orange)
-                            .withValues(alpha: 0.2),
+                        color: colorPrincipal.withValues(alpha: 0.2),
                         blurRadius: 20,
                         spreadRadius: 5,
                       ),
@@ -75,94 +75,111 @@ class DocumentosAlertDialog extends StatelessWidget {
                     hayVencidos
                         ? Iconsax.info_circle_copy
                         : Iconsax.warning_2_copy,
-                    color: hayVencidos ? Colors.red : Colors.orange,
+                    color: colorPrincipal,
                     size: 40,
                   ),
                 ),
+
                 const SizedBox(height: 20),
 
-                // Título
+                // TITULO
                 Text(
                   hayVencidos
                       ? '⚠️ Documentos Vencidos'
                       : '⏰ Documentos por Vencer',
-                  style: const TextStyle(
-                    fontSize: 22,
+                  style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
-                    // color: Colors.black87,
-                    letterSpacing: -0.5,
+                    color: colorPrincipal,
                   ),
                   textAlign: TextAlign.center,
                 ),
+
                 const SizedBox(height: 12),
 
-                // Descripción
+                // DESCRIPCIÓN
                 Text(
                   hayVencidos
-                      ? 'Tienes documentos vencidos que debes renovar lo antes posible.'
-                      : 'Algunos de tus documentos están próximos a vencer.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade600,
-                    height: 1.4,
+                      ? 'Debes renovar estos documentos lo antes posible para continuar.'
+                      : 'Algunos documentos están próximos a vencer.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.onSurface.withValues(alpha: 0.7),
                   ),
                   textAlign: TextAlign.center,
                 ),
+
                 const SizedBox(height: 20),
 
-                // Lista de documentos vencidos
+                // VENCIDOS
                 if (hayVencidos) ...[
                   _buildDocumentosSection(
+                    context,
                     'Vencidos',
                     documentosVencidos,
-                    Colors.red,
+                    colors.error,
                     Iconsax.close_circle_copy,
                   ),
-                  const SizedBox(height: 12),
+                  const Divider(height: 20),
                 ],
 
-                // Lista de documentos por vencer
+                // POR VENCER
                 if (hayPorVencer) ...[
                   _buildDocumentosSection(
+                    context,
                     'Por vencer',
                     documentosPorVencer,
-                    Colors.orange,
+                    colors.tertiary,
                     Iconsax.clock_copy,
                   ),
                 ],
 
                 const SizedBox(height: 24),
 
-                // Botón único - obligatorio ver documentos
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      // Navegar a la pantalla de documentos
-                      Navigator.pushNamed(context, '/mis-documentos');
-                      onContinuar?.call();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: hayVencidos ? Colors.red : Colors.orange,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                // BOTONES
+                Column(
+                  children: [
+                    // BOTÓN PRINCIPAL
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.pushNamed(context, '/mis-documentos');
+                          onContinuar?.call();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colorPrincipal,
+                          foregroundColor: colors.onPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        icon: const Icon(Iconsax.document_text_copy),
+                        label: Text(
+                          hayVencidos
+                              ? 'Actualizar ahora'
+                              : 'Revisar documentos',
+                        ),
                       ),
-                      elevation: 0,
                     ),
-                    icon: const Icon(Iconsax.document_text_copy, size: 20),
-                    label: Text(
-                      hayVencidos
-                          ? 'Actualizar documentos ahora'
-                          : 'Revisar documentos',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+
+                    const SizedBox(height: 10),
+
+                    // BOTÓN "ACTUALIZAR MÁS TARDE"
+                    if (!hayVencidos)
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          onContinuar?.call();
+                        },
+                        icon: const Icon(Iconsax.clock_copy, size: 18),
+                        label: const Text('Actualizar más tarde'),
+                        style: TextButton.styleFrom(
+                          foregroundColor:
+                              colors.onSurface.withValues(alpha: 0.7),
+                        ),
                       ),
-                    ),
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -173,17 +190,23 @@ class DocumentosAlertDialog extends StatelessWidget {
   }
 
   Widget _buildDocumentosSection(
+    BuildContext context,
     String titulo,
     List<DocumentoConductor> documentos,
     Color color,
     IconData icon,
   ) {
+    final theme = Theme.of(context);
+
+    final visibles = documentos.take(3).toList();
+    final restantes = documentos.length - visibles.length;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,8 +217,7 @@ class DocumentosAlertDialog extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 titulo,
-                style: TextStyle(
-                  fontSize: 13,
+                style: theme.textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: color,
                 ),
@@ -203,14 +225,27 @@ class DocumentosAlertDialog extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          ...documentos.map((doc) => _buildDocumentoItem(doc, color)),
+
+          ...visibles.map((doc) => _buildDocumentoItem(context, doc)),
+
+          if (restantes > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '+$restantes más...',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildDocumentoItem(DocumentoConductor doc, Color color) {
-    // Usar el mensaje del servidor si está disponible, sino calcular localmente
+  Widget _buildDocumentoItem(
+      BuildContext context, DocumentoConductor doc) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     String mensaje = doc.mensajeAlerta ?? '';
 
     if (mensaje.isEmpty) {
@@ -233,7 +268,10 @@ class DocumentosAlertDialog extends StatelessWidget {
           Container(
             width: 4,
             height: 4,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: colors.primary,
+              shape: BoxShape.circle,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -242,15 +280,15 @@ class DocumentosAlertDialog extends StatelessWidget {
               children: [
                 Text(
                   doc.tipoDocumento.tituloDocumento,
-                  style: const TextStyle(
-                    fontSize: 13,
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
                   ),
                 ),
                 Text(
                   mensaje,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurface.withValues(alpha: 0.7),
+                  ),
                 ),
               ],
             ),
