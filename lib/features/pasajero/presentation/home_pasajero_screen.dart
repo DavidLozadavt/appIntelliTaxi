@@ -64,12 +64,13 @@ class _HomePasajeroState extends State<HomePasajero> {
   // Para el bottom sheet con snap
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
-  static const double _sheetMinSize = 0.18;
-  static const double _sheetMidSize = 0.50;
-  static const double _sheetMaxSize = 0.88;
+  static const double _sheetMinSize = 0.22;
+  static const double _sheetMidSize = 0.56;
+  static const double _sheetMaxSize = 0.90;
   double _sheetSize = _sheetMinSize;
   _SheetVisualState _sheetVisualState = _SheetVisualState.compact;
   _SheetVisualState? _lastHapticSnap;
+  bool _showExpandedSheetContent = false;
 
   // Para las búsquedas
   final PlacesService _placesService = PlacesService();
@@ -722,7 +723,7 @@ class _HomePasajeroState extends State<HomePasajero> {
                 maxChildSize: _sheetMaxSize,
                 expand: false,
                 snap: true,
-                snapAnimationDuration: const Duration(milliseconds: 220),
+                snapAnimationDuration: const Duration(milliseconds: 260),
                 snapSizes: const [_sheetMinSize, _sheetMidSize, _sheetMaxSize],
                 builder: (context, scrollController) {
                   return Container(
@@ -754,16 +755,32 @@ class _HomePasajeroState extends State<HomePasajero> {
                           ),
                         ),
                         Expanded(
-                          child: _isExpanded
-                              ? _buildExpandedContent(
-                                  scrollController: scrollController,
-                                  showInlineActions: false,
-                                )
-                              : ListView(
-                                  controller: scrollController,
-                                  physics: const ClampingScrollPhysics(),
-                                  children: [_buildMinimizedContent()],
-                                ),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeOutCubic,
+                            layoutBuilder: (currentChild, previousChildren) {
+                              return Stack(
+                                alignment: Alignment.topCenter,
+                                children: <Widget>[
+                                  ...previousChildren,
+                                  ?currentChild,
+                                ],
+                              );
+                            },
+                            child: _showExpandedSheetContent
+                                ? _buildExpandedContent(
+                                    key: const ValueKey('expanded_sheet'),
+                                    scrollController: scrollController,
+                                    showInlineActions: false,
+                                  )
+                                : ListView(
+                                    key: const ValueKey('compact_sheet'),
+                                    controller: scrollController,
+                                    physics: const ClampingScrollPhysics(),
+                                    children: [_buildMinimizedContent()],
+                                  ),
+                          ),
                         ),
                         _buildFixedCta(),
                       ],
@@ -988,12 +1005,14 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   Widget _buildExpandedContent({
+    Key? key,
     ScrollController? scrollController,
     bool showInlineActions = true,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ListView(
+      key: key,
       controller: scrollController,
       physics: const BouncingScrollPhysics(),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1700,6 +1719,7 @@ class _HomePasajeroState extends State<HomePasajero> {
 
   Future<void> _expandSheet() async {
     if (!_sheetController.isAttached) return;
+    _setStateSafe(() => _showExpandedSheetContent = true);
     await _sheetController.animateTo(
       _sheetMidSize,
       duration: const Duration(milliseconds: 240),
@@ -1718,6 +1738,8 @@ class _HomePasajeroState extends State<HomePasajero> {
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
     );
+    if (!mounted) return;
+    _setStateSafe(() => _showExpandedSheetContent = false);
   }
 
   Future<void> _openQuickRequestFlow() async {
@@ -2042,6 +2064,10 @@ class _HomePasajeroState extends State<HomePasajero> {
     if (_lastHapticSnap == visualState) return;
 
     _lastHapticSnap = visualState;
+    final shouldShowExpanded = visualState != _SheetVisualState.compact;
+    if (_showExpandedSheetContent != shouldShowExpanded) {
+      _setStateSafe(() => _showExpandedSheetContent = shouldShowExpanded);
+    }
     switch (visualState) {
       case _SheetVisualState.compact:
       case _SheetVisualState.middle:

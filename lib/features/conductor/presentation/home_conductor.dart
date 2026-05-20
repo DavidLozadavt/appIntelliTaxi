@@ -35,6 +35,9 @@ class _HomeConductorState extends State<HomeConductor>
   late ConductorHomeProvider _provider;
   late final AnimationController _emergencyPulseController;
   late final Animation<double> _emergencyPulseAnimation;
+  bool _seguirUbicacion = true;
+  bool _moviendoCamaraProgramaticamente = false;
+  LatLng? _ultimaUbicacionSeguida;
 
   // Sanciones
   final SancionService _sancionService = SancionService();
@@ -182,11 +185,47 @@ class _HomeConductorState extends State<HomeConductor>
     final controller = _mapController;
     if (pos == null || controller == null) return;
 
+    setState(() => _seguirUbicacion = true);
     await controller.animateCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(target: LatLng(pos.latitude, pos.longitude), zoom: 17),
       ),
     );
+  }
+
+  void _seguirMapaSiCorresponde(ConductorHomeProvider provider) {
+    if (!_seguirUbicacion) return;
+    final pos = provider.currentPosition;
+    final controller = _mapController;
+    if (pos == null || controller == null) return;
+
+    final target = LatLng(pos.latitude, pos.longitude);
+    final last = _ultimaUbicacionSeguida;
+    if (last != null &&
+        (last.latitude - target.latitude).abs() < 0.00001 &&
+        (last.longitude - target.longitude).abs() < 0.00001) {
+      return;
+    }
+    _ultimaUbicacionSeguida = target;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !_seguirUbicacion) return;
+      final heading = pos.heading.isFinite && pos.heading >= 0
+          ? pos.heading
+          : 0.0;
+      _moviendoCamaraProgramaticamente = true;
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: target,
+            zoom: 17.5,
+            bearing: heading,
+            tilt: provider.isOnline ? 35 : 0,
+          ),
+        ),
+      );
+      _moviendoCamaraProgramaticamente = false;
+    });
   }
 
   /// Acepta la solicitud de servicio
@@ -824,6 +863,7 @@ class _HomeConductorState extends State<HomeConductor>
   Widget build(BuildContext context) {
     return Consumer<ConductorHomeProvider>(
       builder: (context, provider, child) {
+        _seguirMapaSiCorresponde(provider);
         return Stack(
           children: [
             // Mapa de Google Maps
@@ -873,6 +913,12 @@ class _HomeConductorState extends State<HomeConductor>
                         _mapController = controller;
                         if (provider.isOnline) {
                           unawaited(_centrarMapaEnUbicacionActual(provider));
+                        }
+                      },
+                      onCameraMoveStarted: () {
+                        if (_moviendoCamaraProgramaticamente) return;
+                        if (_seguirUbicacion) {
+                          setState(() => _seguirUbicacion = false);
                         }
                       },
                     ),
@@ -1221,7 +1267,10 @@ class _HomeConductorState extends State<HomeConductor>
                   onPressed: () => _centrarMapaEnUbicacionActual(provider),
                   backgroundColor: Colors.white.withValues(alpha: 0.88),
                   elevation: 4,
-                  child: const Icon(Icons.my_location, color: AppColors.accent),
+                  child: Icon(
+                    _seguirUbicacion ? Icons.near_me : Icons.my_location,
+                    color: AppColors.accent,
+                  ),
                 ),
               ),
           ],

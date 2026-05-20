@@ -620,7 +620,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   void _iniciarSeguimientoUbicacion() {
     _liveLocationTicker?.cancel();
-    _liveLocationTicker = Timer.periodic(const Duration(seconds: 15), (_) {
+    _liveLocationTicker = Timer.periodic(const Duration(seconds: 5), (_) {
       _refrescarUbicacion();
     });
   }
@@ -630,7 +630,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     try {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
+          accuracy: LocationAccuracy.high,
           timeLimit: Duration(seconds: 8),
         ),
       );

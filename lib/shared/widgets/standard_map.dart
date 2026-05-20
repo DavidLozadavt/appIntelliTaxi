@@ -15,6 +15,7 @@ class StandardMap extends StatelessWidget {
   final bool zoomControlsEnabled;
   final bool compassEnabled;
   final Function(CameraPosition)? onCameraMove;
+  final VoidCallback? onCameraMoveStarted;
   final VoidCallback? onCameraIdle;
   final Function(LatLng)? onTap;
   final Function(LatLng)? onLongPress;
@@ -35,6 +36,7 @@ class StandardMap extends StatelessWidget {
     this.zoomControlsEnabled = false,
     this.compassEnabled = true,
     this.onCameraMove,
+    this.onCameraMoveStarted,
     this.onCameraIdle,
     this.onTap,
     this.onLongPress,
@@ -62,6 +64,7 @@ class StandardMap extends StatelessWidget {
       compassEnabled: compassEnabled,
       mapType: mapType,
       onCameraMove: onCameraMove,
+      onCameraMoveStarted: onCameraMoveStarted,
       onCameraIdle: onCameraIdle,
       onTap: onTap,
       onLongPress: onLongPress,

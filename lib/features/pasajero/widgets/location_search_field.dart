@@ -15,6 +15,7 @@ class LocationSearchField extends StatelessWidget {
   final VoidCallback onClear;
   final FocusNode? focusNode;
   final VoidCallback? onTap;
+
   /// Enter / acción de teclado (ej. buscar dirección escrita)
   final ValueChanged<String>? onFieldSubmitted;
 
@@ -129,44 +130,65 @@ class LocationSearchField extends StatelessWidget {
             child: Center(child: CircularProgressIndicator()),
           ),
 
-        if (!isSearching && predictions.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: isDark
-                    ? Colors.grey.shade700
-                    : AppColors.primary.withValues(alpha: 0.12),
-                width: 1,
-              ),
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: predictions.length > 5 ? 5 : predictions.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final prediction = predictions[index];
-                return ListTile(
-                  leading: Icon(
-                    Iconsax.location_copy,
-                    color: Colors.grey.shade600,
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: !isSearching && predictions.isNotEmpty
+              ? Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.grey.shade700
+                          : AppColors.primary.withValues(alpha: 0.12),
+                      width: 1,
+                    ),
                   ),
-                  title: Text(
-                    prediction.mainText,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 280),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const ClampingScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: predictions.length > 5
+                            ? 5
+                            : predictions.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final prediction = predictions[index];
+                          return ListTile(
+                            leading: Icon(
+                              Iconsax.location_copy,
+                              color: Colors.grey.shade600,
+                            ),
+                            title: Text(
+                              prediction.mainText,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Text(
+                              prediction.secondaryText,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            onTap: () => onSelectPrediction(prediction),
+                          );
+                        },
+                      ),
+                    ),
                   ),
-                  subtitle: Text(
-                    prediction.secondaryText,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  onTap: () => onSelectPrediction(prediction),
-                );
-              },
-            ),
-          ),
+                )
+              : const SizedBox.shrink(),
+        ),
       ],
     );
   }
