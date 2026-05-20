@@ -26,27 +26,24 @@ class ReverseGeocodingService {
       if (response.statusCode != 200) return null;
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      // AppLogger.d('📍 GEOCODE RESPONSE: ${response.body}');
       if (data['status'] != 'OK') return null;
 
       final results = data['results'] as List<dynamic>? ?? [];
       for (final item in results) {
         final result = item is Map<String, dynamic>
-        
             ? item
             : Map<String, dynamic>.from(item as Map);
         final components = result['address_components'] as List<dynamic>? ?? [];
         final resultTypes = (result['types'] as List<dynamic>? ?? [])
-    .map((e) => e.toString())
-    .toList();
+            .map((e) => e.toString())
+            .toList();
 
-if (resultTypes.contains('plus_code') ||
-    resultTypes.contains('postal_code') ||
-    resultTypes.contains('administrative_area_level_2')) {
-  continue;
-}
+        if (resultTypes.contains('plus_code') ||
+            resultTypes.contains('postal_code') ||
+            resultTypes.contains('administrative_area_level_2')) {
+          continue;
+        }
 
-        // 1) Prioridad alta: barrio/sector/localidad pequeña.
         final neighborhood = _firstComponentValue(
           components,
           acceptedTypes: const [
@@ -61,7 +58,6 @@ if (resultTypes.contains('plus_code') ||
           return neighborhood;
         }
 
-        // 2) Si no hay barrio, usar vía o zona de calle.
         final route = _firstComponentValue(
           components,
           acceptedTypes: const [
@@ -79,7 +75,6 @@ if (resultTypes.contains('plus_code') ||
           return route;
         }
 
-        // Fallback por resultado: intentar extraer etiqueta humana desde plus_code.
         final resultPlusCode = result['plus_code'] is Map
             ? Map<String, dynamic>.from(result['plus_code'] as Map)
             : null;
@@ -90,7 +85,6 @@ if (resultTypes.contains('plus_code') ||
         }
       }
 
-      // Fallback: usar dirección corta si no encontramos barrio/localidad.
       final first = results.isNotEmpty
           ? (results.first as Map<String, dynamic>)
           : null;
@@ -108,7 +102,6 @@ if (resultTypes.contains('plus_code') ||
         return part;
       }
 
-      // Último recurso: ciudad
       final city = _firstComponentValue(
         (first?['address_components'] as List<dynamic>? ?? []),
         acceptedTypes: const ['locality', 'administrative_area_level_2'],
@@ -118,6 +111,119 @@ if (resultTypes.contains('plus_code') ||
       AppLogger.d('⚠️ Error resolviendo zona por geocode: $e');
       return null;
     }
+  }
+
+  /// Devuelve nombre corto y legible para mostrar como origen (calle + barrio)
+  Future<CurrentLocationData> resolveCurrentLocationLabel({
+    required double lat,
+    required double lng,
+  }) async {
+    const fallback = CurrentLocationData(
+      name: 'Mi ubicación',
+      address: 'Ubicación actual',
+    );
+
+    final key = AppConfig.googleMapsApiKey.trim();
+    if (key.isEmpty) return fallback;
+
+    try {
+      final url = Uri.parse(
+        '$_baseUrl?latlng=$lat,$lng&key=$key&language=es&region=co',
+      );
+      final response = await http.get(url);
+      if (response.statusCode != 200) return fallback;
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (data['status'] != 'OK') return fallback;
+
+      final results = data['results'] as List<dynamic>? ?? [];
+
+      String? streetName;
+      String? streetNumber;
+      String? neighborhood;
+      String? fullAddress;
+
+      for (final item in results) {
+        final result = item is Map<String, dynamic>
+            ? item
+            : Map<String, dynamic>.from(item as Map);
+
+        final resultTypes = (result['types'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toList();
+
+        // Saltar resultados que son solo plus_code
+        if (resultTypes.length == 1 && resultTypes.contains('plus_code')) {
+          continue;
+        }
+
+        final components = result['address_components'] as List<dynamic>? ?? [];
+
+        streetName ??= _firstComponentValue(
+          components,
+          acceptedTypes: const ['route', 'street_address'],
+        );
+
+        streetNumber ??= _firstComponentValue(
+          components,
+          acceptedTypes: const ['street_number'],
+        );
+
+        neighborhood ??= _firstComponentValue(
+          components,
+          acceptedTypes: const [
+            'neighborhood',
+            'sublocality_level_1',
+            'sublocality',
+          ],
+        );
+
+        if (fullAddress == null) {
+          final formatted = result['formatted_address']?.toString() ?? '';
+          final cleaned = _stripPlusCodes(formatted);
+          if (cleaned.isNotEmpty) fullAddress = cleaned;
+        }
+
+        // Con calle + barrio es suficiente, no seguir iterando
+        if (streetName != null && neighborhood != null) break;
+      }
+
+      // Construir nombre para mostrar en el campo origen
+      final String displayName;
+      if (streetName != null && streetNumber != null && neighborhood != null) {
+        displayName = '$streetName $streetNumber, $neighborhood';
+      } else if (streetName != null && neighborhood != null) {
+        displayName = '$streetName, $neighborhood';
+      } else if (streetName != null && streetNumber != null) {
+        displayName = '$streetName $streetNumber';
+      } else if (streetName != null) {
+        displayName = streetName;
+      } else if (neighborhood != null) {
+        displayName = neighborhood;
+      } else {
+        displayName = 'Mi ubicación';
+      }
+
+      return CurrentLocationData(
+        name: displayName,
+        address: fullAddress ?? displayName,
+      );
+    } catch (e) {
+      AppLogger.d('⚠️ Error resolviendo nombre de ubicación actual: $e');
+      return fallback;
+    }
+  }
+
+  String _stripPlusCodes(String address) {
+    return address
+        .replaceAll(
+          RegExp(
+            r'\b[A-Z0-9]{4,8}\+[A-Z0-9]{2,3}\b,?\s*',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
   }
 
   String? _firstComponentValue(
@@ -157,7 +263,6 @@ if (resultTypes.contains('plus_code') ||
   bool _isPlusCodeLike(String value) {
     final normalized = value.trim().toUpperCase();
     if (_plusCodeRegex.hasMatch(normalized)) return true;
-    // Casos parciales que Google devuelve a veces: "+JR", "C9X6+JR", etc.
     if (normalized.startsWith('+')) return true;
     if (normalized.contains('+')) {
       final compact = normalized.replaceAll(' ', '');
@@ -171,4 +276,11 @@ if (resultTypes.contains('plus_code') ||
     if (v.isEmpty) return false;
     return v == 'popayán' || v == 'popayan' || v == 'cauca';
   }
+}
+
+class CurrentLocationData {
+  final String name;
+  final String address;
+
+  const CurrentLocationData({required this.name, required this.address});
 }

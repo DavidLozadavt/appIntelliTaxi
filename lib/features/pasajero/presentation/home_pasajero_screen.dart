@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
@@ -45,12 +45,7 @@ class HomePasajero extends StatefulWidget {
   State<HomePasajero> createState() => _HomePasajeroState();
 }
 
-class _CurrentLocationData {
-  final String name;
-  final String address;
 
-  const _CurrentLocationData({required this.name, required this.address});
-}
 
 enum _SheetVisualState { compact, middle, expanded }
 
@@ -64,9 +59,9 @@ class _HomePasajeroState extends State<HomePasajero> {
   // Para el bottom sheet con snap
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
-  static const double _sheetMinSize = 0.22;
-  static const double _sheetMidSize = 0.56;
-  static const double _sheetMaxSize = 0.90;
+  static const double _sheetMinSize = 0.16;
+  static const double _sheetMidSize = 0.52;
+  static const double _sheetMaxSize = 0.88;
   double _sheetSize = _sheetMinSize;
   _SheetVisualState _sheetVisualState = _SheetVisualState.compact;
   _SheetVisualState? _lastHapticSnap;
@@ -755,34 +750,27 @@ class _HomePasajeroState extends State<HomePasajero> {
                           ),
                         ),
                         Expanded(
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 220),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeOutCubic,
-                            layoutBuilder: (currentChild, previousChildren) {
-                              return Stack(
-                                alignment: Alignment.topCenter,
-                                children: <Widget>[
-                                  ...previousChildren,
-                                  ?currentChild,
-                                ],
-                              );
-                            },
-                            child: _showExpandedSheetContent
-                                ? _buildExpandedContent(
-                                    key: const ValueKey('expanded_sheet'),
-                                    scrollController: scrollController,
-                                    showInlineActions: false,
-                                  )
-                                : ListView(
-                                    key: const ValueKey('compact_sheet'),
-                                    controller: scrollController,
-                                    physics: const ClampingScrollPhysics(),
-                                    children: [_buildMinimizedContent()],
-                                  ),
-                          ),
+                          child: _showExpandedSheetContent
+                              ? _buildExpandedContent(
+                                  key: const ValueKey('expanded_sheet'),
+                                  scrollController: scrollController,
+                                  showInlineActions: false,
+                                )
+                              : ListView(
+                                  key: const ValueKey('compact_sheet'),
+                                  controller: scrollController,
+                                  physics: const ClampingScrollPhysics(),
+                                  children: [_buildMinimizedContent()],
+                                ),
                         ),
-                        _buildFixedCta(),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeOutCubic,
+                          child: _showExpandedSheetContent
+                              ? _buildFixedCta()
+                              : const SizedBox.shrink(),
+                        ),
                       ],
                     ),
                   );
@@ -811,108 +799,185 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   Widget _buildMinimizedContent() {
-    final compact = _sheetVisualState == _SheetVisualState.compact;
-    final title = _serviceType == 'taxi' ? '¿A dónde vas?' : 'Enviar domicilio';
-    final subtitle = _routeInfo != null
-        ? '${_routeInfo!.distance} • Cobro por taxímetro'
-        : (_selectedDestination != null
-              ? _destinationSummaryText(_selectedDestination!)
-              : (_selectedOrigin != null
-                    ? 'Desde ${_selectedOrigin!.name}'
-                    : 'Toca para seleccionar destino'));
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final originText = _selectedOrigin?.name ?? _currentLocationName;
+    final destinationText = _selectedDestination != null
+        ? _destinationSummaryText(_selectedDestination!)
+        : (_serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?');
+    final hasDestination = _selectedDestination != null;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         onTap: _openQuickRequestFlow,
-        child: Column(
-          children: [
-            Row(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  width: compact ? 50 : 46,
-                  height: compact ? 50 : 46,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: _serviceType == 'taxi'
-                          ? [Colors.deepOrange, Colors.orangeAccent]
-                          : [Colors.green.shade600, Colors.green.shade400],
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : AppColors.primary.withValues(alpha: 0.10),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.07),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Column(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: AppColors.green,
+                      shape: BoxShape.circle,
                     ),
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    _serviceType == 'taxi'
-                        ? Icons.local_taxi
-                        : Icons.shopping_bag,
-                    color: Colors.white,
-                    size: compact ? 28 : 24,
+                  Container(
+                    width: 2,
+                    height: 26,
+                    margin: const EdgeInsets.symmetric(vertical: 3),
+                    color: Colors.grey.withValues(alpha: 0.35),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        transitionBuilder: (child, animation) {
-                          final offset = Tween<Offset>(
-                            begin: const Offset(0, 0.18),
-                            end: Offset.zero,
-                          ).animate(animation);
-                          return FadeTransition(
-                            opacity: animation,
-                            child: SlideTransition(
-                              position: offset,
-                              child: child,
-                            ),
-                          );
-                        },
-                        child: Text(
-                          title,
-                          key: ValueKey<String>('title_$title'),
-                          style: TextStyle(
-                            fontSize: compact ? 18 : 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: hasDestination
+                          ? Colors.red
+                          : Colors.grey.withValues(alpha: 0.75),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      originText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.grey.shade300 : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeOutCubic,
+                      child: Text(
+                        destinationText,
+                        key: ValueKey<String>('compact_$destinationText'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: hasDestination
+                              ? (isDark ? Colors.white : Colors.black87)
+                              : AppColors.primary,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        transitionBuilder: (child, animation) {
-                          return FadeTransition(
-                            opacity: animation,
-                            child: child,
-                          );
-                        },
-                        child: Text(
-                          subtitle,
-                          key: ValueKey<String>('subtitle_$subtitle'),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                AnimatedRotation(
-                  duration: const Duration(milliseconds: 220),
-                  turns: _isExpanded ? 0.5 : 0.0,
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: AnimatedRotation(
+                  duration: const Duration(milliseconds: 180),
+                  turns: _showExpandedSheetContent ? 0.5 : 0,
                   child: const Icon(
                     Icons.keyboard_arrow_up,
-                    color: Colors.grey,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpandedHeader() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : AppColors.primary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: _serviceType == 'taxi'
+                  ? AppColors.primary
+                  : Colors.orange.shade600,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(
+              _serviceType == 'taxi' ? Icons.local_taxi : Icons.shopping_bag,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _serviceType == 'taxi'
+                      ? '¿A dónde vas?'
+                      : '¿Qué necesitas enviar?',
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  'Elige destino y confirma tu solicitud',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                   ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+          IconButton(
+            onPressed: _minimizeSheet,
+            icon: const Icon(Icons.keyboard_arrow_down),
+            color: Colors.grey,
+          ),
+        ],
       ),
     );
   }
@@ -1018,10 +1083,7 @@ class _HomePasajeroState extends State<HomePasajero> {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
       children: [
-        Text(
-          _serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?',
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
+        _buildExpandedHeader(),
         const SizedBox(height: 12),
 
         // Selector de tipo de servicio (primero)
@@ -1035,64 +1097,7 @@ class _HomePasajeroState extends State<HomePasajero> {
           },
         ),
 
-        // const SizedBox(height: 10),
-        // Material(
-        //   color: isDark
-        //       ? Colors.white.withValues(alpha: 0.06)
-        //       : AppColors.primary.withValues(alpha: 0.06),
-        //   borderRadius: BorderRadius.circular(16),
-        //   child: InkWell(
-        //     borderRadius: BorderRadius.circular(16),
-        //     onTap: () {
-        //       Navigator.push<void>(
-        //         context,
-        //         MaterialPageRoute<void>(
-        //           builder: (_) => const TravelAssistantScreen(),
-        //         ),
-        //       );
-        //     },
-        //     child: Padding(
-        //       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        //       child: Row(
-        //         children: [
-        //           Icon(
-        //             Icons.chat_bubble_outline_rounded,
-        //             color: isDark ? Colors.white70 : AppColors.primary,
-        //           ),
-        //           const SizedBox(width: 12),
-        //           Expanded(
-        //             child: Column(
-        //               crossAxisAlignment: CrossAxisAlignment.start,
-        //               children: [
-        //                 Text(
-        //                   'Asistente de viajes',
-        //                   style: TextStyle(
-        //                     fontWeight: FontWeight.w700,
-        //                     fontSize: 15,
-        //                     color: isDark ? Colors.white : Colors.black87,
-        //                   ),
-        //                 ),
-        //                 Text(
-        //                   'Solicita con chat guiado (taxi, domicilio o programado)',
-        //                   style: TextStyle(
-        //                     fontSize: 12,
-        //                     color: isDark
-        //                         ? Colors.grey.shade500
-        //                         : Colors.grey.shade700,
-        //                   ),
-        //                 ),
-        //               ],
-        //             ),
-        //           ),
-        //           Icon(
-        //             Icons.chevron_right_rounded,
-        //             color: isDark ? Colors.white38 : Colors.grey,
-        //           ),
-        //         ],
-        //       ),
-        //     ),
-        //   ),
-        // ),
+  
         const SizedBox(height: 14),
 
         // Campo de origen
@@ -1100,7 +1105,7 @@ class _HomePasajeroState extends State<HomePasajero> {
           controller: _originController,
           label: 'Origen',
           icon: Icons.my_location,
-          iconColor: Colors.green,
+          iconColor: AppColors.accent,
           predictions: _originPredictions,
           isSearching: _isSearchingOrigin,
           onSelectPrediction: _selectOrigin,
@@ -1120,7 +1125,7 @@ class _HomePasajeroState extends State<HomePasajero> {
           controller: _destinationController,
           label: 'Destino',
           icon: Icons.location_on,
-          iconColor: Colors.red,
+          iconColor: AppColors.accent,
           focusNode: _destinationFocusNode,
           predictions: _destinationPredictions,
           isSearching: _isSearchingDestination,
@@ -1528,60 +1533,15 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   // Obtener nombre y dirección desde coordenadas (Geocoding reverso)
-  Future<_CurrentLocationData> _getAddressFromCoordinates(
-    double lat,
-    double lng,
-  ) async {
-    final fallbackAddress =
-        'Lat ${lat.toStringAsFixed(5)}, Lng ${lng.toStringAsFixed(5)}';
-    try {
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/geocode/json?'
-        'latlng=$lat,$lng'
-        '&key=${AppConfig.googleMapsApiKey}'
-        '&language=es',
-      );
-
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-
-        if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-          final results = data['results'] as List<dynamic>;
-          final first = results.first as Map<String, dynamic>;
-          final formattedAddress =
-              first['formatted_address']?.toString().trim() ?? '';
-
-          String? bestName;
-          for (final item in results) {
-            if (item is! Map<String, dynamic>) continue;
-            final value = item['formatted_address']?.toString().trim();
-            if (value == null || value.isEmpty) continue;
-
-            final firstSegment = value.split(',').first.trim();
-            if (firstSegment.isNotEmpty && firstSegment.length >= 3) {
-              bestName = firstSegment;
-              break;
-            }
-          }
-
-          return _CurrentLocationData(
-            name: (bestName == null || bestName.isEmpty)
-                ? 'Mi ubicación'
-                : bestName,
-            address: formattedAddress.isEmpty
-                ? fallbackAddress
-                : formattedAddress,
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Error obteniendo dirección: $e');
-    }
-    return _CurrentLocationData(name: 'Mi ubicación', address: fallbackAddress);
-  }
-
+Future<CurrentLocationData> _getAddressFromCoordinates(
+  double lat,
+  double lng,
+) async {
+  return _reverseGeocodingService.resolveCurrentLocationLabel(
+    lat: lat,
+    lng: lng,
+  );
+}
   Future<void> _initializeLocation() async {
     _setStateSafe(() {
       _isLoadingLocation = true;
