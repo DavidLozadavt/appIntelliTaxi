@@ -166,7 +166,7 @@ class DocumentosAlertDialog extends StatelessWidget {
                     const SizedBox(height: 10),
 
                     // BOTÓN "ACTUALIZAR MÁS TARDE"
-                    if (!hayVencidos)
+                
                       TextButton.icon(
                         onPressed: () {
                           Navigator.pop(context);
