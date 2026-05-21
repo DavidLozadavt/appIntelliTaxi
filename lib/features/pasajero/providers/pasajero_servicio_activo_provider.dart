@@ -7,6 +7,8 @@ import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/pasajero/services/pasajero_servicio_mapper.dart';
 import 'package:intellitaxi/features/pasajero/services/servicio_conductor_location_cache_service.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
 
 /// 🎯 Provider que maneja toda la lógica del servicio activo del pasajero
 class PasajeroServicioActivoProvider extends ChangeNotifier {
@@ -26,7 +28,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   String _estadoServicio = 'buscando';
   Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
-  BitmapDescriptor? _carIcon;
+  BitmapDescriptor? _origenDotIcon;
+  BitmapDescriptor? _destinoDotIcon;
+  BitmapDescriptor? _conductorDotIcon;
 
   // ===== TIMERS =====
   Timer? _timeoutTimer;
@@ -65,8 +69,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     AppLogger.d('   Canal Pusher: servicio.$servicioId');
     AppLogger.d('=' * 80 + '\n');
 
-    await _cargarIconoCarro();
+    await _cargarIconosMarcadores();
     _crearMarcadores();
+    await _dibujarRuta();
     _hidratarConductorDesdePayloadInicial();
     await _restaurarUbicacionConductorPersistida();
     _suscribirEventos();
@@ -120,16 +125,19 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     }
   }
 
-  /// 🎨 Carga el ícono del carro
-  Future<void> _cargarIconoCarro() async {
+  /// Puntos personalizados (mismo estilo que home conductor).
+  Future<void> _cargarIconosMarcadores() async {
     try {
-      _carIcon = await BitmapDescriptor.asset(
-        const ImageConfiguration(size: Size(48, 48)),
-        'assets/images/marker.png',
+      _origenDotIcon = await MapDotMarkerFactory.create(color: AppColors.green);
+      _destinoDotIcon = await MapDotMarkerFactory.create(
+        color: AppColors.primary,
       );
-      AppLogger.d('✅ PROVIDER: Ícono del carro cargado');
+      _conductorDotIcon = await MapDotMarkerFactory.create(
+        color: AppColors.primary,
+      );
+      AppLogger.d('✅ PROVIDER: Iconos de puntos cargados');
     } catch (e) {
-      AppLogger.d('⚠️ Error cargando ícono del carro: $e');
+      AppLogger.d('⚠️ Error cargando iconos de puntos: $e');
     }
   }
 
@@ -162,7 +170,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
           origen.latitude != 0.0 ? origen.latitude : -12.0464,
           origen.longitude != 0.0 ? origen.longitude : -77.0428,
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        icon:
+            _origenDotIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        anchor: const Offset(0.5, 0.5),
         infoWindow: InfoWindow(
           title: 'Punto de Recogida',
           snippet: datosServicio['origen_address'],
@@ -173,7 +184,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         Marker(
           markerId: const MarkerId('destino'),
           position: destino,
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          icon:
+              _destinoDotIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+          anchor: const Offset(0.5, 0.5),
           infoWindow: InfoWindow(
             title: 'Destino',
             snippet: datosServicio['destino_address'],
@@ -405,14 +419,14 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         markerId: const MarkerId('conductor'),
         position: _conductorUbicacion!,
         icon:
-            _carIcon ??
+            _conductorDotIcon ??
             BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         infoWindow: InfoWindow(
           title: _conductor?['conductor_nombre'] ?? 'Conductor',
           snippet: '${_conductor?['vehiculo_placa'] ?? ''}',
         ),
-        rotation: 0.0,
         anchor: const Offset(0.5, 0.5),
+        zIndexInt: 3,
       ),
     );
 
@@ -460,9 +474,11 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
           Polyline(
             polylineId: const PolylineId('origen_destino'),
             points: rutaOrigenDestino.polylinePoints,
-            color: Colors.orange,
-            width: 3,
-            patterns: [PatternItem.dash(15), PatternItem.gap(10)],
+            color: Colors.deepOrange,
+            width: 5,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            jointType: JointType.round,
           ),
         );
       }
@@ -477,15 +493,19 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   /// 📏 Calcula los límites del mapa para centrar
   LatLngBounds calcularBounds() {
     final origen = PasajeroServicioMapper.origen(datosServicio);
+    final destino = PasajeroServicioMapper.destino(datosServicio);
 
-    final lats = [
-      _conductorUbicacion?.latitude ?? origen.latitude,
-      origen.latitude,
-    ];
-    final lngs = [
-      _conductorUbicacion?.longitude ?? origen.longitude,
-      origen.longitude,
-    ];
+    final lats = <double>[origen.latitude];
+    final lngs = <double>[origen.longitude];
+
+    if (destino != null) {
+      lats.add(destino.latitude);
+      lngs.add(destino.longitude);
+    }
+    if (_conductorUbicacion != null) {
+      lats.add(_conductorUbicacion!.latitude);
+      lngs.add(_conductorUbicacion!.longitude);
+    }
 
     return LatLngBounds(
       southwest: LatLng(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -49,7 +50,8 @@ class HomePasajero extends StatefulWidget {
 
 enum _SheetVisualState { compact, middle, expanded }
 
-class _HomePasajeroState extends State<HomePasajero> {
+class _HomePasajeroState extends State<HomePasajero>
+    with TickerProviderStateMixin {
   GoogleMapController? _mapController;
   Position? _currentPosition;
   bool _isLoadingLocation = true;
@@ -62,10 +64,11 @@ class _HomePasajeroState extends State<HomePasajero> {
   static const double _sheetMinSize = 0.16;
   static const double _sheetMidSize = 0.52;
   static const double _sheetMaxSize = 0.88;
+  static const double _sheetCtaVisibleExtent = 0.34;
+  final ValueNotifier<double> _sheetExtent = ValueNotifier(_sheetMinSize);
   double _sheetSize = _sheetMinSize;
   _SheetVisualState _sheetVisualState = _SheetVisualState.compact;
   _SheetVisualState? _lastHapticSnap;
-  bool _showExpandedSheetContent = false;
 
   // Para las búsquedas
   final PlacesService _placesService = PlacesService();
@@ -116,9 +119,14 @@ class _HomePasajeroState extends State<HomePasajero> {
   final ConductoresService _conductoresService = ConductoresService();
   PusherConductoresService? _pusherConductoresService;
   final Map<int, Conductor> _conductoresDisponibles = {};
+  final Map<int, LatLng> _driverDisplayedPositions = {};
   Conductor? _selectedDirectDriver;
   BitmapDescriptor? _driverMarkerIcon;
   final bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
+  Ticker? _driverMarkersTicker;
+  Timer? _driversRefreshTimer;
+  static const double _driverLerpFactor = 0.2;
+  static const double _driverSnapDistanceMeters = 2.0;
   bool _isDisposed = false;
   String _currentLocationName = 'Mi ubicación';
   String _currentLocationAddress = 'Mi ubicación actual';
@@ -127,11 +135,6 @@ class _HomePasajeroState extends State<HomePasajero> {
   bool _notificationPermissionRequestedInSession = false;
 
   bool get _isExpanded => _sheetVisualState != _SheetVisualState.compact;
-
-  double get _sheetProgress {
-    final raw = (_sheetSize - _sheetMinSize) / (_sheetMaxSize - _sheetMinSize);
-    return raw.clamp(0.0, 1.0);
-  }
 
   @override
   void initState() {
@@ -149,6 +152,98 @@ class _HomePasajeroState extends State<HomePasajero> {
     _originController.addListener(_onOriginChanged);
     _destinationController.addListener(_onDestinationChanged);
     RepeatTripService.instance.addListener(_onRepeatTripRequested);
+    _sheetController.addListener(_onSheetControllerChanged);
+    _driverMarkersTicker = createTicker(_onDriverMarkersTick)..start();
+  }
+
+  void _onDriverMarkersTick(Duration elapsed) {
+    if (!mounted || _isDisposed || !_showDrivers) return;
+    if (_conductoresDisponibles.isEmpty) {
+      if (_driverDisplayedPositions.isNotEmpty) {
+        _driverDisplayedPositions.clear();
+        _syncMarkersOnMap();
+      }
+      return;
+    }
+
+    var changed = false;
+
+    for (final entry in _conductoresDisponibles.entries) {
+      final id = entry.key;
+      final target = LatLng(entry.value.lat, entry.value.lng);
+      final current = _driverDisplayedPositions[id];
+
+      if (current == null) {
+        _driverDisplayedPositions[id] = target;
+        changed = true;
+        continue;
+      }
+
+      final movedMeters = Geolocator.distanceBetween(
+        current.latitude,
+        current.longitude,
+        target.latitude,
+        target.longitude,
+      );
+
+      if (movedMeters < _driverSnapDistanceMeters) {
+        if (current.latitude != target.latitude ||
+            current.longitude != target.longitude) {
+          _driverDisplayedPositions[id] = target;
+          changed = true;
+        }
+        continue;
+      }
+
+      final lat =
+          current.latitude +
+          (target.latitude - current.latitude) * _driverLerpFactor;
+      final lng =
+          current.longitude +
+          (target.longitude - current.longitude) * _driverLerpFactor;
+      _driverDisplayedPositions[id] = LatLng(lat, lng);
+      changed = true;
+    }
+
+    for (final id in _driverDisplayedPositions.keys.toList()) {
+      if (!_conductoresDisponibles.containsKey(id)) {
+        _driverDisplayedPositions.remove(id);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      _syncMarkersOnMap();
+    }
+  }
+
+  void _seedDriverDisplayedPositions() {
+    for (final entry in _conductoresDisponibles.entries) {
+      final target = LatLng(entry.value.lat, entry.value.lng);
+      _driverDisplayedPositions[entry.key] = target;
+    }
+  }
+
+  void _startDriversRefreshTimer() {
+    _driversRefreshTimer?.cancel();
+    _driversRefreshTimer = Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => _loadAvailableDrivers(silent: true),
+    );
+  }
+
+  void _onSheetControllerChanged() {
+    if (!_sheetController.isAttached || _isDisposed) return;
+    final size = _sheetController.size;
+    if ((size - _sheetExtent.value).abs() >= 0.002) {
+      _sheetExtent.value = size;
+    }
+    if ((size - _sheetSize).abs() < 0.008) return;
+    _sheetSize = size;
+    final nextVisualState = _sheetStateFromExtent(size);
+    if (nextVisualState == _sheetVisualState) return;
+    _sheetVisualState = nextVisualState;
+    _emitSnapHapticIfNeeded(size, nextVisualState);
   }
 
   @override
@@ -203,7 +298,11 @@ class _HomePasajeroState extends State<HomePasajero> {
     _pusherConductoresService?.disconnect();
 
     _mapController?.dispose();
+    _sheetController.removeListener(_onSheetControllerChanged);
     _sheetController.dispose();
+    _sheetExtent.dispose();
+    _driverMarkersTicker?.dispose();
+    _driversRefreshTimer?.cancel();
     _originController.dispose();
     _destinationController.dispose();
     _destinationFocusNode.dispose();
@@ -422,163 +521,172 @@ class _HomePasajeroState extends State<HomePasajero> {
   }
 
   /// Carga los conductores disponibles inicialmente
-  Future<void> _loadAvailableDrivers() async {
+  Future<void> _loadAvailableDrivers({bool silent = false}) async {
     if (_currentPosition == null) {
-      AppLogger.d('⚠️ No hay posición actual para buscar conductores');
       return;
     }
 
     try {
-      AppLogger.d('🔍 Cargando conductores disponibles...');
-      AppLogger.d(
-        '   📊 Conductores actuales en memoria: ${_conductoresDisponibles.length}',
-      );
-
       final conductores = await _conductoresService.getConductoresDisponibles(
         lat: _currentPosition!.latitude,
         lng: _currentPosition!.longitude,
-        radioKm: 15, // Aumentar radio para mejor cobertura
+        radioKm: 15,
       );
 
       if (!mounted) return;
 
-      _setStateSafe(() {
-        // NO limpiar todos los conductores, solo actualizar los que vienen de la API
-        // Esto preserva conductores que llegaron por Pusher pero no están en la consulta
+      for (final conductor in conductores) {
+        _conductoresDisponibles[conductor.conductorId] = conductor;
+      }
 
-        // Primero, actualizar o agregar conductores de la API
-        for (var conductor in conductores) {
-          _conductoresDisponibles[conductor.conductorId] = conductor;
+      for (final id in _driverDisplayedPositions.keys.toList()) {
+        if (!_conductoresDisponibles.containsKey(id)) {
+          _driverDisplayedPositions.remove(id);
         }
+      }
 
-        // Opcional: Limpiar conductores que hace mucho no se actualizan
-        // (esto se puede agregar después si es necesario)
-      });
+      _seedDriverDisplayedPositions();
+      _syncMarkersOnMap();
 
-      // Actualizar marcadores
-      _updateAllDriverMarkers();
-
-      AppLogger.d('✅ ${conductores.length} conductores desde API');
-      AppLogger.d(
-        '   📍 Total en mapa: ${_conductoresDisponibles.length} conductores',
-      );
+      if (!silent) {
+        AppLogger.d('✅ ${conductores.length} conductores en mapa');
+      }
     } catch (e) {
-      AppLogger.d('❌ Error cargando conductores: $e');
+      if (!silent) {
+        AppLogger.d('❌ Error cargando conductores: $e');
+      }
     }
   }
 
-  /// Actualiza el marcador de un conductor específico
+  /// Actualiza datos del conductor (Pusher); el movimiento lo anima el ticker.
   void _updateDriverMarker(Conductor conductor) {
     if (!_showDrivers) return;
-
-    _setStateSafe(() {
-      _conductoresDisponibles[conductor.conductorId] = conductor;
-      _updateAllDriverMarkers();
-    });
-
-    AppLogger.d('📍 Marcador actualizado: ${conductor.nombre}');
+    _conductoresDisponibles[conductor.conductorId] = conductor;
+    if (!_driverDisplayedPositions.containsKey(conductor.conductorId)) {
+      _driverDisplayedPositions[conductor.conductorId] = LatLng(
+        conductor.lat,
+        conductor.lng,
+      );
+      _syncMarkersOnMap();
+    }
   }
 
   /// Elimina el marcador de un conductor
   void _removeDriverMarker(int conductorId) {
-    _setStateSafe(() {
-      if (_selectedDirectDriver?.conductorId == conductorId) {
-        _selectedDirectDriver = null;
-      }
-      _conductoresDisponibles.remove(conductorId);
-      _updateAllDriverMarkers();
-    });
-
-    AppLogger.d('🔴 Conductor removido: $conductorId');
+    if (_selectedDirectDriver?.conductorId == conductorId) {
+      _selectedDirectDriver = null;
+    }
+    _conductoresDisponibles.remove(conductorId);
+    _driverDisplayedPositions.remove(conductorId);
+    _syncMarkersOnMap();
   }
 
-  /// Actualiza todos los marcadores en el mapa
-  void _updateAllDriverMarkers() {
-    AppLogger.d('🔄 _updateAllDriverMarkers llamado');
-    AppLogger.d('   🚗 _showDrivers: $_showDrivers');
-    AppLogger.d(
-      '   📊 Conductores en memoria: ${_conductoresDisponibles.length}',
-    );
+  Set<Marker> _buildDriverMarkers() {
+    if (!_showDrivers) return {};
 
-    final Set<Marker> newMarkers = {};
-
-    // Agregar marcadores de conductores solo si están visibles
-    if (_showDrivers) {
-      AppLogger.d('   ✅ Agregando marcadores de conductores...');
-      for (var conductor in _conductoresDisponibles.values) {
-        AppLogger.d(
-          '      🚗 Agregando: ${conductor.nombre} en (${conductor.lat}, ${conductor.lng})',
-        );
-        newMarkers.add(
-          Marker(
-            markerId: MarkerId('driver_${conductor.conductorId}'),
-            position: LatLng(conductor.lat, conductor.lng),
-            icon:
-                _driverMarkerIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen,
-                ),
-            infoWindow: InfoWindow(
-              title: '🚗 ${conductor.nombre}',
-              snippet:
-                  '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
-                  '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}\n'
-                  '📏 ${conductor.distanciaKm != null ? "${conductor.distanciaKm!.toStringAsFixed(2)} km" : ""}',
-            ),
-            onTap: () => _onDriverMarkerTap(conductor),
-            zIndexInt: 1, // Debajo de otros marcadores
-          ),
-        );
-      }
-      AppLogger.d(
-        '   ✅ ${newMarkers.length} marcadores de conductores agregados',
-      );
-    } else {
-      AppLogger.d('   ⚠️ _showDrivers es false, NO se agregan conductores');
-    }
-
-    // Agregar marcadores existentes que NO sean de conductores (ruta, origen, destino, etc)
-    for (var marker in _markers) {
-      if (!marker.markerId.value.startsWith('driver_')) {
-        newMarkers.add(marker);
-      }
-    }
-
-    // Si hay ubicación actual y no hay ruta, mostrar marcador de usuario
-    if (_currentPosition != null &&
-        _routeInfo == null &&
-        _userMarkerIcon != null) {
-      newMarkers.add(
+    final markers = <Marker>{};
+    for (final conductor in _conductoresDisponibles.values) {
+      final position =
+          _driverDisplayedPositions[conductor.conductorId] ??
+          LatLng(conductor.lat, conductor.lng);
+      markers.add(
         Marker(
-          markerId: const MarkerId('user_location'),
-          position: LatLng(
-            _currentPosition!.latitude,
-            _currentPosition!.longitude,
-          ),
-          icon: _userMarkerIcon!,
+          markerId: MarkerId('driver_${conductor.conductorId}'),
+          position: position,
+          icon:
+              _driverMarkerIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
           infoWindow: InfoWindow(
-            title: _currentLocationName,
-            snippet: _currentLocationAddress,
+            title: '🚗 ${conductor.nombre}',
+            snippet:
+                '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
+                '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}',
           ),
-          zIndexInt: 10, // Encima de todos
+          onTap: () => _onDriverMarkerTap(conductor),
+          zIndexInt: 1,
         ),
       );
     }
-
-    _setStateSafe(() {
-      _markers = newMarkers;
-    });
-
-    AppLogger.d(
-      '🗺️ Marcadores actualizados: ${_conductoresDisponibles.length} conductores, ${newMarkers.length} marcadores totales',
-    );
-
-    // Debug: Listar todos los marcadores
-    AppLogger.d('   📍 Marcadores en el mapa:');
-    for (var marker in newMarkers) {
-      AppLogger.d('      - ${marker.markerId.value}');
-    }
+    return markers;
   }
+
+  /// Recompone marcadores del mapa (conductores animados + ruta + resto).
+  void _syncMarkersOnMap() {
+    if (!mounted || _isDisposed) return;
+
+    final newMarkers = <Marker>{..._buildDriverMarkers()};
+
+    if (_routeInfo != null &&
+        _selectedOrigin != null &&
+        _selectedDestination != null) {
+      final originLatLng = LatLng(_selectedOrigin!.lat, _selectedOrigin!.lng);
+      final destinationLatLng = LatLng(
+        _selectedDestination!.lat,
+        _selectedDestination!.lng,
+      );
+      final isOriginCurrentLocation =
+          _selectedOrigin!.isCurrentLocation ||
+          (_currentPosition != null &&
+              _selectedOrigin!.lat == _currentPosition!.latitude &&
+              _selectedOrigin!.lng == _currentPosition!.longitude);
+
+      newMarkers.add(
+        Marker(
+          markerId: const MarkerId('origin'),
+          position: originLatLng,
+          icon: (isOriginCurrentLocation && _userMarkerIcon != null)
+              ? _userMarkerIcon!
+              : BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueGreen,
+                ),
+          infoWindow: InfoWindow(
+            title: isOriginCurrentLocation ? 'Tu ubicación' : 'Origen',
+            snippet: _selectedOrigin!.name,
+          ),
+        ),
+      );
+      newMarkers.add(
+        _buildDestinationMarker(
+          destinationLatLng,
+          _destinationMarkerSnippet(_selectedDestination!),
+        ),
+      );
+    } else {
+      for (final marker in _markers) {
+        final id = marker.markerId.value;
+        if (id.startsWith('driver_') ||
+            id == 'origin' ||
+            id == 'user_location') {
+          continue;
+        }
+        newMarkers.add(marker);
+      }
+
+      if (_currentPosition != null &&
+          _routeInfo == null &&
+          _userMarkerIcon != null) {
+        newMarkers.add(
+          Marker(
+            markerId: const MarkerId('user_location'),
+            position: LatLng(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+            ),
+            icon: _userMarkerIcon!,
+            infoWindow: InfoWindow(
+              title: _currentLocationName,
+              snippet: _currentLocationAddress,
+            ),
+            zIndexInt: 10,
+          ),
+        );
+      }
+    }
+
+    _setStateSafe(() => _markers = newMarkers);
+  }
+
+  void _updateAllDriverMarkers() => _syncMarkersOnMap();
 
   /// Crea el icono del marcador para conductores
   Future<void> _createDriverMarkerIcon() async {
@@ -666,7 +774,8 @@ class _HomePasajeroState extends State<HomePasajero> {
                   onRetry: _initializeLocation,
                 ),
               )
-            : StandardMap(
+            : RepaintBoundary(
+                child: StandardMap(
                 initialPosition: LatLng(
                   _currentPosition!.latitude,
                   _currentPosition!.longitude,
@@ -674,108 +783,49 @@ class _HomePasajeroState extends State<HomePasajero> {
                 zoom: 15,
                 polylines: _polylines,
                 markers: _markers,
-                onTap: _onMapTap,
-                onLongPress: _onMapLongPress,
+                // onTap: _onMapTap,
+                // onLongPress: _onMapLongPress,
                 onMapCreated: (controller) {
                   _mapController = controller;
                 },
               ),
+            ),
 
-        // Overlay ligero: mejora legibilidad sin costo alto de blur en tiempo real
+        // Overlay del mapa: solo escucha el extent, sin rebuild del árbol completo.
         if (_currentPosition != null)
           Positioned.fill(
             child: IgnorePointer(
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 150),
-                opacity: (_sheetProgress * 0.18).clamp(0.0, 0.18),
-                child: Container(color: Colors.black),
-              ),
-            ),
-          ),
-
-        // Bottom Sheet Persistente (snap)
-        if (_currentPosition != null)
-          Positioned.fill(
-            child: NotificationListener<DraggableScrollableNotification>(
-              onNotification: (notification) {
-                if (!mounted) return false;
-                final nextSize = notification.extent;
-                final nextVisualState = _sheetStateFromExtent(nextSize);
-                if ((nextSize - _sheetSize).abs() > 0.0005 ||
-                    nextVisualState != _sheetVisualState) {
-                  _setStateSafe(() {
-                    _sheetSize = nextSize;
-                    _sheetVisualState = nextVisualState;
-                  });
-                }
-                _emitSnapHapticIfNeeded(nextSize, nextVisualState);
-                return false;
-              },
-              child: DraggableScrollableSheet(
-                controller: _sheetController,
-                initialChildSize: _sheetMinSize,
-                minChildSize: _sheetMinSize,
-                maxChildSize: _sheetMaxSize,
-                expand: false,
-                snap: true,
-                snapAnimationDuration: const Duration(milliseconds: 260),
-                snapSizes: const [_sheetMinSize, _sheetMidSize, _sheetMaxSize],
-                builder: (context, scrollController) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(24),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 20,
-                          offset: const Offset(0, -5),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        GestureDetector(
-                          onTap: _toggleSheet,
-                          child: Container(
-                            margin: const EdgeInsets.only(top: 12, bottom: 8),
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: _showExpandedSheetContent
-                              ? _buildExpandedContent(
-                                  key: const ValueKey('expanded_sheet'),
-                                  scrollController: scrollController,
-                                  showInlineActions: false,
-                                )
-                              : ListView(
-                                  key: const ValueKey('compact_sheet'),
-                                  controller: scrollController,
-                                  physics: const ClampingScrollPhysics(),
-                                  children: [_buildMinimizedContent()],
-                                ),
-                        ),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 180),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeOutCubic,
-                          child: _showExpandedSheetContent
-                              ? _buildFixedCta()
-                              : const SizedBox.shrink(),
-                        ),
-                      ],
+              child: ValueListenableBuilder<double>(
+                valueListenable: _sheetExtent,
+                builder: (context, extent, _) {
+                  final progress =
+                      ((extent - _sheetMinSize) / (_sheetMaxSize - _sheetMinSize))
+                          .clamp(0.0, 1.0);
+                  return ColoredBox(
+                    color: Colors.black.withValues(
+                      alpha: (progress * 0.18).clamp(0.0, 0.18),
                     ),
                   );
                 },
               ),
+            ),
+          ),
+
+        // Bottom sheet de viaje: un solo scroll continuo (sin saltos de layout).
+        if (_currentPosition != null)
+          Positioned.fill(
+            child: DraggableScrollableSheet(
+              controller: _sheetController,
+              initialChildSize: _sheetMinSize,
+              minChildSize: _sheetMinSize,
+              maxChildSize: _sheetMaxSize,
+              expand: false,
+              snap: true,
+              snapAnimationDuration: const Duration(milliseconds: 320),
+              snapSizes: const [_sheetMinSize, _sheetMidSize, _sheetMaxSize],
+              builder: (context, scrollController) {
+                return _buildRideBottomSheet(scrollController);
+              },
             ),
           ),
 
@@ -795,6 +845,73 @@ class _HomePasajeroState extends State<HomePasajero> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildRideBottomSheet(ScrollController scrollController) {
+    return RepaintBoundary(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 18,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            _buildSheetDragHandle(),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                physics: const ClampingScrollPhysics(),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                children: [
+                  _buildMinimizedContent(),
+                  const SizedBox(height: 8),
+                  ..._buildTripFormChildren(showInlineActions: false),
+                  const SizedBox(height: 88),
+                ],
+              ),
+            ),
+            ValueListenableBuilder<double>(
+              valueListenable: _sheetExtent,
+              builder: (context, extent, _) {
+                if (extent < _sheetCtaVisibleExtent) {
+                  return const SizedBox.shrink();
+                }
+                return _buildFixedCta();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSheetDragHandle() {
+    return GestureDetector(
+      onTap: _toggleSheet,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 8),
+        child: Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -905,9 +1022,17 @@ class _HomePasajeroState extends State<HomePasajero> {
                   color: AppColors.primary.withValues(alpha: 0.10),
                   shape: BoxShape.circle,
                 ),
-                child: AnimatedRotation(
-                  duration: const Duration(milliseconds: 180),
-                  turns: _showExpandedSheetContent ? 0.5 : 0,
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _sheetExtent,
+                  builder: (context, extent, child) {
+                    final expanded = extent > (_sheetMinSize + 0.06);
+                    return AnimatedRotation(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      turns: expanded ? 0.5 : 0,
+                      child: child,
+                    );
+                  },
                   child: const Icon(
                     Icons.keyboard_arrow_up,
                     color: AppColors.primary,
@@ -917,67 +1042,6 @@ class _HomePasajeroState extends State<HomePasajero> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildExpandedHeader() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : AppColors.primary.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: _serviceType == 'taxi'
-                  ? AppColors.primary
-                  : Colors.orange.shade600,
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(
-              _serviceType == 'taxi' ? Icons.local_taxi : Icons.shopping_bag,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _serviceType == 'taxi'
-                      ? '¿A dónde vas?'
-                      : '¿Qué necesitas enviar?',
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                Text(
-                  'Elige destino y confirma tu solicitud',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: _minimizeSheet,
-            icon: const Icon(Icons.keyboard_arrow_down),
-            color: Colors.grey,
-          ),
-        ],
       ),
     );
   }
@@ -1069,23 +1133,10 @@ class _HomePasajeroState extends State<HomePasajero> {
     );
   }
 
-  Widget _buildExpandedContent({
-    Key? key,
-    ScrollController? scrollController,
-    bool showInlineActions = true,
-  }) {
+  List<Widget> _buildTripFormChildren({required bool showInlineActions}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return ListView(
-      key: key,
-      controller: scrollController,
-      physics: const BouncingScrollPhysics(),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-      children: [
-        _buildExpandedHeader(),
-        const SizedBox(height: 12),
-
+    return [
         // Selector de tipo de servicio (primero)
         ServiceTypeSelector(
           selectedType: _serviceType,
@@ -1261,8 +1312,7 @@ class _HomePasajeroState extends State<HomePasajero> {
             ],
           ),
         ),
-      ],
-    );
+    ];
   }
 
   Widget _buildFixedCta() {
@@ -1642,8 +1692,9 @@ Future<CurrentLocationData> _getAddressFromCoordinates(
           );
         }
 
-        // Cargar conductores disponibles
-        _loadAvailableDrivers();
+        // Cargar conductores disponibles y mantener posiciones fluidas.
+        await _loadAvailableDrivers();
+        _startDriversRefreshTimer();
         await _requestNotificationPermissionAfterLocation();
         _tryApplyPendingRepeatTrip();
       }
@@ -1679,48 +1730,47 @@ Future<CurrentLocationData> _getAddressFromCoordinates(
 
   Future<void> _expandSheet() async {
     if (!_sheetController.isAttached) return;
-    _setStateSafe(() => _showExpandedSheetContent = true);
     await _sheetController.animateTo(
       _sheetMidSize,
-      duration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 300),
       curve: Curves.easeOutCubic,
     );
     if (!mounted) return;
-    await Future.delayed(const Duration(milliseconds: 90));
+    await Future.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
     _destinationFocusNode.requestFocus();
   }
 
   Future<void> _minimizeSheet() async {
     if (!_sheetController.isAttached) return;
+    FocusScope.of(context).unfocus();
     await _sheetController.animateTo(
       _sheetMinSize,
-      duration: const Duration(milliseconds: 220),
+      duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
     );
-    if (!mounted) return;
-    _setStateSafe(() => _showExpandedSheetContent = false);
   }
 
   Future<void> _openQuickRequestFlow() async {
     await _expandSheet();
   }
 
-  Future<void> _onMapTap(LatLng latLng) async {
-    await _setDestinationFromMap(
-      latLng,
-      showToast: true,
-      routeWithLoading: false,
-    );
-  }
-
-  Future<void> _onMapLongPress(LatLng latLng) async {
-    await _setDestinationFromMap(
-      latLng,
-      showToast: true,
-      routeWithLoading: true,
-    );
-  }
+  // --- Selección de destino en el mapa (deshabilitado) ---
+  // Future<void> _onMapTap(LatLng latLng) async {
+  //   await _setDestinationFromMap(
+  //     latLng,
+  //     showToast: true,
+  //     routeWithLoading: false,
+  //   );
+  // }
+  //
+  // Future<void> _onMapLongPress(LatLng latLng) async {
+  //   await _setDestinationFromMap(
+  //     latLng,
+  //     showToast: true,
+  //     routeWithLoading: true,
+  //   );
+  // }
 
   Marker _buildDestinationMarker(LatLng position, String snippet) {
     return Marker(
@@ -1731,8 +1781,8 @@ Future<CurrentLocationData> _getAddressFromCoordinates(
           _driverMarkerIcon ??
           BitmapDescriptor.defaultMarker,
       infoWindow: InfoWindow(title: 'Destino seleccionado', snippet: snippet),
-      draggable: true,
-      onDragEnd: _onDestinationMarkerDragged,
+      draggable: false,
+      // onDragEnd: _onDestinationMarkerDragged,
       zIndexInt: 6,
     );
   }
@@ -1782,80 +1832,19 @@ Future<CurrentLocationData> _getAddressFromCoordinates(
     _markers = nextMarkers;
   }
 
-  Future<void> _onDestinationMarkerDragged(LatLng latLng) async {
-    await _setDestinationFromMap(
-      latLng,
-      showToast: false,
-      routeWithLoading: false,
-    );
-  }
+  // Future<void> _onDestinationMarkerDragged(LatLng latLng) async {
+  //   await _setDestinationFromMap(
+  //     latLng,
+  //     showToast: false,
+  //     routeWithLoading: false,
+  //   );
+  // }
 
-  Future<void> _setDestinationFromMap(
-    LatLng latLng, {
-    required bool showToast,
-    required bool routeWithLoading,
-  }) async {
-    final locationData = await _getAddressFromCoordinates(
-      latLng.latitude,
-      latLng.longitude,
-    );
-    if (!mounted) return;
-
-    final rawName = locationData.name.trim();
-    final rawAddress = locationData.address.trim();
-    final bool isLatLngFallback =
-        rawAddress.toLowerCase().startsWith('lat ') &&
-        rawAddress.toLowerCase().contains('lng');
-    final normalizedAddress = (rawAddress.isEmpty || isLatLngFallback)
-        ? 'Dirección no disponible'
-        : rawAddress;
-
-    // Prioridad: nombre real del lugar -> primer segmento de dirección -> dirección completa.
-    final bool invalidName =
-        rawName.isEmpty || rawName.toLowerCase() == 'mi ubicación';
-    final String firstAddressPart = normalizedAddress.split(',').first.trim();
-    final normalizedName = !invalidName
-        ? rawName
-        : (firstAddressPart.isNotEmpty
-              ? firstAddressPart
-              : 'Destino seleccionado');
-
-    final destination = TripLocation(
-      placeId: null,
-      name: normalizedName,
-      address: normalizedAddress,
-      lat: latLng.latitude,
-      lng: latLng.longitude,
-      isCurrentLocation: false,
-    );
-    final area = await _resolveDestinationArea(destination);
-    if (!mounted) return;
-
-    _setStateSafe(() {
-      _selectedDestination = destination;
-      _selectedDestinationArea = area;
-      _destinationController.text = destination.name;
-      _destinationPredictions = [];
-      _isSearchingDestination = false;
-      _upsertDestinationMarker(destination);
-    });
-
-    await _saveRecentDestination(destination);
-    _updateAllDriverMarkers();
-
-    if (_selectedOrigin != null) {
-      await _drawRoute(showLoadingSnack: routeWithLoading);
-    }
-
-    if (!mounted || !showToast) return;
-    _scaffoldMessenger?.showSnackBar(
-      const SnackBar(
-        content: Text('Destino fijado en el mapa'),
-        duration: Duration(milliseconds: 1300),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
+  // Future<void> _setDestinationFromMap(
+  //   LatLng latLng, {
+  //   required bool showToast,
+  //   required bool routeWithLoading,
+  // }) async { ... }
 
   String _prefKey(String suffix) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -1989,8 +1978,8 @@ Future<CurrentLocationData> _getAddressFromCoordinates(
   }
 
   _SheetVisualState _sheetStateFromExtent(double extent) {
-    // Evita parpadeo entre estados cuando el usuario suelta cerca del borde.
-    const double hysteresis = 0.02;
+    // Histéresis amplia para evitar rebotes visuales entre estados.
+    const double hysteresis = 0.04;
     final toMiddle = (_sheetMinSize + _sheetMidSize) / 2;
     final toExpanded = (_sheetMidSize + _sheetMaxSize) / 2;
 
@@ -2024,10 +2013,6 @@ Future<CurrentLocationData> _getAddressFromCoordinates(
     if (_lastHapticSnap == visualState) return;
 
     _lastHapticSnap = visualState;
-    final shouldShowExpanded = visualState != _SheetVisualState.compact;
-    if (_showExpandedSheetContent != shouldShowExpanded) {
-      _setStateSafe(() => _showExpandedSheetContent = shouldShowExpanded);
-    }
     switch (visualState) {
       case _SheetVisualState.compact:
       case _SheetVisualState.middle:
@@ -2216,8 +2201,6 @@ Future<CurrentLocationData> _getAddressFromCoordinates(
     if (routeInfo != null && mounted) {
       _setStateSafe(() {
         _routeInfo = routeInfo;
-
-        // Crear polilínea
         _polylines = {
           Polyline(
             polylineId: const PolylineId('route'),
@@ -2229,92 +2212,9 @@ Future<CurrentLocationData> _getAddressFromCoordinates(
             jointType: JointType.round,
           ),
         };
-
-        // Crear marcadores
-        final Set<Marker> newMarkers = {};
-
-        // Si el origen es la ubicación actual, usar foto de perfil
-        final bool isOriginCurrentLocation =
-            _selectedOrigin!.isCurrentLocation ||
-            (_currentPosition != null &&
-                _selectedOrigin!.lat == _currentPosition!.latitude &&
-                _selectedOrigin!.lng == _currentPosition!.longitude);
-
-        // Marcador de origen
-        newMarkers.add(
-          Marker(
-            markerId: const MarkerId('origin'),
-            position: originLatLng,
-            icon: (isOriginCurrentLocation && _userMarkerIcon != null)
-                ? _userMarkerIcon!
-                : BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueGreen,
-                  ),
-            infoWindow: InfoWindow(
-              title: isOriginCurrentLocation ? 'Tu ubicación' : 'Origen',
-              snippet: _selectedOrigin!.name,
-            ),
-          ),
-        );
-
-        // Marcador de destino
-        newMarkers.add(
-          _buildDestinationMarker(
-            destinationLatLng,
-            _destinationMarkerSnippet(_selectedDestination!),
-          ),
-        );
-
-        // Agregar marcadores de conductores si están visibles
-        if (_showDrivers) {
-          for (var conductor in _conductoresDisponibles.values) {
-            newMarkers.add(
-              Marker(
-                markerId: MarkerId('driver_${conductor.conductorId}'),
-                position: LatLng(conductor.lat, conductor.lng),
-                icon:
-                    _driverMarkerIcon ??
-                    BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueGreen,
-                    ),
-                infoWindow: InfoWindow(
-                  title: '🚗 ${conductor.nombre}',
-                  snippet:
-                      '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
-                      '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}',
-                ),
-                onTap: () => _onDriverMarkerTap(conductor),
-                zIndexInt: 1,
-              ),
-            );
-          }
-        }
-
-        // Si hay ubicación actual y es diferente al origen, mostrar también la ubicación en tiempo real
-        if (_currentPosition != null &&
-            !isOriginCurrentLocation &&
-            _userMarkerIcon != null) {
-          newMarkers.add(
-            Marker(
-              markerId: const MarkerId('current_location'),
-              position: LatLng(
-                _currentPosition!.latitude,
-                _currentPosition!.longitude,
-              ),
-              icon: _userMarkerIcon!,
-              infoWindow: const InfoWindow(
-                title: 'Tu ubicación',
-                snippet: 'Ubicación en tiempo real',
-              ),
-              zIndexInt: 1, // Asegurar que esté encima de otros marcadores
-            ),
-          );
-        }
-
-        _markers = newMarkers;
       });
 
-      // Ajustar cámara
+      _syncMarkersOnMap();
       _fitCameraToBounds(routeInfo.polylinePoints);
 
       // Minimizar el bottom sheet

@@ -33,6 +33,7 @@ class _PasajeroEsperandoConductorScreenState
     extends State<PasajeroEsperandoConductorScreen> {
   GoogleMapController? _mapController;
   bool _driverCameraCentered = false;
+  String? _lastMapCameraKey;
   bool _terminalFlowStarted = false;
   bool _timeoutDialogShown = false;
   /// Evita que el post-frame dispare salida remota mientras cancelamos manualmente (misma petición).
@@ -290,6 +291,7 @@ class _PasajeroEsperandoConductorScreenState
       ),
       child: Consumer<PasajeroServicioActivoProvider>(
         builder: (context, provider, _) {
+          _tryUpdateMapCamera(provider);
           _tryCenterToDriver(provider);
 
           // Listener para mostrar diálogos según el estado
@@ -374,14 +376,8 @@ class _PasajeroEsperandoConductorScreenState
                     polylines: provider.polylines,
                     onMapCreated: (controller) {
                       _mapController = controller;
-                      // Centrar mapa si hay ubicación del conductor
-                      if (provider.conductorUbicacion != null) {
-                        final bounds = provider.calcularBounds();
-                        controller.animateCamera(
-                          CameraUpdate.newLatLngBounds(bounds, 100),
-                        );
-                        _driverCameraCentered = true;
-                      }
+                      _lastMapCameraKey = null;
+                      _tryUpdateMapCamera(provider);
                     },
                   ),
 
@@ -440,6 +436,31 @@ class _PasajeroEsperandoConductorScreenState
         },
       ),
     );
+  }
+
+  void _tryUpdateMapCamera(PasajeroServicioActivoProvider provider) {
+    if (_mapController == null) return;
+    if (provider.polylines.isEmpty && provider.conductorUbicacion == null) {
+      return;
+    }
+
+    final cameraKey =
+        '${provider.polylines.length}_'
+        '${provider.conductorUbicacion?.latitude}_'
+        '${provider.conductorUbicacion?.longitude}';
+    if (cameraKey == _lastMapCameraKey) return;
+    _lastMapCameraKey = cameraKey;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _mapController == null) return;
+      try {
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLngBounds(provider.calcularBounds(), 90),
+        );
+      } catch (_) {
+        // Ignorar errores de cámara intermitentes durante reconstrucción del mapa.
+      }
+    });
   }
 
   void _tryCenterToDriver(PasajeroServicioActivoProvider provider) {

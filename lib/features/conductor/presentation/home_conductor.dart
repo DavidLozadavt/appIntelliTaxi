@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
@@ -35,9 +36,18 @@ class _HomeConductorState extends State<HomeConductor>
   late ConductorHomeProvider _provider;
   late final AnimationController _emergencyPulseController;
   late final Animation<double> _emergencyPulseAnimation;
-  bool _seguirUbicacion = true;
+  /// Modo navegación: mapa rotado, inclinado y siguiendo la calle.
+  bool _modoNavegacionActivo = true;
   bool _moviendoCamaraProgramaticamente = false;
-  LatLng? _ultimaUbicacionSeguida;
+  LatLng? _ultimaUbicacionCamara;
+  double _bearingNavegacion = 0;
+  bool _bearingInicializado = false;
+  Timer? _reanudarNavegacionTimer;
+
+  static const double _tiltNavegacion = 50;
+  static const double _zoomConduciendo = 18.5;
+  static const double _zoomDetenido = 17;
+  static const Duration _reanudarNavegacionTras = Duration(seconds: 12);
 
   // Sanciones
   final SancionService _sancionService = SancionService();
@@ -45,7 +55,6 @@ class _HomeConductorState extends State<HomeConductor>
   bool _bannerVisible = true;
   Timer? _bannerTimer;
 
-  // Marcador personalizado
   BitmapDescriptor? _dotMarker;
 
   @override
@@ -67,6 +76,11 @@ class _HomeConductorState extends State<HomeConductor>
     });
     _cargarSanciones();
     _crearDotMarker();
+  }
+
+  EdgeInsets _paddingMapaNavegacion(ConductorHomeProvider provider) {
+    final bottom = provider.solicitudesOrdenadas.isNotEmpty ? 220.0 : 180.0;
+    return EdgeInsets.only(top: 88, bottom: bottom, left: 24, right: 24);
   }
 
   Future<void> _crearDotMarker() async {
@@ -153,6 +167,7 @@ class _HomeConductorState extends State<HomeConductor>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _bannerTimer?.cancel();
+    _reanudarNavegacionTimer?.cancel();
     _emergencyPulseController.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -177,55 +192,139 @@ class _HomeConductorState extends State<HomeConductor>
         .toString();
   }
 
-  Future<void> _centrarMapaEnUbicacionActual(
-    ConductorHomeProvider provider,
-  ) async {
-    await provider.initializeLocation();
-    final pos = provider.currentPosition;
-    final controller = _mapController;
-    if (pos == null || controller == null) return;
+  double _resolverBearing(Position pos, LatLng? desde) {
+    final speed = pos.speed.isFinite && pos.speed >= 0 ? pos.speed : 0;
+    final headingValido =
+        pos.heading.isFinite && pos.heading >= 0 && pos.heading <= 360;
 
-    setState(() => _seguirUbicacion = true);
-    await controller.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: LatLng(pos.latitude, pos.longitude), zoom: 17),
-      ),
-    );
+    if (headingValido && speed > 1.2) {
+      return pos.heading;
+    }
+
+    if (desde != null) {
+      final dist = Geolocator.distanceBetween(
+        desde.latitude,
+        desde.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
+      if (dist >= 3) {
+        return Geolocator.bearingBetween(
+          desde.latitude,
+          desde.longitude,
+          pos.latitude,
+          pos.longitude,
+        );
+      }
+    }
+
+    return _bearingInicializado ? _bearingNavegacion : 0;
   }
 
-  void _seguirMapaSiCorresponde(ConductorHomeProvider provider) {
-    if (!_seguirUbicacion) return;
+  double _suavizarBearing(double objetivo, double factor) {
+    if (!_bearingInicializado) {
+      _bearingInicializado = true;
+      return objetivo;
+    }
+
+    var diff = objetivo - _bearingNavegacion;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+
+    var suavizado = _bearingNavegacion + diff * factor;
+    if (suavizado < 0) suavizado += 360;
+    if (suavizado >= 360) suavizado -= 360;
+    return suavizado;
+  }
+
+  bool _debeActualizarCamara(Position pos) {
+    final target = LatLng(pos.latitude, pos.longitude);
+    final last = _ultimaUbicacionCamara;
+    if (last == null) return true;
+
+    final moved = Geolocator.distanceBetween(
+      last.latitude,
+      last.longitude,
+      target.latitude,
+      target.longitude,
+    );
+    if (moved >= 2) return true;
+
+    final bearing = _resolverBearing(pos, last);
+    final diff = (bearing - _bearingNavegacion).abs();
+    return diff > 4 && diff < 356;
+  }
+
+  Future<void> _aplicarCamaraNavegacion(ConductorHomeProvider provider) async {
     final pos = provider.currentPosition;
     final controller = _mapController;
     if (pos == null || controller == null) return;
 
     final target = LatLng(pos.latitude, pos.longitude);
-    final last = _ultimaUbicacionSeguida;
-    if (last != null &&
-        (last.latitude - target.latitude).abs() < 0.00001 &&
-        (last.longitude - target.longitude).abs() < 0.00001) {
-      return;
-    }
-    _ultimaUbicacionSeguida = target;
+    final last = _ultimaUbicacionCamara;
+    final bearingRaw = _resolverBearing(pos, last);
+    final bearing = _suavizarBearing(bearingRaw, 0.35);
+    final speed = pos.speed.isFinite && pos.speed >= 0 ? pos.speed : 0;
+    final zoom = speed > 2.5 ? _zoomConduciendo : _zoomDetenido;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || !_seguirUbicacion) return;
-      final heading = pos.heading.isFinite && pos.heading >= 0
-          ? pos.heading
-          : 0.0;
-      _moviendoCamaraProgramaticamente = true;
-      await controller.animateCamera(
+    _ultimaUbicacionCamara = target;
+    _bearingNavegacion = bearing;
+
+    _moviendoCamaraProgramaticamente = true;
+    try {
+      await controller.moveCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
             target: target,
-            zoom: 17.5,
-            bearing: heading,
-            tilt: provider.isOnline ? 35 : 0,
+            zoom: zoom,
+            bearing: bearing,
+            tilt: _tiltNavegacion,
           ),
         ),
       );
+    } finally {
       _moviendoCamaraProgramaticamente = false;
+    }
+  }
+
+  void _sincronizarCamaraNavegacion(ConductorHomeProvider provider) {
+    if (!_modoNavegacionActivo) return;
+    final pos = provider.currentPosition;
+    if (pos == null || _mapController == null) return;
+    if (!_debeActualizarCamara(pos)) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_modoNavegacionActivo) return;
+      unawaited(_aplicarCamaraNavegacion(provider));
     });
+  }
+
+  void _pausarNavegacionTemporalmente() {
+    if (!_modoNavegacionActivo) return;
+    setState(() => _modoNavegacionActivo = false);
+    _reanudarNavegacionTimer?.cancel();
+    _reanudarNavegacionTimer = Timer(_reanudarNavegacionTras, () {
+      if (!mounted) return;
+      setState(() {
+        _modoNavegacionActivo = true;
+        _ultimaUbicacionCamara = null;
+      });
+      unawaited(_aplicarCamaraNavegacion(_provider));
+    });
+  }
+
+  Future<void> _reanudarNavegacionAhora(ConductorHomeProvider provider) async {
+    _reanudarNavegacionTimer?.cancel();
+    if (provider.currentPosition == null) {
+      await provider.initializeLocation();
+    }
+    if (!mounted) return;
+    setState(() {
+      _modoNavegacionActivo = true;
+      _ultimaUbicacionCamara = null;
+      _bearingInicializado = false;
+    });
+    await _aplicarCamaraNavegacion(provider);
   }
 
   /// Acepta la solicitud de servicio
@@ -513,7 +612,7 @@ class _HomeConductorState extends State<HomeConductor>
 
             // Verificar documentos después de iniciar turno
             _verificarDocumentos();
-            unawaited(_centrarMapaEnUbicacionActual(_provider));
+            unawaited(_reanudarNavegacionAhora(_provider));
           } else if (mounted) {
             final errorMessage = _provider.lastTurnoError;
             if (_esVehiculoOcupadoError(errorMessage)) {
@@ -540,7 +639,7 @@ class _HomeConductorState extends State<HomeConductor>
                       ),
                     );
                     _verificarDocumentos();
-                    unawaited(_centrarMapaEnUbicacionActual(_provider));
+                    unawaited(_reanudarNavegacionAhora(_provider));
                   } else {
                     messenger.showSnackBar(
                       SnackBar(
@@ -863,7 +962,7 @@ class _HomeConductorState extends State<HomeConductor>
   Widget build(BuildContext context) {
     return Consumer<ConductorHomeProvider>(
       builder: (context, provider, child) {
-        _seguirMapaSiCorresponde(provider);
+        _sincronizarCamaraNavegacion(provider);
         return Stack(
           children: [
             // Mapa de Google Maps
@@ -881,17 +980,17 @@ class _HomeConductorState extends State<HomeConductor>
                         provider.currentPosition!.latitude,
                         provider.currentPosition!.longitude,
                       ),
-                      zoom: 17,
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: false,
-                      compassEnabled: true,
-                      zoomControlsEnabled: false,
-                      mapPadding: EdgeInsets.only(
-                        top: 80,
-                        bottom: provider.solicitudesOrdenadas.isNotEmpty
-                            ? 140
-                            : 24,
+                      zoom: _zoomDetenido,
+                      tilt: _tiltNavegacion,
+                      bearing: _resolverBearing(
+                        provider.currentPosition!,
+                        null,
                       ),
+                      myLocationEnabled: false,
+                      myLocationButtonEnabled: false,
+                      compassEnabled: false,
+                      zoomControlsEnabled: false,
+                      mapPadding: _paddingMapaNavegacion(provider),
                       markers: {
                         Marker(
                           markerId: const MarkerId('current_location'),
@@ -907,19 +1006,16 @@ class _HomeConductorState extends State<HomeConductor>
                           ),
                           icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
                           anchor: const Offset(0.5, 0.5),
+                          rotation: 0,
                         ),
                       },
                       onMapCreated: (controller) {
                         _mapController = controller;
-                        if (provider.isOnline) {
-                          unawaited(_centrarMapaEnUbicacionActual(provider));
-                        }
+                        unawaited(_reanudarNavegacionAhora(provider));
                       },
                       onCameraMoveStarted: () {
                         if (_moviendoCamaraProgramaticamente) return;
-                        if (_seguirUbicacion) {
-                          setState(() => _seguirUbicacion = false);
-                        }
+                        _pausarNavegacionTemporalmente();
                       },
                     ),
                   ),
@@ -1264,11 +1360,16 @@ class _HomeConductorState extends State<HomeConductor>
                 bottom: provider.solicitudesOrdenadas.isNotEmpty ? 140 : 24,
                 child: FloatingActionButton.small(
                   heroTag: 'fab_ubicacion',
-                  onPressed: () => _centrarMapaEnUbicacionActual(provider),
+                  onPressed: () => _reanudarNavegacionAhora(provider),
                   backgroundColor: Colors.white.withValues(alpha: 0.88),
                   elevation: 4,
+                  tooltip: _modoNavegacionActivo
+                      ? 'Modo navegación activo'
+                      : 'Volver al modo navegación',
                   child: Icon(
-                    _seguirUbicacion ? Icons.near_me : Icons.my_location,
+                    _modoNavegacionActivo
+                        ? Icons.navigation_rounded
+                        : Icons.explore_outlined,
                     color: AppColors.accent,
                   ),
                 ),

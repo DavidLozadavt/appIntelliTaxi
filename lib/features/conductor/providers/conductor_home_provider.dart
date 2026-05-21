@@ -33,7 +33,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   String _locationMessage =
       'Estableciendo conexión satelital para rastreo en tiempo real...';
   String? _zonaActual;
-  Timer? _liveLocationTicker;
+  StreamSubscription<Position>? _locationSubscription;
   Position? _lastAreaResolvedPosition;
   DateTime? _lastAreaResolvedAt;
   final ReverseGeocodingService _reverseGeocodingService =
@@ -121,8 +121,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _tickerExpiracionUI?.cancel();
     _tickerExpiracionUI = null;
     _detenerSincronizacionSolicitudes();
-    _liveLocationTicker?.cancel();
-    _liveLocationTicker = null;
+    _detenerSeguimientoUbicacion();
     VoiceAlertService.dispose();
     desconectarPusher();
     super.dispose();
@@ -619,27 +618,31 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   void _iniciarSeguimientoUbicacion() {
-    _liveLocationTicker?.cancel();
-    _liveLocationTicker = Timer.periodic(const Duration(seconds: 5), (_) {
-      _refrescarUbicacion();
-    });
+    _detenerSeguimientoUbicacion();
+
+    _locationSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 3,
+      ),
+    ).listen(
+      _onPositionUpdate,
+      onError: (Object e) {
+        AppLogger.d('⚠️ Error en stream de ubicación (home): $e');
+      },
+    );
   }
 
-  Future<void> _refrescarUbicacion() async {
+  void _detenerSeguimientoUbicacion() {
+    _locationSubscription?.cancel();
+    _locationSubscription = null;
+  }
+
+  void _onPositionUpdate(Position position) {
     if (_isDisposed) return;
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 8),
-        ),
-      );
-      _currentPosition = position;
-      _actualizarZonaActual(position);
-      if (!_isDisposed) notifyListeners();
-    } catch (_) {
-      // Silencioso: no interrumpir la experiencia por fallos intermitentes GPS.
-    }
+    _currentPosition = position;
+    unawaited(_actualizarZonaActual(position));
+    notifyListeners();
   }
 
   Future<void> _actualizarZonaActual(
