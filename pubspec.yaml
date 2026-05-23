@@ -1,5 +1,5 @@
 name: intellitaxi
-description: "A new Flutter project."
+description: "Solicita taxis rápidos y seguros con Taxbel Urbano."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -94,7 +94,7 @@ flutter:
     - assets/images/marker.png
     - assets/images/carMarker.png
     - assets/sound/nuevaoferta.mp3
-    - .env
+   # - .env
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

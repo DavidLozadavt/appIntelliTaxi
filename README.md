@@ -42,3 +42,6 @@ El workflow `.github/workflows/quality.yml` valida automáticamente:
 Notas:
 - `MAPS_API_KEY` ya no está hardcodeada en `AndroidManifest.xml`.
 - Si falta `key.properties`, localmente usará firma `debug` para no bloquear desarrollo.
+ DATOS PARA LA LLAVE
+ alias: taxbelurbano
+ password: 1002923375
