@@ -202,6 +202,99 @@ class ConductorService {
     }
   }
 
+  /// Mantiene actualizada la ubicación usada por el mapa del pasajero.
+  Future<void> actualizarUbicacionMapa({
+    required double lat,
+    required double lng,
+    double? velocidad,
+    double? direccion,
+    String estado = 'disponible',
+  }) async {
+    late final DioException primaryError;
+    final conductorId = await _getSessionConductorId();
+    final requestData = <String, dynamic>{
+      'conductor_id': ?conductorId,
+      'idConductor': ?conductorId,
+      'lat': lat,
+      'lng': lng,
+      'velocidad': velocidad ?? 0,
+      'direccion': direccion ?? 0,
+      'estado': estado,
+    };
+
+    try {
+      final response = await _dio.post(
+        'taxi/conductor/ubicacion-mapa',
+        data: requestData,
+      );
+
+      if ((response.statusCode != 200 && response.statusCode != 201) ||
+          response.data is Map && response.data['success'] == false) {
+        throw Exception(
+          response.data is Map
+              ? response.data['message'] ?? 'Error actualizando ubicación'
+              : 'Error actualizando ubicación de mapa: ${response.statusCode}',
+        );
+      }
+      return;
+    } on DioException catch (e) {
+      primaryError = e;
+      AppLogger.d(
+        '⚠️ Endpoint taxi/conductor/ubicacion-mapa falló; probando compatibilidad anterior',
+      );
+    } catch (e) {
+      AppLogger.d('⚠️ Error actualizando ubicación de mapa: $e');
+      rethrow;
+    }
+
+    try {
+      if (conductorId == null) {
+        throw Exception('No se pudo obtener el ID del conductor');
+      }
+
+      final response = await _dio.post(
+        'conductor/estado-disponible',
+        data: {
+          'conductor_id': conductorId,
+          'lat': lat,
+          'lng': lng,
+          'estado': estado,
+        },
+      );
+
+      if ((response.statusCode != 200 && response.statusCode != 201) ||
+          response.data is Map && response.data['success'] == false) {
+        throw Exception(
+          response.data is Map
+              ? response.data['message'] ?? 'Error actualizando ubicación'
+              : 'Error actualizando ubicación anterior: ${response.statusCode}',
+        );
+      }
+    } catch (fallbackError) {
+      AppLogger.d('⚠️ Error actualizando ubicación de mapa: $fallbackError');
+      throw primaryError;
+    }
+  }
+
+  Future<int?> _getSessionConductorId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final directId = prefs.getInt('conductor_id') ?? prefs.getInt('user_id');
+    if (directId != null) return directId;
+
+    final userDataStr = prefs.getString('user_data');
+    if (userDataStr == null || userDataStr.isEmpty) return null;
+
+    try {
+      final userData = json.decode(userDataStr);
+      final id = userData['user']?['id'] ?? userData['id'];
+      if (id is int) return id;
+      if (id is num) return id.toInt();
+      return int.tryParse(id?.toString() ?? '');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Obtiene el turno activo del conductor
   Future<TurnoActivo?> getTurnoActivo() async {
     try {

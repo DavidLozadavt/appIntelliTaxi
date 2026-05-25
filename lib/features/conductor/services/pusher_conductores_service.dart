@@ -59,13 +59,14 @@ class PusherConductoresService {
       final driverData = eventData['data'] ?? eventData;
 
       // Verificar si el conductor se desconectó
-      final estado = driverData['estado'] as String?;
+      final estado = driverData['estado']?.toString().toLowerCase();
       if (estado == 'desconectado') {
-        final conductorId = driverData['conductor_id'] as int;
+        final conductorId = _asInt(
+          driverData['conductor_id'] ?? driverData['id'],
+        );
         AppLogger.d('🔴 Conductor desconectado: $conductorId');
-
-        if (onDriverOffline != null) {
-          onDriverOffline!(conductorId);
+        if (conductorId != null) {
+          onDriverOffline?.call(conductorId);
         }
         return;
       }
@@ -109,4 +110,11 @@ class PusherConductoresService {
   }
 
   bool get isConnected => _isConnected;
+}
+
+int? _asInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
 }

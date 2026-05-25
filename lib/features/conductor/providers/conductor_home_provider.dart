@@ -36,6 +36,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   StreamSubscription<Position>? _locationSubscription;
   Position? _lastAreaResolvedPosition;
   DateTime? _lastAreaResolvedAt;
+  DateTime? _lastMapHeartbeatAt;
+  bool _isSendingMapHeartbeat = false;
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
 
@@ -620,17 +622,18 @@ class ConductorHomeProvider extends ChangeNotifier {
   void _iniciarSeguimientoUbicacion() {
     _detenerSeguimientoUbicacion();
 
-    _locationSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 3,
-      ),
-    ).listen(
-      _onPositionUpdate,
-      onError: (Object e) {
-        AppLogger.d('⚠️ Error en stream de ubicación (home): $e');
-      },
-    );
+    _locationSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.bestForNavigation,
+            distanceFilter: 3,
+          ),
+        ).listen(
+          _onPositionUpdate,
+          onError: (Object e) {
+            AppLogger.d('⚠️ Error en stream de ubicación (home): $e');
+          },
+        );
   }
 
   void _detenerSeguimientoUbicacion() {
@@ -642,7 +645,44 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (_isDisposed) return;
     _currentPosition = position;
     unawaited(_actualizarZonaActual(position));
+    unawaited(_sendMapHeartbeat(position));
     notifyListeners();
+  }
+
+  Future<void> _sendMapHeartbeat(
+    Position position, {
+    bool force = false,
+  }) async {
+    if (_isDisposed || !_isOnline || _turnoActivo == null) return;
+    if (_isSendingMapHeartbeat) return;
+
+    final now = DateTime.now();
+    final lastSentAt = _lastMapHeartbeatAt;
+    if (!force &&
+        lastSentAt != null &&
+        now.difference(lastSentAt) < const Duration(seconds: 5)) {
+      return;
+    }
+
+    _isSendingMapHeartbeat = true;
+    try {
+      await _conductorService.actualizarUbicacionMapa(
+        lat: position.latitude,
+        lng: position.longitude,
+        velocidad: position.speed.isFinite && position.speed >= 0
+            ? position.speed
+            : 0,
+        direccion: position.heading.isFinite && position.heading >= 0
+            ? position.heading
+            : 0,
+        estado: 'disponible',
+      );
+      _lastMapHeartbeatAt = DateTime.now();
+    } catch (e) {
+      AppLogger.d('⚠️ No se pudo enviar heartbeat de mapa: $e');
+    } finally {
+      _isSendingMapHeartbeat = false;
+    }
   }
 
   Future<void> _actualizarZonaActual(
@@ -790,6 +830,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _turnoActivo = turno;
       _isOnline = true;
       _sincronizarVehiculoSeleccionadoConTurno();
+      unawaited(_sendMapHeartbeat(position, force: true));
 
       // Conectar a Pusher después de iniciar el turno
       await conectarPusher();

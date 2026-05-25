@@ -10,14 +10,20 @@ class ConductoresService {
   Future<List<Conductor>> getConductoresDisponibles({
     required double lat,
     required double lng,
-    double radioKm = 10,
+    double radioKm = 15,
+    int maxAgeMinutes = 20,
   }) async {
     try {
       AppLogger.d('🔍 Buscando conductores disponibles...');
       AppLogger.d('   📍 Ubicación: ($lat, $lng)');
       AppLogger.d('   📏 Radio: $radioKm km');
 
-      final queryParams = {'lat': lat, 'lng': lng, 'radio_km': radioKm};
+      final queryParams = {
+        'lat': lat,
+        'lng': lng,
+        'radio_km': radioKm,
+        'max_age_minutes': maxAgeMinutes,
+      };
       AppLogger.d('   📤 Query Parameters: $queryParams');
       AppLogger.d(
         '   🌐 URL: ${_dio.options.baseUrl}taxi/conductores-disponibles',

@@ -46,8 +46,6 @@ class HomePasajero extends StatefulWidget {
   State<HomePasajero> createState() => _HomePasajeroState();
 }
 
-
-
 enum _SheetVisualState { compact, middle, expanded }
 
 class _HomePasajeroState extends State<HomePasajero>
@@ -531,17 +529,23 @@ class _HomePasajeroState extends State<HomePasajero>
         lat: _currentPosition!.latitude,
         lng: _currentPosition!.longitude,
         radioKm: 15,
+        maxAgeMinutes: 20,
       );
 
       if (!mounted) return;
 
+      final receivedIds = conductores.map((c) => c.conductorId).toSet();
       for (final conductor in conductores) {
         _conductoresDisponibles[conductor.conductorId] = conductor;
       }
 
-      for (final id in _driverDisplayedPositions.keys.toList()) {
-        if (!_conductoresDisponibles.containsKey(id)) {
+      for (final id in _conductoresDisponibles.keys.toList()) {
+        if (!receivedIds.contains(id)) {
+          _conductoresDisponibles.remove(id);
           _driverDisplayedPositions.remove(id);
+          if (_selectedDirectDriver?.conductorId == id) {
+            _selectedDirectDriver = null;
+          }
         }
       }
 
@@ -561,6 +565,14 @@ class _HomePasajeroState extends State<HomePasajero>
   /// Actualiza datos del conductor (Pusher); el movimiento lo anima el ticker.
   void _updateDriverMarker(Conductor conductor) {
     if (!_showDrivers) return;
+    if (conductor.estado?.toLowerCase() == 'desconectado') {
+      _removeDriverMarker(conductor.conductorId);
+      return;
+    }
+    if (_selectedDirectDriver?.conductorId == conductor.conductorId &&
+        conductor.estado?.toLowerCase() != 'disponible') {
+      _selectedDirectDriver = null;
+    }
     _conductoresDisponibles[conductor.conductorId] = conductor;
     if (!_driverDisplayedPositions.containsKey(conductor.conductorId)) {
       _driverDisplayedPositions[conductor.conductorId] = LatLng(
@@ -593,12 +605,16 @@ class _HomePasajeroState extends State<HomePasajero>
         Marker(
           markerId: MarkerId('driver_${conductor.conductorId}'),
           position: position,
-          icon:
-              _driverMarkerIcon ??
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          icon: conductor.estado?.toLowerCase() == 'ocupado'
+              ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)
+              : (_driverMarkerIcon ??
+                    BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueGreen,
+                    )),
           infoWindow: InfoWindow(
             title: '🚗 ${conductor.nombre}',
             snippet:
+                '${conductor.estado?.toLowerCase() == 'ocupado' ? 'Ocupado • ' : ''}'
                 '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
                 '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}',
           ),
@@ -776,20 +792,20 @@ class _HomePasajeroState extends State<HomePasajero>
               )
             : RepaintBoundary(
                 child: StandardMap(
-                initialPosition: LatLng(
-                  _currentPosition!.latitude,
-                  _currentPosition!.longitude,
+                  initialPosition: LatLng(
+                    _currentPosition!.latitude,
+                    _currentPosition!.longitude,
+                  ),
+                  zoom: 15,
+                  polylines: _polylines,
+                  markers: _markers,
+                  // onTap: _onMapTap,
+                  // onLongPress: _onMapLongPress,
+                  onMapCreated: (controller) {
+                    _mapController = controller;
+                  },
                 ),
-                zoom: 15,
-                polylines: _polylines,
-                markers: _markers,
-                // onTap: _onMapTap,
-                // onLongPress: _onMapLongPress,
-                onMapCreated: (controller) {
-                  _mapController = controller;
-                },
               ),
-            ),
 
         // Overlay del mapa: solo escucha el extent, sin rebuild del árbol completo.
         if (_currentPosition != null)
@@ -799,7 +815,8 @@ class _HomePasajeroState extends State<HomePasajero>
                 valueListenable: _sheetExtent,
                 builder: (context, extent, _) {
                   final progress =
-                      ((extent - _sheetMinSize) / (_sheetMaxSize - _sheetMinSize))
+                      ((extent - _sheetMinSize) /
+                              (_sheetMaxSize - _sheetMinSize))
                           .clamp(0.0, 1.0);
                   return ColoredBox(
                     color: Colors.black.withValues(
@@ -1137,181 +1154,180 @@ class _HomePasajeroState extends State<HomePasajero>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return [
-        // Selector de tipo de servicio (primero)
-        ServiceTypeSelector(
-          selectedType: _serviceType,
-          onTypeChanged: (type) {
-            _setStateSafe(() {
-              _serviceType = type;
-              _clearRoute();
-            });
-          },
-        ),
+      // Selector de tipo de servicio (primero)
+      ServiceTypeSelector(
+        selectedType: _serviceType,
+        onTypeChanged: (type) {
+          _setStateSafe(() {
+            _serviceType = type;
+            _clearRoute();
+          });
+        },
+      ),
 
-  
-        const SizedBox(height: 14),
+      const SizedBox(height: 14),
 
-        // Campo de origen
-        LocationSearchField(
-          controller: _originController,
-          label: 'Origen',
-          icon: Icons.my_location,
-          iconColor: AppColors.accent,
-          predictions: _originPredictions,
-          isSearching: _isSearchingOrigin,
-          onSelectPrediction: _selectOrigin,
-          onClear: () {
-            _setStateSafe(() {
-              _originController.clear();
-              _selectedOrigin = null;
-              _originPredictions = [];
-            });
-          },
-        ),
+      // Campo de origen
+      LocationSearchField(
+        controller: _originController,
+        label: 'Origen',
+        icon: Icons.my_location,
+        iconColor: AppColors.accent,
+        predictions: _originPredictions,
+        isSearching: _isSearchingOrigin,
+        onSelectPrediction: _selectOrigin,
+        onClear: () {
+          _setStateSafe(() {
+            _originController.clear();
+            _selectedOrigin = null;
+            _originPredictions = [];
+          });
+        },
+      ),
 
-        const SizedBox(height: 12),
+      const SizedBox(height: 12),
 
-        // Campo de destino
-        LocationSearchField(
-          controller: _destinationController,
-          label: 'Destino',
-          icon: Icons.location_on,
-          iconColor: AppColors.accent,
-          focusNode: _destinationFocusNode,
-          predictions: _destinationPredictions,
-          isSearching: _isSearchingDestination,
-          onSelectPrediction: _selectDestination,
-          onClear: () {
-            _setStateSafe(() {
-              _destinationController.clear();
-              _selectedDestination = null;
-              _selectedDestinationArea = null;
-              _destinationPredictions = [];
-              _clearRoute();
-            });
-          },
-        ),
+      // Campo de destino
+      LocationSearchField(
+        controller: _destinationController,
+        label: 'Destino',
+        icon: Icons.location_on,
+        iconColor: AppColors.accent,
+        focusNode: _destinationFocusNode,
+        predictions: _destinationPredictions,
+        isSearching: _isSearchingDestination,
+        onSelectPrediction: _selectDestination,
+        onClear: () {
+          _setStateSafe(() {
+            _destinationController.clear();
+            _selectedDestination = null;
+            _selectedDestinationArea = null;
+            _destinationPredictions = [];
+            _clearRoute();
+          });
+        },
+      ),
 
-        if (_selectedDestination != null) ...[
-          const SizedBox(height: 10),
-          _buildSelectedDestinationSummary(),
-        ],
+      if (_selectedDestination != null) ...[
+        const SizedBox(height: 10),
+        _buildSelectedDestinationSummary(),
+      ],
 
-        if (_selectedDestination != null) ...[
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _saveFavoriteDestination('home'),
-                  icon: const Icon(Icons.home_outlined, size: 18),
-                  label: const Text('Guardar Casa'),
-                ),
+      if (_selectedDestination != null) ...[
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _saveFavoriteDestination('home'),
+                icon: const Icon(Icons.home_outlined, size: 18),
+                label: const Text('Guardar Casa'),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _saveFavoriteDestination('work'),
-                  icon: const Icon(Icons.work_outline, size: 18),
-                  label: const Text('Guardar Trabajo'),
-                ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _saveFavoriteDestination('work'),
+                icon: const Icon(Icons.work_outline, size: 18),
+                label: const Text('Guardar Trabajo'),
               ),
-            ],
+            ),
+          ],
+        ),
+      ],
+
+      const SizedBox(height: 14),
+
+      if (_recentDestinations.isNotEmpty) ...[_buildRecentDestinationChips()],
+
+      const SizedBox(height: 24),
+
+      if (showInlineActions &&
+          _serviceType != 'taxi' &&
+          _selectedOrigin != null &&
+          _selectedDestination != null &&
+          _routeInfo == null)
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton.icon(
+            onPressed: _drawRoute,
+            icon: const Icon(Icons.route),
+            label: const Text(
+              'Reintentar ruta',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepOrange,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
           ),
-        ],
+        ),
 
-        const SizedBox(height: 14),
-
-        if (_recentDestinations.isNotEmpty) ...[_buildRecentDestinationChips()],
-
-        const SizedBox(height: 24),
-
-        if (showInlineActions &&
-            _serviceType != 'taxi' &&
-            _selectedOrigin != null &&
-            _selectedDestination != null &&
-            _routeInfo == null)
+      if (_routeInfo != null) ...[
+        RouteInfoCard(routeInfo: _routeInfo!),
+        if (showInlineActions) ...[
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             height: 56,
-            child: ElevatedButton.icon(
-              onPressed: _drawRoute,
-              icon: const Icon(Icons.route),
-              label: const Text(
-                'Reintentar ruta',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+            child: ElevatedButton(
+              onPressed: _requestRide,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepOrange,
+                backgroundColor: _serviceType == 'taxi'
+                    ? AppColors.primary
+                    : Colors.orange.shade600,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
+              child: Text(
+                _serviceType == 'taxi'
+                    ? 'Solicitar viaje'
+                    : 'Solicitar domicilio',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
+        ],
+      ],
 
-        if (_routeInfo != null) ...[
-          RouteInfoCard(routeInfo: _routeInfo!),
-          if (showInlineActions) ...[
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: _requestRide,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _serviceType == 'taxi'
-                      ? AppColors.primary
-                      : Colors.orange.shade600,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  _serviceType == 'taxi'
-                      ? 'Solicitar viaje'
-                      : 'Solicitar domicilio',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+      const SizedBox(height: 16),
+
+      // Info de búsqueda
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.blue.withValues(alpha: isDark ? 0.2 : 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.blue.withValues(alpha: isDark ? 0.5 : 0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.blue.shade400, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Búsqueda limitada a Popayán y alrededores',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
                 ),
               ),
             ),
           ],
-        ],
-
-        const SizedBox(height: 16),
-
-        // Info de búsqueda
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue.withValues(alpha: isDark ? 0.2 : 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.blue.withValues(alpha: isDark ? 0.5 : 0.3),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, color: Colors.blue.shade400, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Búsqueda limitada a Popayán y alrededores',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
+      ),
     ];
   }
 
@@ -1583,15 +1599,16 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   // Obtener nombre y dirección desde coordenadas (Geocoding reverso)
-Future<CurrentLocationData> _getAddressFromCoordinates(
-  double lat,
-  double lng,
-) async {
-  return _reverseGeocodingService.resolveCurrentLocationLabel(
-    lat: lat,
-    lng: lng,
-  );
-}
+  Future<CurrentLocationData> _getAddressFromCoordinates(
+    double lat,
+    double lng,
+  ) async {
+    return _reverseGeocodingService.resolveCurrentLocationLabel(
+      lat: lat,
+      lng: lng,
+    );
+  }
+
   Future<void> _initializeLocation() async {
     _setStateSafe(() {
       _isLoadingLocation = true;

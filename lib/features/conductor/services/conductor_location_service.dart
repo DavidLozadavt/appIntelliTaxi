@@ -139,11 +139,18 @@ class ConductorLocationService {
       AppLogger.d('   Estado: $estadoString');
 
       final response = await _dio.post(
-        'conductor/estado-disponible',
+        'taxi/conductor/ubicacion-mapa',
         data: {
           'conductor_id': _conductorId,
+          'idConductor': _conductorId,
           'lat': position.latitude,
           'lng': position.longitude,
+          'velocidad': position.speed.isFinite && position.speed >= 0
+              ? position.speed
+              : 0,
+          'direccion': position.heading.isFinite && position.heading >= 0
+              ? position.heading
+              : 0,
           'estado': estadoString,
         },
       );
