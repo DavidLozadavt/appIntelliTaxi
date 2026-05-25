@@ -94,7 +94,7 @@ flutter:
     - assets/images/marker.png
     - assets/images/carMarker.png
     - assets/sound/nuevaoferta.mp3
-   # - .env
+    - .env
 
 
   # An image asset can refer to one or more resolution-specific "variants", see
