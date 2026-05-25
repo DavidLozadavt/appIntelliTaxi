@@ -498,40 +498,40 @@ class CustomDrawer extends StatelessWidget {
             child: Divider(color: Colors.grey.shade300, thickness: 1),
           ),
 
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Iconsax.document_text_copy,
-                  color: AppColors.accent,
-                  size: 22,
-                ),
-              ),
-              title: const Text(
-                'Política de privacidad',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-              trailing: Icon(
-                Iconsax.arrow_right_3_copy,
-                size: 18,
-                color: Colors.grey.shade400,
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/politica-privacidad');
-              },
-            ),
-          ),
+          // Container(
+          //   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          //   decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+          //   child: ListTile(
+          //     shape: RoundedRectangleBorder(
+          //       borderRadius: BorderRadius.circular(12),
+          //     ),
+          //     leading: Container(
+          //       padding: const EdgeInsets.all(8),
+          //       decoration: BoxDecoration(
+          //         color: AppColors.accent.withValues(alpha: 0.15),
+          //         borderRadius: BorderRadius.circular(10),
+          //       ),
+          //       child: const Icon(
+          //         Iconsax.document_text_copy,
+          //         color: AppColors.accent,
+          //         size: 22,
+          //       ),
+          //     ),
+          //     title: const Text(
+          //       'Política de privacidad',
+          //       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          //     ),
+          //     trailing: Icon(
+          //       Iconsax.arrow_right_3_copy,
+          //       size: 18,
+          //       color: Colors.grey.shade400,
+          //     ),
+          //     onTap: () {
+          //       Navigator.pop(context);
+          //       Navigator.pushNamed(context, '/politica-privacidad');
+          //     },
+          //   ),
+          // ),
 
           // Botón Dark/Light mode mejorado
           Container(
