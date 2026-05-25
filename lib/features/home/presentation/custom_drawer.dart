@@ -216,7 +216,10 @@ class CustomDrawer extends StatelessWidget {
               children: [
                 ...visibleDrawerItems.map(
                   (item) => Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -230,7 +233,11 @@ class CustomDrawer extends StatelessWidget {
                           color: AppColors.accent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(item.icon, color: AppColors.accent, size: 22),
+                        child: Icon(
+                          item.icon,
+                          color: AppColors.accent,
+                          size: 22,
+                        ),
                       ),
                       title: Text(
                         item.title,
@@ -253,213 +260,235 @@ class CustomDrawer extends StatelessWidget {
                 ),
 
                 if (auth.canSwitchRole)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ListTile(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.swap_horiz,
-                    color: AppColors.accent,
-                    size: 22,
-                  ),
-                ),
-                title: const Text(
-                  'Cambiar rol',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  'Actual: ${auth.activeRole ?? 'SIN SELECCIONAR'}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-                trailing: Icon(
-                  Iconsax.arrow_right_3_copy,
-                  size: 18,
-                  color: Colors.grey.shade400,
-                ),
-                onTap: () async {
-                  final selected = await showModalBottomSheet<String>(
-                    context: context,
-                    backgroundColor: Colors.transparent,
-                    builder: (context) {
-                      final isDark =
-                          Theme.of(context).brightness == Brightness.dark;
-                      final activeRole = auth.activeRole;
+                  Container(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.swap_horiz,
+                          color: AppColors.accent,
+                          size: 22,
+                        ),
+                      ),
+                      title: const Text(
+                        'Cambiar rol',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Actual: ${auth.activeRole ?? 'SIN SELECCIONAR'}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      trailing: Icon(
+                        Iconsax.arrow_right_3_copy,
+                        size: 18,
+                        color: Colors.grey.shade400,
+                      ),
+                      onTap: () async {
+                        final selected = await showModalBottomSheet<String>(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          builder: (context) {
+                            final isDark =
+                                Theme.of(context).brightness == Brightness.dark;
+                            final activeRole = auth.activeRole;
 
-                      Widget buildRoleCard({
-                        required String role,
-                        required String title,
-                        required String subtitle,
-                        required IconData icon,
-                      }) {
-                        final isActive = activeRole == role;
-                        return InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () => Navigator.pop(context, role),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              color: isDark ? AppColors.darkCard : Colors.white,
-                              border: Border.all(
-                                color: isActive
-                                    ? AppColors.accent
-                                    : Colors.grey.shade300,
-                                width: isActive ? 2 : 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
+                            Widget buildRoleCard({
+                              required String role,
+                              required String title,
+                              required String subtitle,
+                              required IconData icon,
+                            }) {
+                              final isActive = activeRole == role;
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => Navigator.pop(context, role),
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: AppColors.accent.withValues(
-                                      alpha: 0.15,
+                                    borderRadius: BorderRadius.circular(16),
+                                    color: isDark
+                                        ? AppColors.darkCard
+                                        : Colors.white,
+                                    border: Border.all(
+                                      color: isActive
+                                          ? AppColors.accent
+                                          : Colors.grey.shade300,
+                                      width: isActive ? 2 : 1,
                                     ),
-                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  child: Icon(icon, color: AppColors.accent),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                  child: Row(
                                     children: [
-                                      Text(
-                                        title,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: isDark
-                                              ? Colors.white
-                                              : Colors.black87,
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.accent.withValues(
+                                            alpha: 0.15,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          icon,
+                                          color: AppColors.accent,
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        subtitle,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: isDark
-                                              ? Colors.white70
-                                              : Colors.black54,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              title,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                                color: isDark
+                                                    ? Colors.white
+                                                    : Colors.black87,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              subtitle,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: isDark
+                                                    ? Colors.white70
+                                                    : Colors.black54,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
+                                      if (isActive)
+                                        const Icon(
+                                          Icons.check_circle,
+                                          color: AppColors.accent,
+                                        ),
                                     ],
                                   ),
                                 ),
-                                if (isActive)
-                                  const Icon(
-                                    Icons.check_circle,
-                                    color: AppColors.accent,
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
+                              );
+                            }
 
-                      return SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? AppColors.darkSurface
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.16),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
+                            return SafeArea(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  16,
+                                  16,
+                                  12,
                                 ),
-                              ],
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Center(
-                                    child: Container(
-                                      width: 44,
-                                      height: 4,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade400,
-                                        borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? AppColors.darkSurface
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(24),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                          alpha: 0.16,
+                                        ),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 8),
                                       ),
+                                    ],
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Center(
+                                          child: Container(
+                                            width: 44,
+                                            height: 4,
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.shade400,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'Cambiar modo de uso',
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w800,
+                                            color: isDark
+                                                ? Colors.white
+                                                : Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Selecciona cómo quieres continuar.',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: isDark
+                                                ? Colors.white70
+                                                : Colors.black54,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        buildRoleCard(
+                                          role: AuthProvider.rolePasajero,
+                                          title: 'Pasajero',
+                                          subtitle:
+                                              'Solicitar viaje y gestionar servicios.',
+                                          icon: Icons.person_outline,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        buildRoleCard(
+                                          role: AuthProvider.roleConductor,
+                                          title: 'Conductor',
+                                          subtitle:
+                                              'Recibir solicitudes y trabajar en turno.',
+                                          icon: Icons.local_taxi_outlined,
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Cambiar modo de uso',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w800,
-                                      color: isDark
-                                          ? Colors.white
-                                          : Colors.black87,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Selecciona cómo quieres continuar.',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: isDark
-                                          ? Colors.white70
-                                          : Colors.black54,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  buildRoleCard(
-                                    role: AuthProvider.rolePasajero,
-                                    title: 'Pasajero',
-                                    subtitle:
-                                        'Solicitar viaje y gestionar servicios.',
-                                    icon: Icons.person_outline,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  buildRoleCard(
-                                    role: AuthProvider.roleConductor,
-                                    title: 'Conductor',
-                                    subtitle:
-                                        'Recibir solicitudes y trabajar en turno.',
-                                    icon: Icons.local_taxi_outlined,
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  );
+                            );
+                          },
+                        );
 
-                  if (selected != null) {
-                    await auth.setActiveRole(selected);
-                  }
+                        if (selected != null) {
+                          await auth.setActiveRole(selected);
+                        }
 
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                  }
-                },
-              ),
-            ),
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
+                    ),
+                  ),
               ],
             ),
           ),
@@ -467,6 +496,41 @@ class CustomDrawer extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Divider(color: Colors.grey.shade300, thickness: 1),
+          ),
+
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+            child: ListTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Iconsax.document_text_copy,
+                  color: AppColors.accent,
+                  size: 22,
+                ),
+              ),
+              title: const Text(
+                'Política de privacidad',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              trailing: Icon(
+                Iconsax.arrow_right_3_copy,
+                size: 18,
+                color: Colors.grey.shade400,
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/politica-privacidad');
+              },
+            ),
           ),
 
           // Botón Dark/Light mode mejorado

@@ -27,6 +27,7 @@ import 'package:intellitaxi/features/rides/presentation/historial_calificaciones
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 // import 'package:intellitaxi/features/pasajero/providers/pasajero_home_provider.dart';
 import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart';
+import 'package:intellitaxi/features/legal/privacy_policy_screen.dart';
 
 import 'package:intellitaxi/features/notifications/providers/notification_provider.dart';
 import 'package:intellitaxi/features/notifications/presentation/notification_screen.dart';
@@ -39,7 +40,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:wakelock_plus/wakelock_plus.dart'; 
+import 'package:wakelock_plus/wakelock_plus.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
 import 'features/auth/providers/auth_provider.dart';
@@ -199,7 +200,6 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-
   @override
   void initState() {
     super.initState();
@@ -271,11 +271,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         //   create: (_) => PasajeroHomeProvider(),
         //   lazy: true,
         // ),
-
-        ChangeNotifierProvider(
-          create: (_) => EmergenciaProvider(),
-          lazy: true,
-        ),
+        ChangeNotifierProvider(create: (_) => EmergenciaProvider(), lazy: true),
       ],
 
       child: Consumer2<ConnectivityProvider, ThemeProvider>(
@@ -370,6 +366,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               '/chat': (_) => const ChatScreen(),
               '/mis-sanciones': (_) => const SancionesScreen(),
               '/entregas': (_) => const EntregasScreen(),
+              '/politica-privacidad': (_) => const PrivacyPolicyScreen(),
               // '/vinculaciones-propietario': (_) => TransportePropietario(),
               '/emergencias': (_) => const EmergenciasScreen(),
             },
