@@ -92,8 +92,12 @@ class _ConductorServicioActivoScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final provider = context.read<ConductorHomeProvider>();
-      if (provider.isOnline) {
-        unawaited(provider.sincronizarSolicitudesPublicadasConductor());
+      final servicioId = widget.servicio['id'];
+      final idInt = servicioId is int
+          ? servicioId
+          : int.tryParse(servicioId?.toString() ?? '');
+      if (idInt != null) {
+        unawaited(provider.marcarEnServicio(servicioId: idInt));
       }
     });
   }
@@ -222,6 +226,11 @@ class _ConductorServicioActivoScreenState
     _terminalNavigationInProgress = true;
     try {
       _desuscribirEventosServicio();
+    } catch (_) {}
+    try {
+      if (mounted) {
+        await context.read<ConductorHomeProvider>().marcarDisponible();
+      }
     } catch (_) {}
     try {
       await _driverOverlayService.hide();

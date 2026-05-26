@@ -5,6 +5,7 @@ import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
 
 class ActiveServiceManager {
   final Dio _dio = DioClient.getInstance();
@@ -184,16 +185,12 @@ class ActiveServiceManager {
     try {
       AppLogger.d('📡 Suscribiendo a eventos del servicio $servicioId');
 
-      final channelName = 'servicio-$servicioId';
+      final channelName = TaxiPusherChannels.servicio(servicioId);
 
-      // Suscribirse al canal
       await PusherService.subscribeSecondary(channelName);
 
-      // Registrar handlers para diferentes eventos
-
-      // Cuando cambia el estado del servicio
       PusherService.registerEventHandlerSecondary(
-        '$channelName:estado-cambiado',
+        '$channelName:${TaxiPusherEvents.servicioEstadoCambiado}',
         (data) async {
           AppLogger.d('🔔 Estado del servicio cambió');
           try {
@@ -209,23 +206,20 @@ class ActiveServiceManager {
               }
             }
           } catch (e) {
-            AppLogger.d('⚠️ Error procesando estado-cambiado: $e');
+            AppLogger.d('⚠️ Error procesando servicio.estado.cambiado: $e');
           }
         },
       );
 
-      // Actualización de ubicación del conductor
       PusherService.registerEventHandlerSecondary(
-        '$channelName:conductor-ubicacion',
+        '$channelName:${TaxiPusherEvents.conductorUbicacionActualizada}',
         (data) {
           AppLogger.d('📍 Ubicación del conductor actualizada');
-          // Aquí puedes actualizar el mapa con la nueva ubicación
         },
       );
 
-      // Servicio aceptado por conductor
       PusherService.registerEventHandlerSecondary(
-        '$channelName:servicio-aceptado',
+        '$channelName:${TaxiPusherEvents.servicioAceptado}',
         (data) async {
           AppLogger.d('✅ Servicio aceptado por conductor');
           try {
@@ -234,7 +228,7 @@ class ActiveServiceManager {
               onServiceUpdated?.call(servicio);
             }
           } catch (e) {
-            AppLogger.d('⚠️ Error procesando servicio-aceptado: $e');
+            AppLogger.d('⚠️ Error procesando servicio.aceptado: $e');
           }
         },
       );
@@ -250,21 +244,19 @@ class ActiveServiceManager {
     try {
       AppLogger.d('🔕 Desuscribiendo de eventos del servicio $servicioId');
 
-      final channelName = 'servicio-$servicioId';
+      final channelName = TaxiPusherChannels.servicio(servicioId);
 
-      // Desuscribirse del canal
+      PusherService.unregisterEventHandlerSecondary(
+        '$channelName:${TaxiPusherEvents.servicioEstadoCambiado}',
+      );
+      PusherService.unregisterEventHandlerSecondary(
+        '$channelName:${TaxiPusherEvents.conductorUbicacionActualizada}',
+      );
+      PusherService.unregisterEventHandlerSecondary(
+        '$channelName:${TaxiPusherEvents.servicioAceptado}',
+      );
+
       await PusherService.unsubscribeSecondary(channelName);
-
-      // Eliminar handlers
-      PusherService.unregisterEventHandlerSecondary(
-        '$channelName:estado-cambiado',
-      );
-      PusherService.unregisterEventHandlerSecondary(
-        '$channelName:conductor-ubicacion',
-      );
-      PusherService.unregisterEventHandlerSecondary(
-        '$channelName:servicio-aceptado',
-      );
 
       AppLogger.d('✅ Desuscripción exitosa');
     } catch (e) {

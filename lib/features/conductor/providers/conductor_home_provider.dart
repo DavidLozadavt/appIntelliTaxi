@@ -17,6 +17,8 @@ import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
+import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 
 /// Provider para gestionar toda la lógica de la pantalla home del conductor
@@ -61,6 +63,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   Timer? _syncSolicitudesTimer;
   bool _suscritoAPusher = false;
   bool _suscritoEmergenciasFlota = false;
+  bool _enServicio = false;
+  int? _servicioActivoId;
+  Map<String, dynamic>? _servicioActivoPendienteNavegacion;
   final Set<String> _offerChannels = {};
   final Set<String> _offerHandlerKeys = {};
   String? _lastAcceptError;
@@ -95,7 +100,19 @@ class ConductorHomeProvider extends ChangeNotifier {
   VehiculoConductor? get vehiculoSeleccionado => _vehiculoSeleccionado;
   List<VehiculoConductor> get vehiculosDisponibles => _vehiculosDisponibles;
   TurnoActivo? get turnoActivo => _turnoActivo;
-  List<Map<String, dynamic>> get solicitudesActivas => _solicitudesActivas;
+  bool get enServicio => _enServicio;
+  int? get servicioActivoId => _servicioActivoId;
+  Map<String, dynamic>? get servicioActivoPendienteNavegacion =>
+      _servicioActivoPendienteNavegacion;
+
+  /// Datos listos para navegar a pantalla de viaje tras bootstrap/aceptar.
+  void clearServicioActivoPendienteNavegacion() {
+    _servicioActivoPendienteNavegacion = null;
+  }
+
+  List<Map<String, dynamic>> get solicitudesActivas => _enServicio
+      ? const []
+      : _solicitudesActivas;
   String? get lastAcceptError => _lastAcceptError;
   String? get lastTurnoError => _lastTurnoError;
   List<Map<String, dynamic>> get solicitudesOrdenadas {
@@ -153,7 +170,100 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> initialize() async {
     await initializeLocation();
     await cargarVehiculos();
-    await cargarTurnoActual();
+    await bootstrapTaxiConductor();
+    if (!_enServicio) {
+      await cargarTurnoActual();
+    }
+  }
+
+  /// Bootstrap taxi: estado-actual → servicio activo si aplica.
+  Future<void> bootstrapTaxiConductor() async {
+    try {
+      final estado = await _conductorService.getEstadoActualConductor();
+      if (estado?.enServicio == true) {
+        await _activarModoEnServicio(
+          servicioActivoId: estado!.servicioActivoId,
+        );
+        return;
+      }
+
+      final detalle = await _conductorService.getServicioActivoConductor();
+      if (detalle != null) {
+        await _activarModoEnServicio(
+          servicioActivoId: detalle['servicio']?['id'] as int?,
+          detalleNavegacion: detalle,
+        );
+      }
+    } catch (e) {
+      AppLogger.d('⚠️ bootstrapTaxiConductor: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> _fetchServicioActivoDetalle() async {
+    // Delegado al servicio de restauración vía endpoint existente.
+    try {
+      final response = await _conductorService.getServicioActivoConductor();
+      return response;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Marca conductor en viaje: limpia cola y deja de escuchar solicitudes.
+  Future<void> marcarEnServicio({
+    required int servicioId,
+    Map<String, dynamic>? detalleNavegacion,
+  }) async {
+    await _activarModoEnServicio(
+      servicioActivoId: servicioId,
+      detalleNavegacion: detalleNavegacion,
+    );
+  }
+
+  Future<void> _activarModoEnServicio({
+    int? servicioActivoId,
+    Map<String, dynamic>? detalleNavegacion,
+  }) async {
+    _enServicio = true;
+    _servicioActivoId = servicioActivoId;
+
+    _limpiarColaSolicitudesLocal();
+    await _desuscribirCanalSolicitudesServicio();
+
+    if (detalleNavegacion != null) {
+      _servicioActivoPendienteNavegacion = detalleNavegacion;
+    } else if (servicioActivoId != null) {
+      final detalle = await _fetchServicioActivoDetalle();
+      if (detalle != null) {
+        _servicioActivoPendienteNavegacion = detalle;
+      }
+    }
+
+    if (!_isDisposed) notifyListeners();
+  }
+
+  /// Libera conductor tras finalizar/cancelar viaje.
+  Future<void> marcarDisponible() async {
+    _enServicio = false;
+    _servicioActivoId = null;
+    _servicioActivoPendienteNavegacion = null;
+    _limpiarColaSolicitudesLocal();
+
+    if (_isOnline && !_suscritoAPusher) {
+      await conectarPusher();
+    }
+
+    if (!_isDisposed) notifyListeners();
+  }
+
+  void _limpiarColaSolicitudesLocal() {
+    for (final timer in _timersExpiracion.values) {
+      timer.cancel();
+    }
+    _timersExpiracion.clear();
+    _expiracionPorSolicitud.clear();
+    _solicitudesActivas.clear();
+    _detenerTickerSiNoHaySolicitudes();
   }
 
   @override
@@ -178,6 +288,12 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Conecta a Pusher y se suscribe al canal de solicitudes
   Future<void> conectarPusher() async {
+    if (_enServicio) {
+      AppLogger.d('ℹ️ En servicio: no suscribir solicitudes-servicio');
+      await _suscribirEmergenciasFlota();
+      return;
+    }
+
     try {
       if (_suscritoAPusher) {
         AppLogger.d('⚠️ Ya está suscrito a solicitudes-servicio');
@@ -186,22 +302,34 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       AppLogger.d('🔌 Suscribiéndose al canal de solicitudes...');
 
-      await PusherService.subscribeSecondary('solicitudes-servicio');
+      await PusherService.subscribeSecondary(TaxiPusherChannels.solicitudesServicio);
 
       // Registrar handlers para variantes del evento de nuevas solicitudes
       for (final eventName in const [
-        'nueva-solicitud',
+        TaxiPusherEvents.nuevaSolicitud,
         'nueva_solicitud',
         'nueva-oferta',
         'nueva_oferta',
       ]) {
         PusherService.registerEventHandlerSecondary(
-          'solicitudes-servicio:$eventName',
+          '${TaxiPusherChannels.solicitudesServicio}:$eventName',
           (data) {
             AppLogger.d('🔔 Evento recibido: $eventName');
             if (data != null) {
               _procesarNuevaSolicitud(data);
             }
+          },
+        );
+      }
+
+      for (final eventName in const [
+        TaxiPusherEvents.solicitudTomada,
+        'solicitud_tomada',
+      ]) {
+        PusherService.registerEventHandlerSecondary(
+          '${TaxiPusherChannels.solicitudesServicio}:$eventName',
+          (data) {
+            if (data != null) _procesarSolicitudTomada(data);
           },
         );
       }
@@ -258,6 +386,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   void _iniciarSincronizacionSolicitudes() {
+    if (_enServicio) return;
     _syncSolicitudesTimer?.cancel();
     _syncSolicitudesTimer = Timer.periodic(const Duration(seconds: 50), (_) {
       if (!_isDisposed && _suscritoAPusher && _isOnline) {
@@ -273,10 +402,19 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Alinea la cola local con el backend (otro conductor aceptó, realtime perdido, etc.).
   Future<void> sincronizarSolicitudesPublicadasConductor() async {
-    if (_isDisposed || !_isOnline) return;
+    if (_isDisposed || !_isOnline || _enServicio) return;
     try {
-      final list = await _conductorService
+      final result = await _conductorService
           .listarSolicitudesPublicadasConductor();
+
+      if (result.enServicio) {
+        await _activarModoEnServicio(
+          servicioActivoId: result.servicioActivoId,
+        );
+        return;
+      }
+
+      final list = result.solicitudes;
       final serverIds = <String>{};
       for (final m in list) {
         final sid = m['servicio_id'] ?? m['solicitud_id'] ?? m['id'];
@@ -307,16 +445,20 @@ class ConductorHomeProvider extends ChangeNotifier {
       _detenerSincronizacionSolicitudes();
       AppLogger.d('🔌 Desconectándose de Pusher...');
       for (final eventName in const [
-        'nueva-solicitud',
+        TaxiPusherEvents.nuevaSolicitud,
         'nueva_solicitud',
         'nueva-oferta',
         'nueva_oferta',
+        TaxiPusherEvents.solicitudTomada,
+        'solicitud_tomada',
       ]) {
         PusherService.unregisterEventHandlerSecondary(
-          'solicitudes-servicio:$eventName',
+          '${TaxiPusherChannels.solicitudesServicio}:$eventName',
         );
       }
-      await PusherService.unsubscribeSecondary('solicitudes-servicio');
+      await PusherService.unsubscribeSecondary(
+        TaxiPusherChannels.solicitudesServicio,
+      );
 
       for (final key in _offerHandlerKeys) {
         PusherService.unregisterEventHandlerSecondary(key);
@@ -334,6 +476,41 @@ class ConductorHomeProvider extends ChangeNotifier {
       AppLogger.d('✅ Desconectado de Pusher');
     } catch (e) {
       AppLogger.d('❌ Error al desconectar Pusher: $e');
+    }
+  }
+
+  Future<void> _desuscribirCanalSolicitudesServicio() async {
+    _detenerSincronizacionSolicitudes();
+    for (final eventName in const [
+      TaxiPusherEvents.nuevaSolicitud,
+      'nueva_solicitud',
+      'nueva-oferta',
+      'nueva_oferta',
+      TaxiPusherEvents.solicitudTomada,
+      'solicitud_tomada',
+    ]) {
+      PusherService.unregisterEventHandlerSecondary(
+        '${TaxiPusherChannels.solicitudesServicio}:$eventName',
+      );
+    }
+    try {
+      await PusherService.unsubscribeSecondary(
+        TaxiPusherChannels.solicitudesServicio,
+      );
+    } catch (_) {}
+    _suscritoAPusher = false;
+  }
+
+  void _procesarSolicitudTomada(dynamic data) {
+    try {
+      final raw = _parsePayload(data);
+      final servicioId = raw['servicio_id'] ??
+          raw['solicitud_id'] ??
+          raw['id'];
+      if (servicioId == null) return;
+      rechazarSolicitud(servicioId.toString());
+    } catch (e) {
+      AppLogger.d('⚠️ Error procesando solicitud.tomada: $e');
     }
   }
 
@@ -387,6 +564,11 @@ class ConductorHomeProvider extends ChangeNotifier {
     bool isDirectOffer = false,
     bool fromSync = false,
   }) {
+    if (_enServicio) {
+      AppLogger.d('ℹ️ Ignorando nueva solicitud: conductor en servicio');
+      return;
+    }
+
     try {
       final raw = _parsePayload(data);
       final solicitud = _normalizarSolicitud(
@@ -720,6 +902,21 @@ class ConductorHomeProvider extends ChangeNotifier {
         precioOfertado: 0.0, // Precio a negociar según lógica de negocio
       );
 
+      final servicioIdInt = int.tryParse(solicitudId);
+      if (servicioIdInt != null) {
+        Map<String, dynamic>? detalle;
+        final data = response['data'];
+        if (data is Map<String, dynamic>) {
+          detalle = Map<String, dynamic>.from(data);
+        } else if (response['servicio'] != null) {
+          detalle = Map<String, dynamic>.from(response);
+        }
+        await marcarEnServicio(
+          servicioId: servicioIdInt,
+          detalleNavegacion: detalle,
+        );
+      }
+
       // Remover de la lista de solicitudes activas
       _solicitudesActivas.removeWhere(
         (s) => _obtenerSolicitudId(s) == solicitudId,
@@ -729,6 +926,12 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       if (!_isDisposed) notifyListeners();
       return response;
+    } on TaxiEnServicioException catch (e) {
+      _lastAcceptError = e.message;
+      if (e.servicioActivoId != null) {
+        await marcarEnServicio(servicioId: e.servicioActivoId!);
+      }
+      return null;
     } catch (e) {
       _lastAcceptError = e.toString().replaceAll('Exception: ', '');
       AppLogger.d('❌ Error aceptando solicitud: $e');

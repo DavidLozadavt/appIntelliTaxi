@@ -151,9 +151,8 @@ class ServiceNavigationHelper {
       return false;
     }
 
-    // Estados que NO deben mostrar pantalla activa
-    // Ajustar según tus estados en BD
-    final estadosInactivos = [5, 6, 7]; // cancelado, finalizado, rechazado
+    // Estados que NO deben mostrar pantalla activa (doc Mayo 2026)
+    final estadosInactivos = [6, 22]; // cancelado, finalizado
 
     if (idEstado != null && estadosInactivos.contains(idEstado)) {
       AppLogger.d('ℹ️ [Navigation] Estado inactivo: $idEstado');

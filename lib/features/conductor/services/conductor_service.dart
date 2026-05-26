@@ -8,9 +8,57 @@ import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dar
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
+import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 
 class ConductorService {
   final Dio _dio = DioClient.getInstance();
+
+  /// Bootstrap: estado rápido del conductor (`GET /taxi/conductor/estado-actual`).
+  Future<TaxiConductorEstadoActual?> getEstadoActualConductor() async {
+    try {
+      final response = await _dio.get('taxi/conductor/estado-actual');
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        return TaxiConductorEstadoActual.fromJson(
+          Map<String, dynamic>.from(data),
+        );
+      }
+      return null;
+    } catch (e) {
+      AppLogger.d('⚠️ Error obteniendo estado-actual conductor: $e');
+      return null;
+    }
+  }
+
+  /// Detalle del viaje activo (`GET /taxi/servicio-activo-conductor`). 404 → null.
+  Future<Map<String, dynamic>?> getServicioActivoConductor() async {
+    try {
+      final response = await _dio.get('taxi/servicio-activo-conductor');
+      if (response.statusCode != 200 || response.data == null) return null;
+
+      final data = response.data;
+      if (data is! Map || data['success'] != true || data['data'] == null) {
+        return null;
+      }
+
+      final payload = Map<String, dynamic>.from(data['data'] as Map);
+      return {
+        'en_servicio': data['en_servicio'] ?? true,
+        'servicio': payload['servicio'],
+        'pasajero': payload['pasajero'],
+        'vehiculo': payload['vehiculo'],
+        'conductor': payload['conductor'],
+      };
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      AppLogger.d('⚠️ Error obteniendo servicio activo conductor: ${e.message}');
+      return null;
+    } catch (e) {
+      AppLogger.d('⚠️ Error obteniendo servicio activo conductor: $e');
+      return null;
+    }
+  }
 
   /// Obtiene los documentos del conductor
   Future<List<DocumentoConductor>> getDocumentosConductor(
@@ -464,6 +512,11 @@ class ConductorService {
       }
 
       if (e.response?.statusCode == 409) {
+        final enServicio = TaxiEnServicioException.fromResponseBody(
+          e.response?.data,
+        );
+        if (enServicio != null) throw enServicio;
+
         final errorMessage = e.response?.data is Map
             ? e.response?.data['message'] ??
                   'Este servicio ya fue aceptado por otro conductor'
@@ -478,21 +531,55 @@ class ConductorService {
     }
   }
 
-  /// Solicitudes publicadas (estado 4) de la empresa del conductor — sincronización con backend.
-  Future<List<Map<String, dynamic>>>
+  /// Solicitudes publicadas — respeta `en_servicio` del backend.
+  Future<TaxiSolicitudesPublicadasResult>
   listarSolicitudesPublicadasConductor() async {
     try {
       final response = await _dio.get('taxi/solicitudes-publicadas-conductor');
       if (response.statusCode != 200 || response.data == null) {
-        return [];
+        return const TaxiSolicitudesPublicadasResult(
+          enServicio: false,
+          solicitudes: [],
+        );
       }
       final data = response.data;
-      if (data is! Map) return [];
+      if (data is! Map) {
+        return const TaxiSolicitudesPublicadasResult(
+          enServicio: false,
+          solicitudes: [],
+        );
+      }
+
+      final enServicio = data['en_servicio'] == true;
+      final servicioActivoId = int.tryParse(
+        (data['servicio_activo_id'] ?? '').toString(),
+      );
+
+      if (enServicio) {
+        return TaxiSolicitudesPublicadasResult(
+          enServicio: true,
+          servicioActivoId: servicioActivoId,
+          solicitudes: const [],
+        );
+      }
+
       final raw = data['solicitudes'];
-      if (raw is! List) return [];
-      return raw
+      if (raw is! List) {
+        return const TaxiSolicitudesPublicadasResult(
+          enServicio: false,
+          solicitudes: [],
+        );
+      }
+
+      final solicitudes = raw
           .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>))
           .toList();
+
+      return TaxiSolicitudesPublicadasResult(
+        enServicio: false,
+        servicioActivoId: servicioActivoId,
+        solicitudes: solicitudes,
+      );
     } catch (e) {
       AppLogger.d('⚠️ Error listando solicitudes publicadas: $e');
       rethrow;

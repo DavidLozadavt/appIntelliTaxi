@@ -34,6 +34,9 @@ import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/features/pasajero/widgets/ride_request_floating_cta.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
+import 'package:intellitaxi/core/services/service_navigation_helper.dart';
+import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 
@@ -2421,6 +2424,38 @@ class _HomePasajeroState extends State<HomePasajero>
             },
           ),
         ),
+      );
+    } on TaxiEnServicioException catch (e) {
+      if (!mounted) return;
+
+      final servicioId = e.servicioActivoId;
+      if (servicioId != null) {
+        final restoration = ActiveServiceRestorationService();
+        final detalle = await restoration.verificarServicioActivoPasajero();
+        if (!mounted) return;
+
+        if (detalle != null &&
+            ServiceNavigationHelper.shouldShowActiveService(detalle)) {
+          await ServiceNavigationHelper.navigateToActiveService(
+            context,
+            detalle,
+            Provider.of<AuthProvider>(context, listen: false),
+          );
+        } else {
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => PasajeroEsperandoConductorScreen(
+                servicioId: servicioId,
+                datosServicio: {'id': servicioId},
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      _scaffoldMessenger?.showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.orange),
       );
     } catch (e) {
       if (!mounted || _scaffoldMessenger == null) return;

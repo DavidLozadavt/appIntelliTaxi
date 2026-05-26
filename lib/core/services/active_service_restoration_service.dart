@@ -2,11 +2,31 @@ import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
+import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 
 /// Servicio centralizado para verificar y restaurar servicios activos
 /// Este servicio consulta el backend para obtener el servicio activo según el rol
 class ActiveServiceRestorationService {
   final Dio _dio = DioClient.getInstance();
+
+  /// Bootstrap ligero: `GET /taxi/conductor/estado-actual`
+  Future<TaxiConductorEstadoActual?> obtenerEstadoActualConductor() async {
+    try {
+      final response = await _dio.get('taxi/conductor/estado-actual');
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        return TaxiConductorEstadoActual.fromJson(
+          Map<String, dynamic>.from(data),
+        );
+      }
+      return null;
+    } on DioException catch (e) {
+      AppLogger.d(
+        '⚠️ [Restoration] estado-actual conductor: ${e.message}',
+      );
+      return null;
+    }
+  }
 
   /// Consulta si el usuario tiene un servicio activo como conductor
   /// Endpoint: GET /api/servicio-activo-conductor
@@ -30,6 +50,7 @@ class ActiveServiceRestorationService {
 
           return {
             'tipo': 'conductor',
+            'en_servicio': data['en_servicio'] ?? true,
             'servicio': servicio,
             'vehiculo': vehiculo,
             'pasajero': pasajero,
@@ -81,6 +102,7 @@ class ActiveServiceRestorationService {
 
           return {
             'tipo': 'pasajero',
+            'en_servicio': data['en_servicio'] ?? true,
             'servicio': servicio,
             'conductor': conductor,
             'vehiculo': vehiculo,
@@ -232,8 +254,8 @@ class ActiveServiceRestorationService {
       return false;
     }
 
-    // Estados que indican que el servicio NO está activo (taxi móvil)
-    final estadosInactivos = [5, 6, 7, 22, 23];
+    // Estados inactivos taxi móvil: 6 cancelado, 22 finalizado (doc Mayo 2026)
+    final estadosInactivos = [6, 22];
 
     if (idEstado != null && estadosInactivos.contains(idEstado)) {
       AppLogger.d('ℹ️ [Restoration] Servicio con estado inactivo: $idEstado');

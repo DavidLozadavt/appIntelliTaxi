@@ -70,9 +70,11 @@ class _HomeConductorState extends State<HomeConductor>
       parent: _emergencyPulseController,
       curve: Curves.easeInOut,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      _provider.initialize();
+      await _provider.initialize();
+      if (!mounted) return;
+      await _navigateToActiveServiceIfNeeded();
     });
     _cargarSanciones();
     _crearDotMarker();
@@ -327,6 +329,46 @@ class _HomeConductorState extends State<HomeConductor>
     await _aplicarCamaraNavegacion(provider);
   }
 
+  Future<void> _navigateToActiveServiceIfNeeded() async {
+    if (!_provider.enServicio) return;
+
+    final pendiente = _provider.servicioActivoPendienteNavegacion;
+    if (pendiente == null) return;
+
+    _provider.clearServicioActivoPendienteNavegacion();
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final conductorId = authProvider.user?.id;
+    if (conductorId == null) return;
+
+    final servicioRaw = pendiente['servicio'];
+    if (servicioRaw is! Map) return;
+
+    final servicioNormalizado = ServicioPayloadAdapter.normalize(
+      servicio: Map<String, dynamic>.from(servicioRaw),
+      pasajero: pendiente['pasajero'] is Map
+          ? Map<String, dynamic>.from(pendiente['pasajero'] as Map)
+          : null,
+      conductor: pendiente['conductor'] is Map
+          ? Map<String, dynamic>.from(pendiente['conductor'] as Map)
+          : null,
+      vehiculo: pendiente['vehiculo'] is Map
+          ? Map<String, dynamic>.from(pendiente['vehiculo'] as Map)
+          : null,
+    );
+
+    if (!mounted) return;
+
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => ConductorServicioActivoScreen(
+          servicio: servicioNormalizado,
+          conductorId: conductorId,
+        ),
+      ),
+    );
+  }
+
   /// Acepta la solicitud de servicio
   void _aceptarSolicitud(String solicitudId) async {
     final solicitud = _provider.solicitudesOrdenadas.firstWhere(
@@ -385,6 +427,21 @@ class _HomeConductorState extends State<HomeConductor>
       closeLoadingIfNeeded();
 
       if (response == null) {
+        if (_provider.enServicio && _provider.servicioActivoId != null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  _provider.lastAcceptError ??
+                      'Ya tienes un viaje en curso. Abriendo servicio activo…',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          await _navigateToActiveServiceIfNeeded();
+          return;
+        }
         throw Exception(
           _provider.lastAcceptError ?? 'No se pudo aceptar la solicitud',
         );

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
+import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class RideRequestService {
@@ -78,6 +79,13 @@ class RideRequestService {
     } on DioException catch (e) {
       // Log de error
       _logError(e);
+
+      if (e.response?.statusCode == 409) {
+        final enServicio = TaxiEnServicioException.fromResponseBody(
+          e.response?.data,
+        );
+        if (enServicio != null) throw enServicio;
+      }
 
       if (e.response?.data != null && e.response?.data is Map) {
         final errors = e.response?.data['errors'];
