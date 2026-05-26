@@ -37,7 +37,7 @@ import 'package:intellitaxi/features/pasajero/controllers/pasajero_active_servic
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_nearby_drivers_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_pusher_offers_controller.dart';
-import 'package:intellitaxi/features/pasajero/utils/pasajero_location_permission_helper.dart';
+import 'package:intellitaxi/core/services/device_location_service.dart';
 import 'package:intellitaxi/features/pasajero/widgets/pasajero_home_ride_sheet.dart';
 
 class HomePasajero extends StatefulWidget {
@@ -125,6 +125,8 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _isDisposed = false;
   String _currentLocationName = 'Mi ubicación';
   String _currentLocationAddress = 'Mi ubicación actual';
+  String? _currentLocationArea;
+  String? _currentLocationStreet;
   bool _prefsLoaded = false;
   List<TripLocation> _recentDestinations = [];
   bool _notificationPermissionRequestedInSession = false;
@@ -410,6 +412,29 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   /// Recompone marcadores del mapa (conductores animados + ruta + resto).
+  InfoWindow _userLocationInfoWindow() {
+    final title = _currentLocationArea ?? _currentLocationName;
+    final snippet = _currentLocationStreet ??
+        (_currentLocationAddress != title ? _currentLocationAddress : '');
+    return InfoWindow(title: title, snippet: snippet);
+  }
+
+  String get _originPickupLabel {
+    final barrio = _currentLocationArea?.trim();
+    if (barrio != null && barrio.isNotEmpty) return 'Barrio: $barrio';
+    return _currentLocationStreet ?? _currentLocationName;
+  }
+
+  String get _pickupDisplayLabel {
+    if (_selectedOrigin != null &&
+        _currentPosition != null &&
+        _selectedOrigin!.lat == _currentPosition!.latitude &&
+        _selectedOrigin!.lng == _currentPosition!.longitude) {
+      return _originPickupLabel;
+    }
+    return _selectedOrigin?.name ?? _originPickupLabel;
+  }
+
   void _syncMarkersOnMap() {
     if (!mounted || _isDisposed) return;
 
@@ -444,8 +469,12 @@ class _HomePasajeroState extends State<HomePasajero>
                   BitmapDescriptor.hueGreen,
                 ),
           infoWindow: InfoWindow(
-            title: isOriginCurrentLocation ? 'Tu ubicación' : 'Origen',
-            snippet: _selectedOrigin!.name,
+            title: isOriginCurrentLocation
+                ? (_currentLocationArea ?? 'Tu ubicación')
+                : 'Origen',
+            snippet: isOriginCurrentLocation
+                ? (_currentLocationStreet ?? _selectedOrigin!.name)
+                : _selectedOrigin!.name,
           ),
         ),
       );
@@ -477,10 +506,7 @@ class _HomePasajeroState extends State<HomePasajero>
               _currentPosition!.longitude,
             ),
             icon: _userMarkerIcon!,
-            infoWindow: InfoWindow(
-              title: _currentLocationName,
-              snippet: _currentLocationAddress,
-            ),
+            infoWindow: _userLocationInfoWindow(),
             zIndexInt: 10,
           ),
         );
@@ -556,6 +582,7 @@ class _HomePasajeroState extends State<HomePasajero>
                   isLoading: _isLoadingLocation,
                   message: _locationMessage,
                   onRetry: _initializeLocation,
+                  actionLabel: 'Reintentar ubicación',
                 ),
               )
             : RepaintBoundary(
@@ -617,7 +644,8 @@ class _HomePasajeroState extends State<HomePasajero>
                   selectedDestination: _selectedDestination,
                   selectedDestinationArea: _selectedDestinationArea,
                   routeInfo: _routeInfo,
-                  currentLocationName: _currentLocationName,
+                  pickupDisplayLabel: _pickupDisplayLabel,
+                  pickupStreetDetail: _currentLocationStreet,
                   originController: _originController,
                   destinationController: _destinationController,
                   destinationFocusNode: _destinationFocusNode,
@@ -900,12 +928,30 @@ class _HomePasajeroState extends State<HomePasajero>
       _locationMessage = 'Verificando permisos...';
     });
 
-    bool permissionGranted = await _checkAndRequestPermissions();
+    if (!await DeviceLocationService.isServiceEnabled()) {
+      final permission =
+          await DeviceLocationService.locationPermissionStatus();
+      _setStateSafe(() {
+        _isLoadingLocation = false;
+        _locationMessage = DeviceLocationService.messageForFailure(
+          serviceEnabled: false,
+          permission: permission,
+        );
+      });
+      return;
+    }
+
+    final permissionGranted =
+        await DeviceLocationService.requestLocationPermission();
+    final permission = await DeviceLocationService.locationPermissionStatus();
 
     if (!permissionGranted) {
       _setStateSafe(() {
         _isLoadingLocation = false;
-        _locationMessage = 'Permisos de ubicación denegados';
+        _locationMessage = DeviceLocationService.messageForFailure(
+          serviceEnabled: true,
+          permission: permission,
+        );
       });
       return;
     }
@@ -913,39 +959,38 @@ class _HomePasajeroState extends State<HomePasajero>
     await _getCurrentLocation();
   }
 
-  Future<bool> _checkAndRequestPermissions() =>
-      PasajeroLocationPermissionHelper.checkAndRequest();
-
   Future<void> _getCurrentLocation() async {
     try {
       _setStateSafe(() => _locationMessage = 'Obteniendo ubicación...');
 
-      Position? lastKnown;
-      try {
-        lastKnown = await Geolocator.getLastKnownPosition();
-      } catch (_) {}
-
-      if (lastKnown != null && mounted) {
-        _applyOriginFromGps(lastKnown, markReady: true);
+      final result = await DeviceLocationService.resolveCurrentPosition();
+      if (result == null || !mounted) {
+        if (!mounted) return;
+        final permission =
+            await DeviceLocationService.locationPermissionStatus();
+        _setStateSafe(() {
+          _isLoadingLocation = false;
+          _locationMessage = DeviceLocationService.messageForFailure(
+            serviceEnabled: true,
+            permission: permission,
+          );
+        });
+        return;
       }
 
-      Position position;
-      try {
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-            timeLimit: Duration(seconds: 4),
+      final position = result.position;
+
+      if (result.usedDebugFallback && mounted) {
+        _scaffoldMessenger?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Modo desarrollo: ubicación simulada en el centro de Popayán.',
+            ),
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
           ),
-        ).timeout(const Duration(seconds: 5));
-      } catch (_) {
-        if (lastKnown != null) {
-          position = lastKnown;
-        } else {
-          rethrow;
-        }
+        );
       }
-
-      if (!mounted) return;
 
       _applyOriginFromGps(position, markReady: true);
       unawaited(_refineOriginAddress(position));
@@ -966,10 +1011,16 @@ class _HomePasajeroState extends State<HomePasajero>
       unawaited(_requestNotificationPermissionAfterLocation());
       _tryApplyPendingRepeatTrip();
     } catch (e) {
+      AppLogger.e('Error GPS pasajero', tag: 'HomePasajero', error: e);
       if (mounted) {
+        final permission =
+            await DeviceLocationService.locationPermissionStatus();
         _setStateSafe(() {
           _isLoadingLocation = false;
-          _locationMessage = 'Error al obtener ubicación';
+          _locationMessage = DeviceLocationService.messageForFailure(
+            serviceEnabled: true,
+            permission: permission,
+          );
         });
       }
     }
@@ -1002,10 +1053,7 @@ class _HomePasajeroState extends State<HomePasajero>
             markerId: const MarkerId('user_location'),
             position: LatLng(position.latitude, position.longitude),
             icon: _userMarkerIcon!,
-            infoWindow: InfoWindow(
-              title: _currentLocationName,
-              snippet: _currentLocationAddress,
-            ),
+            infoWindow: _userLocationInfoWindow(),
           ),
         };
       }
@@ -1020,7 +1068,9 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!mounted) return;
 
     _setStateSafe(() {
-      _currentLocationName = locationData.name;
+      _currentLocationName = locationData.pickupLabel;
+      _currentLocationArea = locationData.area;
+      _currentLocationStreet = locationData.streetLine;
       _currentLocationAddress = locationData.address;
 
       if (_selectedOrigin != null) {
@@ -1031,9 +1081,11 @@ class _HomePasajeroState extends State<HomePasajero>
           address: _currentLocationAddress,
         );
         _originController.removeListener(_onOriginChanged);
-        _originController.text = _currentLocationName;
+        _originController.text = _originPickupLabel;
         _originController.addListener(_onOriginChanged);
       }
+
+      _syncMarkersOnMap();
     });
   }
 

@@ -18,7 +18,8 @@ class PasajeroHomeRideSheet extends StatelessWidget {
     required this.selectedDestination,
     required this.selectedDestinationArea,
     required this.routeInfo,
-    required this.currentLocationName,
+    required this.pickupDisplayLabel,
+    this.pickupStreetDetail,
     required this.originController,
     required this.destinationController,
     required this.destinationFocusNode,
@@ -46,7 +47,8 @@ class PasajeroHomeRideSheet extends StatelessWidget {
   final TripLocation? selectedDestination;
   final String? selectedDestinationArea;
   final RouteInfo? routeInfo;
-  final String currentLocationName;
+  final String pickupDisplayLabel;
+  final String? pickupStreetDetail;
   final TextEditingController originController;
   final TextEditingController destinationController;
   final FocusNode destinationFocusNode;
@@ -141,7 +143,8 @@ class PasajeroHomeRideSheet extends StatelessWidget {
 
   Widget _minimizedContent(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final originText = selectedOrigin?.name ?? currentLocationName;
+    final originText = pickupDisplayLabel;
+    final originDetail = pickupStreetDetail?.trim();
     final hasDestination = selectedDestination != null;
     final destinationText = hasDestination
         ? destinationSummaryText(selectedDestination!)
@@ -200,8 +203,10 @@ class PasajeroHomeRideSheet extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Desde: $originText',
-                      maxLines: 1,
+                      originDetail != null && originDetail.isNotEmpty
+                          ? 'Desde: $originText · $originDetail'
+                          : 'Desde: $originText',
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
@@ -247,8 +252,10 @@ class PasajeroHomeRideSheet extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Desde: $originText',
-                          maxLines: 1,
+                          originDetail != null && originDetail.isNotEmpty
+                              ? 'Desde: $originText · $originDetail'
+                              : 'Desde: $originText',
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,

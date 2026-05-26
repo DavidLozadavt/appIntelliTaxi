@@ -1,4 +1,6 @@
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -15,102 +17,20 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
-    final key = AppConfig.googleMapsApiKey.trim();
-    if (key.isEmpty) return null;
+    final results = await _fetchGeocodeResults(lat: lat, lng: lng);
+    if (results == null) return null;
+    var area = _extractAreaFromResults(results);
+    if (area != null) return area;
 
-    try {
-      final url = Uri.parse(
-        '$_baseUrl?latlng=$lat,$lng&key=$key&language=es&region=co',
-      );
-      final response = await http.get(url);
-      if (response.statusCode != 200) return null;
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (data['status'] != 'OK') return null;
-
-      final results = data['results'] as List<dynamic>? ?? [];
-      for (final item in results) {
-        final result = item is Map<String, dynamic>
-            ? item
-            : Map<String, dynamic>.from(item as Map);
-        final components = result['address_components'] as List<dynamic>? ?? [];
-        final resultTypes = (result['types'] as List<dynamic>? ?? [])
-            .map((e) => e.toString())
-            .toList();
-
-        if (resultTypes.contains('plus_code') ||
-            resultTypes.contains('postal_code') ||
-            resultTypes.contains('administrative_area_level_2')) {
-          continue;
-        }
-
-        final neighborhood = _firstComponentValue(
-          components,
-          acceptedTypes: const [
-            'neighborhood',
-            'sublocality',
-            'sublocality_level_1',
-            'sublocality_level_2',
-            'sublocality_level_3',
-          ],
-        );
-        if (neighborhood != null && neighborhood.isNotEmpty) {
-          return neighborhood;
-        }
-
-        final route = _firstComponentValue(
-          components,
-          acceptedTypes: const [
-            'route',
-            'point_of_interest',
-            'establishment',
-            'street_address',
-            'premise',
-          ],
-        );
-        if (route != null &&
-            route.isNotEmpty &&
-            !_isCityLike(route) &&
-            !_isPlusCodeLike(route)) {
-          return route;
-        }
-
-        final resultPlusCode = result['plus_code'] is Map
-            ? Map<String, dynamic>.from(result['plus_code'] as Map)
-            : null;
-        final compoundCode = resultPlusCode?['compound_code']?.toString();
-        final fromCompound = _extractHumanAreaFromCompoundCode(compoundCode);
-        if (fromCompound != null && fromCompound.isNotEmpty) {
-          return fromCompound;
-        }
-      }
-
-      final first = results.isNotEmpty
-          ? (results.first as Map<String, dynamic>)
-          : null;
-      final shortAddress = first?['formatted_address']?.toString();
-      if (shortAddress == null || shortAddress.isEmpty) return null;
-      final parts = shortAddress
-          .split(',')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-      if (parts.isEmpty) return null;
-      for (final part in parts) {
-        if (_isPlusCodeLike(part)) continue;
-        if (_isCityLike(part)) continue;
-        return part;
-      }
-
-      final city = _firstComponentValue(
-        (first?['address_components'] as List<dynamic>? ?? []),
-        acceptedTypes: const ['locality', 'administrative_area_level_2'],
-      );
-      return city;
-    } catch (e) {
-      AppLogger.d('⚠️ Error resolviendo zona por geocode: $e');
-      return null;
-    }
+    final neighborhoodResults = await _fetchGeocodeResults(
+      lat: lat,
+      lng: lng,
+      resultType:
+          'neighborhood|sublocality|sublocality_level_1|sublocality_level_2|sublocality_level_3|administrative_area_level_3',
+      logLabel: 'neighborhood',
+    );
+    if (neighborhoodResults == null) return null;
+    return _extractAreaFromResults(neighborhoodResults);
   }
 
   /// Dirección formateada para un punto (ej. destino final al cerrar viaje).
@@ -142,7 +62,7 @@ class ReverseGeocodingService {
     }
   }
 
-  /// Devuelve nombre corto y legible para mostrar como origen (calle + barrio)
+  /// Devuelve nombre corto y legible para mostrar como origen (barrio + calle).
   Future<CurrentLocationData> resolveCurrentLocationLabel({
     required double lat,
     required double lng,
@@ -152,95 +72,297 @@ class ReverseGeocodingService {
       address: 'Ubicación actual',
     );
 
+    final results = await _fetchGeocodeResults(lat: lat, lng: lng);
+    if (results == null || results.isEmpty) return fallback;
+
+    var area = _extractAreaFromResults(results);
+    if (area == null) {
+      final neighborhoodResults = await _fetchGeocodeResults(
+        lat: lat,
+        lng: lng,
+        resultType:
+            'neighborhood|sublocality|sublocality_level_1|sublocality_level_2|sublocality_level_3|administrative_area_level_3',
+        logLabel: 'neighborhood',
+      );
+      if (neighborhoodResults != null && neighborhoodResults.isNotEmpty) {
+        area = _extractAreaFromResults(neighborhoodResults);
+      }
+    }
+
+    final streetLine = _extractStreetLineFromResults(results);
+    final fullAddress = _extractFormattedAddress(results);
+
+    if (kDebugMode) {
+      _logResolvedLocation(
+        lat: lat,
+        lng: lng,
+        area: area,
+        streetLine: streetLine,
+        fullAddress: fullAddress,
+      );
+    }
+
+    // Prioridad: barrio como etiqueta principal (lo que ve el pasajero).
+    final String displayName;
+    if (area != null && area.isNotEmpty) {
+      displayName = area;
+    } else if (streetLine != null && streetLine.isNotEmpty) {
+      displayName = streetLine;
+    } else {
+      displayName = 'Mi ubicación';
+    }
+
+    return CurrentLocationData(
+      name: displayName,
+      address: fullAddress ?? displayName,
+      area: area,
+      streetLine: streetLine,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>?> _fetchGeocodeResults({
+    required double lat,
+    required double lng,
+    String? resultType,
+    String logLabel = 'default',
+  }) async {
     final key = AppConfig.googleMapsApiKey.trim();
-    if (key.isEmpty) return fallback;
+    if (key.isEmpty) return null;
 
     try {
-      final url = Uri.parse(
-        '$_baseUrl?latlng=$lat,$lng&key=$key&language=es&region=co',
+      final query = StringBuffer(
+        'latlng=$lat,$lng&key=$key&language=es&region=co',
       );
+      if (resultType != null && resultType.isNotEmpty) {
+        query.write('&result_type=$resultType');
+      }
+
+      final url = Uri.parse('$_baseUrl?$query');
       final response = await http.get(url);
-      if (response.statusCode != 200) return fallback;
+      if (response.statusCode != 200) return null;
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      if (data['status'] != 'OK') return fallback;
+      final status = data['status']?.toString() ?? 'UNKNOWN';
+      if (status != 'OK') {
+        if (kDebugMode && logLabel == 'default') {
+          AppLogger.w(
+            'Geocode status=$status lat=$lat lng=$lng error=${data['error_message']}',
+            tag: 'ReverseGeocode',
+          );
+        }
+        return null;
+      }
 
-      final results = data['results'] as List<dynamic>? ?? [];
+      final raw = data['results'] as List<dynamic>? ?? [];
+      final results = raw
+          .map(
+            (item) => item is Map<String, dynamic>
+                ? item
+                : Map<String, dynamic>.from(item as Map),
+          )
+          .toList();
 
-      String? streetName;
-      String? streetNumber;
-      String? neighborhood;
-      String? fullAddress;
+      if (kDebugMode && logLabel == 'default') {
+        _logGeocodeRawResponse(lat: lat, lng: lng, results: results);
+      } else if (kDebugMode && results.isNotEmpty) {
+        AppLogger.d(
+          'Geocode [$logLabel] lat=$lat lng=$lng → ${results.length} resultados',
+          tag: 'ReverseGeocode',
+        );
+        for (var i = 0; i < results.length && i < 3; i++) {
+          final r = results[i];
+          final types = (r['types'] as List? ?? []).join(',');
+          AppLogger.d(
+            '  [$logLabel][$i] types=$types formatted=${r['formatted_address']}',
+            tag: 'ReverseGeocode',
+          );
+        }
+      }
 
-      for (final item in results) {
-        final result = item is Map<String, dynamic>
+      return results;
+    } catch (e) {
+      AppLogger.d('⚠️ Error en geocode reverso: $e');
+      return null;
+    }
+  }
+
+  String? _extractAreaFromResults(List<Map<String, dynamic>> results) {
+    const barrioTypes = [
+      'neighborhood',
+      'sublocality',
+      'sublocality_level_1',
+      'sublocality_level_2',
+      'sublocality_level_3',
+      'administrative_area_level_3',
+    ];
+
+    for (final result in results) {
+      final resultTypes = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+
+      if (resultTypes.contains('plus_code') ||
+          resultTypes.contains('postal_code')) {
+        continue;
+      }
+
+      final components = result['address_components'] as List<dynamic>? ?? [];
+      for (final item in components) {
+        final component = item is Map<String, dynamic>
             ? item
             : Map<String, dynamic>.from(item as Map);
+        final types = (component['types'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toList();
+        final isBarrioType = barrioTypes.any(types.contains);
+        if (!isBarrioType) continue;
 
+        final value =
+            component['long_name']?.toString() ??
+            component['short_name']?.toString();
+        if (_isValidBarrioCandidate(value)) {
+          return value!.trim();
+        }
+      }
+
+      // Resultado filtrado por result_type=neighborhood: usar formatted_address.
+      if (resultTypes.any(barrioTypes.contains)) {
+        final formatted = result['formatted_address']?.toString();
+        if (_isValidBarrioCandidate(formatted)) {
+          return formatted!.split(',').first.trim();
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String? _extractStreetLineFromResults(List<Map<String, dynamic>> results) {
+    String? streetName;
+    String? streetNumber;
+
+    bool isStreetResult(List<String> types) {
+      if (types.contains('street_address')) return true;
+      if (types.contains('premise') && !types.contains('establishment')) {
+        return true;
+      }
+      return types.contains('route') &&
+          !types.contains('establishment') &&
+          !types.contains('lodging') &&
+          !types.contains('point_of_interest');
+    }
+
+    for (final result in results) {
+      final resultTypes = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+      if (resultTypes.length == 1 && resultTypes.contains('plus_code')) {
+        continue;
+      }
+      if (!isStreetResult(resultTypes)) continue;
+
+      final components = result['address_components'] as List<dynamic>? ?? [];
+      streetName ??= _firstComponentValue(
+        components,
+        acceptedTypes: const ['route'],
+      );
+      streetNumber ??= _firstComponentValue(
+        components,
+        acceptedTypes: const ['street_number'],
+      );
+
+      if (streetName != null) break;
+    }
+
+    // Respaldo: cualquier resultado con route (excepto plus_code puro).
+    if (streetName == null) {
+      for (final result in results) {
         final resultTypes = (result['types'] as List<dynamic>? ?? [])
             .map((e) => e.toString())
             .toList();
-
-        // Saltar resultados que son solo plus_code
-        if (resultTypes.length == 1 && resultTypes.contains('plus_code')) {
+        if (resultTypes.contains('plus_code') &&
+            !resultTypes.contains('route')) {
           continue;
         }
-
         final components = result['address_components'] as List<dynamic>? ?? [];
-
         streetName ??= _firstComponentValue(
           components,
-          acceptedTypes: const ['route', 'street_address'],
+          acceptedTypes: const ['route'],
         );
-
         streetNumber ??= _firstComponentValue(
           components,
           acceptedTypes: const ['street_number'],
         );
-
-        neighborhood ??= _firstComponentValue(
-          components,
-          acceptedTypes: const [
-            'neighborhood',
-            'sublocality_level_1',
-            'sublocality',
-          ],
-        );
-
-        if (fullAddress == null) {
-          final formatted = result['formatted_address']?.toString() ?? '';
-          final cleaned = _stripPlusCodes(formatted);
-          if (cleaned.isNotEmpty) fullAddress = cleaned;
-        }
-
-        // Con calle + barrio es suficiente, no seguir iterando
-        if (streetName != null && neighborhood != null) break;
+        if (streetName != null) break;
       }
-
-      // Construir nombre para mostrar en el campo origen
-      final String displayName;
-      if (streetName != null && streetNumber != null && neighborhood != null) {
-        displayName = '$streetName $streetNumber, $neighborhood';
-      } else if (streetName != null && neighborhood != null) {
-        displayName = '$streetName, $neighborhood';
-      } else if (streetName != null && streetNumber != null) {
-        displayName = '$streetName $streetNumber';
-      } else if (streetName != null) {
-        displayName = streetName;
-      } else if (neighborhood != null) {
-        displayName = neighborhood;
-      } else {
-        displayName = 'Mi ubicación';
-      }
-
-      return CurrentLocationData(
-        name: displayName,
-        address: fullAddress ?? displayName,
-      );
-    } catch (e) {
-      AppLogger.d('⚠️ Error resolviendo nombre de ubicación actual: $e');
-      return fallback;
     }
+
+    return _formatStreetLine(streetName, streetNumber);
+  }
+
+  String? _extractFormattedAddress(List<Map<String, dynamic>> results) {
+    for (final result in results) {
+      final resultTypes = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+      if (!resultTypes.contains('street_address')) continue;
+      final formatted = result['formatted_address']?.toString() ?? '';
+      final cleaned = _stripPlusCodes(formatted);
+      if (cleaned.isNotEmpty) return cleaned;
+    }
+
+    for (final result in results) {
+      final resultTypes = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+      if (resultTypes.length == 1 && resultTypes.contains('plus_code')) {
+        continue;
+      }
+      if (resultTypes.contains('establishment') ||
+          resultTypes.contains('lodging') ||
+          resultTypes.contains('point_of_interest')) {
+        continue;
+      }
+      final formatted = result['formatted_address']?.toString() ?? '';
+      final cleaned = _stripPlusCodes(formatted);
+      if (cleaned.isNotEmpty) return cleaned;
+    }
+    return null;
+  }
+
+  String? _formatStreetLine(String? route, String? number) {
+    if (route == null || route.trim().isEmpty) return null;
+    var street = route.trim();
+    var num = number?.trim() ?? '';
+    while (num.startsWith('#')) {
+      num = num.substring(1).trim();
+    }
+    while (street.endsWith('#')) {
+      street = street.substring(0, street.length - 1).trim();
+    }
+    if (num.isEmpty) return street;
+    return '$street #$num';
+  }
+
+  bool _isValidBarrioCandidate(String? value) {
+    if (value == null) return false;
+    final v = value.trim();
+    if (v.length < 3) return false;
+    if (_isPlusCodeLike(v)) return false;
+    if (_isCityLike(v)) return false;
+    if (_looksLikeStreetName(v)) return false;
+    if (_looksLikeSubpremise(v)) return false;
+    if (RegExp(r'^\d+$').hasMatch(v)) return false;
+    return true;
+  }
+
+  bool _looksLikeSubpremise(String value) {
+    final v = value.trim().toLowerCase();
+    if (v.contains('##')) return true;
+    if (RegExp(r'^a\s+\d').hasMatch(v)) return true;
+    if (RegExp(r'^#\s*\d').hasMatch(v)) return true;
+    if (RegExp(r'^\d+[\-–]\d+').hasMatch(v)) return true;
+    return false;
   }
 
   String _stripPlusCodes(String address) {
@@ -278,17 +400,6 @@ class ReverseGeocodingService {
     return null;
   }
 
-  String? _extractHumanAreaFromCompoundCode(String? compoundCode) {
-    if (compoundCode == null || compoundCode.trim().isEmpty) return null;
-    final cleaned = compoundCode.trim();
-    final spaceIndex = cleaned.indexOf(' ');
-    final withoutCode = spaceIndex > 0 ? cleaned.substring(spaceIndex + 1) : '';
-    if (withoutCode.isEmpty) return null;
-    final firstToken = withoutCode.split(',').first.trim();
-    if (firstToken.isEmpty || _isPlusCodeLike(firstToken)) return null;
-    return firstToken;
-  }
-
   bool _isPlusCodeLike(String value) {
     final normalized = value.trim().toUpperCase();
     if (_plusCodeRegex.hasMatch(normalized)) return true;
@@ -305,11 +416,100 @@ class ReverseGeocodingService {
     if (v.isEmpty) return false;
     return v == 'popayán' || v == 'popayan' || v == 'cauca';
   }
+
+  bool _looksLikeStreetName(String value) {
+    final v = value.trim().toLowerCase();
+    if (v.isEmpty) return false;
+    return RegExp(
+      r'^(calle|carrera|cr\.?|cl\.?|av\.?|avenida|diag\.?|diagonal|trans\.?|transversal|km\.?)\b',
+    ).hasMatch(v);
+  }
+
+  void _logGeocodeRawResponse({
+    required double lat,
+    required double lng,
+    required List<Map<String, dynamic>> results,
+  }) {
+    final buffer = StringBuffer()
+      ..writeln('══════════════════════════════════════════')
+      ..writeln('📍 REVERSE GEOCODE lat=$lat lng=$lng')
+      ..writeln('   resultados=${results.length}');
+
+    for (var i = 0; i < results.length && i < 6; i++) {
+      final result = results[i];
+      final types = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .join(', ');
+      buffer
+        ..writeln('── resultado[$i] types: $types')
+        ..writeln('   formatted: ${result['formatted_address']}');
+
+      final plusCode = result['plus_code'];
+      if (plusCode is Map) {
+        buffer.writeln(
+          '   plus_code: global=${plusCode['global_code']} compound=${plusCode['compound_code']}',
+        );
+      }
+
+      final components = result['address_components'] as List<dynamic>? ?? [];
+      for (final item in components) {
+        final c = item is Map<String, dynamic>
+            ? item
+            : Map<String, dynamic>.from(item as Map);
+        final cTypes = (c['types'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .join('|');
+        buffer.writeln(
+          '   · ${c['long_name']} (${c['short_name']}) ← $cTypes',
+        );
+      }
+    }
+
+    buffer.writeln('══════════════════════════════════════════');
+    AppLogger.d(buffer.toString(), tag: 'ReverseGeocode');
+  }
+
+  void _logResolvedLocation({
+    required double lat,
+    required double lng,
+    required String? area,
+    required String? streetLine,
+    required String? fullAddress,
+  }) {
+    AppLogger.i(
+      '✅ RESUELTO lat=$lat lng=$lng | barrio=${area ?? "—"} | calle=${streetLine ?? "—"} | address=${fullAddress ?? "—"}',
+      tag: 'ReverseGeocode',
+    );
+  }
 }
 
 class CurrentLocationData {
   final String name;
   final String address;
+  final String? area;
+  final String? streetLine;
 
-  const CurrentLocationData({required this.name, required this.address});
+  const CurrentLocationData({
+    required this.name,
+    required this.address,
+    this.area,
+    this.streetLine,
+  });
+
+  /// Etiqueta corta para recogida: barrio primero, calle como detalle.
+  String get pickupLabel {
+    final barrio = area?.trim();
+    if (barrio != null && barrio.isNotEmpty) return 'Barrio: $barrio';
+    return name;
+  }
+
+  String get pickupSubtitle {
+    final barrio = area?.trim();
+    final calle = streetLine?.trim();
+    if (barrio != null && barrio.isNotEmpty && calle != null && calle.isNotEmpty) {
+      return calle;
+    }
+    if (address.trim().isNotEmpty && address != name) return address;
+    return '';
+  }
 }
