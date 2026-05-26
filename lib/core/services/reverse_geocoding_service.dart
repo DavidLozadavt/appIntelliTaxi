@@ -113,6 +113,35 @@ class ReverseGeocodingService {
     }
   }
 
+  /// Dirección formateada para un punto (ej. destino final al cerrar viaje).
+  Future<String?> resolveFormattedAddress({
+    required double lat,
+    required double lng,
+  }) async {
+    final key = AppConfig.googleMapsApiKey.trim();
+    if (key.isEmpty) return null;
+
+    try {
+      final url = Uri.parse(
+        '$_baseUrl?latlng=$lat,$lng&key=$key&language=es&region=co',
+      );
+      final response = await http.get(url);
+      if (response.statusCode != 200) return null;
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      if (data['status'] != 'OK') return null;
+
+      final results = data['results'] as List<dynamic>? ?? [];
+      if (results.isEmpty) return null;
+      final first = results.first;
+      if (first is! Map) return null;
+      return first['formatted_address']?.toString();
+    } catch (e) {
+      AppLogger.d('⚠️ Error resolviendo dirección formateada: $e');
+      return null;
+    }
+  }
+
   /// Devuelve nombre corto y legible para mostrar como origen (calle + barrio)
   Future<CurrentLocationData> resolveCurrentLocationLabel({
     required double lat,

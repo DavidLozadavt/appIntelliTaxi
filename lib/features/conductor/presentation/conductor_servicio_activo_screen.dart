@@ -1,32 +1,30 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
+import 'package:intellitaxi/features/conductor/controllers/conductor_servicio_pusher_controller.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_servicio_map_service.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_servicio_state_transitions.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
-import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_estado_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_servicio_bottom_panel.dart';
 import 'package:intellitaxi/features/conductor/widgets/ofertas_en_ruta_panel.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
-import 'package:intellitaxi/shared/widgets/standard_button.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
-import 'package:intellitaxi/config/app_config.dart';
-import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
@@ -53,7 +51,10 @@ class _ConductorServicioActivoScreenState
     with WidgetsBindingObserver {
   GoogleMapController? _mapController;
   final ServicioTrackingService _trackingService = ServicioTrackingService();
-  final RoutesService _routesService = RoutesService();
+  final ConductorServicioMapService _mapService = ConductorServicioMapService();
+  final ConductorServicioPusherController _pusherController =
+      ConductorServicioPusherController();
+  final ReverseGeocodingService _reverseGeocoding = ReverseGeocodingService();
   final ServicioPersistenciaService _persistencia =
       ServicioPersistenciaService();
   final ServicioNotificacionForeground _notificacionService =
@@ -76,7 +77,6 @@ class _ConductorServicioActivoScreenState
   bool _finalizacionEnCurso = false;
   /// Evita doble `pushNamedAndRemoveUntil` (p. ej. cancel manual + evento Pusher).
   bool _homeNavigationScheduled = false;
-  String? _pusherEstadoEventKey;
 
   void _safeSetState(VoidCallback fn) {
     if (!mounted) return;
@@ -181,17 +181,11 @@ class _ConductorServicioActivoScreenState
 
   void _actualizarDestinoSegunEstado(String? ui) {
     if (ui == null) return;
-    if ((ui == 'llegue' || ui == 'en_curso') && _tieneDestinoDefinido()) {
-      final destinoLat = _parseDouble(widget.servicio['destino_lat']);
-      final destinoLng = _parseDouble(widget.servicio['destino_lng']);
-      _destinoActual = LatLng(destinoLat, destinoLng);
-    } else if (ui == 'en_camino' || ui == 'aceptado') {
-      final oLa = _parseDouble(widget.servicio['origen_lat']);
-      final oLng = _parseDouble(widget.servicio['origen_lng']);
-      if (oLa != 0 && oLng != 0) {
-        _destinoActual = LatLng(oLa, oLng);
-      }
-    }
+    _destinoActual = ConductorServicioStateTransitions.resolveDestinoNavegacion(
+      servicio: widget.servicio,
+      estadoUi: ui,
+    ) ??
+        _destinoActual;
   }
 
   Future<void> _salirPorServicioCerradoRemoto() async {
@@ -266,31 +260,11 @@ class _ConductorServicioActivoScreenState
   bool _tieneDestinoDefinido() =>
       ConductorServicioEstadoHelper.tieneDestinoDefinido(widget.servicio);
 
-  Future<String?> _resolverDireccionDesdeCoordenadas(LatLng punto) async {
-    try {
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/geocode/json?'
-        'latlng=${punto.latitude},${punto.longitude}'
-        '&key=${AppConfig.googleMapsApiKey}'
-        '&language=es',
+  Future<String?> _resolverDireccionDesdeCoordenadas(LatLng punto) =>
+      _reverseGeocoding.resolveFormattedAddress(
+        lat: punto.latitude,
+        lng: punto.longitude,
       );
-      final response = await http.get(url);
-      if (response.statusCode != 200) return null;
-      final data = jsonDecode(response.body);
-      if (data is Map<String, dynamic> &&
-          data['status'] == 'OK' &&
-          data['results'] is List &&
-          (data['results'] as List).isNotEmpty) {
-        final first = (data['results'] as List).first;
-        if (first is Map<String, dynamic>) {
-          return first['formatted_address']?.toString();
-        }
-      }
-    } catch (_) {
-      // Silencioso: si falla geocoding se usa fallback.
-    }
-    return null;
-  }
 
   String _resolverEstadoInicial(Map<String, dynamic> servicio) =>
       ConductorServicioEstadoHelper.resolverEstadoInicial(servicio);
@@ -404,90 +378,59 @@ class _ConductorServicioActivoScreenState
 
   Future<void> _suscribirEventosServicio() async {
     if (!_canUpdateUi) return;
-    final channelName = 'servicio.${_safeServiceId()}';
-    final eventKey = '$channelName:servicio.estado.cambiado';
-    _pusherEstadoEventKey = eventKey;
-
-    PusherService.registerEventHandlerSecondary(eventKey, (event) {
-      if (!_canUpdateUi) return;
-      _manejarEventoEstadoServicio(event);
-    });
-
-    await PusherService.subscribeSecondary(channelName);
+    await _pusherController.subscribe(
+      servicioId: _safeServiceId(),
+      onEstado: _manejarEventoEstadoServicio,
+    );
   }
 
   void _desuscribirEventosServicio() {
-    final eventKey = _pusherEstadoEventKey;
-    if (eventKey != null) {
-      PusherService.unregisterEventHandlerSecondary(eventKey);
-      _pusherEstadoEventKey = null;
-    }
-    final channelName = 'servicio.${_safeServiceId()}';
-    PusherService.unsubscribeSecondary(channelName);
+    _pusherController.unsubscribe(_safeServiceId());
   }
 
-  void _manejarEventoEstadoServicio(dynamic event) {
-    try {
-      Map<String, dynamic> data = event is String
-          ? Map<String, dynamic>.from(jsonDecode(event))
-          : Map<String, dynamic>.from(event as Map);
-      if (data['data'] is Map) {
-        data = Map<String, dynamic>.from(data['data'] as Map);
-      }
+  void _manejarEventoEstadoServicio(ConductorServicioEstadoPusherEvent event) {
+    if (!mounted || _terminalNavigationInProgress) return;
 
-      final estadoNombre = data['estado']?.toString();
-      final estadoIdRaw = data['estado_id'];
-      final estadoId = estadoIdRaw is int
-          ? estadoIdRaw
-          : int.tryParse(estadoIdRaw?.toString() ?? '');
-
-      if (!mounted || _terminalNavigationInProgress) return;
-
-      if (estadoId != null) {
-        widget.servicio['idEstado'] = estadoId;
-      }
-      if (estadoNombre != null && estadoNombre.isNotEmpty) {
-        widget.servicio['estado'] = estadoNombre;
-      }
-
-      final estadoUi =
-          _normalizarEstadoBackend(estadoNombre) ?? _estadoDesdeId(estadoId);
-
-      if (estadoUi == 'cancelado' || estadoId == 6) {
-        _terminalNavigationInProgress = true;
-        unawaited(_salirPorServicioCancelado());
-        return;
-      }
-
-      if (estadoUi == 'finalizado' || estadoId == 22) {
-        unawaited(_programarFinalizacionViaje());
-        return;
-      }
-
-      if (!_canUpdateUi) return;
-      _safeSetState(() {
-        if (estadoUi != null) {
-          _estadoActual = estadoUi;
-        }
-        _actualizarDestinoSegunEstado(estadoUi);
-      });
-
-      unawaited(_guardarServicioActivo());
-      _actualizarMarcadores();
-      unawaited(_dibujarRuta());
-
-      unawaited(
-        _notificacionService.actualizarNotificacion(
-          servicioId: _safeServiceId(),
-          tipo: 'conductor',
-          estado: estadoUi ?? _estadoActual,
-          origen: widget.servicio['origen_address'] ?? 'Origen',
-          destino: widget.servicio['destino_address'] ?? 'A convenir',
-        ),
-      );
-    } catch (e) {
-      AppLogger.d('⚠️ Error procesando servicio.estado.cambiado: $e');
+    if (event.estadoId != null) {
+      widget.servicio['idEstado'] = event.estadoId;
     }
+    if (event.estadoNombre != null && event.estadoNombre!.isNotEmpty) {
+      widget.servicio['estado'] = event.estadoNombre;
+    }
+
+    if (event.cancelado) {
+      _terminalNavigationInProgress = true;
+      unawaited(_salirPorServicioCancelado());
+      return;
+    }
+
+    if (event.finalizado) {
+      unawaited(_programarFinalizacionViaje());
+      return;
+    }
+
+    final estadoUi = event.estadoUi;
+    if (!_canUpdateUi) return;
+    _safeSetState(() {
+      if (estadoUi != null) {
+        _estadoActual = estadoUi;
+      }
+      _actualizarDestinoSegunEstado(estadoUi);
+    });
+
+    unawaited(_guardarServicioActivo());
+    _actualizarMarcadores();
+    unawaited(_dibujarRuta());
+
+    unawaited(
+      _notificacionService.actualizarNotificacion(
+        servicioId: _safeServiceId(),
+        tipo: 'conductor',
+        estado: estadoUi ?? _estadoActual,
+        origen: widget.servicio['origen_address'] ?? 'Origen',
+        destino: widget.servicio['destino_address'] ?? 'A convenir',
+      ),
+    );
   }
 
   Future<void> _guardarServicioActivo() async {
@@ -579,93 +522,16 @@ class _ConductorServicioActivoScreenState
         });
   }
 
-  BitmapDescriptor? _recogidaDot;
-  BitmapDescriptor? _destinoFinalDot;
-
-  Future<void> _crearDotMarkers() async {
-    const double s = 28;
-
-    Future<BitmapDescriptor> crearDot(Color color) async {
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      canvas.drawCircle(
-        Offset(s / 2, s / 2 + 1),
-        s / 3,
-        Paint()
-          ..color = color.withValues(alpha: 0.3)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
-      );
-      canvas.drawCircle(
-        Offset(s / 2, s / 2),
-        s / 3,
-        Paint()..color = Colors.white,
-      );
-      canvas.drawCircle(Offset(s / 2, s / 2), s / 4, Paint()..color = color);
-      final picture = recorder.endRecording();
-      final image = await picture.toImage(s.toInt(), s.toInt());
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
-    }
-
-    _recogidaDot = await crearDot(Colors.blue);
-    _destinoFinalDot = await crearDot(const Color(0xFFFF6B35));
-  }
+  Future<void> _crearDotMarkers() => _mapService.ensureDotMarkers();
 
   void _actualizarMarcadores() {
     if (!_canUpdateUi) return;
-    final origenLat = _parseDouble(widget.servicio['origen_lat']);
-    final origenLng = _parseDouble(widget.servicio['origen_lng']);
-    final destinoLat = _parseDouble(widget.servicio['destino_lat']);
-    final destinoLng = _parseDouble(widget.servicio['destino_lng']);
-
     _safeSetState(() {
-      _markers = {};
-
-      // Punto de recogida (siempre visible)
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('recogida'),
-          position: LatLng(origenLat, origenLng),
-          icon: _recogidaDot ?? BitmapDescriptor.defaultMarker,
-          infoWindow: InfoWindow(
-            title: 'Punto de Recogida',
-            snippet: widget.servicio['origen_address'],
-          ),
-          anchor: const Offset(0.5, 0.5),
-        ),
+      _markers = _mapService.buildMarkers(
+        servicio: widget.servicio,
+        miUbicacion: _miUbicacion,
+        carIcon: _carIcon,
       );
-
-      // Destino final (solo si existe destino definido)
-      if (_tieneDestinoDefinido()) {
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('destino_final'),
-            position: LatLng(destinoLat, destinoLng),
-            icon: _destinoFinalDot ?? BitmapDescriptor.defaultMarker,
-            infoWindow: InfoWindow(
-              title: 'Destino Final',
-              snippet:
-                  widget.servicio['destino_address'] ?? 'Destino no definido',
-            ),
-            anchor: const Offset(0.5, 0.5),
-          ),
-        );
-      }
-
-      // Mi ubicación (conductor) con icono del carro
-      if (_miUbicacion != null) {
-        _markers.add(
-          Marker(
-            markerId: const MarkerId('mi_ubicacion'),
-            position: _miUbicacion!,
-            icon:
-                _carIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-            infoWindow: const InfoWindow(title: 'Mi ubicación'),
-            anchor: const Offset(0.5, 0.5),
-          ),
-        );
-      }
     });
   }
 
@@ -673,40 +539,19 @@ class _ConductorServicioActivoScreenState
     if (_miUbicacion == null || _destinoActual == null) return;
 
     final color = _estadoUiEfectivo == 'en_curso' ? Colors.green : Colors.blue;
+    final polyline = await _mapService.buildRoutePolyline(
+      origin: _miUbicacion!,
+      destination: _destinoActual!,
+      color: color,
+    );
 
-    try {
-      final routeInfo = await _routesService.getRoute(
-        origin: _miUbicacion!,
-        destination: _destinoActual!,
-      );
+    if (!mounted || polyline == null) return;
 
-      if (!mounted) return;
-
-      if (routeInfo != null && routeInfo.polylinePoints.isNotEmpty) {
-        _safeSetState(() {
-          _polylines.clear();
-          _polylines.add(
-            Polyline(
-              polylineId: const PolylineId('ruta_actual'),
-              points: routeInfo.polylinePoints,
-              color: color,
-              width: 5,
-            ),
-          );
-        });
-        AppLogger.d(
-          '✅ Ruta dibujada: ${routeInfo.distance} - ${routeInfo.duration}',
-        );
-      } else {
-        // Si la API no devuelve ruta, conservar la última polilínea válida.
-        AppLogger.d(
-          '⚠️ No se recibió polilínea válida; se conserva la ruta anterior',
-        );
-      }
-    } catch (e) {
-      AppLogger.d('❌ Error dibujando ruta: $e');
-      // En caso de error temporal, conservar la última polilínea válida.
-    }
+    _safeSetState(() {
+      _polylines
+        ..clear()
+        ..add(polyline);
+    });
   }
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
@@ -751,10 +596,12 @@ class _ConductorServicioActivoScreenState
         if (!_tieneDestinoDefinido() &&
             destinoFinalLat != null &&
             destinoFinalLng != null) {
-          widget.servicio['destino_lat'] = destinoFinalLat;
-          widget.servicio['destino_lng'] = destinoFinalLng;
-          widget.servicio['destino_address'] =
-              destinoFinalAddress ?? widget.servicio['destino_address'];
+          ConductorServicioStateTransitions.applyDestinoFinalOnMap(
+            servicio: widget.servicio,
+            lat: destinoFinalLat,
+            lng: destinoFinalLng,
+            address: destinoFinalAddress,
+          );
         }
         await _programarFinalizacionViaje();
         return;
@@ -763,30 +610,11 @@ class _ConductorServicioActivoScreenState
       if (!_canUpdateUi) return;
       _safeSetState(() {
         _estadoActual = nuevoEstado;
-        if (nuevoEstado == 'llegue') {
-          widget.servicio['idEstado'] = 20;
-        } else if (nuevoEstado == 'en_camino') {
-          widget.servicio['idEstado'] = 19;
-        } else if (nuevoEstado == 'en_curso') {
-          widget.servicio['idEstado'] = 21;
-        }
-
-        // Si llegó al punto de recogida, cambiar destino al final
-        if (nuevoEstado == 'llegue' && _tieneDestinoDefinido()) {
-          final destinoLat = _parseDouble(widget.servicio['destino_lat']);
-          final destinoLng = _parseDouble(widget.servicio['destino_lng']);
-          _destinoActual = LatLng(destinoLat, destinoLng);
-        } else if (nuevoEstado == 'en_curso' && _tieneDestinoDefinido()) {
-          final destinoLat = _parseDouble(widget.servicio['destino_lat']);
-          final destinoLng = _parseDouble(widget.servicio['destino_lng']);
-          _destinoActual = LatLng(destinoLat, destinoLng);
-        } else if (nuevoEstado == 'en_camino') {
-          final oLa = _parseDouble(widget.servicio['origen_lat']);
-          final oLng = _parseDouble(widget.servicio['origen_lng']);
-          if (oLa != 0 && oLng != 0) {
-            _destinoActual = LatLng(oLa, oLng);
-          }
-        }
+        ConductorServicioStateTransitions.applyIdEstadoForUi(
+          widget.servicio,
+          nuevoEstado,
+        );
+        _actualizarDestinoSegunEstado(nuevoEstado);
       });
 
       // Actualizar notificación persistente
@@ -1263,44 +1091,17 @@ class _ConductorServicioActivoScreenState
                         ),
                       ),
 
-                      // Contenido + acciones fijas abajo (rápido al volante)
                       Expanded(
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: [
-                                    _buildBarraPasajeroCompacta(),
-                                    const SizedBox(height: 12),
-                                    _buildRutaUnificada(),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                16,
-                                4,
-                                16,
-                                12 + MediaQuery.paddingOf(context).bottom,
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  _buildBotonAccion(),
-                                  if (_estadoUiEfectivo != 'en_curso' &&
-                                      _estadoUiEfectivo != 'finalizado' &&
-                                      _estadoUiEfectivo != 'cancelado') ...[
-                                    const SizedBox(height: 8),
-                                    _buildBotonCancelarCompacto(),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
+                        child: ConductorServicioBottomPanel(
+                          servicio: widget.servicio,
+                          estadoUi: _estadoUiEfectivo,
+                          nombrePasajero: _getNombrePasajero(),
+                          fotoPasajeroUrl: _getFotoPasajero(),
+                          onLlamar: _llamarPasajero,
+                          onChat: _abrirChatPasajero,
+                          onAccionPrincipal: _onPanelAccionPrincipal,
+                          onCancelar: _mostrarDialogoCancelacion,
+                          isLoading: _isLoading,
                         ),
                       ),
                     ],
@@ -1321,305 +1122,24 @@ class _ConductorServicioActivoScreenState
     );
   }
 
-  Widget _buildBarraPasajeroCompacta() {
-    final fotoUrl = _getFotoPasajero();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Row(
-      children: [
-        if (fotoUrl != null && fotoUrl.isNotEmpty)
-          CircleAvatar(
-            radius: 22,
-            backgroundImage: NetworkImage(fotoUrl),
-            onBackgroundImageError: (_, _) {},
-          )
-        else
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: AppColors.primary,
-            child: const Icon(Icons.person, color: Colors.white, size: 24),
-          ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            _getNombrePasajero(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-          ),
-        ),
-        _buildAccionRapida(
-          icon: Iconsax.call,
-          color: AppColors.green,
-          onTap: _llamarPasajero,
-          tooltip: 'Llamar',
-        ),
-        const SizedBox(width: 6),
-        _buildAccionRapida(
-          icon: Iconsax.messages_copy,
-          color: AppColors.accent,
-          onTap: _abrirChatPasajero,
-          tooltip: 'Mensaje',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAccionRapida({
-    required IconData icon,
-    required Color color,
-    required VoidCallback onTap,
-    required String tooltip,
-  }) {
-    return Material(
-      color: color.withValues(alpha: 0.14),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Tooltip(
-          message: tooltip,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Icon(icon, color: color, size: 24),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRutaUnificada() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final enCurso = _estadoUiEfectivo == 'en_curso';
-    final llegue = _estadoUiEfectivo == 'llegue';
-    final soloDestino = enCurso || llegue;
-    final recogidaActiva = !soloDestino;
-
-    final etiqueta = enCurso
-        ? 'VIAJE EN CURSO'
-        : (llegue ? 'ESPERANDO PASAJERO' : 'IR A RECOGIDA');
-
-    final nombreRecogida = SolicitudDisplayHelper.pickupName(widget.servicio);
-    final nombreDestino =
-        SolicitudDisplayHelper.destinationName(widget.servicio);
-    final subtituloRecogida =
-        SolicitudDisplayHelper.pickupSubtitle(widget.servicio);
-    final subtituloDestino =
-        SolicitudDisplayHelper.destinationSubtitle(widget.servicio);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.black.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: (soloDestino ? AppColors.green : AppColors.accent)
-              .withValues(alpha: 0.35),
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: soloDestino ? AppColors.green : AppColors.accent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              etiqueta,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (!soloDestino) ...[
-            _buildParadaRuta(
-              icon: Iconsax.location_add,
-              label: 'RECOGIDA',
-              nombre: nombreRecogida,
-              subtitulo: subtituloRecogida,
-              color: AppColors.accent,
-              activa: recogidaActiva,
-              isDark: isDark,
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 11, top: 6, bottom: 6),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  width: 2,
-                  height: 18,
-                  color: Colors.grey.withValues(alpha: 0.35),
-                ),
-              ),
-            ),
-            _buildParadaRuta(
-              icon: Iconsax.location,
-              label: 'DESTINO',
-              nombre: nombreDestino,
-              subtitulo: subtituloDestino,
-              color: AppColors.green,
-              activa: false,
-              resaltada: true,
-              isDark: isDark,
-            ),
-          ] else
-            _buildParadaRuta(
-              icon: Iconsax.location,
-              label: 'DESTINO',
-              nombre: nombreDestino,
-              subtitulo: subtituloDestino,
-              color: AppColors.green,
-              activa: true,
-              isDark: isDark,
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildParadaRuta({
-    required IconData icon,
-    required String label,
-    required String nombre,
-    required String subtitulo,
-    required Color color,
-    required bool activa,
-    required bool isDark,
-    bool resaltada = false,
-  }) {
-    final mostrarGrande = activa;
-    final bordeVisible = activa || resaltada;
-
-    return Container(
-      padding: EdgeInsets.all(bordeVisible ? 12 : 0),
-      decoration: bordeVisible
-          ? BoxDecoration(
-              color: color.withValues(alpha: isDark ? 0.14 : 0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: color.withValues(alpha: activa ? 0.55 : 0.35),
-                width: activa ? 2 : 1.2,
-              ),
-            )
-          : null,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: mostrarGrande ? 22 : 18, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: color,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  nombre,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: mostrarGrande ? 28 : 16,
-                    fontWeight: mostrarGrande ? FontWeight.w900 : FontWeight.w700,
-                    height: 1.12,
-                    color: activa
-                        ? (isDark ? Colors.white : Colors.black87)
-                        : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
-                  ),
-                ),
-                if (subtitulo.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitulo,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: mostrarGrande ? 14 : 12,
-                      fontWeight: FontWeight.w500,
-                      height: 1.25,
-                      color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBotonCancelarCompacto() {
-    return TextButton.icon(
-      onPressed: _mostrarDialogoCancelacion,
-      icon: Icon(Iconsax.close_circle, color: Colors.red.shade600, size: 20),
-      label: Text(
-        'Cancelar servicio',
-        style: TextStyle(
-          color: Colors.red.shade600,
-          fontWeight: FontWeight.w700,
-          fontSize: 14,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBotonAccion() {
+  void _onPanelAccionPrincipal() {
     final estado = _estadoUiEfectivo;
-    String texto;
-    String proximoEstado;
-    IconData icono;
-
+    String? proximoEstado;
     switch (estado) {
       case 'aceptado':
       case 'en_camino':
-        texto = 'LLEGUÉ AL PUNTO DE RECOGIDA';
         proximoEstado = 'llegue';
-        icono = Iconsax.tick_circle;
         break;
       case 'llegue':
-        texto = 'INICIAR VIAJE';
         proximoEstado = 'en_curso';
-        icono = Iconsax.play_circle;
         break;
       case 'en_curso':
-        texto = 'FINALIZAR VIAJE';
         proximoEstado = 'finalizado';
-        icono = Iconsax.flag;
         break;
-      default:
-        return const SizedBox();
     }
-
-    return StandardButton(
-      text: texto,
-      icon: icono,
-      onPressed: () => _cambiarEstado(proximoEstado),
-      isLoading: _isLoading,
-      width: double.infinity,
-      height: 60,
-    );
+    if (proximoEstado != null) {
+      unawaited(_cambiarEstado(proximoEstado));
+    }
   }
 
   Future<void> _mostrarDialogoCancelacion() async {

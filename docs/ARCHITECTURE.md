@@ -39,3 +39,29 @@ lib/
 - `dart format lib test`
 - `dart analyze`
 - `flutter test`
+
+## Producción
+
+### Arranque
+- `AppBootstrap.installErrorHandlers()` en `main.dart` (errores Flutter y async en release).
+- `AppBootstrap.logConfigWarnings()` valida `.env` (`BASE_URL`, Maps, Pusher).
+
+### Capas por feature
+| Capa | Uso |
+|------|-----|
+| `presentation/` | Widgets, `Scaffold`, navegación |
+| `controllers/` | Estado + Pusher + mapa sin UI |
+| `services/` | API, geocoding, enriquecimiento |
+| `utils/` | Funciones puras (parseo, estados) |
+
+### Archivos clave refactor
+- Conductor home: `conductor_solicitud_*`, `conductor_session_helper`
+- Viaje activo: `conductor_servicio_map_service`, `conductor_servicio_pusher_controller`, `conductor_servicio_state_transitions`
+- Pasajero home: `pasajero_nearby_drivers_controller`, `pasajero_active_service_controller`
+
+### Checklist release
+1. `.env` de producción (sin `tu-servidor.com` placeholder).
+2. `flutter build apk/appbundle` o `flutter build ios --release`.
+3. Probar: turno conductor, solicitud, viaje completo, pasajero pide viaje.
+4. Permisos: ubicación, notificaciones, overlay (Android conductor).
+5. Revisar `docs/play_store_privacy_checklist.md`.

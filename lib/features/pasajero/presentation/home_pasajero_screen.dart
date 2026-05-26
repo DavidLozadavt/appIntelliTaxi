@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -19,18 +20,11 @@ import 'package:intellitaxi/features/pasajero/services/repeat_trip_service.dart'
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/pasajero/widgets/driver_offer_card.dart';
-import 'package:intellitaxi/config/pusher_config.dart';
-import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 import 'package:intellitaxi/features/rides/presentation/active_service_screen.dart';
 import 'package:intellitaxi/features/pasajero/presentation/pasajero_esperando_conductor_screen.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
-import 'package:intellitaxi/features/conductor/services/conductores_service.dart';
-import 'package:intellitaxi/features/conductor/services/pusher_conductores_service.dart';
 // import 'package:intellitaxi/features/pasajero/travel_assistant/travel_assistant_screen.dart';
-import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart';
 import 'package:intellitaxi/features/pasajero/widgets/no_drivers_available_dialog.dart';
-import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
-import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/features/pasajero/widgets/ride_request_floating_cta.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -39,7 +33,12 @@ import 'package:intellitaxi/core/services/service_navigation_helper.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
+import 'package:intellitaxi/features/pasajero/controllers/pasajero_active_service_controller.dart';
+import 'package:intellitaxi/features/pasajero/controllers/pasajero_nearby_drivers_controller.dart';
+import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search_controller.dart';
+import 'package:intellitaxi/features/pasajero/controllers/pasajero_pusher_offers_controller.dart';
 import 'package:intellitaxi/features/pasajero/utils/pasajero_location_permission_helper.dart';
+import 'package:intellitaxi/features/pasajero/widgets/pasajero_home_ride_sheet.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -92,10 +91,10 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _isSearchingDestination = false;
   bool _isSubmittingRide = false;
   bool _isDrawingRoute = false;
-  Timer? _originSearchDebounce;
-  Timer? _destinationSearchDebounce;
-  int _originSearchRequestId = 0;
-  int _destinationSearchRequestId = 0;
+  late final PasajeroPlacesSearchController _placesSearch;
+  final PasajeroPusherOffersController _pusherOffers =
+      PasajeroPusherOffersController();
+  bool _isProcessingOffer = false;
 
   // Tipo de servicio: 'taxi' o 'domicilio'
   String _serviceType = 'taxi';
@@ -111,24 +110,18 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _showOffer = false;
   final bool _enableGlobalOffersChannel = false;
 
-  // Gestor de servicio activo
-  final ActiveServiceManager _activeServiceManager = ActiveServiceManager();
+  final PasajeroActiveServiceController _activeServiceController =
+      PasajeroActiveServiceController();
 
   // Referencia segura al ScaffoldMessenger
   ScaffoldMessengerState? _scaffoldMessenger;
 
-  // Conductores disponibles
-  final ConductoresService _conductoresService = ConductoresService();
-  PusherConductoresService? _pusherConductoresService;
-  final Map<int, Conductor> _conductoresDisponibles = {};
-  final Map<int, LatLng> _driverDisplayedPositions = {};
-  Conductor? _selectedDirectDriver;
-  BitmapDescriptor? _driverMarkerIcon;
+  // Conductores disponibles en mapa
+  final PasajeroNearbyDriversController _nearbyDrivers =
+      PasajeroNearbyDriversController();
   final bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
   Ticker? _driverMarkersTicker;
   Timer? _driversRefreshTimer;
-  static const double _driverLerpFactor = 0.2;
-  static const double _driverSnapDistanceMeters = 2.0;
   bool _isDisposed = false;
   String _currentLocationName = 'Mi ubicación';
   String _currentLocationAddress = 'Mi ubicación actual';
@@ -160,8 +153,11 @@ class _HomePasajeroState extends State<HomePasajero>
   @override
   void initState() {
     super.initState();
+    _placesSearch = PasajeroPlacesSearchController(placesService: _placesService);
     _createUserMarkerIcon();
-    _createDriverMarkerIcon();
+    unawaited(_nearbyDrivers.loadDriverMarkerIcon().then((_) {
+      if (mounted) _setStateSafe(() {});
+    }));
     _createDestinationPointIcon();
     _initializeLocation();
     _setupPusherOffers();
@@ -178,70 +174,9 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   void _onDriverMarkersTick(Duration elapsed) {
-    if (!mounted || _isDisposed || !_showDrivers) return;
-    if (_conductoresDisponibles.isEmpty) {
-      if (_driverDisplayedPositions.isNotEmpty) {
-        _driverDisplayedPositions.clear();
-        _syncMarkersOnMap();
-      }
-      return;
-    }
-
-    var changed = false;
-
-    for (final entry in _conductoresDisponibles.entries) {
-      final id = entry.key;
-      final target = LatLng(entry.value.lat, entry.value.lng);
-      final current = _driverDisplayedPositions[id];
-
-      if (current == null) {
-        _driverDisplayedPositions[id] = target;
-        changed = true;
-        continue;
-      }
-
-      final movedMeters = Geolocator.distanceBetween(
-        current.latitude,
-        current.longitude,
-        target.latitude,
-        target.longitude,
-      );
-
-      if (movedMeters < _driverSnapDistanceMeters) {
-        if (current.latitude != target.latitude ||
-            current.longitude != target.longitude) {
-          _driverDisplayedPositions[id] = target;
-          changed = true;
-        }
-        continue;
-      }
-
-      final lat =
-          current.latitude +
-          (target.latitude - current.latitude) * _driverLerpFactor;
-      final lng =
-          current.longitude +
-          (target.longitude - current.longitude) * _driverLerpFactor;
-      _driverDisplayedPositions[id] = LatLng(lat, lng);
-      changed = true;
-    }
-
-    for (final id in _driverDisplayedPositions.keys.toList()) {
-      if (!_conductoresDisponibles.containsKey(id)) {
-        _driverDisplayedPositions.remove(id);
-        changed = true;
-      }
-    }
-
-    if (changed) {
+    if (!mounted || _isDisposed) return;
+    if (_nearbyDrivers.tickMarkerAnimation(showDrivers: _showDrivers)) {
       _syncMarkersOnMap();
-    }
-  }
-
-  void _seedDriverDisplayedPositions() {
-    for (final entry in _conductoresDisponibles.entries) {
-      final target = LatLng(entry.value.lat, entry.value.lng);
-      _driverDisplayedPositions[entry.key] = target;
     }
   }
 
@@ -285,38 +220,22 @@ class _HomePasajeroState extends State<HomePasajero>
   void dispose() {
     _isDisposed = true;
 
-    // Limpiar callbacks PRIMERO para evitar llamadas con context inválido
-    _activeServiceManager.onServiceUpdated = null;
-    _activeServiceManager.onServiceCompleted = null;
+    _activeServiceController.dispose();
 
     // Limpiar referencia al ScaffoldMessenger
     _scaffoldMessenger = null;
 
-    // Limpiar ActiveServiceManager
-    _activeServiceManager.cleanup();
-
-    // Desuscribirse de Pusher
-    if (_enableGlobalOffersChannel) {
-      PusherService.unsubscribeSecondary('ofertas-globales');
-      PusherService.unregisterEventHandlerSecondary(
-        'ofertas-globales:nueva-oferta',
-      );
-    }
-
-    PusherService.unsubscribeSecondary('solicitudes-servicio');
-    for (final eventName in const ['nueva-solicitud', 'nueva_solicitud']) {
-      PusherService.unregisterEventHandlerSecondary(
-        'solicitudes-servicio:$eventName',
-      );
-    }
+    _pusherOffers.unsubscribeAll(
+      includeGlobalOffers: _enableGlobalOffersChannel,
+    );
+    _placesSearch.dispose();
 
     // Remover listeners de los controladores de texto ANTES de disponer
     _originController.removeListener(_onOriginChanged);
     _destinationController.removeListener(_onDestinationChanged);
     RepeatTripService.instance.removeListener(_onRepeatTripRequested);
 
-    // Desconectar servicio de conductores
-    _pusherConductoresService?.disconnect();
+    _nearbyDrivers.dispose();
 
     _mapController?.dispose();
     _sheetController.removeListener(_onSheetControllerChanged);
@@ -327,8 +246,6 @@ class _HomePasajeroState extends State<HomePasajero>
     _originController.dispose();
     _destinationController.dispose();
     _destinationFocusNode.dispose();
-    _originSearchDebounce?.cancel();
-    _destinationSearchDebounce?.cancel();
     _placesService.clearAutocompleteSession();
 
     super.dispose();
@@ -417,243 +334,91 @@ class _HomePasajeroState extends State<HomePasajero>
 
   // ========== MÉTODOS DE SERVICIO ACTIVO ==========
 
-  /// Verifica si hay un servicio activo al iniciar la app
   Future<void> _checkActiveService() async {
-    try {
-      AppLogger.d('🔍 Verificando servicio activo al iniciar...');
+    final servicio = await _activeServiceController.fetchActiveServiceIfAny();
+    if (servicio == null || !mounted) return;
 
-      final servicio = await _activeServiceManager.getActiveService();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ActiveServiceScreen(
+          servicio: servicio,
+          onServiceCompleted: () async {
+            if (!mounted) return;
+            Navigator.of(context).pop();
+            await Future.delayed(const Duration(seconds: 2));
+            if (mounted) await _loadAvailableDrivers();
+          },
+        ),
+      ),
+    );
 
-      if (servicio != null && servicio.isActivo) {
-        AppLogger.d('✅ Servicio activo encontrado: ${servicio.id}');
-        AppLogger.d('📊 Estado: ${servicio.estado.estado}');
-
-        // Navegar a pantalla de servicio activo
-        if (!mounted) return;
-
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ActiveServiceScreen(
-              servicio: servicio,
-              onServiceCompleted: () async {
-                // Cuando el servicio se complete, volver al home
-                if (mounted) {
-                  Navigator.of(context).pop();
-
-                  // Esperar un momento para que el backend actualice el estado del conductor
-                  await Future.delayed(const Duration(seconds: 2));
-
-                  // Recargar conductores disponibles después de completar el servicio
-                  if (mounted) {
-                    AppLogger.d(
-                      '🔄 Recargando conductores disponibles al volver de servicio activo...',
-                    );
-                    _loadAvailableDrivers();
-                  }
-                }
-              },
-            ),
-          ),
-        );
-
-        // Iniciar polling para actualizar el servicio
-        _startServiceTracking(servicio.id);
-      } else {
-        AppLogger.d('ℹ️ No hay servicio activo');
-      }
-    } catch (e) {
-      AppLogger.d('⚠️ Error verificando servicio activo: $e');
-    }
+    _startServiceTracking(servicio.id);
   }
 
-  /// Inicia el tracking del servicio activo
   void _startServiceTracking(int servicioId) {
-    // Configurar callbacks
-    _activeServiceManager.onServiceUpdated = (servicio) {
-      if (!mounted) return;
-      AppLogger.d('🔄 Servicio actualizado: ${servicio.estado.estado}');
-      // TODO: Actualizar UI si es necesario
-    };
-
-    _activeServiceManager.onServiceCompleted = () {
-      AppLogger.d('🏁 Servicio completado/cancelado');
-      if (!mounted) return;
-
-      // Usar WidgetsBinding para asegurar que se ejecute después del frame actual
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (mounted) {
+    _activeServiceController.startTracking(
+      servicioId: servicioId,
+      onUpdated: (servicio) {
+        if (!mounted) return;
+        AppLogger.d('🔄 Servicio actualizado: ${servicio.estado.estado}');
+      },
+      onCompleted: () {
+        if (!mounted) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
           Navigator.of(context).popUntil((route) => route.isFirst);
-
-          // Esperar un momento para que el backend actualice el estado del conductor
           await Future.delayed(const Duration(seconds: 2));
-
-          // Recargar conductores disponibles después de completar el servicio
-          if (mounted) {
-            AppLogger.d(
-              '🔄 Recargando conductores disponibles después de finalizar servicio...',
-            );
-            _loadAvailableDrivers();
-          }
-        }
-      });
-    };
-
-    // Iniciar polling
-    _activeServiceManager.startPolling();
-
-    // Suscribirse a eventos de Pusher
-    _activeServiceManager.subscribeToServiceEvents(servicioId);
+          if (mounted) await _loadAvailableDrivers();
+        });
+      },
+    );
   }
 
   // ========== MÉTODOS DE CONDUCTORES DISPONIBLES ==========
 
-  /// Configura el servicio de Pusher para conductores
   Future<void> _setupPusherConductores() async {
-    try {
-      // Por ahora usar empresa ID = 1 (puedes obtenerlo del backend si es necesario)
-      const idEmpresa = 1;
-
-      AppLogger.d('🚗 Configurando Pusher para conductores...');
-      AppLogger.d('   🏢 Empresa ID: $idEmpresa');
-
-      _pusherConductoresService = PusherConductoresService(
-        idEmpresa: idEmpresa,
-      );
-
-      // Configurar callbacks
-      _pusherConductoresService!.onDriverUpdate = (conductor) {
+    await _nearbyDrivers.connectPusher(
+      onDriverUpdate: (conductor) {
         if (!mounted) return;
-        _updateDriverMarker(conductor);
-      };
-
-      _pusherConductoresService!.onDriverOffline = (conductorId) {
-        if (!mounted) return;
-        _removeDriverMarker(conductorId);
-      };
-
-      // Conectar al canal
-      await _pusherConductoresService!.connect();
-
-      AppLogger.d('✅ Pusher conductores configurado');
-    } catch (e) {
-      AppLogger.d('❌ Error configurando Pusher conductores: $e');
-    }
-  }
-
-  /// Carga los conductores disponibles inicialmente
-  Future<void> _loadAvailableDrivers({bool silent = false}) async {
-    if (_currentPosition == null) {
-      return;
-    }
-
-    try {
-      final conductores = await _conductoresService.getConductoresDisponibles(
-        lat: _currentPosition!.latitude,
-        lng: _currentPosition!.longitude,
-        radioKm: 15,
-        maxAgeMinutes: 20,
-      );
-
-      if (!mounted) return;
-
-      final receivedIds = conductores.map((c) => c.conductorId).toSet();
-      for (final conductor in conductores) {
-        _conductoresDisponibles[conductor.conductorId] = conductor;
-      }
-
-      for (final id in _conductoresDisponibles.keys.toList()) {
-        if (!receivedIds.contains(id)) {
-          _conductoresDisponibles.remove(id);
-          _driverDisplayedPositions.remove(id);
-          if (_selectedDirectDriver?.conductorId == id) {
-            _selectedDirectDriver = null;
-          }
+        _nearbyDrivers.applyDriverUpdate(
+          conductor,
+          showDrivers: _showDrivers,
+        );
+        if (_nearbyDrivers.displayedPositions.containsKey(
+          conductor.conductorId,
+        )) {
+          _syncMarkersOnMap();
         }
-      }
-
-      _seedDriverDisplayedPositions();
-      _syncMarkersOnMap();
-
-      if (!silent) {
-        AppLogger.d('✅ ${conductores.length} conductores en mapa');
-      }
-    } catch (e) {
-      if (!silent) {
-        AppLogger.d('❌ Error cargando conductores: $e');
-      }
-    }
+      },
+      onDriverOffline: (conductorId) {
+        if (!mounted) return;
+        _nearbyDrivers.removeDriver(conductorId);
+        _syncMarkersOnMap();
+      },
+    );
   }
 
-  /// Actualiza datos del conductor (Pusher); el movimiento lo anima el ticker.
-  void _updateDriverMarker(Conductor conductor) {
-    if (!_showDrivers) return;
-    if (conductor.estado?.toLowerCase() == 'desconectado') {
-      _removeDriverMarker(conductor.conductorId);
-      return;
-    }
-    if (_selectedDirectDriver?.conductorId == conductor.conductorId &&
-        conductor.estado?.toLowerCase() != 'disponible') {
-      _selectedDirectDriver = null;
-    }
-    _conductoresDisponibles[conductor.conductorId] = conductor;
-    if (!_driverDisplayedPositions.containsKey(conductor.conductorId)) {
-      _driverDisplayedPositions[conductor.conductorId] = LatLng(
-        conductor.lat,
-        conductor.lng,
-      );
-      _syncMarkersOnMap();
-    }
-  }
-
-  /// Elimina el marcador de un conductor
-  void _removeDriverMarker(int conductorId) {
-    if (_selectedDirectDriver?.conductorId == conductorId) {
-      _selectedDirectDriver = null;
-    }
-    _conductoresDisponibles.remove(conductorId);
-    _driverDisplayedPositions.remove(conductorId);
-    _syncMarkersOnMap();
-  }
-
-  Set<Marker> _buildDriverMarkers() {
-    if (!_showDrivers) return {};
-
-    final markers = <Marker>{};
-    for (final conductor in _conductoresDisponibles.values) {
-      final position =
-          _driverDisplayedPositions[conductor.conductorId] ??
-          LatLng(conductor.lat, conductor.lng);
-      markers.add(
-        Marker(
-          markerId: MarkerId('driver_${conductor.conductorId}'),
-          position: position,
-          icon: conductor.estado?.toLowerCase() == 'ocupado'
-              ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)
-              : (_driverMarkerIcon ??
-                    BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueGreen,
-                    )),
-          infoWindow: InfoWindow(
-            title: '🚗 ${conductor.nombre}',
-            snippet:
-                '${conductor.estado?.toLowerCase() == 'ocupado' ? 'Ocupado • ' : ''}'
-                '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
-                '${conductor.vehiculo?.descripcion ?? "Sin vehículo"}',
-          ),
-          onTap: () => _onDriverMarkerTap(conductor),
-          zIndexInt: 1,
-        ),
-      );
-    }
-    return markers;
+  Future<void> _loadAvailableDrivers({bool silent = false}) async {
+    if (_currentPosition == null) return;
+    await _nearbyDrivers.loadFromApi(
+      lat: _currentPosition!.latitude,
+      lng: _currentPosition!.longitude,
+      silent: silent,
+    );
+    if (mounted) _syncMarkersOnMap();
   }
 
   /// Recompone marcadores del mapa (conductores animados + ruta + resto).
   void _syncMarkersOnMap() {
     if (!mounted || _isDisposed) return;
 
-    final newMarkers = <Marker>{..._buildDriverMarkers()};
+    final newMarkers = <Marker>{
+      ..._nearbyDrivers.buildDriverMarkers(
+        showDrivers: _showDrivers,
+        onTap: _onDriverMarkerTap,
+      ),
+    };
 
     if (_routeInfo != null &&
         _selectedOrigin != null &&
@@ -726,26 +491,6 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   void _updateAllDriverMarkers() => _syncMarkersOnMap();
-
-  /// Crea el icono del marcador para conductores
-  Future<void> _createDriverMarkerIcon() async {
-    try {
-      // Usar la imagen personalizada desde assets
-      final icon = await BitmapDescriptor.asset(
-        const ImageConfiguration(size: Size(48, 48)),
-        'assets/images/marker.png',
-      );
-
-      _setStateSafe(() => _driverMarkerIcon = icon);
-    } catch (e) {
-      AppLogger.d('Error creando icono de conductor: $e');
-      _setStateSafe(
-        () => _driverMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueGreen,
-        ),
-      );
-    }
-  }
 
   /// Crea un icono tipo punto para destino (sin usar pines por defecto de Google)
   Future<void> _createDestinationPointIcon() async {
@@ -864,7 +609,53 @@ class _HomePasajeroState extends State<HomePasajero>
               snapAnimationDuration: const Duration(milliseconds: 320),
               snapSizes: const [_sheetMinSize, _sheetMidSize, _sheetMaxSize],
               builder: (context, scrollController) {
-                return _buildRideBottomSheet(scrollController);
+                return PasajeroHomeRideSheet(
+                  scrollController: scrollController,
+                  sheetExtent: _sheetExtent,
+                  serviceType: _serviceType,
+                  selectedOrigin: _selectedOrigin,
+                  selectedDestination: _selectedDestination,
+                  selectedDestinationArea: _selectedDestinationArea,
+                  routeInfo: _routeInfo,
+                  currentLocationName: _currentLocationName,
+                  originController: _originController,
+                  destinationController: _destinationController,
+                  destinationFocusNode: _destinationFocusNode,
+                  originPredictions: _originPredictions,
+                  destinationPredictions: _destinationPredictions,
+                  isSearchingOrigin: _isSearchingOrigin,
+                  isSearchingDestination: _isSearchingDestination,
+                  recentDestinations: _recentDestinations,
+                  destinationSummaryText: _destinationSummaryText,
+                  onToggleSheet: _toggleSheet,
+                  onOpenQuickRequest: _openQuickRequestFlow,
+                  onServiceTypeChanged: (type) {
+                    _setStateSafe(() {
+                      _serviceType = type;
+                      _clearRoute();
+                    });
+                  },
+                  onSelectOrigin: _selectOrigin,
+                  onSelectDestination: _selectDestination,
+                  onClearOrigin: () {
+                    _setStateSafe(() {
+                      _originController.clear();
+                      _selectedOrigin = null;
+                      _originPredictions = [];
+                    });
+                  },
+                  onClearDestination: () {
+                    _setStateSafe(() {
+                      _destinationController.clear();
+                      _selectedDestination = null;
+                      _selectedDestinationArea = null;
+                      _destinationPredictions = [];
+                      _clearRoute();
+                    });
+                  },
+                  onRecentDestinationTap: _applyDestinationLocation,
+                  onSaveFavoriteDestination: _saveFavoriteDestination,
+                );
               },
             ),
           ),
@@ -901,430 +692,6 @@ class _HomePasajeroState extends State<HomePasajero>
           ),
       ],
     );
-  }
-
-  Widget _buildRideBottomSheet(ScrollController scrollController) {
-    return RepaintBoundary(
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 18,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            _buildSheetDragHandle(),
-            Expanded(
-              child: ListView(
-                controller: scrollController,
-                physics: const ClampingScrollPhysics(),
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                children: [
-                  ValueListenableBuilder<double>(
-                    valueListenable: _sheetExtent,
-                    builder: (context, extent, _) {
-                      final showFormOnly = extent >= 0.24;
-                      if (showFormOnly) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            ..._buildTripFormChildren(showInlineActions: false),
-                            const SizedBox(height: 88),
-                          ],
-                        );
-                      }
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildMinimizedContent(),
-                          const SizedBox(height: 72),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSheetDragHandle() {
-    return GestureDetector(
-      onTap: _toggleSheet,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10, bottom: 8),
-        child: Center(
-          child: Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMinimizedContent() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final originText = _selectedOrigin?.name ?? _currentLocationName;
-    final hasDestination = _selectedDestination != null;
-    final destinationText = hasDestination
-        ? _destinationSummaryText(_selectedDestination!)
-        : (_serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?');
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: _openQuickRequestFlow,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.grey.shade900 : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: hasDestination
-                ? AppColors.primary.withValues(alpha: 0.25)
-                : (isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : AppColors.primary.withValues(alpha: 0.12)),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (hasDestination) ...[
-              Text(
-                destinationText,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  height: 1.15,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-              ),
-              if (_routeInfo != null) ...[
-                const SizedBox(height: 8),
-                RouteInfoCard(routeInfo: _routeInfo!, compact: true),
-              ],
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Icon(
-                    Icons.my_location,
-                    size: 14,
-                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Desde: $originText',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.edit_outlined,
-                    size: 16,
-                    color: AppColors.primary.withValues(alpha: 0.8),
-                  ),
-                ],
-              ),
-            ] else ...[
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.search,
-                      color: AppColors.primary,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          destinationText,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Desde: $originText',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark
-                                ? Colors.grey.shade500
-                                : Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.keyboard_arrow_up,
-                    color: AppColors.primary.withValues(alpha: 0.8),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSelectedDestinationSummary() {
-    final destination = _selectedDestination;
-    if (destination == null) return const SizedBox.shrink();
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final area = _selectedDestinationArea?.trim();
-    final hasArea = area != null && area.isNotEmpty;
-    final address = destination.address.trim();
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : AppColors.primary.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: isDark ? 0.16 : 0.10),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.location_on,
-              color: AppColors.primary,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  destination.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 14,
-                  ),
-                ),
-                if (hasArea) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    'Barrio: $area',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                ],
-                if (address.isNotEmpty && address != destination.name) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    address,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isDark
-                          ? Colors.grey.shade300
-                          : Colors.grey.shade700,
-                      fontSize: 12,
-                      height: 1.25,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _buildTripFormChildren({required bool showInlineActions}) {
-    return [
-      ServiceTypeSelector(
-        selectedType: _serviceType,
-        onTypeChanged: (type) {
-          _setStateSafe(() {
-            _serviceType = type;
-            _clearRoute();
-          });
-        },
-      ),
-
-      const SizedBox(height: 16),
-
-      // Destino primero (flujo inDrive)
-      LocationSearchField(
-        controller: _destinationController,
-        label: _serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?',
-        icon: Icons.location_on,
-        iconColor: AppColors.primary,
-        focusNode: _destinationFocusNode,
-        predictions: _destinationPredictions,
-        isSearching: _isSearchingDestination,
-        onSelectPrediction: _selectDestination,
-        onClear: () {
-          _setStateSafe(() {
-            _destinationController.clear();
-            _selectedDestination = null;
-            _selectedDestinationArea = null;
-            _destinationPredictions = [];
-            _clearRoute();
-          });
-        },
-      ),
-
-      if (_recentDestinations.isNotEmpty) ...[
-        const SizedBox(height: 12),
-        _buildRecentDestinationChips(),
-      ],
-
-      const SizedBox(height: 14),
-
-      // Origen (secundario, ya viene del GPS)
-      LocationSearchField(
-        controller: _originController,
-        label: 'Recogida en',
-        icon: Icons.my_location,
-        iconColor: AppColors.green,
-        predictions: _originPredictions,
-        isSearching: _isSearchingOrigin,
-        onSelectPrediction: _selectOrigin,
-        onClear: () {
-          _setStateSafe(() {
-            _originController.clear();
-            _selectedOrigin = null;
-            _originPredictions = [];
-          });
-        },
-      ),
-
-      if (_selectedDestination != null && _routeInfo == null) ...[
-        const SizedBox(height: 10),
-        _buildSelectedDestinationSummary(),
-      ],
-
-      if (_selectedDestination != null &&
-          _serviceType != 'taxi' &&
-          _routeInfo == null) ...[
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _saveFavoriteDestination('home'),
-                icon: const Icon(Icons.home_outlined, size: 18),
-                label: const Text('Guardar Casa'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _saveFavoriteDestination('work'),
-                icon: const Icon(Icons.work_outline, size: 18),
-                label: const Text('Guardar Trabajo'),
-              ),
-            ),
-          ],
-        ),
-      ],
-
-      if (_routeInfo != null) ...[
-        const SizedBox(height: 14),
-        RouteInfoCard(routeInfo: _routeInfo!),
-      ],
-
-      if (showInlineActions &&
-          _serviceType != 'taxi' &&
-          _selectedOrigin != null &&
-          _selectedDestination != null &&
-          _routeInfo == null)
-        Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton.icon(
-              onPressed: _isDrawingRoute ? null : _drawRoute,
-              icon: const Icon(Icons.route),
-              label: Text(
-                _isDrawingRoute ? 'Calculando ruta...' : 'Calcular ruta',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepOrange,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-          ),
-        ),
-
-      const SizedBox(height: 16),
-    ];
   }
 
   Widget _buildFloatingRequestCta() {
@@ -1370,36 +737,6 @@ class _HomePasajeroState extends State<HomePasajero>
       onPressed: onPressed,
       isLoading: isLoading,
       color: color,
-    );
-  }
-
-  Widget _buildRecentDestinationChips() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Recientes',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: _recentDestinations
-                .map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ActionChip(
-                      label: Text(item.name),
-                      avatar: const Icon(Icons.history, size: 16),
-                      onPressed: () => _applyDestinationLocation(item),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-      ],
     );
   }
 
@@ -1770,7 +1107,7 @@ class _HomePasajeroState extends State<HomePasajero>
       position: position,
       icon:
           _destinationPointIcon ??
-          _driverMarkerIcon ??
+          _nearbyDrivers.driverMarkerIcon ??
           BitmapDescriptor.defaultMarker,
       infoWindow: InfoWindow(title: 'Destino seleccionado', snippet: snippet),
       draggable: false,
@@ -2019,61 +1356,36 @@ class _HomePasajeroState extends State<HomePasajero>
   void _onOriginChanged() {
     if (!mounted) return;
     final query = _originController.text.trim();
-    _originSearchDebounce?.cancel();
-
-    if (query.isEmpty) {
-      _setStateSafe(() {
-        _originPredictions = [];
-        _isSearchingOrigin = false;
-      });
-      if (_destinationController.text.trim().isEmpty) {
-        _placesService.clearAutocompleteSession();
-      }
-      return;
-    }
-
-    _setStateSafe(() => _isSearchingOrigin = true);
-    final requestId = ++_originSearchRequestId;
-    _originSearchDebounce = Timer(const Duration(milliseconds: 350), () async {
-      final predictions = await _placesService.getAutocompletePredictions(
-        query,
-      );
-      if (!mounted || requestId != _originSearchRequestId) return;
-      _setStateSafe(() {
-        _originPredictions = predictions;
-        _isSearchingOrigin = false;
-      });
-    });
+    _placesSearch.clearSessionIfBothEmpty(
+      originQuery: query,
+      destinationQuery: _destinationController.text.trim(),
+    );
+    _placesSearch.searchOrigin(
+      query: query,
+      onResult: (predictions, searching) {
+        if (!mounted) return;
+        _setStateSafe(() {
+          _originPredictions = predictions;
+          _isSearchingOrigin = searching;
+        });
+      },
+    );
   }
 
   void _onDestinationChanged() {
     if (!mounted) return;
     final query = _destinationController.text.trim();
-    _destinationSearchDebounce?.cancel();
-
-    if (query.isEmpty) {
-      _setStateSafe(() {
-        _destinationPredictions = [];
-        _isSearchingDestination = false;
-      });
-      if (_originController.text.trim().isEmpty) {
-        _placesService.clearAutocompleteSession();
-      }
-      return;
-    }
-
-    _setStateSafe(() => _isSearchingDestination = true);
-    final requestId = ++_destinationSearchRequestId;
-    _destinationSearchDebounce = Timer(
-      const Duration(milliseconds: 350),
-      () async {
-        final predictions = await _placesService.getAutocompletePredictions(
-          query,
-        );
-        if (!mounted || requestId != _destinationSearchRequestId) return;
+    _placesSearch.clearSessionIfBothEmpty(
+      originQuery: _originController.text.trim(),
+      destinationQuery: query,
+    );
+    _placesSearch.searchDestination(
+      query: query,
+      onResult: (predictions, searching) {
+        if (!mounted) return;
         _setStateSafe(() {
           _destinationPredictions = predictions;
-          _isSearchingDestination = false;
+          _isSearchingDestination = searching;
         });
       },
     );
@@ -2083,10 +1395,7 @@ class _HomePasajeroState extends State<HomePasajero>
     // Remover listener temporalmente
     _originController.removeListener(_onOriginChanged);
 
-    final details = await _placesService.getPlaceDetails(
-      prediction.placeId,
-      sessionToken: _placesService.currentAutocompleteSessionToken,
-    );
+    final details = await _placesSearch.resolvePlace(prediction);
 
     if (details != null && mounted) {
       _setStateSafe(() {
@@ -2116,10 +1425,7 @@ class _HomePasajeroState extends State<HomePasajero>
     // Remover listener temporalmente
     _destinationController.removeListener(_onDestinationChanged);
 
-    final details = await _placesService.getPlaceDetails(
-      prediction.placeId,
-      sessionToken: _placesService.currentAutocompleteSessionToken,
-    );
+    final details = await _placesSearch.resolvePlace(prediction);
 
     if (details != null && mounted) {
       final destination = TripLocation.fromPlaceDetails(
@@ -2353,8 +1659,8 @@ class _HomePasajeroState extends State<HomePasajero>
       return;
     }
 
-    final bool isDirectFlow = _selectedDirectDriver != null;
-    final Conductor? selectedConductor = _selectedDirectDriver;
+    final bool isDirectFlow = _nearbyDrivers.selectedDirectDriver != null;
+    final Conductor? selectedConductor = _nearbyDrivers.selectedDirectDriver;
 
     _setStateSafe(() => _isSubmittingRide = true);
 
@@ -2500,10 +1806,10 @@ class _HomePasajeroState extends State<HomePasajero>
 
   Future<void> _onDriverMarkerTap(Conductor conductor) async {
     final alreadySelected =
-        _selectedDirectDriver?.conductorId == conductor.conductorId;
+        _nearbyDrivers.selectedDirectDriver?.conductorId == conductor.conductorId;
 
     _setStateSafe(() {
-      _selectedDirectDriver = alreadySelected ? null : conductor;
+      _nearbyDrivers.selectedDirectDriver = alreadySelected ? null : conductor;
     });
 
     _showDriverSelectionToast(
@@ -2572,18 +1878,9 @@ class _HomePasajeroState extends State<HomePasajero>
   Future<void> _setupPusherRequestConfirmation() async {
     try {
       AppLogger.d('🚀 Configurando Pusher para confirmación de solicitudes...');
-
-      // Suscribirse al canal de solicitudes-servicio (conexión secundaria)
-      await PusherService.subscribeSecondary('solicitudes-servicio');
-
-      // Registrar handlers para variantes del evento
-      for (final eventName in const ['nueva-solicitud', 'nueva_solicitud']) {
-        PusherService.registerEventHandlerSecondary(
-          'solicitudes-servicio:$eventName',
-          _manejarNuevaSolicitud,
-        );
-      }
-
+      await _pusherOffers.subscribeRequestConfirmation(
+        onNuevaSolicitud: _manejarNuevaSolicitud,
+      );
       AppLogger.d(
         '✅ Pusher configurado - Esperando confirmación en canal solicitudes-servicio',
       );
@@ -2593,10 +1890,9 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   /// Maneja la llegada de la confirmación de solicitud creada
-  void _manejarNuevaSolicitud(dynamic data) {
+  void _manejarNuevaSolicitud(Map<String, dynamic> solicitudData) {
     AppLogger.d('🚕 _manejarNuevaSolicitud llamado en PASAJERO');
-    AppLogger.d('📦 Tipo de datos: ${data.runtimeType}');
-    AppLogger.d('📦 Datos recibidos: $data');
+    AppLogger.d('📦 Datos recibidos: $solicitudData');
 
     if (!mounted) {
       AppLogger.d('⚠️ Widget no montado, ignorando solicitud');
@@ -2604,21 +1900,6 @@ class _HomePasajeroState extends State<HomePasajero>
     }
 
     try {
-      Map<String, dynamic> solicitudData;
-
-      // Manejar diferentes tipos de datos
-      if (data is String) {
-        // Si viene como JSON string, parsearlo
-        solicitudData = Map<String, dynamic>.from(
-          const JsonDecoder().convert(data) as Map,
-        );
-      } else if (data is Map) {
-        solicitudData = Map<String, dynamic>.from(data);
-      } else {
-        AppLogger.d('⚠️ Tipo de datos no soportado: ${data.runtimeType}');
-        return;
-      }
-
       AppLogger.d('✅ Datos parseados correctamente');
       AppLogger.d('🔍 Contenido:');
       AppLogger.d('   - servicio_id: ${solicitudData['servicio_id']}');
@@ -2675,16 +1956,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
     try {
       AppLogger.d('🚀 Configurando Pusher para ofertas globales...');
-
-      // Suscribirse al canal de ofertas globales (conexión secundaria)
-      await PusherService.subscribeSecondary('ofertas-globales');
-
-      // Registrar el handler para nueva oferta
-      PusherService.registerEventHandlerSecondary(
-        'ofertas-globales:nueva-oferta',
-        _handleNewOffer,
-      );
-
+      await _pusherOffers.subscribeGlobalOffers(onNewOffer: _handleNewOffer);
       AppLogger.d(
         '✅ Pusher configurado - Esperando ofertas en canal ofertas-globales',
       );
@@ -2694,20 +1966,10 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   /// Maneja la llegada de una nueva contraoferta
-  void _handleNewOffer(dynamic data) {
+  void _handleNewOffer(Map<String, dynamic> offerData) {
     AppLogger.d('🎉 ¡Nueva contraoferta recibida!');
-    AppLogger.d('📦 Data tipo: ${data.runtimeType}');
-    AppLogger.d('📦 Data completa: $data');
 
     try {
-      // Parsear data si viene como string
-      Map<String, dynamic> offerData;
-      if (data is String) {
-        offerData = jsonDecode(data);
-      } else {
-        offerData = Map<String, dynamic>.from(data);
-      }
-
       AppLogger.d('🔍 Datos parseados:');
       AppLogger.d('   - oferta_id: ${offerData['oferta_id']}');
       AppLogger.d('   - solicitud_id: ${offerData['solicitud_id']}');
@@ -2759,60 +2021,136 @@ class _HomePasajeroState extends State<HomePasajero>
     }
   }
 
+  int? _parseOfferId(Map<String, dynamic> offer) {
+    final raw = offer['oferta_id'] ?? offer['id'];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
   /// Acepta la contraoferta del conductor
-  void _acceptOffer() {
-    if (_currentOffer == null) return;
+  Future<void> _acceptOffer() async {
+    if (_currentOffer == null || _isProcessingOffer) return;
 
-    AppLogger.d('✅ Aceptando oferta: ${_currentOffer!['oferta_id']}');
+    final ofertaId = _parseOfferId(_currentOffer!);
+    if (ofertaId == null) {
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Oferta inválida'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
-    // TODO: Llamar al backend para confirmar la aceptación
-    // await _rideRequestService.acceptOffer(_currentOffer!['oferta_id']);
+    final conductorNombre =
+        _currentOffer!['conductor_nombre']?.toString() ?? 'Conductor';
 
-    if (!mounted) return;
+    _setStateSafe(() => _isProcessingOffer = true);
+    try {
+      AppLogger.d('✅ Aceptando oferta: $ofertaId');
+      final response = await _rideRequestService.acceptCounterOffer(
+        ofertaId: ofertaId,
+      );
 
-    if (_scaffoldMessenger != null) {
-      _scaffoldMessenger!.showSnackBar(
+      if (!mounted) return;
+
+      final servicioId = _parseServicioIdFromResponse(response) ??
+          int.tryParse(_currentOffer!['servicio_id']?.toString() ?? '') ??
+          int.tryParse(_currentOffer!['solicitud_id']?.toString() ?? '');
+
+      _setStateSafe(() {
+        _showOffer = false;
+        _currentOffer = null;
+      });
+
+      _scaffoldMessenger?.showSnackBar(
         SnackBar(
-          content: Text(
-            '✅ ¡Oferta aceptada! El conductor ${_currentOffer!['conductor_nombre']} va en camino',
-          ),
+          content: Text('✅ ¡Oferta aceptada! $conductorNombre va en camino'),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 3),
         ),
       );
-    }
 
-    _setStateSafe(() {
-      _showOffer = false;
-      _currentOffer = null;
-    });
+      if (servicioId != null && mounted) {
+        final restoration = ActiveServiceRestorationService();
+        final detalle = await restoration.verificarServicioActivoPasajero();
+        if (!mounted) return;
+
+        if (detalle != null &&
+            ServiceNavigationHelper.shouldShowActiveService(detalle)) {
+          await ServiceNavigationHelper.navigateToActiveService(
+            context,
+            detalle,
+            Provider.of<AuthProvider>(context, listen: false),
+          );
+        } else {
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => PasajeroEsperandoConductorScreen(
+                servicioId: servicioId,
+                datosServicio: {'id': servicioId},
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _scaffoldMessenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceAll('Exception: ', '').trim(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) _setStateSafe(() => _isProcessingOffer = false);
+    }
   }
 
   /// Rechaza la contraoferta del conductor
-  void _rejectOffer() {
-    if (_currentOffer == null) return;
+  Future<void> _rejectOffer() async {
+    if (_currentOffer == null || _isProcessingOffer) return;
 
-    AppLogger.d('❌ Rechazando oferta: ${_currentOffer!['oferta_id']}');
+    final ofertaId = _parseOfferId(_currentOffer!);
+    if (ofertaId == null) {
+      _dismissOffer();
+      return;
+    }
 
-    // TODO: Llamar al backend para notificar el rechazo
-    // await _rideRequestService.rejectOffer(_currentOffer!['oferta_id']);
+    _setStateSafe(() => _isProcessingOffer = true);
+    try {
+      AppLogger.d('❌ Rechazando oferta: $ofertaId');
+      await _rideRequestService.rejectCounterOffer(ofertaId: ofertaId);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    if (_scaffoldMessenger != null) {
-      _scaffoldMessenger!.showSnackBar(
+      _scaffoldMessenger?.showSnackBar(
         const SnackBar(
           content: Text('Oferta rechazada. Esperando más conductores...'),
           backgroundColor: Colors.orange,
           duration: Duration(seconds: 2),
         ),
       );
-    }
 
-    _setStateSafe(() {
-      _showOffer = false;
-      _currentOffer = null;
-    });
+      _setStateSafe(() {
+        _showOffer = false;
+        _currentOffer = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _scaffoldMessenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceAll('Exception: ', '').trim(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) _setStateSafe(() => _isProcessingOffer = false);
+    }
   }
 
   /// Cierra la oferta sin aceptar ni rechazar

@@ -434,6 +434,48 @@ class RideRequestService {
     }
   }
 
+  /// Acepta contraoferta de un conductor (canal ofertas-globales).
+  Future<Map<String, dynamic>> acceptCounterOffer({required int ofertaId}) async {
+    try {
+      final response = await _dio.post(
+        'taxi/oferta/aceptar',
+        data: {'oferta_id': ofertaId},
+        options: _fastRequestOptions,
+      );
+      return response.data is Map<String, dynamic>
+          ? response.data as Map<String, dynamic>
+          : <String, dynamic>{'success': true, 'data': response.data};
+    } on DioException catch (e) {
+      _logError(e);
+      if (e.response?.data is Map) {
+        final payload = e.response!.data as Map;
+        throw Exception(payload['message'] ?? 'No se pudo aceptar la oferta');
+      }
+      throw Exception('Error de conexión al aceptar la oferta');
+    }
+  }
+
+  /// Rechaza contraoferta de un conductor.
+  Future<Map<String, dynamic>> rejectCounterOffer({required int ofertaId}) async {
+    try {
+      final response = await _dio.post(
+        'taxi/oferta/rechazar',
+        data: {'oferta_id': ofertaId},
+        options: _fastRequestOptions,
+      );
+      return response.data is Map<String, dynamic>
+          ? response.data as Map<String, dynamic>
+          : <String, dynamic>{'success': true, 'data': response.data};
+    } on DioException catch (e) {
+      _logError(e);
+      if (e.response?.data is Map) {
+        final payload = e.response!.data as Map;
+        throw Exception(payload['message'] ?? 'No se pudo rechazar la oferta');
+      }
+      throw Exception('Error de conexión al rechazar la oferta');
+    }
+  }
+
   /// 📌 CANCELAR SERVICIO ACTIVO (para pasajeros)
   Future<Map<String, dynamic>> cancelarServicio({
     required int servicioId,

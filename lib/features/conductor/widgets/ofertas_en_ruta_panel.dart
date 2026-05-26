@@ -215,7 +215,7 @@ class _OfertaCompactaTile extends StatelessWidget {
                         height: 1.2,
                       ),
                     ),
-                    if (calle != null && calle.isNotEmpty)
+                    if (calle.isNotEmpty)
                       Text(
                         calle,
                         maxLines: 1,

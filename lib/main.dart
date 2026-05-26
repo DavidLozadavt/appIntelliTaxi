@@ -4,6 +4,7 @@ import 'package:intellitaxi/core/services/connectivity_provider.dart';
 import 'package:intellitaxi/core/theme/theme_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
+import 'package:intellitaxi/core/bootstrap/app_bootstrap.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/performance_monitor_service.dart';
 import 'package:intellitaxi/core/services/background_location_service.dart';
@@ -60,12 +61,14 @@ Future<void> main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
-      // Cargar variables de entorno
       await dotenv.load(fileName: ".env");
+      AppBootstrap.logConfigWarnings();
 
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+      await AppBootstrap.initCrashlytics();
+      AppBootstrap.installErrorHandlers();
 
       // Optimizaciones de rendimiento
       _setupPerformanceOptimizations();
@@ -78,14 +81,13 @@ Future<void> main() async {
       unawaited(_bootstrapRuntimeServices());
     },
     (error, stackTrace) {
-      if (kDebugMode) {
-        AppLogger.e(
-          'Uncaught zone error',
-          tag: 'Main',
-          error: error,
-          stackTrace: stackTrace,
-        );
-      }
+      AppBootstrap.recordError(error, stackTrace, fatal: true);
+      AppLogger.e(
+        'Uncaught zone error',
+        tag: 'Main',
+        error: error,
+        stackTrace: stackTrace,
+      );
     },
     zoneSpecification: ZoneSpecification(
       print: (self, parent, zone, line) {
