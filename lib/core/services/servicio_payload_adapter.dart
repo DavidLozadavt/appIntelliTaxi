@@ -1,4 +1,10 @@
+import 'package:intellitaxi/core/utils/json_payload_helper.dart';
+
 class ServicioPayloadAdapter {
+  /// Parseo numérico tolerante (String con coma, int, double).
+  static double parseDouble(dynamic value, {double fallback = 0.0}) =>
+      JsonPayloadHelper.parseDouble(value, fallback: fallback);
+
   /// Laravel / JSON pueden enviar decimales como String; normaliza a double usable en mapas.
   static double? _toDouble(dynamic v) {
     if (v == null) return null;

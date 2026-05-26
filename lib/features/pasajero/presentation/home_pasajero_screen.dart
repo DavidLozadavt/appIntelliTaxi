@@ -39,6 +39,7 @@ import 'package:intellitaxi/core/services/service_navigation_helper.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
+import 'package:intellitaxi/features/pasajero/utils/pasajero_location_permission_helper.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -1575,19 +1576,8 @@ class _HomePasajeroState extends State<HomePasajero>
     await _getCurrentLocation();
   }
 
-  Future<bool> _checkAndRequestPermissions() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return false;
-    }
-
-    var status = await Permission.location.status;
-    if (!status.isGranted) {
-      status = await Permission.location.request();
-    }
-
-    return status.isGranted;
-  }
+  Future<bool> _checkAndRequestPermissions() =>
+      PasajeroLocationPermissionHelper.checkAndRequest();
 
   Future<void> _getCurrentLocation() async {
     try {

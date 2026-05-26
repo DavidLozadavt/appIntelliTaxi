@@ -11,6 +11,8 @@ import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_servicio_estado_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/conductor/widgets/ofertas_en_ruta_panel.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -261,11 +263,8 @@ class _ConductorServicioActivoScreenState
     );
   }
 
-  bool _tieneDestinoDefinido() {
-    final lat = _parseDouble(widget.servicio['destino_lat']);
-    final lng = _parseDouble(widget.servicio['destino_lng']);
-    return lat != 0.0 && lng != 0.0;
-  }
+  bool _tieneDestinoDefinido() =>
+      ConductorServicioEstadoHelper.tieneDestinoDefinido(widget.servicio);
 
   Future<String?> _resolverDireccionDesdeCoordenadas(LatLng punto) async {
     try {
@@ -293,242 +292,32 @@ class _ConductorServicioActivoScreenState
     return null;
   }
 
-  String _resolverEstadoInicial(Map<String, dynamic> servicio) {
-    final estadoRaw = servicio['estado'];
-    final estadoDesdeCampo = _normalizarEstadoBackend(estadoRaw);
-    if (estadoDesdeCampo != null) return estadoDesdeCampo;
+  String _resolverEstadoInicial(Map<String, dynamic> servicio) =>
+      ConductorServicioEstadoHelper.resolverEstadoInicial(servicio);
 
-    final idEstadoRaw = servicio['idEstado'] ?? servicio['id_estado'];
-    final idEstado = idEstadoRaw is int
-        ? idEstadoRaw
-        : int.tryParse(idEstadoRaw?.toString() ?? '');
+  String? _normalizarEstadoBackend(dynamic estadoRaw) =>
+      ConductorServicioEstadoHelper.normalizarEstadoBackend(estadoRaw);
 
-    switch (idEstado) {
-      case 1:
-      case 2:
-        return 'aceptado';
-      case 19:
-        return 'en_camino';
-      case 3:
-      case 20:
-        return 'llegue';
-      case 21:
-        return 'en_curso';
-      case 6:
-        return 'cancelado';
-      case 5:
-      case 7:
-      case 22:
-      case 23:
-        return 'finalizado';
-      default:
-        return 'aceptado';
-    }
-  }
+  String? _estadoDesdeId(int? idEstado) =>
+      ConductorServicioEstadoHelper.estadoDesdeId(idEstado);
 
-  String? _normalizarEstadoBackend(dynamic estadoRaw) {
-    String? estado;
-    if (estadoRaw is String) {
-      estado = estadoRaw;
-    } else if (estadoRaw is Map && estadoRaw['estado'] is String) {
-      estado = estadoRaw['estado'] as String;
-    }
-
-    if (estado == null || estado.trim().isEmpty) return null;
-
-    final e = estado
-        .trim()
-        .toLowerCase()
-        .replaceAll('á', 'a')
-        .replaceAll('é', 'e')
-        .replaceAll('í', 'i')
-        .replaceAll('ó', 'o')
-        .replaceAll('ú', 'u')
-        .replaceAll('-', '_')
-        .replaceAll(' ', '_');
-
-    if (e.contains('en_curso') || e.contains('curso')) return 'en_curso';
-    if (e.contains('llegue') || e.contains('llego')) return 'llegue';
-    if (e.contains('en_camino') || e.contains('camino')) return 'en_camino';
-    if (e.contains('acept')) return 'aceptado';
-    if (e.contains('cancel')) return 'cancelado';
-    if (e.contains('final') || e.contains('complet')) return 'finalizado';
-
-    return null;
-  }
-
-  int? get _idEstadoServicio {
-    final estadoObj = widget.servicio['estado'];
-    final raw =
-        widget.servicio['idEstado'] ??
-        widget.servicio['id_estado'] ??
-        (estadoObj is Map ? estadoObj['id'] : null);
-    if (raw is int) return raw;
-    return int.tryParse(raw?.toString() ?? '');
-  }
-
-  String? _estadoDesdeId(int? idEstado) {
-    switch (idEstado) {
-      case 1:
-      case 2:
-        return 'aceptado';
-      case 19:
-        return 'en_camino';
-      case 3:
-      case 20:
-        return 'llegue';
-      case 21:
-        return 'en_curso';
-      case 6:
-        return 'cancelado';
-      case 5:
-      case 7:
-      case 22:
-      case 23:
-        return 'finalizado';
-      default:
-        return null;
-    }
-  }
-
-  String get _estadoUi {
-    return _estadoDesdeId(_idEstadoServicio) ??
-        _normalizarEstadoBackend(_estadoActual) ??
-        _resolverEstadoInicial(widget.servicio);
-  }
-
-  String get _estadoUiEfectivo {
-    return _estadoDesdeId(_idEstadoServicio) ??
-        _normalizarEstadoBackend(widget.servicio['estado']) ??
-        _estadoUi;
-  }
-
-  double _parseDouble(dynamic value) {
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0.0;
-    return 0.0;
-  }
-
-  // Método helper para obtener el nombre del pasajero
-  String _getNombrePasajero() {
-    // Intentar obtener de diferentes campos posibles
-    if (widget.servicio['pasajero_nombre'] != null) {
-      return widget.servicio['pasajero_nombre'];
-    }
-
-    // Buscar en usuario_pasajero.persona
-    if (widget.servicio['usuario_pasajero'] != null) {
-      final usuarioPasajero = widget.servicio['usuario_pasajero'];
-      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
-        final persona = usuarioPasajero['persona'];
-        if (persona is Map) {
-          final nombre1 = persona['nombre1'] ?? '';
-          final nombre2 = persona['nombre2'] ?? '';
-          final apellido1 = persona['apellido1'] ?? '';
-          final apellido2 = persona['apellido2'] ?? '';
-
-          final nombreCompleto =
-              '$nombre1 ${nombre2.isEmpty ? '' : nombre2} $apellido1 ${apellido2.isEmpty ? '' : apellido2}'
-                  .trim();
-          if (nombreCompleto.isNotEmpty) {
-            return nombreCompleto;
-          }
-        }
-      }
-    }
-
-    // Si hay un objeto pasajero anidado
-    if (widget.servicio['pasajero'] != null) {
-      final pasajero = widget.servicio['pasajero'];
-      if (pasajero is Map) {
-        return pasajero['nombre'] ?? pasajero['name'] ?? 'Pasajero';
-      }
-    }
-
-    return 'Pasajero';
-  }
-
-  // Método helper para obtener el teléfono del pasajero
-  String? _getTelefonoPasajero() {
-    // Buscar en usuario_pasajero.persona
-    if (widget.servicio['usuario_pasajero'] != null) {
-      final usuarioPasajero = widget.servicio['usuario_pasajero'];
-      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
-        final persona = usuarioPasajero['persona'];
-        if (persona is Map) {
-          final celular = persona['celular'];
-          if (celular != null && celular.toString().isNotEmpty) {
-            return celular.toString();
-          }
-        }
-      }
-    }
-
-    // Intentar obtener de diferentes campos posibles
-    if (widget.servicio['pasajero_telefono'] != null) {
-      return widget.servicio['pasajero_telefono'];
-    }
-
-    // Si hay un objeto pasajero anidado
-    if (widget.servicio['pasajero'] != null) {
-      final pasajero = widget.servicio['pasajero'];
-      if (pasajero is Map) {
-        return pasajero['telefono'] ?? pasajero['phone'] ?? pasajero['celular'];
-      }
-    }
-
-    return null;
-  }
-
-  // Método helper para obtener la foto del pasajero
-  String? _getFotoPasajero() {
-    // Buscar en usuario_pasajero.persona
-    if (widget.servicio['usuario_pasajero'] != null) {
-      final usuarioPasajero = widget.servicio['usuario_pasajero'];
-      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
-        final persona = usuarioPasajero['persona'];
-        if (persona is Map) {
-          final fotoRaw =
-              persona['rutaFotoUrl'] ?? persona['rutaFoto'] ?? persona['foto'];
-          final foto = _resolverFotoUrl(fotoRaw?.toString());
-          if (foto != null) {
-            return foto;
-          }
-        }
-      }
-    }
-
-    // Fallbacks en el servicio
-    final fotoServicio = _resolverFotoUrl(
-      widget.servicio['pasajero_foto']?.toString(),
-    );
-    if (fotoServicio != null) return fotoServicio;
-
-    final pasajero = widget.servicio['pasajero'];
-    if (pasajero is Map) {
-      final fotoPasajero = _resolverFotoUrl(
-        pasajero['rutaFotoUrl']?.toString() ??
-            pasajero['rutaFoto']?.toString() ??
-            pasajero['foto']?.toString(),
+  String get _estadoUiEfectivo =>
+      ConductorServicioEstadoHelper.estadoUiEfectivo(
+        servicio: widget.servicio,
+        estadoActual: _estadoActual,
       );
-      if (fotoPasajero != null) return fotoPasajero;
-    }
 
-    return null;
-  }
+  double _parseDouble(dynamic value) =>
+      ConductorServicioEstadoHelper.parseDouble(value);
 
-  String? _resolverFotoUrl(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    final foto = value.trim();
-    if (foto.startsWith('http://') || foto.startsWith('https://')) return foto;
+  String _getNombrePasajero() =>
+      ConductorServicioPasajeroHelper.nombre(widget.servicio);
 
-    final base = Uri.parse(AppConfig.baseUrl);
-    final origin =
-        '${base.scheme}://${base.host}${base.hasPort ? ':${base.port}' : ''}';
-    if (foto.startsWith('/')) return '$origin$foto';
-    return '$origin/$foto';
-  }
+  String? _getTelefonoPasajero() =>
+      ConductorServicioPasajeroHelper.telefono(widget.servicio);
+
+  String? _getFotoPasajero() =>
+      ConductorServicioPasajeroHelper.fotoUrl(widget.servicio);
 
   Future<void> _cargarIconoCarro() async {
     try {
@@ -1146,20 +935,8 @@ class _ConductorServicioActivoScreenState
     }
   }
 
-  String _getMensajeEstado(String estado) {
-    switch (estado) {
-      case 'en_camino':
-        return 'En camino al punto de recogida';
-      case 'llegue':
-        return '¡Has llegado! Esperando al pasajero';
-      case 'en_curso':
-        return 'Viaje iniciado';
-      case 'finalizado':
-        return '¡Viaje finalizado exitosamente!';
-      default:
-        return 'Estado actualizado';
-    }
-  }
+  String _getMensajeEstado(String estado) =>
+      ConductorServicioEstadoHelper.mensajeEstado(estado);
 
   void _mostrarMensaje(String mensaje) {
     ScaffoldMessenger.of(context).showSnackBar(

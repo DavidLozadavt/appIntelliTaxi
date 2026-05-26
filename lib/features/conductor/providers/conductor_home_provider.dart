@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/conductor/services/turno_service.dart';
@@ -12,7 +11,6 @@ import 'package:intellitaxi/core/services/incoming_service_notification_service.
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/services/voice_alert_service.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
-import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
@@ -21,10 +19,18 @@ import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.
 import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 
+import 'package:intellitaxi/features/conductor/conductor_constants.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_session_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_ranking_helper.dart';
+import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
+import 'package:intellitaxi/core/utils/json_payload_helper.dart';
+
+export 'package:intellitaxi/features/conductor/conductor_constants.dart';
+
 /// Provider para gestionar toda la lógica de la pantalla home del conductor
 /// Incluye: ubicación, turnos, vehículos, solicitudes de servicio y conexión a Pusher.
-/// [kOportunidadConductorSegundos]: tiempo máximo y valor por defecto del contador de oportunidad (TTL).
-const int kOportunidadConductorSegundos = 60;
 
 class ConductorHomeProvider extends ChangeNotifier {
   // Servicios
@@ -45,6 +51,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _isSendingMapHeartbeat = false;
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
+  final ConductorSolicitudEnrichmentService _solicitudEnrichment =
+      ConductorSolicitudEnrichmentService();
 
   // Estado online/offline
   bool _isOnline = false;
@@ -117,7 +125,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? get lastTurnoError => _lastTurnoError;
   List<Map<String, dynamic>> get solicitudesOrdenadas {
     final solicitudes = List<Map<String, dynamic>>.from(_solicitudesActivas);
-    solicitudes.sort((a, b) => _calcularScore(b).compareTo(_calcularScore(a)));
+    solicitudes.sort(
+      (a, b) => ConductorSolicitudRankingHelper.calcularScore(b)
+          .compareTo(ConductorSolicitudRankingHelper.calcularScore(a)),
+    );
     return solicitudes;
   }
 
@@ -130,7 +141,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   }) {
     final radioMetros = radioKm * 1000;
     final candidatas = solicitudesOrdenadas.where((s) {
-      final idStr = _obtenerSolicitudId(s);
+      final idStr = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
       if (idStr == null || idStr.isEmpty) return false;
       final idNum = int.tryParse(idStr);
       if (excluirServicioId != null &&
@@ -154,8 +165,14 @@ class ConductorHomeProvider extends ChangeNotifier {
     }).toList();
 
     candidatas.sort((a, b) {
-      final da = _parseDouble(a['distancia_hacia_ruta_km'], fallback: 999);
-      final db = _parseDouble(b['distancia_hacia_ruta_km'], fallback: 999);
+      final da = JsonPayloadHelper.parseDouble(
+        a['distancia_hacia_ruta_km'],
+        fallback: 999,
+      );
+      final db = JsonPayloadHelper.parseDouble(
+        b['distancia_hacia_ruta_km'],
+        fallback: 999,
+      );
       return da.compareTo(db);
     });
 
@@ -334,16 +351,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         );
       }
 
-      final ids = await _obtenerIdsConductorSesion();
-      if (ids.isNotEmpty) {
-        final candidateChannels = <String>{};
-        for (final id in ids) {
-          // Formato esperado con PrivateChannel('conductor.{id}')
-          candidateChannels.add('private-conductor.$id');
-          // Fallback si backend emite Channel('conductor.{id}')
-          candidateChannels.add('conductor.$id');
-        }
-
+      final ids = await ConductorSessionHelper.obtenerIdsConductorSesion();
+      final candidateChannels = ConductorSessionHelper.canalesOfertaDirecta(ids);
+      if (candidateChannels.isNotEmpty) {
         for (final channel in candidateChannels) {
           await PusherService.subscribeSecondary(channel);
           _offerChannels.add(channel);
@@ -422,7 +432,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       for (final s in List<Map<String, dynamic>>.from(_solicitudesActivas)) {
-        final id = _obtenerSolicitudId(s);
+        final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
         if (id == null || id.isEmpty || id.startsWith('temp_')) continue;
         if (int.tryParse(id) == null) continue;
         if (!serverIds.contains(id)) {
@@ -503,12 +513,11 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   void _procesarSolicitudTomada(dynamic data) {
     try {
-      final raw = _parsePayload(data);
-      final servicioId = raw['servicio_id'] ??
-          raw['solicitud_id'] ??
-          raw['id'];
+      final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+      final servicioId =
+          ConductorSolicitudPayloadHelper.servicioIdFromTomadaPayload(raw);
       if (servicioId == null) return;
-      rechazarSolicitud(servicioId.toString());
+      rechazarSolicitud(servicioId);
     } catch (e) {
       AppLogger.d('⚠️ Error procesando solicitud.tomada: $e');
     }
@@ -570,14 +579,14 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     try {
-      final raw = _parsePayload(data);
-      final solicitud = _normalizarSolicitud(
+      final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+      final solicitud = ConductorSolicitudPayloadHelper.normalizarSolicitud(
         raw,
         isDirectOffer: isDirectOffer,
       );
-      var solicitudId = _obtenerSolicitudId(solicitud);
+      var solicitudId = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
       if (solicitudId == null || solicitudId.isEmpty) {
-        solicitudId = _generarSolicitudTemporalId();
+        solicitudId = ConductorSolicitudPayloadHelper.generarSolicitudTemporalId();
         solicitud['temp_id'] = solicitudId;
         solicitud['solicitud_id'] = solicitud['solicitud_id'] ?? solicitudId;
         solicitud['servicio_id'] = solicitud['servicio_id'] ?? solicitudId;
@@ -589,7 +598,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       // Verificar si ya existe la solicitud
       final yaExiste = _solicitudesActivas.any(
-        (s) => _obtenerSolicitudId(s) == solicitudId,
+        (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
       );
       if (yaExiste) {
         AppLogger.d('⚠️ Solicitud ya existe: $solicitudId');
@@ -607,7 +616,8 @@ class ConductorHomeProvider extends ChangeNotifier {
         unawaited(_enriquecerDireccionesSolicitud(solicitudId));
       }
 
-      final ttlSegundos = _resolverTtlSegundos(solicitud);
+      final ttlSegundos =
+          ConductorSolicitudPayloadHelper.resolverTtlSegundos(solicitud);
       _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
         Duration(seconds: ttlSegundos),
       );
@@ -622,85 +632,11 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  Map<String, dynamic> _parsePayload(dynamic data) {
-    Map<String, dynamic> payload;
-    if (data is String) {
-      payload = json.decode(data) as Map<String, dynamic>;
-    } else if (data is Map<String, dynamic>) {
-      payload = data;
-    } else if (data is Map) {
-      payload = Map<String, dynamic>.from(data);
-    } else {
-      throw Exception('Payload no soportado: ${data.runtimeType}');
-    }
-
-    final merged = Map<String, dynamic>.from(payload);
-    if (payload['data'] is Map) {
-      merged.addAll(Map<String, dynamic>.from(payload['data'] as Map));
-    }
-    if (payload['solicitud'] is Map) {
-      merged.addAll(Map<String, dynamic>.from(payload['solicitud'] as Map));
-    }
-    if (payload['servicio'] is Map) {
-      merged.addAll(Map<String, dynamic>.from(payload['servicio'] as Map));
-    }
-
-    return merged;
-  }
-
-  Map<String, dynamic> _normalizarSolicitud(
-    Map<String, dynamic> raw, {
-    bool isDirectOffer = false,
-  }) {
-    final base = isDirectOffer
-        ? _normalizarOfertaDirecta(raw)
-        : SolicitudDisplayHelper.normalizeSolicitudMap(raw);
-    final barrio = SolicitudDisplayHelper.barrioFromPayload(base);
-    if (barrio != null) {
-      base['origen_barrio'] = barrio;
-    }
-    return base;
-  }
-
-  Map<String, dynamic> _normalizarOfertaDirecta(Map<String, dynamic> raw) {
-    final merged = SolicitudDisplayHelper.normalizeSolicitudMap(raw);
-    final solicitudId = merged['solicitud_id'] ?? merged['id'];
-    return {
-      ...merged,
-      'solicitud_id': solicitudId,
-      'servicio_id': solicitudId,
-      'id': solicitudId,
-      'pasajero_id': merged['pasajero_id'],
-      'pasajero_nombre': merged['pasajero_nombre'] ?? 'Pasajero',
-      'pasajero_foto': _resolverFotoPasajero(merged['pasajero_foto']?.toString()),
-      'origen': SolicitudDisplayHelper.pickupName(merged),
-      'destino': SolicitudDisplayHelper.destinationName(merged),
-      'origen_name': merged['origen_name'],
-      'origen_address': merged['origen_address'],
-      'destino_name': merged['destino_name'],
-      'destino_address': merged['destino_address'],
-      'origen_barrio': merged['origen_barrio'] ?? merged['barrio'],
-      'origen_lat': merged['origen_lat'],
-      'origen_lng': merged['origen_lng'],
-      'destino_lat': merged['destino_lat'],
-      'destino_lng': merged['destino_lng'],
-      'precio_ofertado':
-          merged['precio_ofrecido'] ?? merged['precio_ofertado'] ?? 0,
-      'distancia': merged['distancia'],
-      'duracion_estimada': merged['duracion_estimada'],
-      'mensaje': merged['mensaje'],
-      'status': 'oferta_directa',
-      'clase_vehiculo': 'taxi',
-      'timestamp': merged['timestamp'] ?? DateTime.now().toIso8601String(),
-      'ttl_segundos': merged['ttl_segundos'] ?? kOportunidadConductorSegundos,
-    };
-  }
-
   Future<void> _notificarYEnriquecerSolicitud(String solicitudId) async {
     await _enriquecerDireccionesSolicitud(solicitudId);
     if (_isDisposed) return;
     final index = _solicitudesActivas.indexWhere(
-      (s) => _obtenerSolicitudId(s) == solicitudId,
+      (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
     );
     if (index < 0) return;
 
@@ -712,122 +648,16 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  bool _isAppInForeground() {
-    final state = WidgetsBinding.instance.lifecycleState;
-    return state == null || state == AppLifecycleState.resumed;
-  }
+  bool _isAppInForeground() => AppLifecycleHelper.isInForeground();
 
   Future<void> _enriquecerDireccionesSolicitud(String solicitudId) async {
     final index = _solicitudesActivas.indexWhere(
-      (s) => _obtenerSolicitudId(s) == solicitudId,
+      (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
     );
     if (index < 0 || _isDisposed) return;
 
-    final solicitud = _solicitudesActivas[index];
-    var changed = false;
-
-    Future<void> enrichPoint({
-      required bool isDestino,
-      required double lat,
-      required double lng,
-    }) async {
-      final label = await _reverseGeocodingService.resolveCurrentLocationLabel(
-        lat: lat,
-        lng: lng,
-      );
-
-      if (isDestino) {
-        final hasName = _hasMeaningfulPlaceName(
-          solicitud['destino_name']?.toString(),
-        );
-        if (!hasName &&
-            label.name.trim().isNotEmpty &&
-            !SolicitudDisplayHelper.isPlaceholderDestino(label.name)) {
-          solicitud['destino_name'] = label.name;
-          changed = true;
-        }
-        final hasAddr = _hasMeaningfulAddress(
-          solicitud['destino_address']?.toString(),
-        );
-        if (!hasAddr &&
-            label.address.trim().isNotEmpty &&
-            !SolicitudDisplayHelper.isPlaceholderDestino(label.address)) {
-          solicitud['destino_address'] = label.address;
-          changed = true;
-        }
-      } else {
-        final hasName = _hasMeaningfulPlaceName(
-          solicitud['origen_name']?.toString(),
-        );
-        if (!hasName &&
-            label.name.trim().isNotEmpty &&
-            !SolicitudDisplayHelper.isPlaceholderPickup(label.name)) {
-          solicitud['origen_name'] = label.name;
-          changed = true;
-        }
-        final hasAddr = _hasMeaningfulAddress(
-          solicitud['origen_address']?.toString(),
-        );
-        if (!hasAddr &&
-            label.address.trim().isNotEmpty &&
-            !SolicitudDisplayHelper.isPlaceholderPickup(label.address)) {
-          solicitud['origen_address'] = label.address;
-          changed = true;
-        }
-        if ((solicitud['origen_barrio']?.toString().trim().isEmpty ?? true)) {
-          final barrio = await _reverseGeocodingService.resolveAreaName(
-            lat: lat,
-            lng: lng,
-          );
-          if (barrio != null && barrio.isNotEmpty) {
-            solicitud['origen_barrio'] =
-                SolicitudDisplayHelper.compactBarrio(barrio);
-            changed = true;
-          }
-        }
-      }
-    }
-
-    final oLat = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lat']);
-    final oLng = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lng']);
-    if (oLat != null && oLng != null) {
-      await enrichPoint(isDestino: false, lat: oLat, lng: oLng);
-    }
-
-    final dLat = SolicitudDisplayHelper.parseCoordinate(solicitud['destino_lat']);
-    final dLng = SolicitudDisplayHelper.parseCoordinate(solicitud['destino_lng']);
-    if (dLat != null &&
-        dLng != null &&
-        (dLat.abs() > 0.0001 || dLng.abs() > 0.0001)) {
-      await enrichPoint(isDestino: true, lat: dLat, lng: dLng);
-    }
-
+    final changed = await _solicitudEnrichment.enrich(_solicitudesActivas[index]);
     if (changed && !_isDisposed) notifyListeners();
-  }
-
-  bool _hasMeaningfulPlaceName(String? value) {
-    if (value == null || value.trim().isEmpty) return false;
-    return !SolicitudDisplayHelper.isPlaceholderPickup(value) &&
-        !SolicitudDisplayHelper.isPlaceholderDestino(value);
-  }
-
-  bool _hasMeaningfulAddress(String? value) {
-    if (value == null || value.trim().isEmpty) return false;
-    if (SolicitudDisplayHelper.isPlaceholderPickup(value)) return false;
-    if (SolicitudDisplayHelper.isPlaceholderDestino(value)) return false;
-    return true;
-  }
-
-  String? _resolverFotoPasajero(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    final foto = value.trim();
-    if (foto.startsWith('http://') || foto.startsWith('https://')) return foto;
-
-    final base = Uri.parse(AppConfig.baseUrl);
-    final origin =
-        '${base.scheme}://${base.host}${base.hasPort ? ':${base.port}' : ''}';
-    if (foto.startsWith('/')) return '$origin$foto';
-    return '$origin/$foto';
   }
 
   /// Configurar timer de expiración para una solicitud
@@ -848,13 +678,13 @@ class ConductorHomeProvider extends ChangeNotifier {
     final index = _solicitudesActivas.indexWhere(
       (s) =>
           (s['_local_id']?.toString() == solicitudId) ||
-          (_obtenerSolicitudId(s) == solicitudId),
+          (ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId),
     );
     if (index != -1) {
       _solicitudesActivas.removeAt(index);
     } else {
       _solicitudesActivas.removeWhere(
-        (s) => _obtenerSolicitudId(s) == solicitudId,
+        (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
       );
     }
     _expiracionPorSolicitud.remove(solicitudId);
@@ -878,7 +708,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   void rechazarSolicitud(String solicitudId) {
     AppLogger.d('❌ Rechazando solicitud: $solicitudId');
     _solicitudesActivas.removeWhere(
-      (s) => _obtenerSolicitudId(s) == solicitudId,
+      (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
     );
     _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion[solicitudId]?.cancel();
@@ -928,7 +758,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       // Remover de la lista de solicitudes activas
       _solicitudesActivas.removeWhere(
-        (s) => _obtenerSolicitudId(s) == solicitudId,
+        (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
       );
       _expiracionPorSolicitud.remove(solicitudId);
       _detenerTickerSiNoHaySolicitudes();
@@ -1397,7 +1227,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Limpiar solicitudes activas si es necesario
       _solicitudesActivas.removeWhere(
         (s) =>
-            _obtenerSolicitudId(s) == servicioId.toString() ||
+            ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) ==
+                servicioId.toString() ||
             s['servicio_id']?.toString() == servicioId.toString(),
       );
       _expiracionPorSolicitud.remove(servicioId.toString());
@@ -1418,18 +1249,6 @@ class ConductorHomeProvider extends ChangeNotifier {
     return restantes < 0 ? 0 : restantes;
   }
 
-  int _resolverTtlSegundos(Map<String, dynamic> solicitud) {
-    final ttlRaw =
-        solicitud['ttl_segundos'] ??
-        solicitud['ttl'] ??
-        solicitud['tiempo_restante'];
-    final ttl = int.tryParse(ttlRaw?.toString() ?? '');
-    if (ttl == null || ttl <= 0) return kOportunidadConductorSegundos;
-    return ttl > kOportunidadConductorSegundos
-        ? kOportunidadConductorSegundos
-        : ttl;
-  }
-
   void _iniciarTickerExpiracionUI() {
     if (_tickerExpiracionUI != null) return;
     _tickerExpiracionUI = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -1447,101 +1266,6 @@ class ConductorHomeProvider extends ChangeNotifier {
       _tickerExpiracionUI?.cancel();
       _tickerExpiracionUI = null;
     }
-  }
-
-  String? _obtenerSolicitudId(Map<String, dynamic> solicitud) {
-    final rawId =
-        solicitud['_local_id'] ??
-        solicitud['solicitud_id'] ??
-        solicitud['solicitudId'] ??
-        solicitud['servicio_id'] ??
-        solicitud['servicioId'] ??
-        solicitud['id'] ??
-        solicitud['ride_id'] ??
-        solicitud['request_id'] ??
-        solicitud['temp_id'];
-    return rawId?.toString();
-  }
-
-  Future<Set<int>> _obtenerIdsConductorSesion() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userDataStr = prefs.getString('user_data');
-    if (userDataStr == null || userDataStr.isEmpty) return {};
-
-    try {
-      final userData = json.decode(userDataStr);
-      final ids = <int>{};
-
-      final userId = userData['user']?['id'];
-      final personaId = userData['user']?['persona']?['id'];
-
-      final parsedUserId = userId is int
-          ? userId
-          : int.tryParse(userId?.toString() ?? '');
-      final parsedPersonaId = personaId is int
-          ? personaId
-          : int.tryParse(personaId?.toString() ?? '');
-
-      if (parsedUserId != null && parsedUserId > 0) ids.add(parsedUserId);
-      if (parsedPersonaId != null && parsedPersonaId > 0) {
-        ids.add(parsedPersonaId);
-      }
-
-      return ids;
-    } catch (_) {
-      return {};
-    }
-  }
-
-  double _parseDouble(dynamic value, {double fallback = 0.0}) {
-    if (value is num) {
-      return value.toDouble();
-    }
-    if (value is String) {
-      return double.tryParse(value.replaceAll(',', '.')) ?? fallback;
-    }
-    return fallback;
-  }
-
-  double _calcularScore(Map<String, dynamic> solicitud) {
-    // Ranking simple y estable para priorizar: menor distancia + mayor tarifa + reciente
-    final distanciaMetros =
-        solicitud['distanciaMetros'] ?? solicitud['distancia_metros'];
-    final distanciaValor =
-        solicitud['distancia_km'] ??
-        solicitud['distancia'] ??
-        (distanciaMetros != null
-            ? (_parseDouble(distanciaMetros) / 1000.0)
-            : null);
-    final distanciaKm = _parseDouble(distanciaValor, fallback: 999.0);
-
-    final precio = _parseDouble(
-      solicitud['precio_estimado'] ??
-          solicitud['precioEstimado'] ??
-          solicitud['precio'] ??
-          solicitud['precio_ofertado'],
-    );
-
-    final createdAtRaw =
-        solicitud['created_at'] ??
-        solicitud['createdAt'] ??
-        solicitud['fechaServicio'] ??
-        solicitud['timestamp'];
-    final createdAt = DateTime.tryParse(createdAtRaw?.toString() ?? '');
-    final segundosDesdeCreacion = createdAt == null
-        ? 0
-        : DateTime.now().difference(createdAt).inSeconds.clamp(0, 300);
-    final scoreDistancia = (100 - (distanciaKm * 10)).clamp(0, 100);
-    final scorePrecio = (precio / 1000).clamp(0, 100);
-    final scoreRecencia = (300 - segundosDesdeCreacion).toDouble() / 10.0;
-
-    return (scoreDistancia * 0.55) +
-        (scorePrecio * 0.35) +
-        (scoreRecencia * 0.10);
-  }
-
-  String _generarSolicitudTemporalId() {
-    return 'temp_${DateTime.now().microsecondsSinceEpoch}';
   }
 
   void _purgarSolicitudesExpiradas() {

@@ -10,6 +10,7 @@ import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.dart';
 import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.dart';
 import 'package:intellitaxi/features/conductor/widgets/no_assigned_vehicles_dialog.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_home_zona_chip.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
@@ -1193,46 +1194,8 @@ class _HomeConductorState extends State<HomeConductor>
                           ],
                           if (provider.isOnline &&
                               provider.zonaActual != null &&
-                              provider.zonaActual!.isNotEmpty) ...[
-                            Container(
-                              constraints: BoxConstraints(
-                                maxWidth: MediaQuery.sizeOf(context).width - 60,
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.location_on,
-                                    size: 12,
-                                    color: Colors.white.withValues(alpha: 0.95),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      'Barrio: ${provider.zonaActual!}',
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
-                                      style: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.95,
-                                        ),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                              provider.zonaActual!.trim().isNotEmpty)
+                            ConductorHomeZonaChip(zona: provider.zonaActual!),
                         ],
                       ),
                     ),
