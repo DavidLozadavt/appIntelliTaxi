@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:uuid/uuid.dart';
@@ -21,12 +21,7 @@ class PlacesService {
   String? _autocompleteSessionToken;
   DateTime? _autocompleteSessionStartedAt;
 
-  // Coordenadas de Popayán, Cauca
-  static const double popyanLat = 2.4419;
-  static const double popyanLng = -76.6063;
-  static const double searchRadiusKm = 20.0; // Radio de búsqueda en km
-
-  /// Busca lugares cercanos limitados a Popayán
+  /// Busca lugares dentro del perímetro urbano de Popayán.
   Future<List<PlaceResult>> searchPlaces(String query) async {
     final normalized = query.trim();
     if (normalized.isEmpty) return [];
@@ -39,53 +34,44 @@ class PlacesService {
     }
 
     try {
-      AppLogger.d('🔍 Buscando lugares: "$normalized"');
+      AppLogger.d('🔍 Buscando lugares (urbano Popayán): "$normalized"');
 
       final url = Uri.parse(
         '$_baseUrl/place/textsearch/json?'
-        'query=${Uri.encodeComponent(normalized)}'
-        '&location=$popyanLat,$popyanLng'
-        '&radius=${searchRadiusKm * 1000}' // Convertir a metros
+        'query=${Uri.encodeComponent('$normalized Popayán')}'
+        '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
+        '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
         '&key=${AppConfig.googleMapsApiKey}'
         '&language=es',
       );
 
-      AppLogger.d('🌐 URL: $url');
-
       final response = await http.get(url);
       _metrics.searchApiCalls++;
       _metrics.logIfNeeded();
-      AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        AppLogger.d('📦 Response data status: ${data['status']}');
         _metrics.trackStatus('textsearch', data['status']?.toString());
 
         if (data['status'] == 'OK') {
           final results = (data['results'] as List)
               .map((place) => PlaceResult.fromJson(place))
-              .where((place) => _isNearPopayan(place.lat, place.lng))
+              .where(
+                (place) => PopayanUrbanArea.contains(place.lat, place.lng),
+              )
               .toList();
           _searchCache[cacheKey] = _CacheEntry(
             value: results,
             expiresAt: DateTime.now().add(_cacheTtl),
           );
-          AppLogger.d('✅ Encontrados ${results.length} lugares');
+          AppLogger.d('✅ Encontrados ${results.length} lugares en urbano');
           return results;
         } else if (data['status'] == 'ZERO_RESULTS') {
-          AppLogger.d('⚠️ No se encontraron resultados para: "$query"');
           return [];
         } else {
           AppLogger.d('❌ Error de Google API: ${data['status']}');
-          if (data['error_message'] != null) {
-            AppLogger.d('   Mensaje: ${data['error_message']}');
-          }
           return [];
         }
-      } else {
-        AppLogger.d('❌ Error HTTP: ${response.statusCode}');
-        AppLogger.d('   Body: ${response.body}');
       }
 
       return [];
@@ -96,7 +82,6 @@ class PlacesService {
     }
   }
 
-  /// Autocomplete de lugares limitado a Popayán
   String? get currentAutocompleteSessionToken => _autocompleteSessionToken;
 
   void startAutocompleteSession() {
@@ -115,6 +100,7 @@ class PlacesService {
     _autocompleteSessionStartedAt = null;
   }
 
+  /// Autocomplete restringido al perímetro urbano de Popayán.
   Future<List<PlacePrediction>> getAutocompletePredictions(
     String input, {
     String? sessionToken,
@@ -134,55 +120,48 @@ class PlacesService {
     }
 
     try {
-      AppLogger.d('🔍 Buscando: "$normalized"');
+      AppLogger.d('🔍 Autocomplete urbano Popayán: "$normalized"');
 
       final url = Uri.parse(
         '$_baseUrl/place/autocomplete/json?'
         'input=${Uri.encodeComponent(normalized)}'
-        '&location=$popyanLat,$popyanLng'
-        '&radius=${searchRadiusKm * 1000}'
-        '&strictbounds=true' // Limitar estrictamente al radio
-        '&components=country:co' // Solo Colombia
+        '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
+        '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
+        '&bounds=${PopayanUrbanArea.autocompleteBounds}'
+        '&strictbounds=true'
+        '&components=country:co'
         '${activeSessionToken == null ? '' : '&sessiontoken=$activeSessionToken'}'
         '&key=${AppConfig.googleMapsApiKey}'
         '&language=es',
       );
 
-      AppLogger.d('🌐 URL: $url');
-
       final response = await http.get(url);
       _metrics.autocompleteApiCalls++;
       _metrics.logIfNeeded();
-      AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        AppLogger.d('📦 Response data status: ${data['status']}');
         _metrics.trackStatus('autocomplete', data['status']?.toString());
 
         if (data['status'] == 'OK') {
           final predictions = (data['predictions'] as List)
               .map((pred) => PlacePrediction.fromJson(pred))
+              .where(
+                (pred) => PopayanUrbanArea.isPredictionAllowed(pred.description),
+              )
               .toList();
           _autocompleteCache[cacheKey] = _CacheEntry(
             value: predictions,
             expiresAt: DateTime.now().add(_cacheTtl),
           );
-          AppLogger.d('✅ Encontrados ${predictions.length} resultados');
+          AppLogger.d('✅ ${predictions.length} sugerencias en urbano');
           return predictions;
         } else if (data['status'] == 'ZERO_RESULTS') {
-          AppLogger.d('⚠️ No se encontraron resultados para: "$input"');
           return [];
         } else {
           AppLogger.d('❌ Error de Google API: ${data['status']}');
-          if (data['error_message'] != null) {
-            AppLogger.d('   Mensaje: ${data['error_message']}');
-          }
           return [];
         }
-      } else {
-        AppLogger.d('❌ Error HTTP: ${response.statusCode}');
-        AppLogger.d('   Body: ${response.body}');
       }
 
       return [];
@@ -193,7 +172,7 @@ class PlacesService {
     }
   }
 
-  /// Obtiene los detalles de un lugar por su placeId
+  /// Detalles del lugar; `null` si queda fuera del perímetro urbano.
   Future<PlaceDetails?> getPlaceDetails(
     String placeId, {
     String? sessionToken,
@@ -208,7 +187,6 @@ class PlacesService {
     }
 
     try {
-      AppLogger.d('📍 Obteniendo detalles del lugar: $normalizedPlaceId');
       final activeSessionToken = sessionToken ?? _autocompleteSessionToken;
 
       final url = Uri.parse(
@@ -223,31 +201,27 @@ class PlacesService {
       final response = await http.get(url);
       _metrics.detailsApiCalls++;
       _metrics.logIfNeeded();
-      AppLogger.d('📡 Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        AppLogger.d('📦 Response data status: ${data['status']}');
         _metrics.trackStatus('details', data['status']?.toString());
 
         if (data['status'] == 'OK') {
           final placeDetails = PlaceDetails.fromJson(data['result']);
+          if (!PopayanUrbanArea.contains(placeDetails.lat, placeDetails.lng)) {
+            AppLogger.w(
+              'Lugar fuera del urbano de Popayán: ${placeDetails.address}',
+              tag: 'PlacesService',
+            );
+            return null;
+          }
           _detailsCache[normalizedPlaceId] = _CacheEntry(
             value: placeDetails,
             expiresAt: DateTime.now().add(_cacheTtl),
           );
           clearAutocompleteSession();
-          AppLogger.d('✅ Detalles obtenidos: ${placeDetails.name}');
           return placeDetails;
-        } else {
-          AppLogger.d('❌ Error de Google API: ${data['status']}');
-          if (data['error_message'] != null) {
-            AppLogger.d('   Mensaje: ${data['error_message']}');
-          }
         }
-      } else {
-        AppLogger.d('❌ Error HTTP: ${response.statusCode}');
-        AppLogger.d('   Body: ${response.body}');
       }
 
       return null;
@@ -257,38 +231,6 @@ class PlacesService {
       return null;
     }
   }
-
-  /// Verifica si las coordenadas están cerca de Popayán
-  bool _isNearPopayan(double lat, double lng) {
-    final distance = _calculateDistance(popyanLat, popyanLng, lat, lng);
-    return distance <= searchRadiusKm;
-  }
-
-  /// Calcula la distancia entre dos puntos en km (Haversine)
-  double _calculateDistance(
-    double lat1,
-    double lon1,
-    double lat2,
-    double lon2,
-  ) {
-    const double earthRadius = 6371; // Radio de la Tierra en km
-
-    final dLat = _toRadians(lat2 - lat1);
-    final dLon = _toRadians(lon2 - lon1);
-
-    final a =
-        math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRadians(lat1)) *
-            math.cos(_toRadians(lat2)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
-
-    final c = 2 * math.asin(math.sqrt(a));
-
-    return earthRadius * c;
-  }
-
-  double _toRadians(double degrees) => degrees * (math.pi / 180);
 
   T? _getCached<T>(Map<String, _CacheEntry<T>> cache, String key) {
     final entry = cache[key];
@@ -352,7 +294,3 @@ class _PlacesMetrics {
     return (totalCacheHits / denominator) * 100;
   }
 }
-
-/// Modelo para resultado de búsqueda de lugares
-
-

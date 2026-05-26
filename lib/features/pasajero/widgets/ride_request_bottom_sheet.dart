@@ -352,7 +352,7 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Búsqueda limitada a Popayán y alrededores',
+                                'Búsqueda limitada al urbano de Popayán',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.blue.shade700,

@@ -101,7 +101,7 @@ class TravelAssistantController extends ChangeNotifier {
   int _destReq = 0;
 
   static const _popayanNotice =
-      'Búsqueda limitada a Popayán y alrededores (aprox. 20 km).';
+      'Búsqueda limitada al perímetro urbano de Popayán.';
 
   void init() {
     messages.clear();
@@ -199,7 +199,7 @@ class TravelAssistantController extends ChangeNotifier {
       final results = await _places.searchPlaces(q);
       if (results.isEmpty) {
         lastError =
-            'No encontramos esa dirección cerca de Popayán. Revisa el texto o elige una sugerencia.';
+            'No encontramos esa dirección en el urbano de Popayán. Revisa el texto o elige una sugerencia.';
         return;
       }
       final r = results.first;
@@ -228,7 +228,12 @@ class TravelAssistantController extends ChangeNotifier {
       p.placeId,
       sessionToken: _places.currentAutocompleteSessionToken,
     );
-    if (details == null) return;
+    if (details == null) {
+      lastError =
+          'Esa dirección está fuera del perímetro urbano de Popayán.';
+      notifyListeners();
+      return;
+    }
     originSearchController.removeListener(onOriginQueryChanged);
     originSearchController.text = p.mainText;
     originSearchController.addListener(onOriginQueryChanged);
@@ -300,7 +305,7 @@ class TravelAssistantController extends ChangeNotifier {
       final results = await _places.searchPlaces(q);
       if (results.isEmpty) {
         lastError =
-            'No encontramos ese destino cerca de Popayán. Revisa el texto o elige una sugerencia.';
+            'No encontramos ese destino en el urbano de Popayán. Revisa el texto o elige una sugerencia.';
         return;
       }
       final r = results.first;
@@ -333,7 +338,12 @@ class TravelAssistantController extends ChangeNotifier {
       p.placeId,
       sessionToken: _places.currentAutocompleteSessionToken,
     );
-    if (details == null) return;
+    if (details == null) {
+      lastError =
+          'Esa dirección está fuera del perímetro urbano de Popayán.';
+      notifyListeners();
+      return;
+    }
     destinationSearchController.removeListener(onDestinationQueryChanged);
     destinationSearchController.text = p.mainText;
     destinationSearchController.addListener(onDestinationQueryChanged);

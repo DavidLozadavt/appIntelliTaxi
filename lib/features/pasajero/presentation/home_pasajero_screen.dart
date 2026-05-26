@@ -1397,27 +1397,40 @@ class _HomePasajeroState extends State<HomePasajero>
 
     final details = await _placesSearch.resolvePlace(prediction);
 
-    if (details != null && mounted) {
+    if (!mounted) return;
+    _originController.addListener(_onOriginChanged);
+
+    if (details == null) {
       _setStateSafe(() {
-        _selectedOrigin = TripLocation.fromPlaceDetails(
-          placeId: prediction.placeId,
-          name: details.name,
-          address: details.address,
-          lat: details.lat,
-          lng: details.lng,
-        );
-        _originController.text = prediction.mainText;
         _originPredictions = [];
         _isSearchingOrigin = false;
       });
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'La recogida debe estar dentro del perímetro urbano de Popayán.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
-      // Restaurar listener
-      _originController.addListener(_onOriginChanged);
+    _setStateSafe(() {
+      _selectedOrigin = TripLocation.fromPlaceDetails(
+        placeId: prediction.placeId,
+        name: details.name,
+        address: details.address,
+        lat: details.lat,
+        lng: details.lng,
+      );
+      _originController.text = prediction.mainText;
+      _originPredictions = [];
+      _isSearchingOrigin = false;
+    });
 
-      // Si ya hay destino seleccionado, calcular ruta automáticamente.
-      if (_selectedDestination != null) {
-        await _drawRoute();
-      }
+    if (_selectedDestination != null) {
+      await _drawRoute();
     }
   }
 
@@ -1427,25 +1440,43 @@ class _HomePasajeroState extends State<HomePasajero>
 
     final details = await _placesSearch.resolvePlace(prediction);
 
-    if (details != null && mounted) {
-      final destination = TripLocation.fromPlaceDetails(
-        placeId: prediction.placeId,
-        name: details.name,
-        address: details.address,
-        lat: details.lat,
-        lng: details.lng,
-      );
+    if (!mounted) return;
+    _destinationController.addListener(_onDestinationChanged);
 
+    if (details == null) {
       _setStateSafe(() {
-        _selectedDestination = destination;
-        _selectedDestinationArea = null;
-        _destinationController.text = prediction.mainText;
         _destinationPredictions = [];
         _isSearchingDestination = false;
-        _upsertDestinationMarker(destination);
       });
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'El destino debe estar dentro del perímetro urbano de Popayán.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
-      _destinationController.addListener(_onDestinationChanged);
+    final destination = TripLocation.fromPlaceDetails(
+      placeId: prediction.placeId,
+      name: details.name,
+      address: details.address,
+      lat: details.lat,
+      lng: details.lng,
+    );
+
+    _setStateSafe(() {
+      _selectedDestination = destination;
+      _selectedDestinationArea = null;
+      _destinationController.text = prediction.mainText;
+      _destinationPredictions = [];
+      _isSearchingDestination = false;
+      _upsertDestinationMarker(destination);
+    });
+
+    if (mounted) {
       unawaited(_saveRecentDestination(destination));
       _updateAllDriverMarkers();
 
