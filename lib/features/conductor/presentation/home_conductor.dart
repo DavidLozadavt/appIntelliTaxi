@@ -19,6 +19,7 @@ import 'package:intellitaxi/features/conductor/providers/conductor_home_provider
 import 'package:intellitaxi/features/emergencias/providers/emergencia_provider.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
 import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
+import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 
 class HomeConductor extends StatefulWidget {
@@ -51,6 +52,7 @@ class _HomeConductorState extends State<HomeConductor>
 
   // Sanciones
   final SancionService _sancionService = SancionService();
+  final DriverOverlayService _overlayService = DriverOverlayService.instance;
   List<Sancion> _sanciones = [];
   bool _bannerVisible = true;
   Timer? _bannerTimer;
@@ -72,6 +74,7 @@ class _HomeConductorState extends State<HomeConductor>
     );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      await _overlayService.requestPermissionIfNeeded();
       await _provider.initialize();
       if (!mounted) return;
       await _navigateToActiveServiceIfNeeded();
@@ -178,10 +181,20 @@ class _HomeConductorState extends State<HomeConductor>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(_overlayService.hide());
       if (_provider.currentPosition == null) {
         unawaited(_provider.initializeLocation());
       }
-      unawaited(_provider.sincronizarSolicitudesPublicadasConductor());
+      if (!_provider.enServicio) {
+        unawaited(_provider.sincronizarSolicitudesPublicadasConductor());
+      }
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      if (_provider.isOnline &&
+          !_provider.enServicio &&
+          !_overlayService.isRequestingPermission) {
+        unawaited(_overlayService.showOnlineBubble());
+      }
     }
   }
 

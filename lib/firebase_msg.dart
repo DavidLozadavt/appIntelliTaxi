@@ -9,15 +9,60 @@ import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Payload `data` de FCM taxi (backend: FCMServiceIntelliTaxi).
-bool _isTaxiServiceNotificationData(Map<String, dynamic> data) {
-  final route = data['route']?.toString().toLowerCase().trim() ?? '';
-  if (route == 'servicio') return true;
+const _activeRoleKey = 'active_role';
+
+/// Solo alertas de cola para conductores — no cambios de estado del viaje.
+bool _isConductorIncomingServiceNotification(Map<String, dynamic> data) {
   final tipo = data['tipo']?.toString().toLowerCase() ?? '';
   if (tipo.contains('nueva_solicitud_servicio')) return true;
   if (tipo.contains('servicio_asignado')) return true;
+  if (tipo.contains('nueva_solicitud') || tipo.contains('nueva-solicitud')) {
+    return true;
+  }
   return false;
+}
+
+/// Actualizaciones de viaje (estado, ubicación, etc.) — no son solicitudes nuevas.
+bool _isServicioTripUpdateNotification(Map<String, dynamic> data) {
+  final tipo = data['tipo']?.toString().toLowerCase() ?? '';
+  if (tipo.contains('estado')) return true;
+  if (tipo.contains('ubicacion') || tipo.contains('ubicación')) return true;
+  if (tipo.contains('aceptado')) return true;
+  if (tipo.contains('en_camino')) return true;
+  if (tipo.contains('llegue') || tipo.contains('llegó')) return true;
+  if (tipo.contains('en_curso')) return true;
+  if (tipo.contains('finalizado')) return true;
+  if (tipo.contains('cancelado')) return true;
+  if (data.containsKey('estado') ||
+      data.containsKey('estado_id') ||
+      data.containsKey('id_estado')) {
+    return true;
+  }
+  final route = data['route']?.toString().toLowerCase().trim() ?? '';
+  return route == 'servicio' && !_isConductorIncomingServiceNotification(data);
+}
+
+Future<bool> _isActiveConductorRole() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString(_activeRoleKey)?.toUpperCase() ?? '';
+    return role == 'CONDUCTOR-INTELLITAXI' ||
+        role == 'CONDUCTOR' ||
+        role == 'MOTORISTA' ||
+        role == 'DRIVER';
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _shouldShowConductorIncomingAlert(
+  Map<String, dynamic> data,
+) async {
+  if (!_isConductorIncomingServiceNotification(data)) return false;
+  if (_isServicioTripUpdateNotification(data)) return false;
+  return _isActiveConductorRole();
 }
 
 bool _isCalificacionNotificationData(Map<String, dynamic> data) {
@@ -37,7 +82,7 @@ bool _isFleetEmergencyNotificationData(Map<String, dynamic> data) {
   return tipo.contains('emergencia') || route.contains('emergencia');
 }
 
-void navigateFromFcmData(Map<String, dynamic>? data) {
+Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
   if (data == null || data.isEmpty) {
     AppLogger.d('📱 FCM sin data; fallback chat');
     navigatorKey.currentState?.pushNamed('/chat');
@@ -59,9 +104,15 @@ void navigateFromFcmData(Map<String, dynamic>? data) {
     navigatorKey.currentState?.pushNamed('/home');
     return;
   }
-  if (_isTaxiServiceNotificationData(data)) {
-    AppLogger.d('🚕 FCM → inicio (solicitud / servicio taxi)');
+  if (await _shouldShowConductorIncomingAlert(data)) {
+    AppLogger.d('🚕 FCM → solicitud entrante (conductor)');
     IncomingServiceNotificationService.instance.bringAppToForeground();
+    return;
+  }
+  if (_isServicioTripUpdateNotification(data)) {
+    AppLogger.d('🚕 FCM → actualización de viaje');
+    await IncomingServiceNotificationService.instance.dismiss();
+    navigatorKey.currentState?.pushNamed('/home');
     return;
   }
   AppLogger.d('📱 FCM tipo no taxi; fallback chat');
@@ -101,16 +152,21 @@ void onNotificationTap(NotificationResponse notificationResponse) {
 
   final data = _parseNotificationPayloadString(payload);
   if (data != null) {
-    navigateFromFcmData(data);
+    unawaited(navigateFromFcmData(data));
     return;
   }
 
   if (payload != null &&
       (payload.contains('nueva_solicitud_servicio') ||
-          payload.contains('servicio_asignado') ||
-          payload.contains("'route': servicio") ||
+          payload.contains('servicio_asignado'))) {
+    unawaited(navigateFromFcmData({'tipo': 'nueva_solicitud_servicio'}));
+    return;
+  }
+
+  if (payload != null &&
+      (payload.contains("'route': servicio") ||
           payload.contains('"route":"servicio"'))) {
-    navigateFromFcmData({'tipo': 'nueva_solicitud_servicio'});
+    unawaited(navigateFromFcmData({'route': 'servicio', 'estado': 'update'}));
     return;
   }
 
@@ -131,7 +187,7 @@ Future<void> _handleBackgroundNotification(RemoteMessage message) async {
   final map = Map<String, dynamic>.from(data);
   if (_isFleetEmergencyNotificationData(map)) {
     await FleetEmergencyAlertService.instance.handlePayload(map);
-  } else if (_isTaxiServiceNotificationData(map)) {
+  } else if (await _shouldShowConductorIncomingAlert(map)) {
     await IncomingServiceNotificationService.instance.showIncomingService(map);
   }
 }
@@ -155,8 +211,10 @@ class FirebaseMsg {
         'Notificación abierta desde segundo plano: ${message.notification?.title}',
       );
       AppLogger.d('Data: ${message.data}');
-      navigateFromFcmData(
-        message.data.isEmpty ? null : Map<String, dynamic>.from(message.data),
+      unawaited(
+        navigateFromFcmData(
+          message.data.isEmpty ? null : Map<String, dynamic>.from(message.data),
+        ),
       );
     });
 
@@ -178,7 +236,7 @@ class FirebaseMsg {
         'App abierta desde estado terminado por notificación: ${initialMessage.notification?.title}',
       );
       AppLogger.d('Data: ${initialMessage.data}');
-      navigateFromFcmData(
+      await navigateFromFcmData(
         initialMessage.data.isEmpty
             ? null
             : Map<String, dynamic>.from(initialMessage.data),
@@ -285,20 +343,40 @@ class FirebaseMsg {
       await FleetEmergencyAlertService.instance.handlePayload(data);
       return;
     }
-    if (_isTaxiServiceNotificationData(data)) {
+    if (await _shouldShowConductorIncomingAlert(data)) {
       await IncomingServiceNotificationService.instance.showIncomingService(
         data,
       );
       return;
     }
+
+    // Pasajero o cambio de estado: quitar alerta de conductor si quedó activa.
+    if (_isServicioTripUpdateNotification(data) ||
+        !await _isActiveConductorRole()) {
+      await IncomingServiceNotificationService.instance.dismiss();
+    }
+
     await _showNotification(message);
   }
 
   Future<void> _showNotification(RemoteMessage message) async {
+    final data = message.data;
+    final title = message.notification?.title ??
+        data['title']?.toString() ??
+        data['titulo']?.toString();
+    final body = message.notification?.body ??
+        data['body']?.toString() ??
+        data['mensaje']?.toString() ??
+        data['message']?.toString();
+
+    if ((title == null || title.isEmpty) && (body == null || body.isEmpty)) {
+      return;
+    }
+
     final bigTextStyle = BigTextStyleInformation(
-      message.notification?.body ?? '',
+      body ?? '',
       htmlFormatBigText: true,
-      contentTitle: message.notification?.title,
+      contentTitle: title,
       htmlFormatContentTitle: true,
     );
 
@@ -311,14 +389,15 @@ class FirebaseMsg {
       styleInformation: bigTextStyle,
       color: AppColors.accent,
       largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+      autoCancel: true,
     );
 
     final payload = jsonEncode(message.data);
 
     await localNotifications.show(
-      id: 0,
-      title: message.notification?.title,
-      body: message.notification?.body,
+      id: message.hashCode & 0x7FFFFFFF,
+      title: title,
+      body: body,
       notificationDetails: NotificationDetails(android: androidDetails),
       payload: payload,
     );

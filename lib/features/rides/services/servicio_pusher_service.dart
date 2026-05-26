@@ -1,6 +1,8 @@
+import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 
 /// Servicio para que el pasajero reciba actualizaciones en tiempo real del servicio
 class ServicioPusherService {
@@ -55,6 +57,7 @@ class ServicioPusherService {
           AppLogger.d(
             '\n🔄 PASAJERO: Evento servicio.estado.cambiado recibido!',
           );
+          unawaited(IncomingServiceNotificationService.instance.dismiss());
           _handleEvent(event, onEstadoCambiado);
         },
       );

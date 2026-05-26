@@ -703,9 +703,18 @@ class ConductorHomeProvider extends ChangeNotifier {
       (s) => _obtenerSolicitudId(s) == solicitudId,
     );
     if (index < 0) return;
-    await IncomingServiceNotificationService.instance.showIncomingService(
-      _solicitudesActivas[index],
-    );
+
+    // Full-screen / heads-up solo si la app no está visible (otra app encima).
+    if (!_isAppInForeground()) {
+      await IncomingServiceNotificationService.instance.showIncomingService(
+        _solicitudesActivas[index],
+      );
+    }
+  }
+
+  bool _isAppInForeground() {
+    final state = WidgetsBinding.instance.lifecycleState;
+    return state == null || state == AppLifecycleState.resumed;
   }
 
   Future<void> _enriquecerDireccionesSolicitud(String solicitudId) async {

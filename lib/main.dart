@@ -33,6 +33,8 @@ import 'package:intellitaxi/features/notifications/providers/notification_provid
 import 'package:intellitaxi/features/notifications/presentation/notification_screen.dart';
 
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
+import 'package:intellitaxi/core/services/driver_overlay_service.dart';
+import 'package:intellitaxi/core/widgets/driver_overlay_bubble.dart';
 import 'package:intellitaxi/firebase_msg.dart' show FirebaseMsg;
 import 'package:intellitaxi/firebase_options.dart' show DefaultFirebaseOptions;
 import 'package:flutter/material.dart';
@@ -124,6 +126,17 @@ Future<void> _bootstrapRuntimeServices() async {
   }
 
   try {
+    DriverOverlayService.instance.ensureReturnListener();
+  } catch (e, st) {
+    AppLogger.e(
+      'No se pudo registrar listener del overlay',
+      tag: 'Bootstrap',
+      error: e,
+      stackTrace: st,
+    );
+  }
+
+  try {
     await IncomingServiceNotificationService.instance
         .ensureInitialized()
         .timeout(const Duration(seconds: 15));
@@ -169,7 +182,7 @@ void overlayMain() {
       debugShowCheckedModeBanner: false,
       home: Scaffold(
         backgroundColor: Colors.transparent,
-        body: SizedBox.shrink(),
+        body: DriverOverlayBubble(),
       ),
     ),
   );

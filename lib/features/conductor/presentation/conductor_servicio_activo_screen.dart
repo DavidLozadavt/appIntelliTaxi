@@ -72,6 +72,14 @@ class _ConductorServicioActivoScreenState
   bool _terminalNavigationInProgress = false;
   /// Evita doble `pushNamedAndRemoveUntil` (p. ej. cancel manual + evento Pusher).
   bool _homeNavigationScheduled = false;
+  String? _pusherEstadoEventKey;
+
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
+  bool get _canUpdateUi => mounted && !_terminalNavigationInProgress;
 
   // 📏 Control de altura del BottomSheet
   double _sheetHeight = 0.48;
@@ -104,14 +112,16 @@ class _ConductorServicioActivoScreenState
 
   @override
   void dispose() {
+    _terminalNavigationInProgress = true;
     WidgetsBinding.instance.removeObserver(this);
+    _locationSubscription?.cancel();
+    _locationSubscription = null;
     _desuscribirEventosServicio();
     _driverOverlayService.hide();
     ActiveServiceScreenRegistry.markHidden(
       type: 'conductor',
       serviceId: _safeServiceId(),
     );
-    _locationSubscription?.cancel();
     _trackingService.detenerSeguimiento();
     super.dispose();
   }
@@ -124,7 +134,7 @@ class _ConductorServicioActivoScreenState
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       if (!_driverOverlayService.isRequestingPermission) {
-        _driverOverlayService.show(servicioId: _safeServiceId());
+        _driverOverlayService.showTripBubble(servicioId: _safeServiceId());
       }
     }
   }
@@ -147,8 +157,9 @@ class _ConductorServicioActivoScreenState
           ? serv['id'] as int
           : int.tryParse(serv['id']?.toString() ?? '') ?? 0;
       if (rid != sid) return;
+      if (!_canUpdateUi) return;
 
-      setState(() {
+      _safeSetState(() {
         widget.servicio.addAll(serv);
         final idEst = serv['idEstado'] is int
             ? serv['idEstado'] as int
@@ -238,18 +249,18 @@ class _ConductorServicioActivoScreenState
 
     // Sin setState el overlay de cancelación (Colors.black54) sigue pintado aunque _isLoading sea false.
     _isLoading = false;
-    if (mounted) {
-      setState(() {});
+    if (_canUpdateUi) {
+      _safeSetState(() {});
     }
 
     navigateReplacingStackWithHome(
-      context: mounted ? context : null,
+      context: _canUpdateUi ? context : null,
       onSettled: (ok) {
         if (ok) return;
         _homeNavigationScheduled = false;
         _terminalNavigationInProgress = false;
         AppLogger.d('⚠️ _navegarAlHomeRaiz: navegación no aplicada, flags liberados');
-        if (mounted) setState(() {});
+        if (_canUpdateUi) _safeSetState(() {});
       },
     );
   }
@@ -557,22 +568,28 @@ class _ConductorServicioActivoScreenState
 
     // Cargar iconos personalizados
     await _cargarIconoCarro();
+    if (!_canUpdateUi) return;
     await _crearDotMarkers();
+    if (!_canUpdateUi) return;
 
     // Inicializar servicio de notificaciones
     await _notificacionService.inicializar();
+    if (!_canUpdateUi) return;
 
     // Guardar servicio activo localmente
     await _guardarServicioActivo();
+    if (!_canUpdateUi) return;
 
     // Mostrar notificación persistente
     await _mostrarNotificacionPersistente();
+    if (!_canUpdateUi) return;
 
     // Iniciar seguimiento
     await _trackingService.iniciarSeguimiento(
       servicioId: widget.servicio['id'],
       conductorId: widget.conductorId,
     );
+    if (!_canUpdateUi) return;
 
     // Destino inicial según estado restaurado.
     final origenLat = _parseDouble(widget.servicio['origen_lat']);
@@ -581,7 +598,7 @@ class _ConductorServicioActivoScreenState
     final destinoLng = _parseDouble(widget.servicio['destino_lng']);
 
     final tieneDestino = _tieneDestinoDefinido();
-    setState(() {
+    _safeSetState(() {
       if (_estadoUiEfectivo == 'en_curso' && tieneDestino) {
         _destinoActual = LatLng(destinoLat, destinoLng);
       } else {
@@ -591,6 +608,7 @@ class _ConductorServicioActivoScreenState
 
     // Obtener ubicación actual
     await _obtenerUbicacionActual();
+    if (!_canUpdateUi) return;
 
     // Actualizar marcadores
     _actualizarMarcadores();
@@ -600,11 +618,13 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _suscribirEventosServicio() async {
+    if (!_canUpdateUi) return;
     final channelName = 'servicio.${_safeServiceId()}';
     final eventKey = '$channelName:servicio.estado.cambiado';
+    _pusherEstadoEventKey = eventKey;
 
     PusherService.registerEventHandlerSecondary(eventKey, (event) {
-      if (!mounted || _terminalNavigationInProgress) return;
+      if (!_canUpdateUi) return;
       _manejarEventoEstadoServicio(event);
     });
 
@@ -612,9 +632,12 @@ class _ConductorServicioActivoScreenState
   }
 
   void _desuscribirEventosServicio() {
+    final eventKey = _pusherEstadoEventKey;
+    if (eventKey != null) {
+      PusherService.unregisterEventHandlerSecondary(eventKey);
+      _pusherEstadoEventKey = null;
+    }
     final channelName = 'servicio.${_safeServiceId()}';
-    final eventKey = '$channelName:servicio.estado.cambiado';
-    PusherService.unregisterEventHandlerSecondary(eventKey);
     PusherService.unsubscribeSecondary(channelName);
   }
 
@@ -647,20 +670,21 @@ class _ConductorServicioActivoScreenState
 
       if (estadoUi == 'cancelado' || estadoId == 6) {
         _terminalNavigationInProgress = true;
-        _salirPorServicioCancelado();
+        unawaited(_salirPorServicioCancelado());
         return;
       }
 
       if (estadoUi == 'finalizado' || estadoId == 22) {
         _terminalNavigationInProgress = true;
-        setState(() => _estadoActual = 'finalizado');
+        _safeSetState(() => _estadoActual = 'finalizado');
         Future<void>.delayed(const Duration(seconds: 1), () {
-          if (mounted) unawaited(_finalizarServicio());
+          if (_canUpdateUi) unawaited(_finalizarServicio());
         });
         return;
       }
 
-      setState(() {
+      if (!_canUpdateUi) return;
+      _safeSetState(() {
         if (estadoUi != null) {
           _estadoActual = estadoUi;
         }
@@ -725,7 +749,7 @@ class _ConductorServicioActivoScreenState
       // Verificar que el widget siga montado antes de llamar setState
       if (!mounted) return;
 
-      setState(() {
+      _safeSetState(() {
         _miUbicacion = LatLng(position.latitude, position.longitude);
       });
 
@@ -754,9 +778,9 @@ class _ConductorServicioActivoScreenState
             distanceFilter: 10,
           ),
         ).listen((position) {
-          if (!mounted) return;
+          if (!_canUpdateUi) return;
 
-          setState(() {
+          _safeSetState(() {
             _miUbicacion = LatLng(position.latitude, position.longitude);
           });
 
@@ -807,12 +831,13 @@ class _ConductorServicioActivoScreenState
   }
 
   void _actualizarMarcadores() {
+    if (!_canUpdateUi) return;
     final origenLat = _parseDouble(widget.servicio['origen_lat']);
     final origenLng = _parseDouble(widget.servicio['origen_lng']);
     final destinoLat = _parseDouble(widget.servicio['destino_lat']);
     final destinoLng = _parseDouble(widget.servicio['destino_lng']);
 
-    setState(() {
+    _safeSetState(() {
       _markers = {};
 
       // Punto de recogida (siempre visible)
@@ -877,7 +902,7 @@ class _ConductorServicioActivoScreenState
       if (!mounted) return;
 
       if (routeInfo != null && routeInfo.polylinePoints.isNotEmpty) {
-        setState(() {
+        _safeSetState(() {
           _polylines.clear();
           _polylines.add(
             Polyline(
@@ -904,7 +929,8 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
-    setState(() => _isLoading = true);
+    if (!_canUpdateUi) return;
+    _safeSetState(() => _isLoading = true);
 
     double? destinoFinalLat;
     double? destinoFinalLng;
@@ -929,10 +955,11 @@ class _ConductorServicioActivoScreenState
       destinoFinalAddress: destinoFinalAddress,
     );
 
-    setState(() => _isLoading = false);
+    if (!_canUpdateUi) return;
+    _safeSetState(() => _isLoading = false);
 
     if (success) {
-      setState(() {
+      _safeSetState(() {
         _estadoActual = nuevoEstado;
         if (nuevoEstado == 'llegue') {
           widget.servicio['idEstado'] = 20;
@@ -1221,10 +1248,10 @@ class _ConductorServicioActivoScreenState
     final provider = context.read<ConductorHomeProvider>();
     final vehiculoId = provider.vehiculoSeleccionado?.id ?? 0;
 
-    setState(() => _isLoading = true);
+    _safeSetState(() => _isLoading = true);
     try {
       final response = await provider.aceptarSolicitud(solicitudId, vehiculoId);
-      if (!mounted) return;
+      if (!_canUpdateUi) return;
       if (response != null) {
         _mostrarMensaje(
           'Oferta aceptada. Continúa tu viaje actual; revisa el servicio al finalizar.',
@@ -1235,7 +1262,7 @@ class _ConductorServicioActivoScreenState
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (_canUpdateUi) _safeSetState(() => _isLoading = false);
     }
   }
 
@@ -1368,7 +1395,8 @@ class _ConductorServicioActivoScreenState
               bottom: 0,
               child: GestureDetector(
                 onVerticalDragUpdate: (details) {
-                  setState(() {
+                  if (!_canUpdateUi) return;
+                  _safeSetState(() {
                     final screenHeight = MediaQuery.of(context).size.height;
                     final delta = -details.primaryDelta! / screenHeight;
                     _sheetHeight = (_sheetHeight + delta).clamp(
@@ -1378,9 +1406,10 @@ class _ConductorServicioActivoScreenState
                   });
                 },
                 onVerticalDragEnd: (details) {
+                  if (!_canUpdateUi) return;
                   final velocity = details.primaryVelocity ?? 0;
                   if (velocity.abs() > 500) {
-                    setState(() {
+                    _safeSetState(() {
                       if (velocity > 0) {
                         _sheetHeight = _minHeight;
                       } else {
@@ -1411,7 +1440,8 @@ class _ConductorServicioActivoScreenState
                       // Handle draggable
                       GestureDetector(
                         onTap: () {
-                          setState(() {
+                          if (!_canUpdateUi) return;
+                          _safeSetState(() {
                             _sheetHeight = _sheetHeight < 0.5
                                 ? 0.55
                                 : _minHeight;
@@ -1801,7 +1831,8 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _cancelarServicio(String motivo) async {
-    setState(() => _isLoading = true);
+    if (!_canUpdateUi) return;
+    _safeSetState(() => _isLoading = true);
 
     try {
       // Obtener el servicio ID
@@ -1825,8 +1856,8 @@ class _ConductorServicioActivoScreenState
 
       if (exitoso) {
         // Quitar overlay de “cancelando” antes de awaits largos para no dejar UI negra.
-        if (mounted) {
-          setState(() => _isLoading = false);
+        if (_canUpdateUi) {
+          _safeSetState(() => _isLoading = false);
         }
 
         // Detener tracking
@@ -1859,8 +1890,8 @@ class _ConductorServicioActivoScreenState
       _mostrarError('Error al cancelar: ${e.toString()}');
     } finally {
       // Siempre bajar loading si sigue activo (evita overlay negro si la navegación falla o queda a medias).
-      if (mounted && _isLoading) {
-        setState(() => _isLoading = false);
+      if (_canUpdateUi && _isLoading) {
+        _safeSetState(() => _isLoading = false);
       }
     }
   }

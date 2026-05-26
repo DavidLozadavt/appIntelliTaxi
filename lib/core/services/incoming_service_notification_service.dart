@@ -100,6 +100,16 @@ class IncomingServiceNotificationService {
     }
   }
 
+  /// Quita la alerta de solicitud entrante (p. ej. si llegó por error al pasajero).
+  Future<void> dismiss() async {
+    try {
+      await ensureInitialized();
+      await _plugin.cancel(id: notificationId);
+    } catch (e) {
+      AppLogger.d('⚠️ Error cancelando notificación de servicio entrante: $e');
+    }
+  }
+
   /// Trae la app al frente cuando el conductor toca la alerta o vuelve del overlay.
   void bringAppToForeground() {
     final nav = navigatorKey.currentState;
