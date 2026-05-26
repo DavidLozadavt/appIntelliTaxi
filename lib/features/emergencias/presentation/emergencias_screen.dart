@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/emergencia_provider.dart';
 
 /// Emergencia en un solo paso: ubicación a central y flota.
@@ -73,7 +74,6 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
     }
 
     final ok = await emergenciaProvider.enviarApoyoRapido(
-      idConductor: conductorId,
       idVehiculo: vehiculo?.id ?? turno.idVehiculo,
       idTurno: turno.id,
       lat: position.latitude,
@@ -84,8 +84,10 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
     if (!mounted) return;
 
     if (ok) {
+      final emergencia = emergenciaProvider.ultimaEmergencia;
       setState(() {
-        _ubicacionLegible =
+        _ubicacionLegible = emergencia?.direccionCompleta ??
+            emergencia?.tituloUbicacion ??
             '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
       });
     }
@@ -248,9 +250,32 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                         ),
+                      ),
+                    ],
+                    if (enEmergencia &&
+                        emergenciaProvider.ultimaEmergencia != null) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final url =
+                              emergenciaProvider.ultimaEmergencia!.urlMaps;
+                          final uri = Uri.parse(url);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white70),
+                        ),
+                        icon: const Icon(Icons.navigation),
+                        label: const Text('Ver en mapa'),
                       ),
                     ],
                   ],

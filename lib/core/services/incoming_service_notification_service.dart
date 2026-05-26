@@ -5,7 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
-import 'package:intellitaxi/main.dart';
+import 'package:intellitaxi/core/services/app_foreground_service.dart';
 
 /// Notificaciones de alta prioridad para nuevas solicitudes (Android: full-screen intent).
 class IncomingServiceNotificationService {
@@ -76,7 +76,9 @@ class IncomingServiceNotificationService {
         styleInformation: BigTextStyleInformation(
           body,
           contentTitle: title,
-          summaryText: SolicitudDisplayHelper.barrioFromPayload(solicitud),
+          summaryText: SolicitudDisplayHelper.pickupSubtitle(solicitud).isNotEmpty
+              ? SolicitudDisplayHelper.pickupSubtitle(solicitud)
+              : SolicitudDisplayHelper.pickupName(solicitud),
         ),
         ticker: 'Nuevo servicio',
       );
@@ -111,9 +113,6 @@ class IncomingServiceNotificationService {
   }
 
   /// Trae la app al frente cuando el conductor toca la alerta o vuelve del overlay.
-  void bringAppToForeground() {
-    final nav = navigatorKey.currentState;
-    if (nav == null) return;
-    nav.pushNamedAndRemoveUntil('/home', (route) => false);
-  }
+  Future<void> bringAppToForeground() =>
+      AppForegroundService.instance.bringAppToForeground();
 }

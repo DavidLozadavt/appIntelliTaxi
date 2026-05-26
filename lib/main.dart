@@ -177,15 +177,7 @@ Future<void> _bootstrapRuntimeServices() async {
 @pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: DriverOverlayBubble(),
-      ),
-    ),
-  );
+  runApp(const DriverOverlayApp());
 }
 
 void _setupPerformanceOptimizations() {

@@ -7,90 +7,110 @@ class EmergenciaProvider extends ChangeNotifier {
   final EmergenciaService _api = EmergenciaService();
 
   bool _isLoading = false;
-
   EmergenciaModel? _ultimaEmergencia;
-  String? _tipoEmergenciaActiva;
   String? _lastError;
+  List<EmergenciaModel> _emergenciasActivas = [];
 
   bool get isLoading => _isLoading;
-
   EmergenciaModel? get ultimaEmergencia => _ultimaEmergencia;
-  bool get estaEnEmergencia => _ultimaEmergencia != null;
-  String? get tipoEmergenciaActiva => _tipoEmergenciaActiva;
+  bool get estaEnEmergencia => _ultimaEmergencia?.isActiva == true;
   String? get lastError => _lastError;
+  List<EmergenciaModel> get emergenciasActivas =>
+      List.unmodifiable(_emergenciasActivas);
 
-  /// Un solo tipo de alerta: apoyo con ubicación para central y flota.
+  /// Pedir apoyo — GPS al pulsar, backend guarda tipo EMERGENCIA.
   Future<bool> enviarApoyoRapido({
-    required int idConductor,
     required int idVehiculo,
     required int idTurno,
     required double lat,
     required double lng,
     String? placa,
+    String mensaje = 'Necesito apoyo',
   }) {
-    final descripcion = placa != null && placa.isNotEmpty
-        ? 'Conductor $placa necesita apoyo en $lat, $lng'
-        : 'Conductor necesita apoyo en $lat, $lng';
-
+    final msg = placa != null && placa.isNotEmpty
+        ? '$mensaje · $placa'
+        : mensaje;
     return enviarEmergencia(
-      idConductor: idConductor,
       idVehiculo: idVehiculo,
       idTurno: idTurno,
       lat: lat,
       lng: lng,
-      tipo: 'APOYO',
-      descripcion: descripcion,
-      silenciosa: false,
+      mensaje: msg,
     );
   }
 
   Future<bool> enviarEmergencia({
-    required int idConductor,
     required int idVehiculo,
     required int idTurno,
     required double lat,
     required double lng,
-    required String tipo,
-    String? descripcion,
-    bool silenciosa = true,
+    String? mensaje,
   }) async {
     try {
       _isLoading = true;
       _lastError = null;
-
       notifyListeners();
 
       final emergencia = await _api.crearEmergencia(
-        idConductor: idConductor,
         idVehiculo: idVehiculo,
         idTurno: idTurno,
         lat: lat,
         lng: lng,
-        tipo: tipo,
-        descripcion: descripcion,
-        silenciosa: silenciosa,
+        mensaje: mensaje,
       );
 
       _ultimaEmergencia = emergencia;
-      _tipoEmergenciaActiva = tipo;
-
+      _upsertActiva(emergencia);
       return true;
     } catch (e) {
       _lastError = e.toString().replaceAll('Exception: ', '').trim();
-      debugPrint(e.toString());
-
+      debugPrint(_lastError);
       return false;
     } finally {
       _isLoading = false;
-
       notifyListeners();
     }
   }
 
-  void marcarEmergenciaAtendida() {
-    _ultimaEmergencia = null;
-    _tipoEmergenciaActiva = null;
+  Future<void> cargarEmergenciasActivas() async {
+    try {
+      final list = await _api.listarActivas();
+      _emergenciasActivas = list;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ cargarEmergenciasActivas: $e');
+    }
+  }
+
+  /// Pusher `emergencia.activa` o FCM.
+  void registrarEmergenciaRemota(Map<String, dynamic> payload) {
+    try {
+      final model = EmergenciaModel.fromJson(payload);
+      if (model.id <= 0) return;
+      _upsertActiva(model);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('⚠️ registrarEmergenciaRemota: $e');
+    }
+  }
+
+  /// Pusher `emergencia.finalizada`.
+  void finalizarEmergenciaRemota(int idEmergencia) {
+    _emergenciasActivas.removeWhere((e) => e.id == idEmergencia);
+    if (_ultimaEmergencia?.id == idEmergencia) {
+      _ultimaEmergencia = null;
+    }
     notifyListeners();
+  }
+
+  void _upsertActiva(EmergenciaModel model) {
+    if (!model.isActiva) return;
+    final idx = _emergenciasActivas.indexWhere((e) => e.id == model.id);
+    if (idx >= 0) {
+      _emergenciasActivas[idx] = model;
+    } else {
+      _emergenciasActivas.add(model);
+    }
   }
 
   Future<bool> finalizarEmergenciaActiva() async {
@@ -109,11 +129,11 @@ class EmergenciaProvider extends ChangeNotifier {
       }
 
       _ultimaEmergencia = null;
-      _tipoEmergenciaActiva = null;
+      _emergenciasActivas.removeWhere((e) => e.id == emergencia.id);
       return true;
     } catch (e) {
       _lastError = e.toString().replaceAll('Exception: ', '').trim();
-      debugPrint(e.toString());
+      debugPrint(_lastError);
       return false;
     } finally {
       _isLoading = false;

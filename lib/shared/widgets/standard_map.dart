@@ -21,6 +21,10 @@ class StandardMap extends StatelessWidget {
   final Function(LatLng)? onLongPress;
   final MapType mapType;
   final EdgeInsets mapPadding;
+  /// Edificios 3D de Google Maps (desactivado = vista plana).
+  final bool buildingsEnabled;
+  /// Permite inclinar el mapa con gestos (desactivado = siempre plano).
+  final bool tiltGesturesEnabled;
 
   const StandardMap({
     super.key,
@@ -35,6 +39,8 @@ class StandardMap extends StatelessWidget {
     this.myLocationButtonEnabled = false,
     this.zoomControlsEnabled = false,
     this.compassEnabled = true,
+    this.buildingsEnabled = false,
+    this.tiltGesturesEnabled = false,
     this.onCameraMove,
     this.onCameraMoveStarted,
     this.onCameraIdle,
@@ -63,6 +69,9 @@ class StandardMap extends StatelessWidget {
       zoomControlsEnabled: zoomControlsEnabled,
       compassEnabled: compassEnabled,
       mapType: mapType,
+      buildingsEnabled: buildingsEnabled,
+      tiltGesturesEnabled: tiltGesturesEnabled,
+      fortyFiveDegreeImageryEnabled: false,
       onCameraMove: onCameraMove,
       onCameraMoveStarted: onCameraMoveStarted,
       onCameraIdle: onCameraIdle,

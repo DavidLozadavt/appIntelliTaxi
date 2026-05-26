@@ -193,7 +193,7 @@ class _HomeConductorState extends State<HomeConductor>
       if (_provider.isOnline &&
           !_provider.enServicio &&
           !_overlayService.isRequestingPermission) {
-        unawaited(_overlayService.showOnlineBubble());
+        unawaited(_overlayService.showTurnoBubble());
       }
     }
   }

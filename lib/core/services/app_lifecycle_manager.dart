@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/service_navigation_helper.dart';
+import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 
 /// Observador del ciclo de vida de la aplicación
@@ -34,6 +35,14 @@ class AppLifecycleManager extends WidgetsBindingObserver {
     super.didChangeAppLifecycleState(state);
 
     AppLogger.d('🔄 [Lifecycle] Estado de la app cambió: $state');
+
+    if (context.mounted) {
+      DriverOverlayService.instance.syncWithAppLifecycle(
+        state,
+        context: context,
+        isConductorSession: _isConductorSession,
+      );
+    }
 
     switch (state) {
       case AppLifecycleState.resumed:
@@ -128,6 +137,15 @@ class AppLifecycleManager extends WidgetsBindingObserver {
       AppLogger.d('⚠️ [Lifecycle] Error restaurando servicio activo: $e');
       AppLogger.d('Stack trace: $stackTrace');
     }
+  }
+
+  bool get _isConductorSession {
+    if (!authProvider.hasConductorRole) return false;
+    final active = authProvider.activeRole;
+    if (active == AuthProvider.roleConductor) return true;
+    return active == null &&
+        !authProvider.canSwitchRole &&
+        authProvider.hasConductorRole;
   }
 
   /// Método público para verificar servicio activo manualmente

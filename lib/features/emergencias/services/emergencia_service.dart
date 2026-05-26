@@ -6,49 +6,78 @@ import '../data/emergencia_model.dart';
 class EmergenciaService {
   final Dio _dio = DioClient.getInstance();
 
+  /// `POST /api/emergencias` — GPS al pulsar, sin `tipo` (backend → EMERGENCIA).
   Future<EmergenciaModel> crearEmergencia({
-    required int idConductor,
     required int idVehiculo,
     required int idTurno,
     required double lat,
     required double lng,
-    required String tipo,
-    String? descripcion,
-    bool silenciosa = true,
+    String? mensaje,
   }) async {
     try {
       final response = await _dio.post(
-        "emergencias",
+        'emergencias',
         data: {
-          "idConductor": idConductor,
-          "idVehiculo": idVehiculo,
-          "idTurno": idTurno,
-          "lat": lat,
-          "lng": lng,
-          "tipo": tipo,
-          "descripcion": descripcion,
-          "silenciosa": silenciosa ? 1 : 0,
+          'lat': lat,
+          'lng': lng,
+          'idVehiculo': idVehiculo,
+          'idTurno': idTurno,
+          if (mensaje != null && mensaje.trim().isNotEmpty)
+            'mensaje': mensaje.trim(),
         },
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data =
-            response.data is Map && (response.data as Map).containsKey('data')
-            ? response.data['data']
-            : response.data;
-
-        return EmergenciaModel.fromJson(Map<String, dynamic>.from(data as Map));
-      } else {
-        throw Exception("Error al crear emergencia");
+        final raw = response.data;
+        if (raw is Map && raw['data'] is Map) {
+          return EmergenciaModel.fromJson(
+            Map<String, dynamic>.from(raw['data'] as Map),
+          );
+        }
+        if (raw is Map) {
+          return EmergenciaModel.fromJson(Map<String, dynamic>.from(raw));
+        }
+        throw Exception('Respuesta inválida al crear emergencia');
       }
+      throw Exception('Error al crear emergencia');
     } on DioException catch (e) {
-      throw Exception("Error en la petición: ${e.message}");
+      final msg = e.response?.data is Map
+          ? (e.response?.data as Map)['message']?.toString()
+          : null;
+      throw Exception(msg ?? e.message ?? 'Error en la petición');
     }
   }
 
+  /// `GET /api/emergencias/activas` — pins al abrir mapa.
+  Future<List<EmergenciaModel>> listarActivas() async {
+    try {
+      final response = await _dio.get('emergencias/activas');
+      if (response.statusCode != 200 || response.data == null) return [];
+
+      final raw = response.data;
+      List<dynamic> list;
+      if (raw is Map && raw['data'] is List) {
+        list = raw['data'] as List;
+      } else if (raw is List) {
+        list = raw;
+      } else {
+        return [];
+      }
+
+      return list
+          .whereType<Map>()
+          .map((e) => EmergenciaModel.fromJson(Map<String, dynamic>.from(e)))
+          .where((e) => e.isActiva && e.id > 0)
+          .toList();
+    } on DioException {
+      return [];
+    }
+  }
+
+  /// `PUT /api/emergencias/finalizar/{id}`
   Future<bool> finalizarEmergencia(int idEmergencia) async {
     try {
-      final response = await _dio.put("emergencias/finalizar/$idEmergencia");
+      final response = await _dio.put('emergencias/finalizar/$idEmergencia');
 
       if (response.statusCode == null ||
           response.statusCode! < 200 ||
@@ -63,7 +92,12 @@ class EmergenciaService {
 
       return true;
     } on DioException catch (e) {
-      throw Exception("Error al finalizar emergencia: ${e.message}");
+      throw Exception(
+        e.response?.data is Map
+            ? (e.response?.data as Map)['message']?.toString() ??
+                  'Error al finalizar emergencia'
+            : e.message ?? 'Error al finalizar emergencia',
+      );
     }
   }
 }

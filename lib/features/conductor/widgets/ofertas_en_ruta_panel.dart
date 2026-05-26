@@ -185,8 +185,8 @@ class _OfertaCompactaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final origen = SolicitudDisplayHelper.pickupAddress(solicitud);
-    final barrio = SolicitudDisplayHelper.barrioFromPayload(solicitud);
+    final barrio = SolicitudDisplayHelper.pickupName(solicitud);
+    final calle = SolicitudDisplayHelper.pickupSubtitle(solicitud);
     final km = solicitud['distancia_hacia_ruta_km'];
 
     return Container(
@@ -204,24 +204,28 @@ class _OfertaCompactaTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (barrio != null)
-                      Text(
-                        barrio,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.orange.shade800,
-                        ),
-                      ),
                     Text(
-                      origen,
+                      barrio,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.orange.shade900,
                         height: 1.2,
                       ),
+                    ),
+                    if (calle != null && calle.isNotEmpty)
+                      Text(
+                        calle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade700,
+                          height: 1.2,
+                        ),
                     ),
                     if (km != null)
                       Padding(

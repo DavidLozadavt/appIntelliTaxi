@@ -20,7 +20,7 @@
 
     <application
         android:label="TaxbelUrbano"
-        android:name="${applicationName}"
+        android:name=".IntelliTaxiApplication"
         android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"
         android:usesCleartextTraffic="false"

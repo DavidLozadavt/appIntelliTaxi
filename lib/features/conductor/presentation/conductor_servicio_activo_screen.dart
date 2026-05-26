@@ -70,6 +70,8 @@ class _ConductorServicioActivoScreenState
   BitmapDescriptor? _carIcon;
   StreamSubscription<Position>? _locationSubscription;
   bool _terminalNavigationInProgress = false;
+  /// Evita doble flujo calificación + home (botón y Pusher).
+  bool _finalizacionEnCurso = false;
   /// Evita doble `pushNamedAndRemoveUntil` (p. ej. cancel manual + evento Pusher).
   bool _homeNavigationScheduled = false;
   String? _pusherEstadoEventKey;
@@ -129,13 +131,7 @@ class _ConductorServicioActivoScreenState
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _driverOverlayService.hide();
       unawaited(_sincronizarServicioRemotoEnResume());
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      if (!_driverOverlayService.isRequestingPermission) {
-        _driverOverlayService.showTripBubble(servicioId: _safeServiceId());
-      }
     }
   }
 
@@ -675,11 +671,7 @@ class _ConductorServicioActivoScreenState
       }
 
       if (estadoUi == 'finalizado' || estadoId == 22) {
-        _terminalNavigationInProgress = true;
-        _safeSetState(() => _estadoActual = 'finalizado');
-        Future<void>.delayed(const Duration(seconds: 1), () {
-          if (_canUpdateUi) unawaited(_finalizarServicio());
-        });
+        unawaited(_programarFinalizacionViaje());
         return;
       }
 
@@ -929,36 +921,57 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
-    if (!_canUpdateUi) return;
+    if (!mounted || _finalizacionEnCurso || _homeNavigationScheduled) return;
     _safeSetState(() => _isLoading = true);
 
     double? destinoFinalLat;
     double? destinoFinalLng;
     String? destinoFinalAddress;
-    if (nuevoEstado == 'finalizado' &&
-        !_tieneDestinoDefinido() &&
-        _miUbicacion != null) {
-      destinoFinalLat = _miUbicacion!.latitude;
-      destinoFinalLng = _miUbicacion!.longitude;
-      final resolved = await _resolverDireccionDesdeCoordenadas(_miUbicacion!);
-      destinoFinalAddress =
-          resolved ??
-          'Destino final (${destinoFinalLat.toStringAsFixed(5)}, ${destinoFinalLng.toStringAsFixed(5)})';
-    }
+    try {
+      if (nuevoEstado == 'finalizado' &&
+          !_tieneDestinoDefinido() &&
+          _miUbicacion != null) {
+        destinoFinalLat = _miUbicacion!.latitude;
+        destinoFinalLng = _miUbicacion!.longitude;
+        final resolved =
+            await _resolverDireccionDesdeCoordenadas(_miUbicacion!);
+        destinoFinalAddress =
+            resolved ??
+            'Destino final (${destinoFinalLat.toStringAsFixed(5)}, ${destinoFinalLng.toStringAsFixed(5)})';
+      }
 
-    final success = await ServicioTrackingService.cambiarEstadoStatic(
-      servicioId: widget.servicio['id'],
-      conductorId: widget.conductorId,
-      estado: nuevoEstado,
-      destinoFinalLat: destinoFinalLat,
-      destinoFinalLng: destinoFinalLng,
-      destinoFinalAddress: destinoFinalAddress,
-    );
+      final success = await ServicioTrackingService.cambiarEstadoStatic(
+        servicioId: widget.servicio['id'],
+        conductorId: widget.conductorId,
+        estado: nuevoEstado,
+        destinoFinalLat: destinoFinalLat,
+        destinoFinalLng: destinoFinalLng,
+        destinoFinalAddress: destinoFinalAddress,
+      );
 
-    if (!_canUpdateUi) return;
-    _safeSetState(() => _isLoading = false);
+      if (!mounted) return;
 
-    if (success) {
+      if (!success) {
+        if (!_finalizacionEnCurso) {
+          _mostrarError('No se pudo actualizar el estado');
+        }
+        return;
+      }
+
+      if (nuevoEstado == 'finalizado') {
+        if (!_tieneDestinoDefinido() &&
+            destinoFinalLat != null &&
+            destinoFinalLng != null) {
+          widget.servicio['destino_lat'] = destinoFinalLat;
+          widget.servicio['destino_lng'] = destinoFinalLng;
+          widget.servicio['destino_address'] =
+              destinoFinalAddress ?? widget.servicio['destino_address'];
+        }
+        await _programarFinalizacionViaje();
+        return;
+      }
+
+      if (!_canUpdateUi) return;
       _safeSetState(() {
         _estadoActual = nuevoEstado;
         if (nuevoEstado == 'llegue') {
@@ -967,16 +980,6 @@ class _ConductorServicioActivoScreenState
           widget.servicio['idEstado'] = 19;
         } else if (nuevoEstado == 'en_curso') {
           widget.servicio['idEstado'] = 21;
-        } else if (nuevoEstado == 'finalizado') {
-          widget.servicio['idEstado'] = 22;
-          if (!_tieneDestinoDefinido() &&
-              destinoFinalLat != null &&
-              destinoFinalLng != null) {
-            widget.servicio['destino_lat'] = destinoFinalLat;
-            widget.servicio['destino_lng'] = destinoFinalLng;
-            widget.servicio['destino_address'] =
-                destinoFinalAddress ?? widget.servicio['destino_address'];
-          }
         }
 
         // Si llegó al punto de recogida, cambiar destino al final
@@ -1009,36 +1012,59 @@ class _ConductorServicioActivoScreenState
       _mostrarMensaje(_getMensajeEstado(nuevoEstado));
       _actualizarMarcadores();
       _dibujarRuta();
-
-      // Si finalizó el viaje, limpiar y salir
-      if (nuevoEstado == 'finalizado') {
-        await Future.delayed(const Duration(seconds: 2));
-        await _finalizarServicio();
+    } finally {
+      if (mounted && !_finalizacionEnCurso && _isLoading) {
+        _safeSetState(() => _isLoading = false);
       }
-    } else {
-      _mostrarError('No se pudo actualizar el estado');
     }
   }
 
-  Future<void> _finalizarServicio() async {
-    // Detener seguimiento
-    _trackingService.detenerSeguimiento();
+  /// Un solo camino al terminar el viaje (evita loading colgado si Pusher llega antes que el API).
+  Future<void> _programarFinalizacionViaje() async {
+    if (_finalizacionEnCurso || _homeNavigationScheduled) return;
+    _finalizacionEnCurso = true;
 
-    // Cancelar notificación
-    await _notificacionService.cancelarNotificacion(
-      _safeServiceId(),
-      tipo: 'conductor',
-    );
-
-    // Limpiar persistencia
-    await _persistencia.limpiarServicioActivo();
-
-    // Mostrar diálogo de calificación del pasajero
     if (mounted) {
-      await _mostrarDialogoCalificacionPasajero();
+      _safeSetState(() {
+        _isLoading = false;
+        _estadoActual = 'finalizado';
+        widget.servicio['idEstado'] = 22;
+        widget.servicio['estado'] = 'finalizado';
+      });
     }
 
-    await _navegarAlHomeRaiz();
+    await _finalizarServicio();
+  }
+
+  Future<void> _finalizarServicio() async {
+    try {
+      _trackingService.detenerSeguimiento();
+
+      await _notificacionService.cancelarNotificacion(
+        _safeServiceId(),
+        tipo: 'conductor',
+      );
+
+      await _persistencia.limpiarServicioActivo();
+
+      if (mounted) {
+        await _mostrarDialogoCalificacionPasajero();
+      }
+
+      await _navegarAlHomeRaiz();
+    } catch (e, st) {
+      AppLogger.e(
+        'Error en finalización de viaje',
+        tag: 'ConductorServicio',
+        error: e,
+        stackTrace: st,
+      );
+      if (mounted && !_homeNavigationScheduled) {
+        _finalizacionEnCurso = false;
+        _safeSetState(() => _isLoading = false);
+        _mostrarError('No se pudo cerrar el viaje. Intenta de nuevo.');
+      }
+    }
   }
 
   Future<void> _salirPorServicioCancelado() async {
