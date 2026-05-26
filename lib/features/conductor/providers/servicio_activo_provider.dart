@@ -165,7 +165,7 @@ class ServicioActivoProvider extends ChangeNotifier {
     try {
       _carIcon = await BitmapDescriptor.asset(
         const ImageConfiguration(size: Size(48, 48)),
-        'assets/images/carMarker.png',
+        'assets/images/taxi.png',
       );
     } catch (e) {
       AppLogger.d('⚠️ Error cargando ícono del carro: $e');

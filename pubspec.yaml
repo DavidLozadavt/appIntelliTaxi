@@ -92,6 +92,7 @@ flutter:
     - assets/images/logoTaxbel.webp
     - assets/images/mock3.png
     - assets/images/marker.png
+    - assets/images/taxi.png
     - assets/images/carMarker.png
     - assets/sound/nuevaoferta.mp3
     - .env
