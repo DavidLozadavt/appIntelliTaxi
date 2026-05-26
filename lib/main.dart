@@ -32,6 +32,7 @@ import 'package:intellitaxi/features/legal/privacy_policy_screen.dart';
 import 'package:intellitaxi/features/notifications/providers/notification_provider.dart';
 import 'package:intellitaxi/features/notifications/presentation/notification_screen.dart';
 
+import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/firebase_msg.dart' show FirebaseMsg;
 import 'package:intellitaxi/firebase_options.dart' show DefaultFirebaseOptions;
 import 'package:flutter/material.dart';
@@ -116,6 +117,19 @@ Future<void> _bootstrapRuntimeServices() async {
   } catch (e, st) {
     AppLogger.e(
       'No se pudo inicializar ServicioNotificacionForeground',
+      tag: 'Bootstrap',
+      error: e,
+      stackTrace: st,
+    );
+  }
+
+  try {
+    await IncomingServiceNotificationService.instance
+        .ensureInitialized()
+        .timeout(const Duration(seconds: 15));
+  } catch (e, st) {
+    AppLogger.e(
+      'No se pudo inicializar IncomingServiceNotificationService',
       tag: 'Bootstrap',
       error: e,
       stackTrace: st,

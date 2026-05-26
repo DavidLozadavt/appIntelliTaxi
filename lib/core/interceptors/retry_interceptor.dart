@@ -43,6 +43,8 @@ class RetryInterceptor extends Interceptor {
   }
 
   bool _shouldRetry(DioException err) {
+    if (err.requestOptions.extra['no_retry'] == true) return false;
+
     final status = err.response?.statusCode ?? 0;
     if (status >= 500) return true;
 

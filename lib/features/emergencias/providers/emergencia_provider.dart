@@ -19,6 +19,31 @@ class EmergenciaProvider extends ChangeNotifier {
   String? get tipoEmergenciaActiva => _tipoEmergenciaActiva;
   String? get lastError => _lastError;
 
+  /// Un solo tipo de alerta: apoyo con ubicación para central y flota.
+  Future<bool> enviarApoyoRapido({
+    required int idConductor,
+    required int idVehiculo,
+    required int idTurno,
+    required double lat,
+    required double lng,
+    String? placa,
+  }) {
+    final descripcion = placa != null && placa.isNotEmpty
+        ? 'Conductor $placa necesita apoyo en $lat, $lng'
+        : 'Conductor necesita apoyo en $lat, $lng';
+
+    return enviarEmergencia(
+      idConductor: idConductor,
+      idVehiculo: idVehiculo,
+      idTurno: idTurno,
+      lat: lat,
+      lng: lng,
+      tipo: 'APOYO',
+      descripcion: descripcion,
+      silenciosa: false,
+    );
+  }
+
   Future<bool> enviarEmergencia({
     required int idConductor,
     required int idVehiculo,

@@ -9,7 +9,6 @@ import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
-import 'dart:async';
 import 'package:url_launcher/url_launcher.dart';
 
 class ActiveServiceScreen extends StatelessWidget {
@@ -21,27 +20,6 @@ class ActiveServiceScreen extends StatelessWidget {
     required this.servicio,
     this.onServiceCompleted,
   });
-
-  IconData _getStateIcon(int idEstado) {
-    switch (idEstado) {
-      case 1:
-        return Iconsax.clock_copy;
-      case 2:
-        return Iconsax.tick_circle_copy;
-      case 3:
-        return Iconsax.car_copy;
-      case 4:
-        return Iconsax.location_copy;
-      case 5:
-        return Iconsax.routing_2_copy;
-      case 6:
-        return Iconsax.flag_copy;
-      case 7:
-        return Iconsax.close_circle_copy;
-      default:
-        return Iconsax.info_circle_copy;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,29 +50,11 @@ class ActiveServiceScreen extends StatelessWidget {
             },
             child: Scaffold(
               appBar: AppBar(
-                title: Text('Servicio #${servicio.id}'),
+                title: const Text('Servicio Activo'),
                 automaticallyImplyLeading: !isServiceActive,
-                actions: [
-                  // Botón de chat - solo si el servicio está activo
-                  if (isServiceActive)
-                    Builder(
-                      builder: (context) {
-                        final authProvider = Provider.of<AuthProvider>(
-                          context,
-                          listen: false,
-                        );
-                        return ChatHelper.botonAppBarChat(
-                          context: context,
-                          servicioId: servicio.id,
-                          miUserId: authProvider.userId ?? 0,
-                        );
-                      },
-                    ),
-                ],
               ),
               body: Stack(
                 children: [
-                  // Mapa
                   StandardMap(
                     initialPosition: LatLng(
                       servicio.origenLat,
@@ -103,66 +63,77 @@ class ActiveServiceScreen extends StatelessWidget {
                     zoom: 14,
                     markers: provider.markers,
                     polylines: provider.polylines,
-                    onMapCreated: (controller) {
-                      provider.setMapController(controller);
-                    },
+                    onMapCreated: provider.setMapController,
                   ),
 
-                  // Panel inferior con información
                   Positioned(
                     left: 0,
                     right: 0,
                     bottom: 0,
                     child: Container(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.sizeOf(context).height * 0.52,
+                      ),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.grey.shade900 : Colors.white,
+                        color: Theme.of(context).cardColor,
                         borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(24),
+                          top: Radius.circular(20),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 10,
-                            offset: const Offset(0, -4),
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 15,
+                            offset: const Offset(0, -3),
                           ),
                         ],
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Handle
                           Container(
                             margin: const EdgeInsets.only(top: 12),
-                            width: 40,
-                            height: 4,
+                            width: 50,
+                            height: 5,
                             decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(2),
+                              color: AppColors.primary.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(3),
                             ),
                           ),
-
-                          const SizedBox(height: 16),
-
-                          // Estado del servicio
-                          _buildStateCard(provider),
-
-                          if (servicio.conductor != null) ...[
-                            const SizedBox(height: 16),
-                            _buildConductorInfo(context),
-                          ],
-
-                          const SizedBox(height: 16),
-                          _buildTripInfo(),
-
-                          // Botón de cancelar
+                          Flexible(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _buildEstadoCompacto(provider),
+                                  if (servicio.conductor != null) ...[
+                                    const SizedBox(height: 12),
+                                    _buildBarraConductor(context),
+                                  ],
+                                  const SizedBox(height: 12),
+                                  _buildRutaUnificada(isDark, provider),
+                                  const SizedBox(height: 10),
+                                  _buildViajeChips(isDark),
+                                ],
+                              ),
+                            ),
+                          ),
                           if (isServiceActive &&
                               servicio.idEstado != 5 &&
-                              servicio.idEstado != 6) ...[
-                            const SizedBox(height: 16),
-                            _buildCancelButton(context, provider),
-                          ],
-
-                          const SizedBox(height: 20),
+                              servicio.idEstado != 6)
+                            Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                16,
+                                4,
+                                16,
+                                12 + MediaQuery.paddingOf(context).bottom,
+                              ),
+                              child: _buildCancelButton(context, provider),
+                            )
+                          else
+                            SizedBox(
+                              height: 12 + MediaQuery.paddingOf(context).bottom,
+                            ),
                         ],
                       ),
                     ),
@@ -176,25 +147,20 @@ class ActiveServiceScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStateCard(ActiveServiceProvider provider) {
+  Widget _buildEstadoCompacto(ActiveServiceProvider provider) {
+    final color = provider.getStateColor();
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: provider.getStateColor().withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: provider.getStateColor().withValues(alpha: 0.3),
-        ),
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
-          Icon(
-            _getStateIcon(servicio.idEstado),
-            color: provider.getStateColor(),
-            size: 32,
-          ),
-          const SizedBox(width: 12),
+          Icon(_getStateIcon(servicio.idEstado), color: color, size: 22),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -202,14 +168,17 @@ class ActiveServiceScreen extends StatelessWidget {
                 Text(
                   servicio.estado.estado,
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: provider.getStateColor(),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: color,
                   ),
                 ),
                 Text(
                   provider.getStateMessage(),
-                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                  ),
                 ),
               ],
             ),
@@ -219,120 +188,393 @@ class ActiveServiceScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildConductorInfo(BuildContext context) {
+  Widget _buildBarraConductor(BuildContext context) {
     final conductor = servicio.conductor!;
     final vehiculo = servicio.vehiculo;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 30,
-                backgroundColor: AppColors.accent,
-                child: conductor.foto != null
-                    ? ClipOval(
-                        child: Image.network(
-                          conductor.foto!,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const Icon(
-                            Iconsax.user_copy,
-                            color: Colors.white,
-                            size: 30,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: AppColors.primary,
+              backgroundImage:
+                  conductor.foto != null ? NetworkImage(conductor.foto!) : null,
+              child: conductor.foto == null
+                  ? const Icon(Iconsax.user_copy, color: Colors.white, size: 26)
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    conductor.nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  if (conductor.calificacion != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.star, color: Colors.amber, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          conductor.calificacion!.toStringAsFixed(1),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade600,
                           ),
                         ),
-                      )
-                    : const Icon(
-                        Iconsax.user_copy,
-                        color: Colors.white,
-                        size: 30,
-                      ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      conductor.nombre,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      ],
                     ),
-                    if (conductor.calificacion != null)
-                      Row(
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 16),
-                          const SizedBox(width: 4),
-                          Text(
-                            conductor.calificacion!.toStringAsFixed(1),
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
+                ],
               ),
-              if (conductor.telefono != null)
-                IconButton(
-                  onPressed: () =>
-                      _llamarConductor(context, conductor.telefono!),
-                  icon: const Icon(Iconsax.call_copy, color: AppColors.accent),
-                ),
-            ],
-          ),
-          if (vehiculo != null) ...[
-            const Divider(height: 24),
-            Row(
+            ),
+            if (conductor.telefono != null)
+              _buildAccionRapida(
+                icon: Iconsax.call,
+                color: AppColors.green,
+                tooltip: 'Llamar',
+                onTap: () => _llamarConductor(context, conductor.telefono!),
+              ),
+            const SizedBox(width: 6),
+            _buildAccionRapida(
+              icon: Iconsax.messages_copy,
+              color: AppColors.accent,
+              tooltip: 'Mensaje',
+              onTap: () => _abrirChat(context),
+            ),
+          ],
+        ),
+        if (vehiculo != null) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.black.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
               children: [
-                const Icon(Iconsax.car_copy, size: 20),
+                const Icon(Iconsax.car_copy, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '${vehiculo.marca ?? ''} ${vehiculo.modelo ?? ''} ${vehiculo.color ?? ''}'
                         .trim(),
-                    style: const TextStyle(fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 if (vehiculo.placa != null)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                      horizontal: 10,
+                      vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.2),
+                      color: AppColors.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.primary),
                     ),
                     child: Text(
                       vehiculo.placa!,
                       style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
                       ),
                     ),
                   ),
               ],
             ),
-          ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildAccionRapida({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: color.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Tooltip(
+          message: tooltip,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Icon(icon, color: color, size: 24),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRutaUnificada(bool isDark, ActiveServiceProvider provider) {
+    final enCurso = servicio.idEstado == 5;
+    final recogidaActiva = !enCurso;
+
+    final origenNombre =
+        (servicio.origenName != null && servicio.origenName!.trim().isNotEmpty)
+        ? servicio.origenName!
+        : servicio.origenAddress;
+    final destinoNombre =
+        (servicio.destinoName != null &&
+            servicio.destinoName!.trim().isNotEmpty)
+        ? servicio.destinoName!
+        : servicio.destinoAddress;
+
+    final origenSubtitulo =
+        servicio.origenAddress.trim().isNotEmpty &&
+            servicio.origenAddress != origenNombre
+        ? servicio.origenAddress
+        : '';
+    final destinoSubtitulo =
+        servicio.destinoAddress.trim().isNotEmpty &&
+            servicio.destinoAddress != destinoNombre
+        ? servicio.destinoAddress
+        : '';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: (recogidaActiva ? AppColors.accent : AppColors.green)
+              .withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildParadaRuta(
+            icon: Iconsax.location_add,
+            label: 'RECOGIDA',
+            nombre: origenNombre,
+            subtitulo: origenSubtitulo,
+            color: AppColors.accent,
+            activa: recogidaActiva,
+            isDark: isDark,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 11, top: 6, bottom: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                width: 2,
+                height: 18,
+                color: Colors.grey.withValues(alpha: 0.35),
+              ),
+            ),
+          ),
+          _buildParadaRuta(
+            icon: Iconsax.location,
+            label: 'DESTINO',
+            nombre: destinoNombre,
+            subtitulo: destinoSubtitulo,
+            color: AppColors.green,
+            activa: enCurso,
+            resaltada: true,
+            isDark: isDark,
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildParadaRuta({
+    required IconData icon,
+    required String label,
+    required String nombre,
+    required String subtitulo,
+    required Color color,
+    required bool activa,
+    required bool isDark,
+    bool resaltada = false,
+  }) {
+    final mostrarGrande = activa;
+    final bordeVisible = activa || resaltada;
+
+    return Container(
+      padding: EdgeInsets.all(bordeVisible ? 12 : 0),
+      decoration: bordeVisible
+          ? BoxDecoration(
+              color: color.withValues(alpha: isDark ? 0.14 : 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: color.withValues(alpha: activa ? 0.55 : 0.35),
+                width: activa ? 2 : 1.2,
+              ),
+            )
+          : null,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: mostrarGrande ? 22 : 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  nombre,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: mostrarGrande ? 26 : 16,
+                    fontWeight: mostrarGrande ? FontWeight.w900 : FontWeight.w700,
+                    height: 1.12,
+                    color: activa
+                        ? (isDark ? Colors.white : Colors.black87)
+                        : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                  ),
+                ),
+                if (subtitulo.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitulo,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: mostrarGrande ? 14 : 12,
+                      fontWeight: FontWeight.w500,
+                      height: 1.25,
+                      color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildViajeChips(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          if (servicio.distanciaTexto != null)
+            _buildInfoChip(Iconsax.routing_copy, servicio.distanciaTexto!, isDark),
+          if (servicio.duracionTexto != null)
+            _buildInfoChip(Iconsax.clock_copy, servicio.duracionTexto!, isDark),
+          _buildInfoChip(
+            Iconsax.dollar_circle_copy,
+            '\$${servicio.precioEstimado.toStringAsFixed(0)}',
+            isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(IconData icon, String text, bool isDark) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: AppColors.accent),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCancelButton(
+    BuildContext context,
+    ActiveServiceProvider provider,
+  ) {
+    return TextButton.icon(
+      onPressed: () => _mostrarDialogoCancelacion(context, provider),
+      icon: Icon(Iconsax.close_circle, color: Colors.red.shade600, size: 20),
+      label: Text(
+        'Cancelar servicio',
+        style: TextStyle(
+          color: Colors.red.shade600,
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+        ),
+      ),
+    );
+  }
+
+  IconData _getStateIcon(int idEstado) {
+    switch (idEstado) {
+      case 1:
+        return Iconsax.clock_copy;
+      case 2:
+        return Iconsax.tick_circle_copy;
+      case 3:
+        return Iconsax.car_copy;
+      case 4:
+        return Iconsax.location_copy;
+      case 5:
+        return Iconsax.routing_2_copy;
+      case 6:
+        return Iconsax.flag_copy;
+      case 7:
+        return Iconsax.close_circle_copy;
+      default:
+        return Iconsax.info_circle_copy;
+    }
+  }
+
+  Future<void> _abrirChat(BuildContext context) async {
+    final authProvider = context.read<AuthProvider>();
+    await ChatHelper.abrirChat(
+      context: context,
+      servicioId: servicio.id,
+      miUserId: authProvider.userId ?? 0,
     );
   }
 
@@ -358,225 +600,6 @@ class ActiveServiceScreen extends StatelessWidget {
     }
   }
 
-  Widget _buildTripInfo() {
-    final origenPrincipal =
-        (servicio.origenName != null && servicio.origenName!.trim().isNotEmpty)
-        ? servicio.origenName!
-        : servicio.origenAddress;
-    final destinoPrincipal =
-        (servicio.destinoName != null &&
-            servicio.destinoName!.trim().isNotEmpty)
-        ? servicio.destinoName!
-        : servicio.destinoAddress;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        children: [
-          // Origen
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 2),
-                width: 12,
-                height: 12,
-                decoration: const BoxDecoration(
-                  color: AppColors.green,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Origen',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                    Text(
-                      origenPrincipal,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (servicio.origenAddress.trim().isNotEmpty &&
-                        servicio.origenAddress != origenPrincipal)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          servicio.origenAddress,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          Container(
-            margin: const EdgeInsets.only(left: 5),
-            width: 2,
-            height: 20,
-            color: AppColors.primary.withValues(alpha: 0.3),
-          ),
-
-          // Destino
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 2),
-                width: 12,
-                height: 12,
-                decoration: const BoxDecoration(
-                  color: AppColors.accent,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Destino',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                    Text(
-                      destinoPrincipal,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (servicio.destinoAddress.trim().isNotEmpty &&
-                        servicio.destinoAddress != destinoPrincipal)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          servicio.destinoAddress,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const Divider(height: 24),
-
-          // Info adicional
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              if (servicio.distanciaTexto != null)
-                _buildInfoChip(Iconsax.routing_copy, servicio.distanciaTexto!),
-              if (servicio.duracionTexto != null)
-                _buildInfoChip(Iconsax.clock_copy, servicio.duracionTexto!),
-              _buildInfoChip(
-                Iconsax.dollar_circle_copy,
-                '\$${servicio.precioEstimado.toStringAsFixed(0)}',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoChip(IconData icon, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 16, color: AppColors.accent),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 13,
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCancelButton(
-    BuildContext context,
-    ActiveServiceProvider provider,
-  ) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.red.withValues(alpha: 0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _mostrarDialogoCancelacion(context, provider),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.red.shade50, Colors.red.shade100],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.red.shade300, width: 1.5),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Iconsax.close_circle_copy,
-                  color: Colors.red.shade700,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Cancelar servicio',
-                  style: TextStyle(
-                    color: Colors.red.shade700,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _mostrarDialogoCancelacion(
     BuildContext context,
     ActiveServiceProvider provider,
@@ -589,34 +612,27 @@ class ActiveServiceScreen extends StatelessWidget {
     if (resultado != null && resultado.isNotEmpty) {
       if (!context.mounted) return;
 
-      // Mostrar loading
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      // Llamar al provider para cancelar
       final success = await provider.cancelarServicio(resultado);
 
-      // Cerrar loading
       if (context.mounted) Navigator.pop(context);
 
       if (!context.mounted) return;
 
       if (success) {
-        // Mostrar mensaje de éxito
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Servicio cancelado exitosamente'),
             backgroundColor: AppColors.green,
           ),
         );
-
-        // Cerrar pantalla
         Navigator.pop(context);
       } else {
-        // Mostrar error
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(provider.error ?? 'Error al cancelar'),

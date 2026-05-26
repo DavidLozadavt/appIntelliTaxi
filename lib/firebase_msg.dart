@@ -1,5 +1,8 @@
+import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:io';
+import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
+import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/main.dart';
@@ -28,6 +31,12 @@ bool _isAppUpdateNotificationData(Map<String, dynamic> data) {
   return type == 'app_update' || tipo == 'app_update';
 }
 
+bool _isFleetEmergencyNotificationData(Map<String, dynamic> data) {
+  final tipo = data['tipo']?.toString().toLowerCase() ?? '';
+  final route = data['route']?.toString().toLowerCase() ?? '';
+  return tipo.contains('emergencia') || route.contains('emergencia');
+}
+
 void navigateFromFcmData(Map<String, dynamic>? data) {
   if (data == null || data.isEmpty) {
     AppLogger.d('📱 FCM sin data; fallback chat');
@@ -44,9 +53,15 @@ void navigateFromFcmData(Map<String, dynamic>? data) {
     navigatorKey.currentState?.pushNamed('/notifications');
     return;
   }
+  if (_isFleetEmergencyNotificationData(data)) {
+    AppLogger.d('🆘 FCM → emergencia de flota');
+    unawaited(FleetEmergencyAlertService.instance.handlePayload(data));
+    navigatorKey.currentState?.pushNamed('/home');
+    return;
+  }
   if (_isTaxiServiceNotificationData(data)) {
     AppLogger.d('🚕 FCM → inicio (solicitud / servicio taxi)');
-    navigatorKey.currentState?.pushNamed('/home');
+    IncomingServiceNotificationService.instance.bringAppToForeground();
     return;
   }
   AppLogger.d('📱 FCM tipo no taxi; fallback chat');
@@ -111,6 +126,14 @@ void onNotificationTap(NotificationResponse notificationResponse) {
 @pragma('vm:entry-point')
 Future<void> _handleBackgroundNotification(RemoteMessage message) async {
   AppLogger.d('Notificación en segundo plano: ${message.notification?.title}');
+  final data = message.data;
+  if (data.isEmpty) return;
+  final map = Map<String, dynamic>.from(data);
+  if (_isFleetEmergencyNotificationData(map)) {
+    await FleetEmergencyAlertService.instance.handlePayload(map);
+  } else if (_isTaxiServiceNotificationData(map)) {
+    await IncomingServiceNotificationService.instance.showIncomingService(map);
+  }
 }
 
 class FirebaseMsg {
@@ -253,10 +276,20 @@ class FirebaseMsg {
 
   Future<void> _handleForegroundNotification(RemoteMessage message) async {
     AppLogger.d('Notificación en primer plano: ${message.notification}');
-    if (_isAppUpdateNotificationData(message.data)) {
-      await AppUpdateService.instance.handlePushData(
-        Map<String, dynamic>.from(message.data),
+    final data = Map<String, dynamic>.from(message.data);
+    if (_isAppUpdateNotificationData(data)) {
+      await AppUpdateService.instance.handlePushData(data);
+      return;
+    }
+    if (_isFleetEmergencyNotificationData(data)) {
+      await FleetEmergencyAlertService.instance.handlePayload(data);
+      return;
+    }
+    if (_isTaxiServiceNotificationData(data)) {
+      await IncomingServiceNotificationService.instance.showIncomingService(
+        data,
       );
+      return;
     }
     await _showNotification(message);
   }

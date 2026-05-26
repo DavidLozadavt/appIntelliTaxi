@@ -10,6 +10,14 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 class RideRequestService {
   final Dio _dio = DioClient.getInstance();
 
+  static const Duration _requestTimeout = Duration(seconds: 5);
+
+  Options get _fastRequestOptions => Options(
+        receiveTimeout: _requestTimeout,
+        sendTimeout: _requestTimeout,
+        extra: const {'no_retry': true},
+      );
+
   /// 📌 SOLICITAR SERVICIO DE VIAJE
   Future<Map<String, dynamic>> requestRide({
     required TripLocation origin,
@@ -57,7 +65,11 @@ class RideRequestService {
     _logRequestData(requestData);
 
     try {
-      final response = await _dio.post('taxi/solicitud', data: requestData);
+      final response = await _dio.post(
+        'taxi/solicitud',
+        data: requestData,
+        options: _fastRequestOptions,
+      );
 
       // Log de respuesta exitosa
       _logResponse(response.data);
@@ -204,6 +216,7 @@ class RideRequestService {
       final response = await _dio.post(
         'taxi/oferta-directa',
         data: requestData,
+        options: _fastRequestOptions,
       );
       _logResponse(response.data);
 

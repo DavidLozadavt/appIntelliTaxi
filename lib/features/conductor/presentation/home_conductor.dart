@@ -1206,31 +1206,7 @@ class _HomeConductorState extends State<HomeConductor>
                           final segundosRestantes = provider
                               .obtenerSegundosRestantes(solicitudId);
 
-                          return Column(
-                            children: [
-                              if (esPrincipal)
-                                Container(
-                                  width: double.infinity,
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(
-                                      alpha: 0.95,
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Text(
-                                    'Solicitud recomendada',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.black,
-                                    ),
-                                  ),
-                                ),
-                              Dismissible(
+                          return Dismissible(
                                 key: Key('solicitud_$solicitudId'),
                                 direction: DismissDirection.horizontal,
                                 onDismissed: (direction) {
@@ -1282,8 +1258,6 @@ class _HomeConductorState extends State<HomeConductor>
                                         _rechazarSolicitud(solicitudId),
                                   ),
                                 ),
-                              ),
-                            ],
                           );
                         },
                       );

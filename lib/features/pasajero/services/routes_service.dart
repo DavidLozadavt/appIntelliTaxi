@@ -34,7 +34,9 @@ class RoutesService {
         '&language=es',
       );
 
-      final response = await http.get(url);
+      final response = await http
+          .get(url)
+          .timeout(const Duration(seconds: 4));
       _metrics.apiCalls++;
       _metrics.logIfNeeded();
 

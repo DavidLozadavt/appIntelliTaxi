@@ -7,8 +7,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
+import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/services/voice_alert_service.dart';
+import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
@@ -57,6 +60,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   Timer? _tickerExpiracionUI;
   Timer? _syncSolicitudesTimer;
   bool _suscritoAPusher = false;
+  bool _suscritoEmergenciasFlota = false;
   final Set<String> _offerChannels = {};
   final Set<String> _offerHandlerKeys = {};
   String? _lastAcceptError;
@@ -98,6 +102,47 @@ class ConductorHomeProvider extends ChangeNotifier {
     final solicitudes = List<Map<String, dynamic>>.from(_solicitudesActivas);
     solicitudes.sort((a, b) => _calcularScore(b).compareTo(_calcularScore(a)));
     return solicitudes;
+  }
+
+  /// Ofertas cercanas al punto hacia donde va el conductor (viaje activo).
+  List<Map<String, dynamic>> solicitudesEnRuta({
+    required double haciaLat,
+    required double haciaLng,
+    int? excluirServicioId,
+    double radioKm = 18,
+  }) {
+    final radioMetros = radioKm * 1000;
+    final candidatas = solicitudesOrdenadas.where((s) {
+      final idStr = _obtenerSolicitudId(s);
+      if (idStr == null || idStr.isEmpty) return false;
+      final idNum = int.tryParse(idStr);
+      if (excluirServicioId != null &&
+          idNum != null &&
+          idNum == excluirServicioId) {
+        return false;
+      }
+
+      final lat = SolicitudDisplayHelper.parseCoordinate(s['origen_lat']);
+      final lng = SolicitudDisplayHelper.parseCoordinate(s['origen_lng']);
+      if (lat == null || lng == null) return true;
+
+      final distancia = Geolocator.distanceBetween(
+        haciaLat,
+        haciaLng,
+        lat,
+        lng,
+      );
+      s['distancia_hacia_ruta_km'] = distancia / 1000.0;
+      return distancia <= radioMetros;
+    }).toList();
+
+    candidatas.sort((a, b) {
+      final da = _parseDouble(a['distancia_hacia_ruta_km'], fallback: 999);
+      final db = _parseDouble(b['distancia_hacia_ruta_km'], fallback: 999);
+      return da.compareTo(db);
+    });
+
+    return candidatas;
   }
 
   Map<String, dynamic>? get solicitudPrincipal =>
@@ -201,6 +246,8 @@ class ConductorHomeProvider extends ChangeNotifier {
         );
       }
 
+      await _suscribirEmergenciasFlota();
+
       _suscritoAPusher = true;
       _iniciarSincronizacionSolicitudes();
       unawaited(sincronizarSolicitudesPublicadasConductor());
@@ -281,11 +328,57 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
       _offerChannels.clear();
 
+      await _desuscribirEmergenciasFlota();
+
       _suscritoAPusher = false;
       AppLogger.d('✅ Desconectado de Pusher');
     } catch (e) {
       AppLogger.d('❌ Error al desconectar Pusher: $e');
     }
+  }
+
+  Future<void> _suscribirEmergenciasFlota() async {
+    if (_suscritoEmergenciasFlota) return;
+    const channel = 'emergencias-conductores';
+    try {
+      await PusherService.subscribeSecondary(channel);
+      for (final eventName in const [
+        'nueva-emergencia',
+        'nueva_emergencia',
+        'emergencia-conductor',
+        'emergencia_conductor',
+        'emergencia-nueva',
+      ]) {
+        PusherService.registerEventHandlerSecondary(
+          '$channel:$eventName',
+          (data) {
+            if (data != null) {
+              unawaited(FleetEmergencyAlertService.instance.handlePayload(data));
+            }
+          },
+        );
+      }
+      _suscritoEmergenciasFlota = true;
+      AppLogger.d('✅ Suscrito a alertas de emergencia de flota');
+    } catch (e) {
+      AppLogger.d('⚠️ No se pudo suscribir emergencias de flota: $e');
+    }
+  }
+
+  Future<void> _desuscribirEmergenciasFlota() async {
+    if (!_suscritoEmergenciasFlota) return;
+    const channel = 'emergencias-conductores';
+    for (final eventName in const [
+      'nueva-emergencia',
+      'nueva_emergencia',
+      'emergencia-conductor',
+      'emergencia_conductor',
+      'emergencia-nueva',
+    ]) {
+      PusherService.unregisterEventHandlerSecondary('$channel:$eventName');
+    }
+    await PusherService.unsubscribeSecondary(channel);
+    _suscritoEmergenciasFlota = false;
   }
 
   /// Procesa una nueva solicitud recibida de Pusher
@@ -296,7 +389,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   }) {
     try {
       final raw = _parsePayload(data);
-      final solicitud = isDirectOffer ? _normalizarOfertaDirecta(raw) : raw;
+      final solicitud = _normalizarSolicitud(
+        raw,
+        isDirectOffer: isDirectOffer,
+      );
       var solicitudId = _obtenerSolicitudId(solicitud);
       if (solicitudId == null || solicitudId.isEmpty) {
         solicitudId = _generarSolicitudTemporalId();
@@ -324,6 +420,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!fromSync) {
         _reproducirSonidoNotificacion();
         VoiceAlertService.announceNewService();
+        unawaited(_notificarYEnriquecerSolicitud(solicitudId));
+      } else {
+        unawaited(_enriquecerDireccionesSolicitud(solicitudId));
       }
 
       final ttlSegundos = _resolverTtlSegundos(solicitud);
@@ -353,43 +452,179 @@ class ConductorHomeProvider extends ChangeNotifier {
       throw Exception('Payload no soportado: ${data.runtimeType}');
     }
 
+    final merged = Map<String, dynamic>.from(payload);
     if (payload['data'] is Map) {
-      return Map<String, dynamic>.from(payload['data'] as Map);
+      merged.addAll(Map<String, dynamic>.from(payload['data'] as Map));
     }
     if (payload['solicitud'] is Map) {
-      return Map<String, dynamic>.from(payload['solicitud'] as Map);
+      merged.addAll(Map<String, dynamic>.from(payload['solicitud'] as Map));
     }
     if (payload['servicio'] is Map) {
-      return Map<String, dynamic>.from(payload['servicio'] as Map);
+      merged.addAll(Map<String, dynamic>.from(payload['servicio'] as Map));
     }
 
-    return payload;
+    return merged;
+  }
+
+  Map<String, dynamic> _normalizarSolicitud(
+    Map<String, dynamic> raw, {
+    bool isDirectOffer = false,
+  }) {
+    final base = isDirectOffer
+        ? _normalizarOfertaDirecta(raw)
+        : SolicitudDisplayHelper.normalizeSolicitudMap(raw);
+    final barrio = SolicitudDisplayHelper.barrioFromPayload(base);
+    if (barrio != null) {
+      base['origen_barrio'] = barrio;
+    }
+    return base;
   }
 
   Map<String, dynamic> _normalizarOfertaDirecta(Map<String, dynamic> raw) {
-    final solicitudId = raw['solicitud_id'] ?? raw['id'];
+    final merged = SolicitudDisplayHelper.normalizeSolicitudMap(raw);
+    final solicitudId = merged['solicitud_id'] ?? merged['id'];
     return {
+      ...merged,
       'solicitud_id': solicitudId,
       'servicio_id': solicitudId,
       'id': solicitudId,
-      'pasajero_id': raw['pasajero_id'],
-      'pasajero_nombre': raw['pasajero_nombre'] ?? 'Pasajero',
-      'pasajero_foto': _resolverFotoPasajero(raw['pasajero_foto']?.toString()),
-      'origen': raw['origen'] ?? 'Origen no especificado',
-      'destino': raw['destino'] ?? 'Destino no especificado',
-      'origen_lat': raw['origen_lat'],
-      'origen_lng': raw['origen_lng'],
-      'destino_lat': raw['destino_lat'],
-      'destino_lng': raw['destino_lng'],
-      'precio_ofertado': raw['precio_ofrecido'] ?? raw['precio_ofertado'] ?? 0,
-      'distancia': raw['distancia'],
-      'duracion_estimada': raw['duracion_estimada'],
-      'mensaje': raw['mensaje'],
+      'pasajero_id': merged['pasajero_id'],
+      'pasajero_nombre': merged['pasajero_nombre'] ?? 'Pasajero',
+      'pasajero_foto': _resolverFotoPasajero(merged['pasajero_foto']?.toString()),
+      'origen': SolicitudDisplayHelper.pickupName(merged),
+      'destino': SolicitudDisplayHelper.destinationName(merged),
+      'origen_name': merged['origen_name'],
+      'origen_address': merged['origen_address'],
+      'destino_name': merged['destino_name'],
+      'destino_address': merged['destino_address'],
+      'origen_barrio': merged['origen_barrio'] ?? merged['barrio'],
+      'origen_lat': merged['origen_lat'],
+      'origen_lng': merged['origen_lng'],
+      'destino_lat': merged['destino_lat'],
+      'destino_lng': merged['destino_lng'],
+      'precio_ofertado':
+          merged['precio_ofrecido'] ?? merged['precio_ofertado'] ?? 0,
+      'distancia': merged['distancia'],
+      'duracion_estimada': merged['duracion_estimada'],
+      'mensaje': merged['mensaje'],
       'status': 'oferta_directa',
       'clase_vehiculo': 'taxi',
-      'timestamp': raw['timestamp'] ?? DateTime.now().toIso8601String(),
-      'ttl_segundos': raw['ttl_segundos'] ?? kOportunidadConductorSegundos,
+      'timestamp': merged['timestamp'] ?? DateTime.now().toIso8601String(),
+      'ttl_segundos': merged['ttl_segundos'] ?? kOportunidadConductorSegundos,
     };
+  }
+
+  Future<void> _notificarYEnriquecerSolicitud(String solicitudId) async {
+    await _enriquecerDireccionesSolicitud(solicitudId);
+    if (_isDisposed) return;
+    final index = _solicitudesActivas.indexWhere(
+      (s) => _obtenerSolicitudId(s) == solicitudId,
+    );
+    if (index < 0) return;
+    await IncomingServiceNotificationService.instance.showIncomingService(
+      _solicitudesActivas[index],
+    );
+  }
+
+  Future<void> _enriquecerDireccionesSolicitud(String solicitudId) async {
+    final index = _solicitudesActivas.indexWhere(
+      (s) => _obtenerSolicitudId(s) == solicitudId,
+    );
+    if (index < 0 || _isDisposed) return;
+
+    final solicitud = _solicitudesActivas[index];
+    var changed = false;
+
+    Future<void> enrichPoint({
+      required bool isDestino,
+      required double lat,
+      required double lng,
+    }) async {
+      final label = await _reverseGeocodingService.resolveCurrentLocationLabel(
+        lat: lat,
+        lng: lng,
+      );
+
+      if (isDestino) {
+        final hasName = _hasMeaningfulPlaceName(
+          solicitud['destino_name']?.toString(),
+        );
+        if (!hasName &&
+            label.name.trim().isNotEmpty &&
+            !SolicitudDisplayHelper.isPlaceholderDestino(label.name)) {
+          solicitud['destino_name'] = label.name;
+          changed = true;
+        }
+        final hasAddr = _hasMeaningfulAddress(
+          solicitud['destino_address']?.toString(),
+        );
+        if (!hasAddr &&
+            label.address.trim().isNotEmpty &&
+            !SolicitudDisplayHelper.isPlaceholderDestino(label.address)) {
+          solicitud['destino_address'] = label.address;
+          changed = true;
+        }
+      } else {
+        final hasName = _hasMeaningfulPlaceName(
+          solicitud['origen_name']?.toString(),
+        );
+        if (!hasName &&
+            label.name.trim().isNotEmpty &&
+            !SolicitudDisplayHelper.isPlaceholderPickup(label.name)) {
+          solicitud['origen_name'] = label.name;
+          changed = true;
+        }
+        final hasAddr = _hasMeaningfulAddress(
+          solicitud['origen_address']?.toString(),
+        );
+        if (!hasAddr &&
+            label.address.trim().isNotEmpty &&
+            !SolicitudDisplayHelper.isPlaceholderPickup(label.address)) {
+          solicitud['origen_address'] = label.address;
+          changed = true;
+        }
+        if ((solicitud['origen_barrio']?.toString().trim().isEmpty ?? true)) {
+          final barrio = await _reverseGeocodingService.resolveAreaName(
+            lat: lat,
+            lng: lng,
+          );
+          if (barrio != null && barrio.isNotEmpty) {
+            solicitud['origen_barrio'] =
+                SolicitudDisplayHelper.compactBarrio(barrio);
+            changed = true;
+          }
+        }
+      }
+    }
+
+    final oLat = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lat']);
+    final oLng = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lng']);
+    if (oLat != null && oLng != null) {
+      await enrichPoint(isDestino: false, lat: oLat, lng: oLng);
+    }
+
+    final dLat = SolicitudDisplayHelper.parseCoordinate(solicitud['destino_lat']);
+    final dLng = SolicitudDisplayHelper.parseCoordinate(solicitud['destino_lng']);
+    if (dLat != null &&
+        dLng != null &&
+        (dLat.abs() > 0.0001 || dLng.abs() > 0.0001)) {
+      await enrichPoint(isDestino: true, lat: dLat, lng: dLng);
+    }
+
+    if (changed && !_isDisposed) notifyListeners();
+  }
+
+  bool _hasMeaningfulPlaceName(String? value) {
+    if (value == null || value.trim().isEmpty) return false;
+    return !SolicitudDisplayHelper.isPlaceholderPickup(value) &&
+        !SolicitudDisplayHelper.isPlaceholderDestino(value);
+  }
+
+  bool _hasMeaningfulAddress(String? value) {
+    if (value == null || value.trim().isEmpty) return false;
+    if (SolicitudDisplayHelper.isPlaceholderPickup(value)) return false;
+    if (SolicitudDisplayHelper.isPlaceholderDestino(value)) return false;
+    return true;
   }
 
   String? _resolverFotoPasajero(String? value) {

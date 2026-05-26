@@ -31,8 +31,8 @@ import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart
 import 'package:intellitaxi/features/pasajero/widgets/no_drivers_available_dialog.dart';
 import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
 import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
+import 'package:intellitaxi/features/pasajero/widgets/ride_request_floating_cta.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
-import 'package:intellitaxi/features/pasajero/widgets/waiting_for_driver_dialog.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
@@ -62,7 +62,6 @@ class _HomePasajeroState extends State<HomePasajero>
   static const double _sheetMinSize = 0.16;
   static const double _sheetMidSize = 0.52;
   static const double _sheetMaxSize = 0.88;
-  static const double _sheetCtaVisibleExtent = 0.34;
   final ValueNotifier<double> _sheetExtent = ValueNotifier(_sheetMinSize);
   double _sheetSize = _sheetMinSize;
   _SheetVisualState _sheetVisualState = _SheetVisualState.compact;
@@ -88,6 +87,7 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _isSearchingOrigin = false;
   bool _isSearchingDestination = false;
   bool _isSubmittingRide = false;
+  bool _isDrawingRoute = false;
   Timer? _originSearchDebounce;
   Timer? _destinationSearchDebounce;
   int _originSearchRequestId = 0;
@@ -133,6 +133,25 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _notificationPermissionRequestedInSession = false;
 
   bool get _isExpanded => _sheetVisualState != _SheetVisualState.compact;
+
+  bool get _hasOrigin => _selectedOrigin != null;
+
+  bool get _hasDestination => _selectedDestination != null;
+
+  bool get _hasRoute => _routeInfo != null;
+
+  bool get _needsRouteRetry =>
+      _serviceType != 'taxi' && _hasOrigin && _hasDestination && !_hasRoute;
+
+  bool get _canRequestRide =>
+      _hasOrigin &&
+      (_serviceType == 'taxi' || (_hasDestination && _hasRoute));
+
+  bool get _showFloatingRequestCta =>
+      _canRequestRide ||
+      _needsRouteRetry ||
+      _isSubmittingRide ||
+      (_isDrawingRoute && _serviceType != 'taxi');
 
   @override
   void initState() {
@@ -846,6 +865,21 @@ class _HomePasajeroState extends State<HomePasajero>
             ),
           ),
 
+        // CTA flotante estilo inDrive (siempre visible cuando el viaje está listo).
+        if (_currentPosition != null && _showFloatingRequestCta)
+          ValueListenableBuilder<double>(
+            valueListenable: _sheetExtent,
+            builder: (context, extent, _) {
+              final bottom = MediaQuery.sizeOf(context).height * extent + 10;
+              return Positioned(
+                left: 16,
+                right: 16,
+                bottom: bottom,
+                child: _buildFloatingRequestCta(),
+              );
+            },
+          ),
+
         // Tarjeta de contraoferta flotante (estilo InDrive)
         if (_showOffer && _currentOffer != null)
           Positioned(
@@ -890,21 +924,30 @@ class _HomePasajeroState extends State<HomePasajero>
                     ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 children: [
-                  _buildMinimizedContent(),
-                  const SizedBox(height: 8),
-                  ..._buildTripFormChildren(showInlineActions: false),
-                  const SizedBox(height: 88),
+                  ValueListenableBuilder<double>(
+                    valueListenable: _sheetExtent,
+                    builder: (context, extent, _) {
+                      final showFormOnly = extent >= 0.24;
+                      if (showFormOnly) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ..._buildTripFormChildren(showInlineActions: false),
+                            const SizedBox(height: 88),
+                          ],
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildMinimizedContent(),
+                          const SizedBox(height: 72),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
-            ),
-            ValueListenableBuilder<double>(
-              valueListenable: _sheetExtent,
-              builder: (context, extent, _) {
-                if (extent < _sheetCtaVisibleExtent) {
-                  return const SizedBox.shrink();
-                }
-                return _buildFixedCta();
-              },
             ),
           ],
         ),
@@ -935,129 +978,132 @@ class _HomePasajeroState extends State<HomePasajero>
   Widget _buildMinimizedContent() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final originText = _selectedOrigin?.name ?? _currentLocationName;
-    final destinationText = _selectedDestination != null
+    final hasDestination = _selectedDestination != null;
+    final destinationText = hasDestination
         ? _destinationSummaryText(_selectedDestination!)
         : (_serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?');
-    final hasDestination = _selectedDestination != null;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: _openQuickRequestFlow,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.08)
-                  : AppColors.primary.withValues(alpha: 0.10),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.07),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: _openQuickRequestFlow,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey.shade900 : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: hasDestination
+                ? AppColors.primary.withValues(alpha: 0.25)
+                : (isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : AppColors.primary.withValues(alpha: 0.12)),
           ),
-          child: Row(
-            children: [
-              Column(
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.green,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  Container(
-                    width: 2,
-                    height: 26,
-                    margin: const EdgeInsets.symmetric(vertical: 3),
-                    color: Colors.grey.withValues(alpha: 0.35),
-                  ),
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: hasDestination
-                          ? Colors.red
-                          : Colors.grey.withValues(alpha: 0.75),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasDestination) ...[
+              Text(
+                destinationText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  height: 1.15,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      originText,
+              if (_routeInfo != null) ...[
+                const SizedBox(height: 8),
+                RouteInfoCard(routeInfo: _routeInfo!, compact: true),
+              ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    Icons.my_location,
+                    size: 14,
+                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Desde: $originText',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.grey.shade300 : Colors.black87,
+                        fontSize: 12,
+                        color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
                       ),
                     ),
-                    const SizedBox(height: 9),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeOutCubic,
-                      child: Text(
-                        destinationText,
-                        key: ValueKey<String>('compact_$destinationText'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: hasDestination
-                              ? (isDark ? Colors.white : Colors.black87)
-                              : AppColors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.10),
-                  shape: BoxShape.circle,
-                ),
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _sheetExtent,
-                  builder: (context, extent, child) {
-                    final expanded = extent > (_sheetMinSize + 0.06);
-                    return AnimatedRotation(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      turns: expanded ? 0.5 : 0,
-                      child: child,
-                    );
-                  },
-                  child: const Icon(
-                    Icons.keyboard_arrow_up,
-                    color: AppColors.primary,
                   ),
-                ),
+                  Icon(
+                    Icons.edit_outlined,
+                    size: 16,
+                    color: AppColors.primary.withValues(alpha: 0.8),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.search,
+                      color: AppColors.primary,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          destinationText,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Desde: $originText',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark
+                                ? Colors.grey.shade500
+                                : Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.keyboard_arrow_up,
+                    color: AppColors.primary.withValues(alpha: 0.8),
+                  ),
+                ],
               ),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -1151,10 +1197,7 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   List<Widget> _buildTripFormChildren({required bool showInlineActions}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return [
-      // Selector de tipo de servicio (primero)
       ServiceTypeSelector(
         selectedType: _serviceType,
         onTypeChanged: (type) {
@@ -1165,34 +1208,14 @@ class _HomePasajeroState extends State<HomePasajero>
         },
       ),
 
-      const SizedBox(height: 14),
+      const SizedBox(height: 16),
 
-      // Campo de origen
-      LocationSearchField(
-        controller: _originController,
-        label: 'Origen',
-        icon: Icons.my_location,
-        iconColor: AppColors.accent,
-        predictions: _originPredictions,
-        isSearching: _isSearchingOrigin,
-        onSelectPrediction: _selectOrigin,
-        onClear: () {
-          _setStateSafe(() {
-            _originController.clear();
-            _selectedOrigin = null;
-            _originPredictions = [];
-          });
-        },
-      ),
-
-      const SizedBox(height: 12),
-
-      // Campo de destino
+      // Destino primero (flujo inDrive)
       LocationSearchField(
         controller: _destinationController,
-        label: 'Destino',
+        label: _serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?',
         icon: Icons.location_on,
-        iconColor: AppColors.accent,
+        iconColor: AppColors.primary,
         focusNode: _destinationFocusNode,
         predictions: _destinationPredictions,
         isSearching: _isSearchingDestination,
@@ -1208,12 +1231,39 @@ class _HomePasajeroState extends State<HomePasajero>
         },
       ),
 
-      if (_selectedDestination != null) ...[
+      if (_recentDestinations.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _buildRecentDestinationChips(),
+      ],
+
+      const SizedBox(height: 14),
+
+      // Origen (secundario, ya viene del GPS)
+      LocationSearchField(
+        controller: _originController,
+        label: 'Recogida en',
+        icon: Icons.my_location,
+        iconColor: AppColors.green,
+        predictions: _originPredictions,
+        isSearching: _isSearchingOrigin,
+        onSelectPrediction: _selectOrigin,
+        onClear: () {
+          _setStateSafe(() {
+            _originController.clear();
+            _selectedOrigin = null;
+            _originPredictions = [];
+          });
+        },
+      ),
+
+      if (_selectedDestination != null && _routeInfo == null) ...[
         const SizedBox(height: 10),
         _buildSelectedDestinationSummary(),
       ],
 
-      if (_selectedDestination != null) ...[
+      if (_selectedDestination != null &&
+          _serviceType != 'taxi' &&
+          _routeInfo == null) ...[
         const SizedBox(height: 10),
         Row(
           children: [
@@ -1236,192 +1286,86 @@ class _HomePasajeroState extends State<HomePasajero>
         ),
       ],
 
-      const SizedBox(height: 14),
-
-      if (_recentDestinations.isNotEmpty) ...[_buildRecentDestinationChips()],
-
-      const SizedBox(height: 24),
+      if (_routeInfo != null) ...[
+        const SizedBox(height: 14),
+        RouteInfoCard(routeInfo: _routeInfo!),
+      ],
 
       if (showInlineActions &&
           _serviceType != 'taxi' &&
           _selectedOrigin != null &&
           _selectedDestination != null &&
           _routeInfo == null)
-        SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: ElevatedButton.icon(
-            onPressed: _drawRoute,
-            icon: const Icon(Icons.route),
-            label: const Text(
-              'Reintentar ruta',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-          ),
-        ),
-
-      if (_routeInfo != null) ...[
-        RouteInfoCard(routeInfo: _routeInfo!),
-        if (showInlineActions) ...[
-          const SizedBox(height: 16),
-          SizedBox(
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: SizedBox(
             width: double.infinity,
             height: 56,
-            child: ElevatedButton(
-              onPressed: _requestRide,
+            child: ElevatedButton.icon(
+              onPressed: _isDrawingRoute ? null : _drawRoute,
+              icon: const Icon(Icons.route),
+              label: Text(
+                _isDrawingRoute ? 'Calculando ruta...' : 'Calcular ruta',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _serviceType == 'taxi'
-                    ? AppColors.primary
-                    : Colors.orange.shade600,
+                backgroundColor: Colors.deepOrange,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              child: Text(
-                _serviceType == 'taxi'
-                    ? 'Solicitar viaje'
-                    : 'Solicitar domicilio',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
             ),
           ),
-        ],
-      ],
+        ),
 
       const SizedBox(height: 16),
-
-      // Info de búsqueda
-      Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.blue.withValues(alpha: isDark ? 0.2 : 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.blue.withValues(alpha: isDark ? 0.5 : 0.3),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.blue.shade400, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Búsqueda limitada a Popayán y alrededores',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     ];
   }
 
-  Widget _buildFixedCta() {
+  Widget _buildFloatingRequestCta() {
     String label;
+    String? subtitle;
     VoidCallback? onPressed;
     Color color;
-    final hasOrigin = _selectedOrigin != null;
-    final hasDestination = _selectedDestination != null;
-    final hasRoute = _routeInfo != null;
+    final isLoading = _isSubmittingRide ||
+        (_isDrawingRoute && _serviceType != 'taxi');
 
-    if (_serviceType != 'taxi' && hasOrigin && hasDestination && !hasRoute) {
-      label = 'Reintentar ruta';
-      onPressed = _isSubmittingRide ? null : _drawRoute;
+    if (_needsRouteRetry) {
+      label = _isDrawingRoute ? 'Calculando ruta...' : 'Calcular ruta';
+      subtitle = 'Confirma el trayecto del domicilio';
+      onPressed = isLoading ? null : _drawRoute;
       color = Colors.deepOrange;
-    } else if (hasOrigin &&
-        (_serviceType == 'taxi' || (hasDestination && hasRoute))) {
+    } else if (_canRequestRide) {
       label = _isSubmittingRide
-          ? 'Enviando solicitud...'
-          : (_serviceType == 'taxi'
-                ? 'Solicitar viaje'
-                : 'Solicitar domicilio');
-      onPressed = _isSubmittingRide ? null : _requestRide;
+          ? 'Buscando conductor...'
+          : (_serviceType == 'taxi' ? 'Pedir taxi' : 'Pedir domicilio');
+      if (_routeInfo != null) {
+        subtitle = '${_routeInfo!.distance} · ${_routeInfo!.duration} · Taxímetro';
+      } else if (_hasDestination) {
+        subtitle = 'Destino confirmado · Taxímetro';
+      } else {
+        subtitle = 'Recogida en tu ubicación · Taxímetro';
+      }
+      onPressed = isLoading ? null : _requestRide;
       color = _serviceType == 'taxi'
           ? AppColors.primary
           : Colors.orange.shade600;
     } else {
       label = _serviceType == 'taxi'
-          ? 'Selecciona origen (destino opcional)'
-          : 'Selecciona origen y destino';
-      onPressed = null;
+          ? 'Elige destino o pide desde aquí'
+          : 'Elige origen y destino';
+      subtitle = null;
+      onPressed = _hasOrigin ? _openQuickRequestFlow : null;
       color = Colors.grey;
     }
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton(
-            onPressed: onPressed,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: color,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: Colors.grey.shade400,
-              disabledForegroundColor: Colors.white70,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              elevation: 0,
-            ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              transitionBuilder: (child, animation) {
-                final offset = Tween<Offset>(
-                  begin: const Offset(0, 0.25),
-                  end: Offset.zero,
-                ).animate(animation);
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(position: offset, child: child),
-                );
-              },
-              child: Row(
-                key: ValueKey<String>('cta_$label'),
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _routeInfo != null
-                        ? Icons.check_circle_outline
-                        : Icons.keyboard_arrow_up,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+    return RideRequestFloatingCta(
+      label: label,
+      subtitle: subtitle,
+      onPressed: onPressed,
+      isLoading: isLoading,
+      color: color,
     );
   }
 
@@ -1644,77 +1588,53 @@ class _HomePasajeroState extends State<HomePasajero>
 
   Future<void> _getCurrentLocation() async {
     try {
-      _setStateSafe(
-        () => _locationMessage =
-            'Verificando tu ubicación actual con GPS de alta precisión...',
-      );
+      _setStateSafe(() => _locationMessage = 'Obteniendo ubicación...');
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
+      Position? lastKnown;
+      try {
+        lastKnown = await Geolocator.getLastKnownPosition();
+      } catch (_) {}
 
-      if (mounted) {
-        // Obtener nombre y dirección real
-        final locationData = await _getAddressFromCoordinates(
-          position.latitude,
-          position.longitude,
-        );
-
-        _setStateSafe(() {
-          _currentPosition = position;
-          _isLoadingLocation = false;
-          _locationMessage =
-              'Perfecto. Tu ubicación ha sido verificada y está lista para solicitar servicio';
-
-          _currentLocationName = locationData.name;
-          _currentLocationAddress = locationData.address;
-
-          // Configurar origen por defecto con nombre + dirección real
-          _selectedOrigin = TripLocation.currentLocation(
-            lat: position.latitude,
-            lng: position.longitude,
-            name: _currentLocationName,
-            address: _currentLocationAddress,
-          );
-          _originController.removeListener(_onOriginChanged);
-          _originController.text = _currentLocationName;
-          _originController.addListener(_onOriginChanged);
-
-          // Agregar marcador de ubicación del usuario si no hay ruta
-          if (_markers.isEmpty && _userMarkerIcon != null) {
-            _markers = {
-              Marker(
-                markerId: const MarkerId('user_location'),
-                position: LatLng(position.latitude, position.longitude),
-                icon: _userMarkerIcon!,
-                infoWindow: InfoWindow(
-                  title: _currentLocationName,
-                  snippet: _currentLocationAddress,
-                ),
-              ),
-            };
-          }
-        });
-
-        if (_mapController != null) {
-          _mapController!.animateCamera(
-            CameraUpdate.newCameraPosition(
-              CameraPosition(
-                target: LatLng(position.latitude, position.longitude),
-                zoom: 15,
-              ),
-            ),
-          );
-        }
-
-        // Cargar conductores disponibles y mantener posiciones fluidas.
-        await _loadAvailableDrivers();
-        _startDriversRefreshTimer();
-        await _requestNotificationPermissionAfterLocation();
-        _tryApplyPendingRepeatTrip();
+      if (lastKnown != null && mounted) {
+        _applyOriginFromGps(lastKnown, markReady: true);
       }
+
+      Position position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 4),
+          ),
+        ).timeout(const Duration(seconds: 5));
+      } catch (_) {
+        if (lastKnown != null) {
+          position = lastKnown;
+        } else {
+          rethrow;
+        }
+      }
+
+      if (!mounted) return;
+
+      _applyOriginFromGps(position, markReady: true);
+      unawaited(_refineOriginAddress(position));
+
+      if (_mapController != null) {
+        _mapController!.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: LatLng(position.latitude, position.longitude),
+              zoom: 15,
+            ),
+          ),
+        );
+      }
+
+      unawaited(_loadAvailableDrivers());
+      _startDriversRefreshTimer();
+      unawaited(_requestNotificationPermissionAfterLocation());
+      _tryApplyPendingRepeatTrip();
     } catch (e) {
       if (mounted) {
         _setStateSafe(() {
@@ -1723,6 +1643,68 @@ class _HomePasajeroState extends State<HomePasajero>
         });
       }
     }
+  }
+
+  void _applyOriginFromGps(Position position, {required bool markReady}) {
+    _setStateSafe(() {
+      _currentPosition = position;
+      if (markReady) {
+        _isLoadingLocation = false;
+        _locationMessage = 'Listo para pedir servicio';
+      }
+
+      _selectedOrigin = TripLocation.currentLocation(
+        lat: position.latitude,
+        lng: position.longitude,
+        name: _currentLocationName,
+        address: _currentLocationAddress,
+      );
+
+      if (_originController.text.trim().isEmpty) {
+        _originController.removeListener(_onOriginChanged);
+        _originController.text = _currentLocationName;
+        _originController.addListener(_onOriginChanged);
+      }
+
+      if (_markers.isEmpty && _userMarkerIcon != null) {
+        _markers = {
+          Marker(
+            markerId: const MarkerId('user_location'),
+            position: LatLng(position.latitude, position.longitude),
+            icon: _userMarkerIcon!,
+            infoWindow: InfoWindow(
+              title: _currentLocationName,
+              snippet: _currentLocationAddress,
+            ),
+          ),
+        };
+      }
+    });
+  }
+
+  Future<void> _refineOriginAddress(Position position) async {
+    final locationData = await _getAddressFromCoordinates(
+      position.latitude,
+      position.longitude,
+    );
+    if (!mounted) return;
+
+    _setStateSafe(() {
+      _currentLocationName = locationData.name;
+      _currentLocationAddress = locationData.address;
+
+      if (_selectedOrigin != null) {
+        _selectedOrigin = TripLocation.currentLocation(
+          lat: position.latitude,
+          lng: position.longitude,
+          name: _currentLocationName,
+          address: _currentLocationAddress,
+        );
+        _originController.removeListener(_onOriginChanged);
+        _originController.text = _currentLocationName;
+        _originController.addListener(_onOriginChanged);
+      }
+    });
   }
 
   Future<void> _requestNotificationPermissionAfterLocation() async {
@@ -2154,89 +2136,92 @@ class _HomePasajeroState extends State<HomePasajero>
         lat: details.lat,
         lng: details.lng,
       );
-      final area = await _resolveDestinationArea(destination);
-      if (!mounted) return;
 
       _setStateSafe(() {
         _selectedDestination = destination;
-        _selectedDestinationArea = area;
+        _selectedDestinationArea = null;
         _destinationController.text = prediction.mainText;
         _destinationPredictions = [];
         _isSearchingDestination = false;
-        _upsertDestinationMarker(_selectedDestination!);
+        _upsertDestinationMarker(destination);
       });
-      await _saveRecentDestination(_selectedDestination!);
+
+      _destinationController.addListener(_onDestinationChanged);
+      unawaited(_saveRecentDestination(destination));
       _updateAllDriverMarkers();
 
-      // Restaurar listener
-      _destinationController.addListener(_onDestinationChanged);
+      unawaited(
+        _resolveDestinationArea(destination).then((area) {
+          if (!mounted || _selectedDestination != destination) return;
+          _setStateSafe(() {
+            _selectedDestinationArea = area;
+            _upsertDestinationMarker(destination);
+          });
+        }),
+      );
 
-      // Calcular ruta automáticamente al elegir destino.
       if (_selectedOrigin != null) {
-        await _drawRoute();
+        unawaited(_drawRoute());
+      }
+
+      FocusScope.of(context).unfocus();
+      if (_sheetController.isAttached) {
+        unawaited(_minimizeSheet());
       }
     }
   }
 
-  Future<void> _drawRoute({bool showLoadingSnack = true}) async {
+  Future<void> _drawRoute({bool showLoadingSnack = false}) async {
     if (_selectedOrigin == null || _selectedDestination == null) return;
 
-    // Mostrar indicador de carga
-    if (showLoadingSnack && mounted && _scaffoldMessenger != null) {
-      _scaffoldMessenger!.showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              SizedBox(width: 16),
-              Text('Trazando ruta...'),
-            ],
-          ),
-          duration: Duration(seconds: 2),
-        ),
+    _setStateSafe(() => _isDrawingRoute = true);
+
+    try {
+      final originLatLng = LatLng(_selectedOrigin!.lat, _selectedOrigin!.lng);
+      final destinationLatLng = LatLng(
+        _selectedDestination!.lat,
+        _selectedDestination!.lng,
       );
-    }
 
-    final originLatLng = LatLng(_selectedOrigin!.lat, _selectedOrigin!.lng);
-    final destinationLatLng = LatLng(
-      _selectedDestination!.lat,
-      _selectedDestination!.lng,
-    );
+      final routeInfo = await _routesService.getRoute(
+        origin: originLatLng,
+        destination: destinationLatLng,
+      );
 
-    final routeInfo = await _routesService.getRoute(
-      origin: originLatLng,
-      destination: destinationLatLng,
-    );
+      if (routeInfo != null && mounted) {
+        _setStateSafe(() {
+          _routeInfo = routeInfo;
+          _polylines = {
+            Polyline(
+              polylineId: const PolylineId('route'),
+              points: routeInfo.polylinePoints,
+              color: Colors.deepOrange,
+              width: 5,
+              startCap: Cap.roundCap,
+              endCap: Cap.roundCap,
+              jointType: JointType.round,
+            ),
+          };
+        });
 
-    if (routeInfo != null && mounted) {
-      _setStateSafe(() {
-        _routeInfo = routeInfo;
-        _polylines = {
-          Polyline(
-            polylineId: const PolylineId('route'),
-            points: routeInfo.polylinePoints,
-            color: Colors.deepOrange,
-            width: 5,
-            startCap: Cap.roundCap,
-            endCap: Cap.roundCap,
-            jointType: JointType.round,
+        _syncMarkersOnMap();
+        _fitCameraToBounds(routeInfo.polylinePoints);
+
+        FocusScope.of(context).unfocus();
+        if (_isExpanded) {
+          unawaited(_minimizeSheet());
+        }
+      } else if (mounted && showLoadingSnack) {
+        _scaffoldMessenger?.showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo calcular la ruta'),
+            backgroundColor: Colors.red,
           ),
-        };
-      });
-
-      _syncMarkersOnMap();
-      _fitCameraToBounds(routeInfo.polylinePoints);
-
-      // Minimizar el bottom sheet
-      if (_isExpanded) {
-        _minimizeSheet();
+        );
+      }
+    } finally {
+      if (mounted) {
+        _setStateSafe(() => _isDrawingRoute = false);
       }
     }
   }
@@ -2380,17 +2365,6 @@ class _HomePasajeroState extends State<HomePasajero>
 
     _setStateSafe(() => _isSubmittingRide = true);
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) =>
-          WaitingForDriverDialog(isDelivery: isDelivery),
-    );
-
-    // Esperar un momento para que el diálogo se muestre completamente
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // 📤 ENVIAR SOLICITUD AL BACKEND
     try {
       final response = isDirectFlow
           ? await _rideRequestService.sendDirectOffer(
@@ -2400,7 +2374,6 @@ class _HomePasajeroState extends State<HomePasajero>
               destination: destination,
               distancia: route?.distance,
               duracionEstimada: route?.duration,
-              // Flujo taxímetro: sin negociación de precio en app
               precioOfrecido: 0,
             )
           : await _rideRequestService.requestRide(
@@ -2410,111 +2383,94 @@ class _HomePasajeroState extends State<HomePasajero>
               distanceValue: route?.distanceValue,
               duration: route?.duration,
               durationValue: route?.durationValue,
-              // No se envía precio porque funciona con taxímetro
               serviceType: isDelivery ? 'domicilio' : 'taxi',
             );
 
-      // Cerrar modal de búsqueda
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
+      if (!mounted) return;
+
+      final servicioId = _parseServicioIdFromResponse(response);
+      if (servicioId == null) {
+        AppLogger.d('⚠️ No se pudo obtener servicio_id de la respuesta');
+        AppLogger.d('   Response completo: $response');
+        _scaffoldMessenger?.showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo confirmar el servicio. Intenta de nuevo.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
       }
 
-      // Esperar para asegurar que el diálogo se cerró
-      await Future.delayed(const Duration(milliseconds: 200));
+      AppLogger.d('🚀 PASAJERO: Navegando a PasajeroEsperandoConductorScreen');
+      AppLogger.d('   Servicio ID: $servicioId');
 
-      // Navegar a pantalla de espera del conductor
-      if (mounted) {
-        // El backend puede devolver 'servicio', 'data' o 'servicio_id'
-        int? servicioId;
-
-        if (response['solicitud_id'] != null) {
-          servicioId = int.tryParse(response['solicitud_id'].toString());
-        } else if (response['servicio'] != null) {
-          final servicioData = response['servicio'] as Map<String, dynamic>;
-          servicioId = servicioData['id'] as int;
-        } else if (response['data'] != null) {
-          final servicioData = response['data'] as Map<String, dynamic>;
-          servicioId = servicioData['id'] as int;
-        } else if (response['servicio_id'] != null) {
-          servicioId = response['servicio_id'] as int;
-        }
-
-        if (servicioId != null) {
-          AppLogger.d(
-            '🚀 PASAJERO: Navegando a PasajeroEsperandoConductorScreen',
-          );
-          AppLogger.d('   Servicio ID: $servicioId');
-
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PasajeroEsperandoConductorScreen(
-                servicioId: servicioId!,
-                datosServicio: {
-                  if (selectedConductor != null)
-                    'conductor_id': selectedConductor.conductorId,
-                  'origen_lat': origin.lat,
-                  'origen_lng': origin.lng,
-                  'origen_address': origin.address,
-                  'destino_lat': destination?.lat,
-                  'destino_lng': destination?.lng,
-                  'destino_address':
-                      destination?.address ?? 'Destino no definido',
-                  'precio_ofrecido': 0,
-                  // No se envía precio porque funciona con taxímetro
-                },
-              ),
-            ),
-          ).then((result) {
-            // Cuando regrese, limpiar selección
-            if (mounted) {
-              _setStateSafe(() {
-                _selectedDirectDriver = null;
-                _selectedOrigin = null;
-                _selectedDestination = null;
-                _selectedDestinationArea = null;
-                _routeInfo = null;
-                _polylines.clear();
-                _markers.clear();
-                _originController.clear();
-                _destinationController.clear();
-              });
-            }
-          });
-        } else {
-          AppLogger.d('⚠️ No se pudo obtener servicio_id de la respuesta');
-          AppLogger.d('   Response completo: $response');
-        }
-      }
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => PasajeroEsperandoConductorScreen(
+            servicioId: servicioId,
+            datosServicio: {
+              if (selectedConductor != null)
+                'conductor_id': selectedConductor.conductorId,
+              'origen_lat': origin.lat,
+              'origen_lng': origin.lng,
+              'origen_address': origin.address,
+              'destino_lat': destination?.lat,
+              'destino_lng': destination?.lng,
+              'destino_address': destination?.address ?? 'Destino no definido',
+              'precio_ofrecido': 0,
+            },
+          ),
+        ),
+      );
     } catch (e) {
-      // Error al enviar solicitud - cerrar modal
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
+      if (!mounted || _scaffoldMessenger == null) return;
+
+      var errorMessage = e.toString().replaceAll('Exception: ', '').trim();
+      if (errorMessage.contains('TimeoutException') ||
+          errorMessage.contains('receive timeout') ||
+          errorMessage.contains('tiempo de espera')) {
+        errorMessage =
+            'La solicitud tardó demasiado. Revisa tu conexión e intenta de nuevo.';
       }
 
-      // Esperar para asegurar que el diálogo se cerró
-      await Future.delayed(const Duration(milliseconds: 200));
-
-      if (mounted && _scaffoldMessenger != null) {
-        final errorMessage = e.toString().replaceAll('Exception: ', '').trim();
-
-        if (_isNoDriversAvailableMessage(errorMessage)) {
-          await _showNoDriversAvailableDialog(errorMessage);
-        } else {
-          _scaffoldMessenger!.showSnackBar(
-            SnackBar(
-              content: Text('Error: $errorMessage'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
+      if (_isNoDriversAvailableMessage(errorMessage)) {
+        await _showNoDriversAvailableDialog(errorMessage);
+      } else {
+        _scaffoldMessenger!.showSnackBar(
+          SnackBar(
+            content: Text('Error: $errorMessage'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
     } finally {
       if (mounted) {
         _setStateSafe(() => _isSubmittingRide = false);
       }
     }
+  }
+
+  int? _parseServicioIdFromResponse(Map<String, dynamic> response) {
+    if (response['solicitud_id'] != null) {
+      return int.tryParse(response['solicitud_id'].toString());
+    }
+    if (response['servicio'] is Map) {
+      final id = (response['servicio'] as Map)['id'];
+      if (id is int) return id;
+      return int.tryParse(id?.toString() ?? '');
+    }
+    if (response['data'] is Map) {
+      final id = (response['data'] as Map)['id'];
+      if (id is int) return id;
+      return int.tryParse(id?.toString() ?? '');
+    }
+    if (response['servicio_id'] != null) {
+      final id = response['servicio_id'];
+      if (id is int) return id;
+      return int.tryParse(id.toString());
+    }
+    return null;
   }
 
   Future<void> _onDriverMarkerTap(Conductor conductor) async {

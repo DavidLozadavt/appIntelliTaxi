@@ -87,8 +87,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     // Refresco periódico para no perder ubicación del conductor tras hot reload
     _iniciarRefreshUbicacion();
 
-    // Verificar estado después de 3 segundos
-    Future.delayed(const Duration(seconds: 3), _verificarEstadoServicio);
+    // Verificar estado enseguida y reintentar pronto si sigue buscando.
+    unawaited(_verificarEstadoServicio());
+    Future.delayed(const Duration(seconds: 2), _verificarEstadoServicio);
   }
 
   Future<void> _restaurarUbicacionConductorPersistida() async {

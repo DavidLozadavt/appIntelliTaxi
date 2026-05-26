@@ -86,6 +86,15 @@ class _PasajeroEsperandoConductorScreenState
     navigateReplacingStackWithHome(context: context);
   }
 
+  Future<void> _abrirChat() async {
+    final authProvider = context.read<AuthProvider>();
+    await ChatHelper.abrirChat(
+      context: context,
+      servicioId: widget.servicioId,
+      miUserId: authProvider.userId ?? 0,
+    );
+  }
+
   Future<void> _llamarConductor(String? telefono) async {
     if (telefono == null || telefono.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -340,24 +349,6 @@ class _PasajeroEsperandoConductorScreenState
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 automaticallyImplyLeading: false,
-                actions: [
-                  // Botón de chat - solo mostrar si hay conductor asignado
-                  if (provider.estadoServicio != 'buscando' &&
-                      provider.estadoServicio != 'pendiente')
-                    Builder(
-                      builder: (context) {
-                        final authProvider = Provider.of<AuthProvider>(
-                          context,
-                          listen: false,
-                        );
-                        return ChatHelper.botonAppBarChat(
-                          context: context,
-                          servicioId: widget.servicioId,
-                          miUserId: authProvider.userId ?? 0,
-                        );
-                      },
-                    ),
-                ],
               ),
               body: Stack(
                 children: [
@@ -551,22 +542,22 @@ class _PasajeroEsperandoConductorScreenState
   Widget _buildPanelInfo(PasajeroServicioActivoProvider provider) {
     final estadosInfo = {
       'aceptado': {
-        'texto': '🚗 Conductor en camino',
+        'texto': 'Conductor en camino',
         'color': AppColors.green,
         'icono': Iconsax.car_copy,
       },
       'en_camino': {
-        'texto': '🚗 Conductor en camino',
+        'texto': 'Conductor en camino',
         'color': AppColors.green,
         'icono': Iconsax.car_copy,
       },
       'llegue': {
-        'texto': '📍 Conductor ha llegado',
+        'texto': 'Conductor ha llegado',
         'color': AppColors.accent,
         'icono': Iconsax.location_copy,
       },
       'en_curso': {
-        'texto': '🏁 Viaje en curso',
+        'texto': 'Viaje en curso',
         'color': AppColors.green,
         'icono': Iconsax.routing_2_copy,
       },
@@ -640,40 +631,77 @@ class _PasajeroEsperandoConductorScreenState
     PasajeroServicioActivoProvider provider,
   ) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: (info['color'] as Color).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+        Expanded(
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: (info['color'] as Color).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  info['icono'] as IconData,
+                  color: info['color'] as Color,
+                  size: 22,
+                ),
               ),
-              child: Icon(
-                info['icono'] as IconData,
-                color: info['color'] as Color,
-                size: 24,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  info['texto'] as String,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: info['color'] as Color,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              info['texto'] as String,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: info['color'] as Color,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
-        IconButton(
-          icon: Icon(Iconsax.call, color: AppColors.green, size: 26),
-          onPressed: () =>
-              _llamarConductor(provider.conductor?['conductor_telefono']),
+        const SizedBox(width: 8),
+        _buildAccionRapida(
+          icon: Iconsax.call,
+          color: AppColors.green,
           tooltip: 'Llamar conductor',
+          onTap: () =>
+              _llamarConductor(provider.conductor?['conductor_telefono']),
+        ),
+        const SizedBox(width: 6),
+        _buildAccionRapida(
+          icon: Iconsax.messages_copy,
+          color: AppColors.accent,
+          tooltip: 'Mensaje',
+          onTap: _abrirChat,
         ),
       ],
+    );
+  }
+
+  Widget _buildAccionRapida({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: color.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Tooltip(
+          message: tooltip,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(icon, color: color, size: 22),
+          ),
+        ),
+      ),
     );
   }
 

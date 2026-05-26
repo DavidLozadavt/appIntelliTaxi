@@ -2,16 +2,49 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
-/// Widget que muestra la información de la ruta calculada
+/// Widget que muestra la información de la ruta calculada.
 class RouteInfoCard extends StatelessWidget {
   final RouteInfo routeInfo;
+  final bool compact;
 
-  const RouteInfoCard({super.key, required this.routeInfo});
+  const RouteInfoCard({
+    super.key,
+    required this.routeInfo,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.black.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            _CompactChip(icon: Iconsax.routing_2, text: routeInfo.distance),
+            const SizedBox(width: 10),
+            _CompactChip(icon: Iconsax.clock, text: routeInfo.duration),
+            const Spacer(),
+            Text(
+              'Taxímetro',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -73,6 +106,28 @@ class RouteInfoCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CompactChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _CompactChip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: Colors.deepOrange),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+      ],
     );
   }
 }
