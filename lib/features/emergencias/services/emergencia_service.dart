@@ -6,7 +6,15 @@ import '../data/emergencia_model.dart';
 class EmergenciaService {
   final Dio _dio = DioClient.getInstance();
 
-  /// `POST /api/emergencias` — GPS al pulsar, sin `tipo` (backend → EMERGENCIA).
+  static const Duration _postTimeout = Duration(seconds: 8);
+
+  static Options get _fastPostOptions => Options(
+        sendTimeout: _postTimeout,
+        receiveTimeout: _postTimeout,
+        extra: const {'no_retry': true},
+      );
+
+  /// `POST /api/emergencias` — solo coordenadas + turno/vehículo; geocoding en backend.
   Future<EmergenciaModel> crearEmergencia({
     required int idVehiculo,
     required int idTurno,
@@ -20,11 +28,16 @@ class EmergenciaService {
         data: {
           'lat': lat,
           'lng': lng,
+          'latitude': lat,
+          'longitude': lng,
           'idVehiculo': idVehiculo,
           'idTurno': idTurno,
+          'id_vehiculo': idVehiculo,
+          'id_turno': idTurno,
           if (mensaje != null && mensaje.trim().isNotEmpty)
             'mensaje': mensaje.trim(),
         },
+        options: _fastPostOptions,
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {

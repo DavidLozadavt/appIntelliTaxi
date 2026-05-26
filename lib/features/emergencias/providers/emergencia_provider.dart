@@ -18,7 +18,7 @@ class EmergenciaProvider extends ChangeNotifier {
   List<EmergenciaModel> get emergenciasActivas =>
       List.unmodifiable(_emergenciasActivas);
 
-  /// Pedir apoyo — GPS al pulsar, backend guarda tipo EMERGENCIA.
+  /// Pedir apoyo — el front solo manda lat/lng; dirección la resuelve el backend.
   Future<bool> enviarApoyoRapido({
     required int idVehiculo,
     required int idTurno,
@@ -46,9 +46,23 @@ class EmergenciaProvider extends ChangeNotifier {
     required double lng,
     String? mensaje,
   }) async {
+    final provisional = EmergenciaModel(
+      id: -1,
+      idVehiculo: idVehiculo,
+      idTurno: idTurno,
+      lat: lat,
+      lng: lng,
+      tipo: 'EMERGENCIA',
+      mensaje: mensaje,
+      estado: 'activa',
+      createdAt: DateTime.now(),
+    );
+
     try {
       _isLoading = true;
       _lastError = null;
+      _ultimaEmergencia = provisional;
+      _upsertActiva(provisional);
       notifyListeners();
 
       final emergencia = await _api.crearEmergencia(
@@ -60,11 +74,14 @@ class EmergenciaProvider extends ChangeNotifier {
       );
 
       _ultimaEmergencia = emergencia;
+      _emergenciasActivas.removeWhere((e) => e.id <= 0);
       _upsertActiva(emergencia);
       return true;
     } catch (e) {
       _lastError = e.toString().replaceAll('Exception: ', '').trim();
       debugPrint(_lastError);
+      _ultimaEmergencia = null;
+      _emergenciasActivas.removeWhere((e) => e.id <= 0);
       return false;
     } finally {
       _isLoading = false;

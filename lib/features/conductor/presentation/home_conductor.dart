@@ -18,6 +18,7 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/emergencias/providers/emergencia_provider.dart';
+import 'package:intellitaxi/features/emergencias/utils/emergencia_quick_report.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
 import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
@@ -1195,7 +1196,10 @@ class _HomeConductorState extends State<HomeConductor>
                           if (provider.isOnline &&
                               provider.zonaActual != null &&
                               provider.zonaActual!.trim().isNotEmpty)
-                            ConductorHomeZonaChip(zona: provider.zonaActual!),
+                            ConductorHomeZonaChip(
+                              zona: provider.zonaActual!,
+                              labelPrefix: 'Tu zona',
+                            ),
                         ],
                       ),
                     ),
@@ -1306,13 +1310,28 @@ class _HomeConductorState extends State<HomeConductor>
                 child: Consumer<EmergenciaProvider>(
                   builder: (context, emergenciaProvider, _) {
                     if (!emergenciaProvider.estaEnEmergencia) {
-                      return FloatingActionButton.small(
-                        heroTag: 'fab_emergencias',
-                        onPressed: () =>
-                            Navigator.pushNamed(context, '/emergencias'),
-                        backgroundColor: Colors.red.shade600,
-                        elevation: 4,
-                        child: const Icon(Icons.emergency, color: Colors.white),
+                      return Tooltip(
+                        message: 'Toca: opciones · Mantén pulsado: envío inmediato',
+                        child: GestureDetector(
+                          onLongPress: emergenciaProvider.isLoading
+                              ? null
+                              : () => EmergenciaQuickReport.enviar(
+                                    context: context,
+                                  ),
+                          child: FloatingActionButton.small(
+                            heroTag: 'fab_emergencias',
+                            onPressed: () => Navigator.pushNamed(
+                              context,
+                              '/emergencias',
+                            ),
+                            backgroundColor: Colors.red.shade600,
+                            elevation: 4,
+                            child: const Icon(
+                              Icons.emergency,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
                       );
                     }
 

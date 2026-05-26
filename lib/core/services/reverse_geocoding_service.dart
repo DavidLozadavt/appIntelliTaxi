@@ -33,6 +33,33 @@ class ReverseGeocodingService {
     return _extractAreaFromResults(neighborhoodResults);
   }
 
+  /// Chip «Tu zona» del conductor: barrio real o referencia legible al moverse.
+  /// No usar la lógica estricta del pasajero (evita quedar sin etiqueta).
+  Future<String?> resolveZonaConductor({
+    required double lat,
+    required double lng,
+  }) async {
+    final results = await _fetchGeocodeResults(lat: lat, lng: lng);
+    if (results == null) return null;
+
+    var zona = _extractAreaFromResults(results);
+    if (zona != null) return zona;
+
+    final neighborhoodResults = await _fetchGeocodeResults(
+      lat: lat,
+      lng: lng,
+      resultType:
+          'neighborhood|sublocality|sublocality_level_1|sublocality_level_2|sublocality_level_3|administrative_area_level_3',
+      logLabel: 'neighborhood',
+    );
+    if (neighborhoodResults != null) {
+      zona = _extractAreaFromResults(neighborhoodResults);
+      if (zona != null) return zona;
+    }
+
+    return _extractZonaConductorFallback(results);
+  }
+
   /// Dirección formateada para un punto (ej. destino final al cerrar viaje).
   Future<String?> resolveFormattedAddress({
     required double lat,
@@ -237,6 +264,80 @@ class ReverseGeocodingService {
     return null;
   }
 
+  /// Fallback histórico del chip de zona (calle/barrio visible en mapa).
+  String? _extractZonaConductorFallback(List<Map<String, dynamic>> results) {
+    for (final result in results) {
+      final resultTypes = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+
+      if (resultTypes.contains('plus_code') ||
+          resultTypes.contains('postal_code') ||
+          resultTypes.contains('administrative_area_level_2')) {
+        continue;
+      }
+
+      final components = result['address_components'] as List<dynamic>? ?? [];
+      final neighborhood = _firstComponentValue(
+        components,
+        acceptedTypes: const [
+          'neighborhood',
+          'sublocality',
+          'sublocality_level_1',
+          'sublocality_level_2',
+          'sublocality_level_3',
+        ],
+      );
+      if (_isValidZonaCandidate(neighborhood)) return neighborhood;
+
+      final route = _firstComponentValue(
+        components,
+        acceptedTypes: const [
+          'route',
+          'point_of_interest',
+          'establishment',
+          'street_address',
+          'premise',
+        ],
+      );
+      if (_isValidZonaCandidate(route)) return route;
+
+      final resultPlusCode = result['plus_code'] is Map
+          ? Map<String, dynamic>.from(result['plus_code'] as Map)
+          : null;
+      final fromCompound = _extractHumanAreaFromCompoundCode(
+        resultPlusCode?['compound_code']?.toString(),
+      );
+      if (_isValidZonaCandidate(fromCompound)) return fromCompound;
+    }
+
+    final first = results.first;
+    final shortAddress = first['formatted_address']?.toString();
+    if (shortAddress != null && shortAddress.isNotEmpty) {
+      final parts = shortAddress
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      for (final part in parts) {
+        if (_isValidZonaCandidate(part)) return part;
+      }
+    }
+
+    return null;
+  }
+
+  String? _extractHumanAreaFromCompoundCode(String? compoundCode) {
+    if (compoundCode == null || compoundCode.trim().isEmpty) return null;
+    final cleaned = compoundCode.trim();
+    final spaceIndex = cleaned.indexOf(' ');
+    final withoutCode = spaceIndex > 0 ? cleaned.substring(spaceIndex + 1) : '';
+    if (withoutCode.isEmpty) return null;
+    final firstToken = withoutCode.split(',').first.trim();
+    if (firstToken.isEmpty || _isPlusCodeLike(firstToken)) return null;
+    return firstToken;
+  }
+
   String? _extractStreetLineFromResults(List<Map<String, dynamic>> results) {
     String? streetName;
     String? streetNumber;
@@ -351,6 +452,17 @@ class ReverseGeocodingService {
     if (_isPlusCodeLike(v)) return false;
     if (_isCityLike(v)) return false;
     if (_looksLikeStreetName(v)) return false;
+    if (_looksLikeSubpremise(v)) return false;
+    if (RegExp(r'^\d+$').hasMatch(v)) return false;
+    return true;
+  }
+
+  bool _isValidZonaCandidate(String? value) {
+    if (value == null) return false;
+    final v = value.trim();
+    if (v.length < 2) return false;
+    if (_isPlusCodeLike(v)) return false;
+    if (_isCityLike(v)) return false;
     if (_looksLikeSubpremise(v)) return false;
     if (RegExp(r'^\d+$').hasMatch(v)) return false;
     return true;

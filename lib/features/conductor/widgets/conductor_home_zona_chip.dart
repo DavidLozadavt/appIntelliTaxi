@@ -5,7 +5,7 @@ class ConductorHomeZonaChip extends StatelessWidget {
   const ConductorHomeZonaChip({
     super.key,
     required this.zona,
-    this.labelPrefix = 'Barrio',
+    this.labelPrefix = 'Tu zona',
   });
 
   final String zona;

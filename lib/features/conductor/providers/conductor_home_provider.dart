@@ -984,7 +984,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _lastAreaResolvedPosition = position;
     _lastAreaResolvedAt = DateTime.now();
 
-    final area = await _reverseGeocodingService.resolveAreaName(
+    final area = await _reverseGeocodingService.resolveZonaConductor(
       lat: position.latitude,
       lng: position.longitude,
     );

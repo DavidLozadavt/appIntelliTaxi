@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
-
-import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
-import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../providers/emergencia_provider.dart';
 
-/// Emergencia en un solo paso: ubicación a central y flota.
+import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/emergencias/providers/emergencia_provider.dart';
+import 'package:intellitaxi/features/emergencias/utils/emergencia_quick_report.dart';
+
+/// Emergencia en un toque: el front envía lat/lng; el backend geocodifica y avisa.
 class EmergenciasScreen extends StatefulWidget {
   const EmergenciasScreen({super.key});
 
@@ -16,88 +15,19 @@ class EmergenciasScreen extends StatefulWidget {
 }
 
 class _EmergenciasScreenState extends State<EmergenciasScreen> {
-  String? _ubicacionLegible;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<EmergenciaProvider>().cargarEmergenciasActivas();
+    });
+  }
 
   Future<void> _enviarApoyo() async {
-    final emergenciaProvider = context.read<EmergenciaProvider>();
-    if (emergenciaProvider.isLoading) return;
-    if (emergenciaProvider.estaEnEmergencia) {
-      _showSnackBar('Ya tienes una emergencia activa', Colors.orange);
-      return;
-    }
-
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(Icons.sos, color: Colors.red, size: 40),
-        title: const Text('¿Necesitas apoyo?'),
-        content: const Text(
-          'Se enviará tu ubicación actual a la central y a los conductores cercanos.',
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sí, enviar'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmar != true || !mounted) return;
-
-    final authProvider = context.read<AuthProvider>();
-    final conductorProvider = context.read<ConductorHomeProvider>();
-    final conductorId = authProvider.user?.id;
-    final turno = conductorProvider.turnoActivo;
-    final vehiculo = conductorProvider.vehiculoSeleccionado;
-
-    if (conductorId == null) {
-      _showSnackBar('No se pudo identificar al conductor', Colors.red);
-      return;
-    }
-    if (turno == null) {
-      _showSnackBar('Activa un turno para pedir apoyo', Colors.red);
-      return;
-    }
-
-    final position = await _obtenerUbicacion(conductorProvider);
-    if (!mounted) return;
-    if (position == null) {
-      _showSnackBar('No se pudo obtener tu ubicación', Colors.red);
-      return;
-    }
-
-    final ok = await emergenciaProvider.enviarApoyoRapido(
-      idVehiculo: vehiculo?.id ?? turno.idVehiculo,
-      idTurno: turno.id,
-      lat: position.latitude,
-      lng: position.longitude,
-      placa: vehiculo?.placa,
-    );
-
-    if (!mounted) return;
-
-    if (ok) {
-      final emergencia = emergenciaProvider.ultimaEmergencia;
-      setState(() {
-        _ubicacionLegible = emergencia?.direccionCompleta ??
-            emergencia?.tituloUbicacion ??
-            '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-      });
-    }
-
-    _showSnackBar(
-      ok
-          ? 'Apoyo enviado. Tu ubicación fue compartida.'
-          : emergenciaProvider.lastError ?? 'Error al enviar',
-      ok ? Colors.green : Colors.red,
-    );
+    final result = await EmergenciaQuickReport.enviar(context: context);
+    if (!mounted || !result.ok) return;
+    setState(() {});
   }
 
   Future<void> _confirmarFinalizarEmergencia() async {
@@ -132,41 +62,30 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
         .finalizarEmergenciaActiva();
     if (!mounted) return;
 
-    _showSnackBar(
-      ok
-          ? 'Emergencia finalizada'
-          : context.read<EmergenciaProvider>().lastError ??
-                'No se pudo finalizar',
-      ok ? Colors.green : Colors.red,
-    );
-  }
-
-  Future<Position?> _obtenerUbicacion(
-    ConductorHomeProvider conductorProvider,
-  ) async {
-    final cached = conductorProvider.currentPosition;
-    if (cached != null) return cached;
-
-    try {
-      return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 6),
-        ),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: color,
+        backgroundColor: ok ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
-        content: Text(message),
+        content: Text(
+          ok
+              ? 'Emergencia finalizada'
+              : context.read<EmergenciaProvider>().lastError ??
+                    'No se pudo finalizar',
+        ),
       ),
     );
+  }
+
+  String? _ubicacionMostrada(EmergenciaProvider emergenciaProvider) {
+    final e = emergenciaProvider.ultimaEmergencia;
+    if (e == null) return null;
+    if (e.direccionCompleta != null && e.direccionCompleta!.trim().isNotEmpty) {
+      return e.direccionCompleta;
+    }
+    if (e.barrio != null && e.barrio!.trim().isNotEmpty) {
+      return e.barrio;
+    }
+    return '${e.lat.toStringAsFixed(5)}, ${e.lng.toStringAsFixed(5)}';
   }
 
   @override
@@ -178,6 +97,8 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
     final turno = conductorProvider.turnoActivo;
     final vehiculo = conductorProvider.vehiculoSeleccionado;
     final enEmergencia = emergenciaProvider.estaEnEmergencia;
+    final ubicacion = _ubicacionMostrada(emergenciaProvider);
+    final gpsListo = conductorProvider.currentPosition != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -213,9 +134,7 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      enEmergencia
-                          ? 'Apoyo en curso'
-                          : 'Un toque para pedir apoyo',
+                      enEmergencia ? 'Apoyo en curso' : 'Un toque para pedir apoyo',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
@@ -226,11 +145,34 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
                     const SizedBox(height: 8),
                     Text(
                       enEmergencia
-                          ? 'La central y otros conductores recibieron tu ubicación.'
-                          : 'Sin categorías: solo avisamos dónde estás y que necesitas ayuda.',
+                          ? 'La central y la flota recibieron tus coordenadas.'
+                          : 'Enviamos tu GPS al instante. La dirección la calcula el servidor.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.white70, fontSize: 15),
                     ),
+                    if (!enEmergencia) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            gpsListo ? Icons.gps_fixed : Icons.gps_not_fixed,
+                            color: Colors.white70,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            gpsListo
+                                ? 'GPS listo'
+                                : 'Se usará la última ubicación conocida',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     if (turno != null) ...[
                       const SizedBox(height: 14),
                       Text(
@@ -243,10 +185,10 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
                         ),
                       ),
                     ],
-                    if (_ubicacionLegible != null) ...[
+                    if (ubicacion != null) ...[
                       const SizedBox(height: 10),
                       Text(
-                        _ubicacionLegible!,
+                        ubicacion,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Colors.white,
@@ -256,7 +198,8 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
                       ),
                     ],
                     if (enEmergencia &&
-                        emergenciaProvider.ultimaEmergencia != null) ...[
+                        emergenciaProvider.ultimaEmergencia != null &&
+                        emergenciaProvider.ultimaEmergencia!.id > 0) ...[
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
                         onPressed: () async {
