@@ -66,11 +66,20 @@ class _HomeConductorState extends State<HomeConductor>
   late TabController _serviciosTabController;
   bool _validandoTurno = true;
 
+  void _onNuevaSolicitudRecibida(Map<String, dynamic> _) {
+    if (!mounted) return;
+    if (_serviciosTabController.index != 0) {
+      _serviciosTabController.animateTo(0);
+    }
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _provider = context.read<ConductorHomeProvider>();
+    _provider.addNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     _pendientesProvider = SolicitudesPendientesProvider();
     _emergencyPulseController = AnimationController(
       vsync: this,
@@ -228,6 +237,7 @@ class _HomeConductorState extends State<HomeConductor>
 
   @override
   void dispose() {
+    _provider.removeNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     WidgetsBinding.instance.removeObserver(this);
     _bannerTimer?.cancel();
     _reanudarNavegacionTimer?.cancel();

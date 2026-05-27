@@ -182,6 +182,20 @@ class SolicitudDisplayHelper {
     return commas >= 2 || value.length > 55;
   }
 
+  /// Calle/número (Carrera 38, Cl. 16 #17-11) — no usar como título si hay barrio.
+  static bool looksLikeStreetAddress(String value) {
+    final v = value.trim().toLowerCase();
+    if (v.isEmpty) return false;
+    if (RegExp(
+      r'^(calle|cl\.?|cll\.?|cra\.?|carrera|kr\.?|kra\.?|avenida|av\.?|diag\.?|diagonal|transversal|tv\.?|#)',
+    ).hasMatch(v)) {
+      return true;
+    }
+    if (RegExp(r'##').hasMatch(value)) return true;
+    if (RegExp(r'\d{1,5}\s*[-#]').hasMatch(v)) return true;
+    return false;
+  }
+
   static bool isPlaceholderPickup(String value) {
     final v = value.trim().toLowerCase();
     return v.isEmpty ||
@@ -200,16 +214,39 @@ class SolicitudDisplayHelper {
         v == 'a convenir';
   }
 
-  /// Nombre principal de recogida (ej. "Aguas Vivas", "Casa Rosada").
+  /// Nombre principal de recogida: barrio/zona primero; calle solo si no hay barrio.
   static String pickupName(Map<String, dynamic> data) {
     final n = normalizeSolicitudMap(data);
-    final name = _pickupNameRaw(n);
-    if (name != null && !isPlaceholderPickup(name)) return name;
-
     final barrio = barrioFromPayload(n);
-    if (barrio != null && barrio.isNotEmpty) return barrio;
-
+    final name = _pickupNameRaw(n);
     final addr = _pickupAddressRaw(n);
+
+    if (barrio != null && barrio.isNotEmpty) {
+      if (name == null ||
+          isPlaceholderPickup(name) ||
+          looksLikeStreetAddress(name) ||
+          _normalizeCompare(name) == _normalizeCompare(addr ?? '')) {
+        return barrio;
+      }
+      if (!_normalizeCompare(name).contains(_normalizeCompare(barrio))) {
+        return name;
+      }
+      return barrio;
+    }
+
+    if (name != null && !isPlaceholderPickup(name)) {
+      if (!looksLikeStreetAddress(name)) return name;
+      final fromAddr = addr != null && !isPlaceholderPickup(addr)
+          ? placeNameFromAddress(addr)
+          : null;
+      if (fromAddr != null &&
+          fromAddr.isNotEmpty &&
+          !looksLikeStreetAddress(fromAddr)) {
+        return fromAddr;
+      }
+      return name;
+    }
+
     if (addr != null && !isPlaceholderPickup(addr)) {
       return placeNameFromAddress(addr);
     }

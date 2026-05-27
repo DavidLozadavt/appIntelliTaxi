@@ -954,8 +954,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       _solicitudesActivas.add(solicitud);
 
       if (!fromSync) {
-        _reproducirSonidoNotificacion();
-        VoiceAlertService.announceNewService();
+        unawaited(_reproducirSonidoNotificacion());
+        unawaited(VoiceAlertService.announceNewService());
         unawaited(_notificarYEnriquecerSolicitud(solicitudId));
       } else {
         unawaited(_enriquecerDireccionesSolicitud(solicitudId));
@@ -976,23 +976,38 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       if (!_isDisposed) notifyListeners();
-    } catch (e) {
-      AppLogger.d('❌ Error procesando solicitud: $e');
+    } catch (e, st) {
+      AppLogger.e(
+        'Error procesando solicitud Pusher',
+        tag: 'ConductorHome',
+        error: e,
+        stackTrace: st,
+      );
     }
   }
 
   Future<void> _notificarYEnriquecerSolicitud(String solicitudId) async {
-    await _enriquecerDireccionesSolicitud(solicitudId);
-    if (_isDisposed) return;
-    final index = _solicitudesActivas.indexWhere(
-      (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
-    );
-    if (index < 0) return;
+    try {
+      await _enriquecerDireccionesSolicitud(solicitudId);
+      if (_isDisposed) return;
+      final index = _solicitudesActivas.indexWhere(
+        (s) =>
+            ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
+      );
+      if (index < 0) return;
 
-    // Full-screen / heads-up solo si la app no está visible (otra app encima).
-    if (!_isAppInForeground()) {
-      await IncomingServiceNotificationService.instance.showIncomingService(
-        _solicitudesActivas[index],
+      // Full-screen / heads-up solo si la app no está visible (otra app encima).
+      if (!_isAppInForeground()) {
+        await IncomingServiceNotificationService.instance.showIncomingService(
+          _solicitudesActivas[index],
+        );
+      }
+    } catch (e, st) {
+      AppLogger.e(
+        'Error enriqueciendo/notificando solicitud',
+        tag: 'ConductorHome',
+        error: e,
+        stackTrace: st,
       );
     }
   }

@@ -639,6 +639,14 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     );
   }
 
+  /// Actualización manual (pull-to-refresh): estado del servicio y taxis cercanos.
+  Future<void> refrescarManual() async {
+    await _obtenerInfoServicio();
+    if (isBuscando) {
+      await _actualizarConductoresCercanos();
+    }
+  }
+
   /// 🔄 Reinicia la búsqueda de conductor
   void reintentar() {
     _estadoServicio = 'buscando';

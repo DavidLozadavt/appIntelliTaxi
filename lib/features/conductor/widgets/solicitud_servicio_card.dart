@@ -14,6 +14,8 @@ class SolicitudServicioCard extends StatefulWidget {
   final String? tiempoPublicado;
   final double? precioOfertado;
   final bool marginExterno;
+  /// Lista «En espera»: menos padding y tipografía más pequeña.
+  final bool compact;
 
   const SolicitudServicioCard({
     super.key,
@@ -26,6 +28,7 @@ class SolicitudServicioCard extends StatefulWidget {
     this.tiempoPublicado,
     this.precioOfertado,
     this.marginExterno = true,
+    this.compact = false,
   });
 
   @override
@@ -76,7 +79,10 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     required bool isDark,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: EdgeInsets.symmetric(
+        horizontal: widget.compact ? 8 : 10,
+        vertical: widget.compact ? 4 : 6,
+      ),
       decoration: BoxDecoration(
         color: isDark
             ? Colors.white.withValues(alpha: 0.08)
@@ -110,29 +116,32 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     required bool isDark,
     required bool titleLarge,
   }) {
+    final c = widget.compact;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: TextStyle(
-            fontSize: 11,
+            fontSize: c ? 10 : 11,
             fontWeight: FontWeight.w700,
             color: labelColor,
-            letterSpacing: 0.6,
+            letterSpacing: 0.5,
           ),
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: c ? 2 : 4),
         Text(
           title,
+          maxLines: c ? 1 : 2,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: titleLarge ? 22 : 18,
+            fontSize: c ? 16 : (titleLarge ? 22 : 18),
             fontWeight: FontWeight.w800,
-            height: 1.2,
+            height: 1.15,
             color: isDark ? Colors.white : Colors.black87,
           ),
         ),
-        if (subtitle.isNotEmpty) ...[
+        if (subtitle.isNotEmpty && !c) ...[
           const SizedBox(height: 4),
           Text(
             subtitle,
@@ -171,6 +180,8 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         distanciaMi.isNotEmpty || tiempoPub.isNotEmpty || (precio != null && precio > 0);
     final viajeDist = SolicitudDisplayHelper.tripDistanceText(widget.solicitud);
     final viajeDur = SolicitudDisplayHelper.tripDurationText(widget.solicitud);
+    final compact = widget.compact;
+    final titleLarge = widget.destacada && !compact;
 
     return SlideTransition(
       position: _slideAnimation,
@@ -182,23 +193,27 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
               : EdgeInsets.zero,
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(compact ? 14 : 20),
             border: Border.all(
               color: widget.destacada
                   ? AppColors.accent
                   : Colors.black.withValues(alpha: 0.08),
-              width: widget.destacada ? 2.5 : 1,
+              width: widget.destacada ? (compact ? 2 : 2.5) : 1,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.14),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
+            boxShadow: compact
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.14),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            padding: compact
+                ? const EdgeInsets.fromLTRB(12, 10, 12, 11)
+                : const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
@@ -210,13 +225,14 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (barrio != null &&
+                          if (!compact &&
+                              barrio != null &&
                               barrio.toLowerCase() !=
                                   origenNombre.toLowerCase()) ...[
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: compact ? 8 : 10,
+                                vertical: compact ? 2 : 4,
                               ),
                               decoration: BoxDecoration(
                                 color: AppColors.accent.withValues(alpha: 0.15),
@@ -225,7 +241,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                               child: Text(
                                 barrio.toUpperCase(),
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: compact ? 10 : 12,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: 0.4,
                                   color: isDark
@@ -234,7 +250,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 10),
+                            SizedBox(height: compact ? 6 : 10),
                           ],
                           _buildLocationBlock(
                             label: 'RECOGIDA',
@@ -242,37 +258,53 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             subtitle: origenSub,
                             labelColor: AppColors.accent,
                             isDark: isDark,
-                            titleLarge: widget.destacada,
+                            titleLarge: titleLarge,
                           ),
+                          if (compact &&
+                              origenSub.isNotEmpty &&
+                              origenSub.toLowerCase() !=
+                                  origenNombre.toLowerCase()) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              origenSub,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
                     if (segundosRestantes > 0)
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 8 : 12,
+                          vertical: compact ? 5 : 8,
                         ),
                         decoration: BoxDecoration(
                           color: enRiesgo
                               ? Colors.red
                               : Colors.black.withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(compact ? 8 : 12),
                         ),
                         child: Text(
                           '${segundosRestantes}s',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w800,
-                            fontSize: 16,
+                            fontSize: compact ? 14 : 16,
                           ),
                         ),
                       )
                     else if (tiempoPub.isNotEmpty)
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 8 : 10,
+                          vertical: compact ? 4 : 6,
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.accent.withValues(alpha: 0.12),
@@ -293,19 +325,19 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ],
                 ),
                 if (muestraDestino) ...[
-                  const SizedBox(height: 14),
+                  SizedBox(height: compact ? 8 : 14),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(top: 18),
+                        padding: EdgeInsets.only(top: compact ? 14 : 18),
                         child: Icon(
                           Iconsax.location,
-                          size: 18,
+                          size: compact ? 15 : 18,
                           color: Colors.red.shade400,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Expanded(
                         child: _buildLocationBlock(
                           label: 'DESTINO',
@@ -320,7 +352,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ),
                 ],
                 if (viajeDist.isNotEmpty || viajeDur.isNotEmpty) ...[
-                  const SizedBox(height: 10),
+                  SizedBox(height: compact ? 6 : 10),
                   Row(
                     children: [
                       if (viajeDist.isNotEmpty) ...[
@@ -360,10 +392,10 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ),
                 ],
                 if (tieneMeta) ...[
-                  const SizedBox(height: 12),
+                  SizedBox(height: compact ? 6 : 12),
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
+                    spacing: compact ? 6 : 8,
+                    runSpacing: compact ? 4 : 6,
                     children: [
                       if (distanciaMi.isNotEmpty)
                         _infoChip(
@@ -382,7 +414,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     ],
                   ),
                 ],
-                const SizedBox(height: 16),
+                SizedBox(height: compact ? 10 : 16),
                 Row(
                   children: [
                     if (widget.onRechazar != null) ...[
@@ -390,14 +422,15 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                         child: OutlinedButton(
                           onPressed: () => _dismiss(widget.onRechazar!),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 14,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: compact ? 10 : 14,
                             ),
                             side: const BorderSide(color: Colors.red, width: 1.5),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
+                            visualDensity: VisualDensity.compact,
                           ),
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
@@ -405,7 +438,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                               'Rechazar',
                               maxLines: 1,
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: compact ? 13 : 15,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.red,
                               ),
@@ -413,7 +446,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: compact ? 8 : 12),
                     ],
                     Expanded(
                       child: ElevatedButton(
@@ -421,21 +454,27 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding: EdgeInsets.symmetric(
+                            vertical: compact ? 10 : 14,
+                          ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           elevation: 0,
+                          visualDensity: VisualDensity.compact,
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Iconsax.tick_circle_copy, size: 20),
-                            SizedBox(width: 8),
+                            Icon(
+                              Iconsax.tick_circle_copy,
+                              size: compact ? 17 : 20,
+                            ),
+                            SizedBox(width: compact ? 6 : 8),
                             Text(
                               'Aceptar',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: compact ? 14 : 16,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),

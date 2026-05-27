@@ -5,6 +5,8 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
+import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_ranking_helper.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
@@ -12,6 +14,8 @@ import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 /// Lista de servicios publicados sin conductor (pantalla dedicada).
 class SolicitudesPendientesProvider extends ChangeNotifier {
   final ConductorService _conductorService = ConductorService();
+  final ConductorSolicitudEnrichmentService _enrichment =
+      ConductorSolicitudEnrichmentService();
 
   final List<Map<String, dynamic>> _pendientes = [];
   bool _cargando = false;
@@ -104,6 +108,9 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
               return !(_home?.esServicioRechazado(id) ?? false);
             }),
           );
+        if (_pendientes.isNotEmpty) {
+          await _enriquecerPendientes(forzarBarrio: !silencioso);
+        }
       }
       _error = null;
     } catch (e) {
@@ -115,6 +122,34 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
       _cargando = false;
       if (!_isDisposed) notifyListeners();
     }
+  }
+
+  Future<void> _enriquecerPendientes({bool forzarBarrio = false}) async {
+    final targets = forzarBarrio
+        ? List<Map<String, dynamic>>.from(_pendientes)
+        : _pendientes
+              .where((s) {
+                final b = SolicitudDisplayHelper.barrioFromPayload(s);
+                return b == null || b.isEmpty;
+              })
+              .toList();
+    if (targets.isEmpty) return;
+
+    const batchSize = 4;
+    for (var i = 0; i < targets.length; i += batchSize) {
+      if (_isDisposed) return;
+      final end = i + batchSize > targets.length ? targets.length : i + batchSize;
+      final slice = targets.sublist(i, end);
+      await Future.wait(
+        slice.map((s) async {
+          final lat = SolicitudDisplayHelper.parseCoordinate(s['origen_lat']);
+          final lng = SolicitudDisplayHelper.parseCoordinate(s['origen_lng']);
+          if (lat == null || lng == null) return;
+          await _enrichment.enrich(s, forzarBarrio: forzarBarrio);
+        }),
+      );
+    }
+    if (!_isDisposed) notifyListeners();
   }
 
   void _onSolicitudTomada(String servicioId) {

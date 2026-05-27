@@ -17,6 +17,7 @@ import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.da
 import 'package:intellitaxi/features/conductor/widgets/conductor_servicio_bottom_panel.dart';
 import 'package:intellitaxi/features/conductor/widgets/ofertas_en_ruta_panel.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/core/utils/phone_launcher.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
@@ -823,30 +824,10 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _llamarPasajero() async {
-    final telefono = _getTelefonoPasajero();
-    if (telefono == null || telefono.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay teléfono disponible'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    final limpio = telefono.replaceAll(RegExp(r'[^0-9+]'), '');
-    final telUri = Uri.parse('tel:$limpio');
-
-    if (await canLaunchUrl(telUri)) {
-      await launchUrl(telUri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo abrir la aplicación de llamadas'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
+    await PhoneLauncher.dial(
+      _getTelefonoPasajero(),
+      context: context,
+    );
   }
 
   Future<void> _abrirChatPasajero() async {
@@ -970,11 +951,8 @@ class _ConductorServicioActivoScreenState
       return;
     }
 
-    final limpio = telefono.replaceAll(RegExp(r'[^0-9+]'), '');
-    final telUri = Uri.parse('tel:$limpio');
-    if (await canLaunchUrl(telUri)) {
-      await launchUrl(telUri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
+    final ok = await PhoneLauncher.dial(telefono, context: context);
+    if (!ok && mounted) {
       _mostrarError('No se pudo abrir la aplicación de llamadas');
     }
   }

@@ -10,10 +10,10 @@ import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
+import 'package:intellitaxi/core/utils/phone_launcher.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -99,29 +99,11 @@ class _PasajeroEsperandoConductorScreenState
   }
 
   Future<void> _llamarConductor(String? telefono) async {
-    if (telefono == null || telefono.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay teléfono del conductor disponible'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    final limpio = telefono.replaceAll(RegExp(r'[^0-9+]'), '');
-    final telUri = Uri.parse('tel:$limpio');
-
-    if (await canLaunchUrl(telUri)) {
-      await launchUrl(telUri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo abrir la aplicación de llamadas'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
+    await PhoneLauncher.dial(
+      telefono,
+      context: context,
+      emptyMessage: 'No hay teléfono del conductor disponible',
+    );
   }
 
   /// ⏰ Muestra diálogo cuando se agota el tiempo de espera

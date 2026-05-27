@@ -9,7 +9,7 @@ import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:intellitaxi/core/utils/phone_launcher.dart';
 
 class ActiveServiceScreen extends StatelessWidget {
   final ServicioActivo servicio;
@@ -579,25 +579,11 @@ class ActiveServiceScreen extends StatelessWidget {
   }
 
   Future<void> _llamarConductor(BuildContext context, String telefono) async {
-    final limpio = telefono.replaceAll(RegExp(r'[^0-9+]'), '');
-    if (limpio.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay teléfono válido del conductor')),
-      );
-      return;
-    }
-
-    final telUri = Uri.parse('tel:$limpio');
-    if (await canLaunchUrl(telUri)) {
-      await launchUrl(telUri, mode: LaunchMode.externalApplication);
-    } else {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo abrir la aplicación de llamadas'),
-        ),
-      );
-    }
+    await PhoneLauncher.dial(
+      telefono,
+      context: context,
+      emptyMessage: 'No hay teléfono válido del conductor',
+    );
   }
 
   Future<void> _mostrarDialogoCancelacion(

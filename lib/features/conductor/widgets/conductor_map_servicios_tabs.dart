@@ -12,6 +12,19 @@ class ConductorMapServiciosTabs {
   static bool pantallaCompacta(BuildContext context) =>
       MediaQuery.sizeOf(context).height < 680;
 
+  /// Evita `minHeight: infinity` cuando el panel no tiene altura acotada (crash al llegar solicitud).
+  static double _minHeightForPullRefresh(
+    BuildContext context,
+    BoxConstraints constraints, {
+    double fallbackFraction = 0.18,
+    double fallbackMin = 160,
+  }) {
+    final maxH = constraints.maxHeight;
+    if (maxH.isFinite && maxH > 0) return maxH;
+    final screenH = MediaQuery.sizeOf(context).height;
+    return (screenH * fallbackFraction).clamp(fallbackMin, screenH * 0.45);
+  }
+
   static double tabBarHeight(BuildContext context) =>
       pantallaCompacta(context) ? 30 : 34;
 
@@ -119,7 +132,7 @@ class ConductorMapServiciosTabs {
     required SolicitudesPendientesProvider pendientes,
   }) {
     final screenH = MediaQuery.sizeOf(context).height;
-    final maxH = screenH * (pantallaCompacta(context) ? 0.28 : 0.34);
+    final maxH = screenH * (pantallaCompacta(context) ? 0.22 : 0.26);
     if (controller.index == 0) {
       return 0;
     }
@@ -130,7 +143,7 @@ class ConductorMapServiciosTabs {
 
   static double _enEsperaPanelHeight(BuildContext context) {
     final screenH = MediaQuery.sizeOf(context).height;
-    return screenH * (pantallaCompacta(context) ? 0.28 : 0.34);
+    return screenH * (pantallaCompacta(context) ? 0.22 : 0.26);
   }
 
   static Widget panel({
@@ -191,30 +204,56 @@ class ConductorMapServiciosTabs {
     required void Function(String id) onRechazar,
   }) {
     final lista = home.solicitudesOrdenadas;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var index = 0; index < lista.length; index++) ...[
-          if (index > 0) const SizedBox(height: 8),
-          Builder(
-            builder: (context) {
-              final solicitud = lista[index];
-              final id = getSolicitudId(solicitud);
-              if (id.isEmpty) return const SizedBox.shrink();
-              final seg = segundosRestantes(id);
-              return SolicitudServicioCard(
-                solicitud: solicitud,
-                marginExterno: false,
-                segundosRestantes: seg > 0 ? seg : null,
-                destacada: index == 0,
-                onAceptar: () => onAceptar(id),
-                onRechazar: () => onRechazar(id),
-              );
-            },
+    Future<void> onRefresh() =>
+        home.sincronizarSolicitudesPublicadasConductor();
+
+    if (lista.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Builder(
+      builder: (context) {
+        return RefreshIndicator(
+          color: AppColors.accent,
+          onRefresh: onRefresh,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: _minHeightForPullRefresh(
+                  context,
+                  const BoxConstraints(),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var index = 0; index < lista.length; index++) ...[
+                    if (index > 0) const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final solicitud = lista[index];
+                        final id = getSolicitudId(solicitud);
+                        if (id.isEmpty) return const SizedBox.shrink();
+                        final seg = segundosRestantes(id);
+                        return SolicitudServicioCard(
+                          solicitud: solicitud,
+                          marginExterno: false,
+                          segundosRestantes: seg > 0 ? seg : null,
+                          destacada: index == 0,
+                          onAceptar: () => onAceptar(id),
+                          onRechazar: () => onRechazar(id),
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ],
-      ],
+        );
+      },
     );
   }
 
@@ -236,30 +275,58 @@ class ConductorMapServiciosTabs {
       );
     }
 
+    Future<void> onRefresh() => pendientes.refrescar(silencioso: false);
+
     if (lista.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                home.radioAccion.activo && !home.radioAccion.sinLimite
-                    ? 'Sin servicios a ${home.radioAccion.radioEfectivoKm.round()} km (Popayán)'
-                    : 'Sin publicados en Popayán',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+      return RefreshIndicator(
+        color: AppColors.accent,
+        onRefresh: onRefresh,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: _minHeightForPullRefresh(
+                    context,
+                    constraints,
+                    fallbackFraction: 0.12,
+                    fallbackMin: 72,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          home.radioAccion.activo && !home.radioAccion.sinLimite
+                              ? 'Sin servicios a ${home.radioAccion.radioEfectivoKm.round()} km (Popayán)'
+                              : 'Sin publicados en Popayán',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                          maxLines: 2,
+                        ),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 36,
+                        ),
+                        onPressed: pendientes.refrescar,
+                        icon: const Icon(Icons.refresh_rounded, size: 20),
+                        tooltip: 'Actualizar',
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              onPressed: pendientes.refrescar,
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              tooltip: 'Actualizar',
-            ),
-          ],
+            );
+          },
         ),
       );
     }
@@ -278,27 +345,34 @@ class ConductorMapServiciosTabs {
           ),
         ),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-            itemCount: lista.length,
-            itemBuilder: (context, index) {
-              final item = lista[index];
-              final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
-              if (id == null || id.isEmpty) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: SolicitudServicioCard(
-                  solicitud: item,
-                  marginExterno: false,
-                  distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
-                  tiempoPublicado: pendientes.tiempoPublicado(item),
-                  precioOfertado: pendientes.precioOfertadoDe(item),
-                  onAceptar: () => onAceptar(id, item),
-                  onRechazar:
-                      onDescartar != null ? () => onDescartar(id) : null,
-                ),
-              );
-            },
+          child: RefreshIndicator(
+            color: AppColors.accent,
+            onRefresh: onRefresh,
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+              itemCount: lista.length,
+              itemBuilder: (context, index) {
+                final item = lista[index];
+                final id =
+                    ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
+                if (id == null || id.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: SolicitudServicioCard(
+                    solicitud: item,
+                    marginExterno: false,
+                    compact: true,
+                    distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
+                    tiempoPublicado: pendientes.tiempoPublicado(item),
+                    precioOfertado: pendientes.precioOfertadoDe(item),
+                    onAceptar: () => onAceptar(id, item),
+                    onRechazar:
+                        onDescartar != null ? () => onDescartar(id) : null,
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ],
