@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/mensaje_taxi_model.dart';
+import 'chat_imagen_fullscreen.dart';
 import '../../../core/theme/app_colors.dart';
 
 class MensajeBurbujaWidget extends StatelessWidget {
@@ -95,23 +96,52 @@ class MensajeBurbujaWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: CachedNetworkImage(
+        GestureDetector(
+          onTap: () => ChatImagenFullscreen.open(
+            context,
             imageUrl: mensaje.imagenUrl!,
-            width: 220,
-            fit: BoxFit.cover,
-            placeholder: (_, __) => const SizedBox(
-              width: 220,
-              height: 160,
-              child: Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
-            errorWidget: (_, __, ___) => const SizedBox(
-              width: 220,
-              height: 120,
-              child: Icon(Icons.broken_image_outlined, size: 40),
+            caption: caption,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CachedNetworkImage(
+                  imageUrl: mensaje.imagenUrl!,
+                  width: 220,
+                  height: 160,
+                  fit: BoxFit.cover,
+                  placeholder: (_, _) => const SizedBox(
+                    width: 220,
+                    height: 160,
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                  errorWidget: (_, _, _) => const SizedBox(
+                    width: 220,
+                    height: 120,
+                    child: Icon(Icons.broken_image_outlined, size: 40),
+                  ),
+                ),
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.zoom_out_map,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

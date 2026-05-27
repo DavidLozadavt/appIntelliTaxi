@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
+import 'package:intellitaxi/features/chat/utils/chat_notification_navigation.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/main.dart';
@@ -105,6 +106,11 @@ Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
     navigatorKey.currentState?.pushNamed('/home');
     return;
   }
+  if (ChatNotificationNavigation.isChatTaxiNotification(data)) {
+    AppLogger.d('💬 FCM → chat del servicio activo');
+    await ChatNotificationNavigation.openFromNotification(data);
+    return;
+  }
   if (await _shouldShowConductorIncomingAlert(data)) {
     AppLogger.d('🚕 FCM → solicitud entrante (conductor)');
     IncomingServiceNotificationService.instance.bringAppToForeground();
@@ -137,11 +143,15 @@ Map<String, dynamic>? _parseNotificationPayloadString(String? payload) {
   final sid = RegExp(
     r'''servicio_id['"]?\s*[:=]\s*['"]?([^,'"}\s]+)''',
   ).firstMatch(payload)?.group(1);
-  if (tipo != null || route != null || sid != null) {
+  final mensajeTipo = RegExp(
+    r'''mensaje_tipo['"]?\s*[:=]\s*['"]?([^,'"}\s]+)''',
+  ).firstMatch(payload)?.group(1);
+  if (tipo != null || route != null || sid != null || mensajeTipo != null) {
     final parsedData = <String, dynamic>{};
     if (tipo != null) parsedData['tipo'] = tipo;
     if (route != null) parsedData['route'] = route;
     if (sid != null) parsedData['servicio_id'] = sid;
+    if (mensajeTipo != null) parsedData['mensaje_tipo'] = mensajeTipo;
     return parsedData;
   }
   return null;
@@ -177,7 +187,18 @@ void onNotificationTap(NotificationResponse notificationResponse) {
     return;
   }
 
-  navigatorKey.currentState?.pushNamed('/chat');
+  if (payload != null &&
+      (payload.contains('chat_servicio') ||
+          payload.contains('mensaje_tipo'))) {
+    final parsed = _parseNotificationPayloadString(payload);
+    if (parsed != null &&
+        ChatNotificationNavigation.isChatTaxiNotification(parsed)) {
+      unawaited(ChatNotificationNavigation.openFromNotification(parsed));
+      return;
+    }
+  }
+
+  navigatorKey.currentState?.pushNamed('/home');
 }
 
 @pragma('vm:entry-point')

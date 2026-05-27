@@ -22,6 +22,16 @@ class ChatBadgeLifecycle extends StatefulWidget {
 
 class _ChatBadgeLifecycleState extends State<ChatBadgeLifecycle>
     with WidgetsBindingObserver {
+  ChatBadgeProvider? _badgeProvider;
+  AuthProvider? _authProvider;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _badgeProvider = context.read<ChatBadgeProvider>();
+    _authProvider = context.read<AuthProvider>();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -47,9 +57,7 @@ class _ChatBadgeLifecycleState extends State<ChatBadgeLifecycle>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (mounted) {
-      context.read<ChatBadgeProvider>().detenerMonitoreo();
-    }
+    _badgeProvider?.detenerMonitoreo();
     super.dispose();
   }
 
@@ -57,28 +65,27 @@ class _ChatBadgeLifecycleState extends State<ChatBadgeLifecycle>
     if (widget.miUserId != null && widget.miUserId! > 0) {
       return widget.miUserId!;
     }
-    return context.read<AuthProvider>().userId ?? 0;
+    return _authProvider?.userId ?? 0;
   }
 
   void _iniciar() {
     if (!mounted || widget.servicioId <= 0) return;
+    final badge = _badgeProvider;
+    if (badge == null) return;
     final uid = _resolveUserId();
     if (uid <= 0) return;
-    context.read<ChatBadgeProvider>().iniciarMonitoreo(
-          widget.servicioId,
-          uid,
-        );
+    badge.iniciarMonitoreo(widget.servicioId, uid);
   }
 
   void _reiniciar() {
     if (!mounted) return;
-    context.read<ChatBadgeProvider>().detenerMonitoreo();
+    _badgeProvider?.detenerMonitoreo();
     _iniciar();
   }
 
   void _actualizar() {
     if (!mounted || widget.servicioId <= 0) return;
-    context.read<ChatBadgeProvider>().actualizarNoLeidos(widget.servicioId);
+    _badgeProvider?.actualizarNoLeidos(widget.servicioId);
   }
 
   @override
