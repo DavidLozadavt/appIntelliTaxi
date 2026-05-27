@@ -99,3 +99,34 @@ class TaxiSolicitudesPublicadasResult {
     required this.solicitudes,
   });
 }
+
+/// Resultado de `GET /taxi/solicitudes-pendientes`.
+class TaxiSolicitudesPendientesResult {
+  final bool enServicio;
+  final bool enDescanso;
+  final int? idEmpresa;
+  final int total;
+  final List<Map<String, dynamic>> pendientes;
+  final String? actualizadoEn;
+
+  const TaxiSolicitudesPendientesResult({
+    required this.enServicio,
+    this.enDescanso = false,
+    this.idEmpresa,
+    required this.total,
+    required this.pendientes,
+    this.actualizadoEn,
+  });
+
+  factory TaxiSolicitudesPendientesResult.empty({
+    bool enServicio = false,
+    bool enDescanso = false,
+  }) {
+    return TaxiSolicitudesPendientesResult(
+      enServicio: enServicio,
+      enDescanso: enDescanso,
+      total: 0,
+      pendientes: const [],
+    );
+  }
+}

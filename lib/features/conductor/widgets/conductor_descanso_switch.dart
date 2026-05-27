@@ -3,9 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 
-/// Switch de modo descanso para la barra superior (AppBar).
-class ConductorDescansoAppBarSwitch extends StatelessWidget {
-  const ConductorDescansoAppBarSwitch({super.key});
+/// Switch de modo descanso (drawer del conductor).
+class ConductorDescansoSwitch extends StatelessWidget {
+  const ConductorDescansoSwitch({super.key});
 
   static const Color _amber = Color(0xFFF59E0B);
   static const Color _amberDeep = Color(0xFFD97706);
@@ -94,19 +94,28 @@ class ConductorDescansoAppBarSwitch extends StatelessWidget {
         final enabled =
             (provider.puedeUsarModoDescanso || enDescanso) && !loading;
 
-        return Material(
-          color: enDescanso
-              ? _amber.withValues(alpha: isDark ? 0.16 : 0.12)
-              : (isDark
-                    ? Colors.white.withValues(alpha: 0.04)
-                    : AppColors.primary.withValues(alpha: 0.04)),
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: enDescanso
+                ? _amber.withValues(alpha: isDark ? 0.18 : 0.14)
+                : (isDark
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : AppColors.primary.withValues(alpha: 0.06)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: enDescanso
+                  ? _amber.withValues(alpha: 0.45)
+                  : Colors.black.withValues(alpha: 0.06),
+            ),
+          ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
                 Icon(
                   enDescanso ? Icons.nightlight_round : Icons.coffee_outlined,
-                  size: 20,
+                  size: 22,
                   color: enDescanso
                       ? _amberDeep
                       : (isDark ? Colors.white70 : AppColors.primary),
@@ -120,7 +129,7 @@ class ConductorDescansoAppBarSwitch extends StatelessWidget {
                       Text(
                         enDescanso ? 'En descanso' : 'Modo descanso',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                           color: isDark ? Colors.white : Colors.black87,
                         ),

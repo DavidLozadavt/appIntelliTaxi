@@ -15,9 +15,11 @@ import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
+import 'package:intellitaxi/features/taxi/data/taxi_radio_accion.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_radio_accion_filter.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
@@ -85,6 +87,12 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _visibleEnMapa = true;
   bool _cambiandoDescanso = false;
   String? _lastDescansoError;
+  TaxiRadioAccion _radioAccion = TaxiRadioAccion.sinLimitePorDefecto;
+  bool _guardandoRadioAccion = false;
+  String? _lastRadioAccionError;
+  final List<void Function(String servicioId)> _solicitudTomadaListeners = [];
+  final List<void Function(Map<String, dynamic> solicitud)>
+      _nuevaSolicitudListeners = [];
 
   // Control de dispose
   bool _isDisposed = false;
@@ -135,6 +143,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool get recibeServicios => _recibeServicios && !_enDescanso;
   bool get cambiandoDescanso => _cambiandoDescanso;
   String? get lastDescansoError => _lastDescansoError;
+  TaxiRadioAccion get radioAccion => _radioAccion;
+  bool get guardandoRadioAccion => _guardandoRadioAccion;
+  String? get lastRadioAccionError => _lastRadioAccionError;
   bool get puedeUsarModoDescanso =>
       _isOnline && !_enServicio && _turnoActivo != null;
   List<Map<String, dynamic>> get solicitudesOrdenadas {
@@ -197,10 +208,35 @@ class ConductorHomeProvider extends ChangeNotifier {
       solicitudesOrdenadas.isEmpty ? null : solicitudesOrdenadas.first;
   bool get tieneTurnoActivo => _turnoActivo != null;
 
+  void addSolicitudTomadaListener(void Function(String servicioId) listener) {
+    if (!_solicitudTomadaListeners.contains(listener)) {
+      _solicitudTomadaListeners.add(listener);
+    }
+  }
+
+  void removeSolicitudTomadaListener(void Function(String servicioId) listener) {
+    _solicitudTomadaListeners.remove(listener);
+  }
+
+  void addNuevaSolicitudListener(
+    void Function(Map<String, dynamic> solicitud) listener,
+  ) {
+    if (!_nuevaSolicitudListeners.contains(listener)) {
+      _nuevaSolicitudListeners.add(listener);
+    }
+  }
+
+  void removeNuevaSolicitudListener(
+    void Function(Map<String, dynamic> solicitud) listener,
+  ) {
+    _nuevaSolicitudListeners.remove(listener);
+  }
+
   /// Inicializar el provider
   Future<void> initialize() async {
     await initializeLocation();
     await cargarVehiculos();
+    unawaited(cargarRadioAccion());
     await bootstrapTaxiConductor();
     if (!_enServicio) {
       await cargarTurnoActual();
@@ -517,6 +553,8 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       await _suscribirEmergenciasFlota();
 
+      unawaited(cargarRadioAccion());
+
       _suscritoAPusher = true;
       _iniciarSincronizacionSolicitudes();
       unawaited(sincronizarSolicitudesPublicadasConductor());
@@ -545,8 +583,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> sincronizarSolicitudesPublicadasConductor() async {
     if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
     try {
-      final result = await _conductorService
-          .listarSolicitudesPublicadasConductor();
+      final result = await _conductorService.listarSolicitudesPublicadasConductor(
+        lat: _currentPosition?.latitude,
+        lng: _currentPosition?.longitude,
+      );
 
       if (result.enServicio) {
         await _activarModoEnServicio(
@@ -583,9 +623,8 @@ class ConductorHomeProvider extends ChangeNotifier {
         }
       }
 
-      for (final m in list) {
-        _procesarNuevaSolicitud(m, fromSync: true);
-      }
+      // La cola "llegando" solo se alimenta por Pusher; el listado en espera
+      // vive en SolicitudesPendientesProvider (GET solicitudes-pendientes).
       if (!_isDisposed) notifyListeners();
     } catch (e) {
       AppLogger.d('⚠️ Sync solicitudes publicadas: $e');
@@ -647,8 +686,66 @@ class ConductorHomeProvider extends ChangeNotifier {
           ConductorSolicitudPayloadHelper.servicioIdFromTomadaPayload(raw);
       if (servicioId == null) return;
       rechazarSolicitud(servicioId);
+      for (final listener in List.of(_solicitudTomadaListeners)) {
+        listener(servicioId);
+      }
     } catch (e) {
       AppLogger.d('⚠️ Error procesando solicitud.tomada: $e');
+    }
+  }
+
+  Future<void> cargarRadioAccion() async {
+    try {
+      _radioAccion = await _conductorService.getRadioAccion();
+      _lastRadioAccionError = null;
+    } catch (e) {
+      _lastRadioAccionError = e.toString().replaceAll('Exception: ', '');
+      AppLogger.d('⚠️ Error cargando radio-accion: $e');
+    }
+    if (!_isDisposed) notifyListeners();
+  }
+
+  void aplicarRadioAccion(TaxiRadioAccion config) {
+    _radioAccion = config;
+    if (!_isDisposed) notifyListeners();
+  }
+
+  Future<String?> guardarRadioAccion({
+    required bool activo,
+    double? radioKm,
+  }) async {
+    _guardandoRadioAccion = true;
+    _lastRadioAccionError = null;
+    if (!_isDisposed) notifyListeners();
+
+    try {
+      _radioAccion = await _conductorService.setRadioAccion(
+        activo: activo,
+        radioKm: radioKm,
+      );
+      return null;
+    } catch (e) {
+      _lastRadioAccionError = e.toString().replaceAll('Exception: ', '');
+      return _lastRadioAccionError;
+    } finally {
+      _guardandoRadioAccion = false;
+      if (!_isDisposed) notifyListeners();
+    }
+  }
+
+  bool _pasaFiltroRadioAccion(Map<String, dynamic> raw) {
+    return TaxiRadioAccionFilter.matches(
+      raw,
+      _currentPosition?.latitude,
+      _currentPosition?.longitude,
+      _radioAccion,
+    );
+  }
+
+  void _notificarNuevaSolicitudExterna(Map<String, dynamic> solicitud) {
+    final copia = Map<String, dynamic>.from(solicitud);
+    for (final listener in List.of(_nuevaSolicitudListeners)) {
+      listener(copia);
     }
   }
 
@@ -713,6 +810,11 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     try {
       final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+      if (!fromSync && !_pasaFiltroRadioAccion(raw)) {
+        AppLogger.d('ℹ️ Solicitud fuera del radio de acción');
+        return;
+      }
+
       final solicitud = ConductorSolicitudPayloadHelper.normalizarSolicitud(
         raw,
         isDirectOffer: isDirectOffer,
@@ -758,6 +860,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Configurar timer de expiración
       _configurarTimerExpiracion(solicitudId, ttlSegundos: ttlSegundos);
       _iniciarTickerExpiracionUI();
+
+      if (!fromSync) {
+        _notificarNuevaSolicitudExterna(solicitud);
+      }
 
       if (!_isDisposed) notifyListeners();
     } catch (e) {
@@ -853,8 +959,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Acepta una solicitud de servicio
   Future<Map<String, dynamic>?> aceptarSolicitud(
     String solicitudId,
-    int idVehiculo,
-  ) async {
+    int idVehiculo, {
+    double? precioOfertado,
+  }) async {
     try {
       _lastAcceptError = null;
       AppLogger.d('✅ Aceptando solicitud: $solicitudId');
@@ -868,10 +975,23 @@ class ConductorHomeProvider extends ChangeNotifier {
       _timersExpiracion[solicitudId]?.cancel();
       _timersExpiracion.remove(solicitudId);
 
-      // Llamar al servicio para aceptar
+      var precio = precioOfertado ?? 0.0;
+      if (precioOfertado == null) {
+        for (final s in _solicitudesActivas) {
+          if (ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) ==
+              solicitudId) {
+            precio = JsonPayloadHelper.parseDouble(
+              s['precio_ofertado'],
+              fallback: 0,
+            );
+            break;
+          }
+        }
+      }
+
       final response = await _conductorService.aceptarSolicitud(
         servicioId: solicitudId,
-        precioOfertado: 0.0, // Precio a negociar según lógica de negocio
+        precioOfertado: precio,
       );
 
       final servicioIdInt = int.tryParse(solicitudId);

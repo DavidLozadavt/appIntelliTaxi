@@ -8,6 +8,7 @@ import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dar
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/features/taxi/data/taxi_radio_accion.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 
@@ -613,70 +614,138 @@ class ConductorService {
     }
   }
 
-  /// Solicitudes publicadas — respeta `en_servicio` del backend.
-  Future<TaxiSolicitudesPublicadasResult>
-  listarSolicitudesPublicadasConductor() async {
+  /// Radio de acción (`GET /taxi/conductor/radio-accion`).
+  Future<TaxiRadioAccion> getRadioAccion() async {
     try {
-      final response = await _dio.get('taxi/solicitudes-publicadas-conductor');
-      if (response.statusCode != 200 || response.data == null) {
-        return const TaxiSolicitudesPublicadasResult(
-          enServicio: false,
-          solicitudes: [],
-        );
-      }
+      final response = await _dio.get('taxi/conductor/radio-accion');
       final data = response.data;
-      if (data is! Map) {
-        return const TaxiSolicitudesPublicadasResult(
-          enServicio: false,
-          solicitudes: [],
-        );
+      if (data is Map && data['success'] == true) {
+        return TaxiRadioAccion.fromJson(Map<String, dynamic>.from(data));
+      }
+      return TaxiRadioAccion.sinLimitePorDefecto;
+    } catch (e) {
+      AppLogger.d('⚠️ Error obteniendo radio-accion: $e');
+      rethrow;
+    }
+  }
+
+  /// Guarda radio de acción (`PUT /taxi/conductor/radio-accion`).
+  Future<TaxiRadioAccion> setRadioAccion({
+    required bool activo,
+    double? radioKm,
+  }) async {
+    try {
+      final body = <String, dynamic>{'activo': activo};
+      if (activo && radioKm != null) {
+        body['radio_km'] = radioKm;
       }
 
-      final enServicio = data['en_servicio'] == true;
-      final enDescanso = data['en_descanso'] == true;
-      final servicioActivoId = int.tryParse(
-        (data['servicio_activo_id'] ?? '').toString(),
+      final response = await _dio.put(
+        'taxi/conductor/radio-accion',
+        data: body,
       );
 
-      if (enServicio) {
-        return TaxiSolicitudesPublicadasResult(
-          enServicio: true,
-          enDescanso: enDescanso,
-          servicioActivoId: servicioActivoId,
-          solicitudes: const [],
-        );
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        return TaxiRadioAccion.fromJson(Map<String, dynamic>.from(data));
       }
 
-      if (enDescanso) {
-        return TaxiSolicitudesPublicadasResult(
-          enServicio: false,
-          enDescanso: true,
-          servicioActivoId: servicioActivoId,
-          solicitudes: const [],
-        );
+      throw Exception(
+        data is Map
+            ? data['message']?.toString() ??
+                  'No se pudo guardar el radio de acción'
+            : 'No se pudo guardar el radio de acción',
+      );
+    } on DioException catch (e) {
+      throw Exception(
+        _extractErrorMessage(e, 'No se pudo guardar el radio de acción'),
+      );
+    }
+  }
+
+  /// Servicios pendientes sin conductor (`GET /taxi/solicitudes-pendientes`).
+  Future<TaxiSolicitudesPendientesResult> getSolicitudesPendientes({
+    double? lat,
+    double? lng,
+    int limit = 50,
+  }) async {
+    try {
+      final query = <String, dynamic>{'limit': limit.clamp(1, 100)};
+      if (lat != null && lng != null) {
+        query['lat'] = lat;
+        query['lng'] = lng;
       }
 
-      final raw = data['solicitudes'];
-      if (raw is! List) {
-        return const TaxiSolicitudesPublicadasResult(
-          enServicio: false,
-          solicitudes: [],
-        );
-      }
+      final response = await _dio.get(
+        'taxi/solicitudes-pendientes',
+        queryParameters: query,
+      );
 
-      final solicitudes = raw
-          .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>))
-          .toList();
+      return _parseSolicitudesPendientesResponse(response.data);
+    } catch (e) {
+      AppLogger.d('⚠️ Error listando solicitudes pendientes: $e');
+      rethrow;
+    }
+  }
+
+  /// Solicitudes publicadas — alias de pendientes (compatibilidad).
+  Future<TaxiSolicitudesPublicadasResult>
+  listarSolicitudesPublicadasConductor({
+    double? lat,
+    double? lng,
+    int limit = 50,
+  }) async {
+    try {
+      final pendientes = await getSolicitudesPendientes(
+        lat: lat,
+        lng: lng,
+        limit: limit,
+      );
 
       return TaxiSolicitudesPublicadasResult(
-        enServicio: false,
-        servicioActivoId: servicioActivoId,
-        solicitudes: solicitudes,
+        enServicio: pendientes.enServicio,
+        enDescanso: pendientes.enDescanso,
+        solicitudes: pendientes.pendientes,
       );
     } catch (e) {
       AppLogger.d('⚠️ Error listando solicitudes publicadas: $e');
       rethrow;
     }
+  }
+
+  TaxiSolicitudesPendientesResult _parseSolicitudesPendientesResponse(
+    dynamic data,
+  ) {
+    if (data is! Map) {
+      return TaxiSolicitudesPendientesResult.empty();
+    }
+
+    final enServicio = data['en_servicio'] == true;
+    final enDescanso = data['en_descanso'] == true;
+
+    if (enServicio || enDescanso) {
+      return TaxiSolicitudesPendientesResult.empty(
+        enServicio: enServicio,
+        enDescanso: enDescanso,
+      );
+    }
+
+    final raw = data['pendientes'] ?? data['solicitudes'];
+    final list = raw is List
+        ? raw
+            .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>))
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    return TaxiSolicitudesPendientesResult(
+      enServicio: false,
+      enDescanso: false,
+      idEmpresa: int.tryParse((data['id_empresa'] ?? '').toString()),
+      total: int.tryParse((data['total'] ?? list.length).toString()) ??
+          list.length,
+      pendientes: list,
+      actualizadoEn: data['actualizado_en']?.toString(),
+    );
   }
 
   /// Cancelar servicio activo

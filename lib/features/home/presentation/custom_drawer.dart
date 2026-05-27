@@ -5,6 +5,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/features/auth/data/drawer_item.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_descanso_switch.dart';
 
 class CustomDrawer extends StatelessWidget {
   const CustomDrawer({super.key});
@@ -208,6 +209,9 @@ class CustomDrawer extends StatelessWidget {
           ),
 
           const SizedBox(height: 8),
+
+          if (userRoles.contains(AuthProvider.roleConductor))
+            const ConductorDescansoSwitch(),
 
           // ITEMS mejorados (scrollable)
           Expanded(

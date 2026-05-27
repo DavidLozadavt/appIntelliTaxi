@@ -1,7 +1,5 @@
 import 'package:intellitaxi/features/home/presentation/custom_drawer.dart';
 import 'package:intellitaxi/features/conductor/presentation/home_conductor.dart';
-import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_descanso_app_bar_switch.dart';
 import 'package:intellitaxi/features/pasajero/presentation/home_pasajero_screen.dart';
 import 'package:intellitaxi/features/profile/presentation/profile_screen.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -107,13 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        return Consumer<ConductorHomeProvider>(
-          builder: (context, conductorProvider, _) {
-            final showDescansoSwitch = isConductor &&
-                (conductorProvider.puedeUsarModoDescanso ||
-                    conductorProvider.enDescanso);
-
-            return Scaffold(
+        return Scaffold(
               appBar: AppBar(
                 // backgroundColor: Colors.white,
                 elevation: 0,
@@ -199,18 +191,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ),
-                bottom: showDescansoSwitch
-                    ? const PreferredSize(
-                        preferredSize: Size.fromHeight(52),
-                        child: ConductorDescansoAppBarSwitch(),
-                      )
-                    : null,
               ),
               drawer: const CustomDrawer(),
               body: body,
             );
-          },
-        );
       },
     );
   }

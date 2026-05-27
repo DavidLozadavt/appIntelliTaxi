@@ -10,8 +10,10 @@ import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.dart';
 import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.dart';
 import 'package:intellitaxi/features/conductor/widgets/no_assigned_vehicles_dialog.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_home_zona_chip.dart';
-import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
+import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_map_servicios_tabs.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_pendientes_dock.dart';
+import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -34,9 +36,10 @@ class HomeConductor extends StatefulWidget {
 }
 
 class _HomeConductorState extends State<HomeConductor>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   GoogleMapController? _mapController;
   late ConductorHomeProvider _provider;
+  late SolicitudesPendientesProvider _pendientesProvider;
   late final AnimationController _emergencyPulseController;
   late final Animation<double> _emergencyPulseAnimation;
   /// Modo navegación: mapa rotado, inclinado y siguiendo la calle.
@@ -60,12 +63,15 @@ class _HomeConductorState extends State<HomeConductor>
   Timer? _bannerTimer;
 
   BitmapDescriptor? _dotMarker;
+  late TabController _serviciosTabController;
+  bool _validandoTurno = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _provider = context.read<ConductorHomeProvider>();
+    _pendientesProvider = SolicitudesPendientesProvider();
     _emergencyPulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -79,15 +85,65 @@ class _HomeConductorState extends State<HomeConductor>
       await _overlayService.requestPermissionIfNeeded();
       await _provider.initialize();
       if (!mounted) return;
+      _pendientesProvider.attachHome(_provider);
+      await _provider.cargarRadioAccion();
+      await _pendientesProvider.refrescar(silencioso: true);
+      _pendientesProvider.iniciarRefrescoPeriodico();
+      if (!mounted) return;
       await _navigateToActiveServiceIfNeeded();
+      if (!mounted) return;
+      setState(() => _validandoTurno = false);
+    });
+    _serviciosTabController = TabController(length: 2, vsync: this);
+    _serviciosTabController.addListener(() {
+      if (_serviciosTabController.indexIsChanging) return;
+      setState(() {});
+      if (_serviciosTabController.index == 1) {
+        unawaited(_pendientesProvider.refrescar(silencioso: true));
+      }
     });
     _cargarSanciones();
     _crearDotMarker();
   }
 
   EdgeInsets _paddingMapaNavegacion(ConductorHomeProvider provider) {
-    final bottom = provider.solicitudesOrdenadas.isNotEmpty ? 220.0 : 180.0;
-    return EdgeInsets.only(top: 88, bottom: bottom, left: 24, right: 24);
+    final dockVisible = _dockVisible(provider);
+    final compact = ConductorMapServiciosTabs.pantallaCompacta(context);
+    final chipH = _chipEstadoAltura(provider, compact: compact);
+    final top = dockVisible
+        ? ConductorMapServiciosTabs.headerBlockHeight(
+              context,
+              provider,
+              chipAltura: chipH,
+            ) +
+            4
+        : chipH + 24;
+    final radio = provider.radioAccion;
+    final sliderVisible =
+        radio.activo && !radio.sinLimite && dockVisible;
+    final bottom = dockVisible
+        ? ConductorPendientesDock.alturaEstimada(
+            context,
+            radioSliderVisible: sliderVisible,
+          )
+        : 100.0;
+    return EdgeInsets.only(top: top, bottom: bottom, left: 20, right: 20);
+  }
+
+  bool _dockVisible(ConductorHomeProvider provider) =>
+      provider.isOnline &&
+      !provider.enServicio &&
+      !provider.enDescanso &&
+      provider.tieneTurnoActivo;
+
+  double _fabBottomOffset(ConductorHomeProvider provider) {
+    if (!_dockVisible(provider)) return 24.0;
+    final radio = provider.radioAccion;
+    final sliderVisible = radio.activo && !radio.sinLimite;
+    return ConductorPendientesDock.alturaEstimada(
+      context,
+      radioSliderVisible: sliderVisible,
+    );
   }
 
   Future<void> _crearDotMarker() async {
@@ -176,7 +232,9 @@ class _HomeConductorState extends State<HomeConductor>
     _bannerTimer?.cancel();
     _reanudarNavegacionTimer?.cancel();
     _emergencyPulseController.dispose();
+    _serviciosTabController.dispose();
     _mapController?.dispose();
+    _pendientesProvider.dispose();
     super.dispose();
   }
 
@@ -189,6 +247,7 @@ class _HomeConductorState extends State<HomeConductor>
       }
       if (!_provider.enServicio) {
         unawaited(_provider.sincronizarSolicitudesPublicadasConductor());
+        unawaited(_pendientesProvider.refrescar(silencioso: true));
       }
       // Al volver del background, recargar turno desde backend y forzar
       // un heartbeat inmediato para evitar “parpadeo” a inactivo.
@@ -388,11 +447,22 @@ class _HomeConductorState extends State<HomeConductor>
   }
 
   /// Acepta la solicitud de servicio
-  void _aceptarSolicitud(String solicitudId) async {
-    final solicitud = _provider.solicitudesOrdenadas.firstWhere(
-      (s) => _getSolicitudId(s) == solicitudId,
-      orElse: () => {},
-    );
+  void _aceptarSolicitud(
+    String solicitudId, [
+    Map<String, dynamic>? solicitudData,
+  ]) async {
+    Map<String, dynamic> solicitud;
+    if (solicitudData != null) {
+      solicitud = solicitudData;
+    } else {
+      solicitud = _provider.solicitudesOrdenadas.firstWhere(
+        (s) => _getSolicitudId(s) == solicitudId,
+        orElse: () => {},
+      );
+      if (solicitud.isEmpty) {
+        solicitud = _pendientesProvider.buscarPorId(solicitudId) ?? {};
+      }
+    }
 
     if (solicitud.isEmpty) {
       AppLogger.d('⚠️ Solicitud no encontrada: $solicitudId');
@@ -437,9 +507,13 @@ class _HomeConductorState extends State<HomeConductor>
 
     try {
       // Llamar al provider para aceptar
+      final precio = JsonPayloadHelper.parseDouble(
+        solicitud['precio_ofertado'],
+      );
       final response = await _provider.aceptarSolicitud(
         solicitudId,
         _provider.vehiculoSeleccionado?.id ?? 0,
+        precioOfertado: precio > 0 ? precio : null,
       );
 
       closeLoadingIfNeeded();
@@ -478,6 +552,7 @@ class _HomeConductorState extends State<HomeConductor>
       }
 
       AppLogger.d('✅ Solicitud $solicitudId aceptada exitosamente');
+      _pendientesProvider.quitarPorId(solicitudId);
 
       // Navegar a la pantalla de servicio activo del conductor
       if (mounted && response['servicio'] != null) {
@@ -539,10 +614,13 @@ class _HomeConductorState extends State<HomeConductor>
   void _rechazarSolicitud(String solicitudId) async {
     AppLogger.d('❌ Solicitud rechazada: $solicitudId');
 
-    final solicitud = _provider.solicitudesOrdenadas.firstWhere(
+    var solicitud = _provider.solicitudesOrdenadas.firstWhere(
       (s) => _getSolicitudId(s) == solicitudId,
       orElse: () => {},
     );
+    if (solicitud.isEmpty) {
+      solicitud = _pendientesProvider.buscarPorId(solicitudId) ?? {};
+    }
     final isOfertaDirecta = solicitud['status'] == 'oferta_directa';
     final servicioId = int.tryParse(solicitudId);
 
@@ -1053,11 +1131,202 @@ class _HomeConductorState extends State<HomeConductor>
     );
   }
 
+  /// Altura del chip: fila 1 (estado + vehículo) + zona abajo si aplica.
+  static double _chipEstadoAltura(
+    ConductorHomeProvider provider, {
+    required bool compact,
+  }) {
+    var h = compact ? 14.0 : 16.0;
+    h += compact ? 22.0 : 24.0;
+    final zona = provider.zonaActual?.trim() ?? '';
+    final enLinea = provider.isOnline && !provider.enDescanso;
+    if (enLinea && zona.isNotEmpty) {
+      h += 4;
+      h += zona.length > 36 ? (compact ? 34.0 : 38.0) : (compact ? 18.0 : 20.0);
+    }
+    return h;
+  }
+
+  Widget _buildChipEstadoConductor(
+    BuildContext context,
+    ConductorHomeProvider provider, {
+    bool compact = false,
+  }) {
+    final vehiculo = provider.vehiculoSeleccionado;
+    final zona = provider.zonaActual?.trim() ?? '';
+    final fs = compact ? 12.0 : 13.0;
+    final fsPlaca = compact ? 14.0 : 15.0;
+
+    final enLinea = provider.isOnline && !provider.enDescanso;
+
+    return Material(
+      color: _validandoTurno
+          ? AppColors.accent
+          : provider.enDescanso
+          ? const Color(0xFFF59E0B)
+          : enLinea
+          ? AppColors.accent
+          : Colors.grey.shade600,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      child: InkWell(
+        onTap: _cambiarEstadoConductor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: compact ? 7 : 8,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  if (_validandoTurno) ...[
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Validando turno',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ] else if (provider.enDescanso) ...[
+                    const Icon(
+                      Icons.nightlight_round,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Descanso',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ] else if (enLinea) ...[
+                    const Icon(
+                      Icons.check_circle,
+                      color: AppColors.green,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 5),
+                    const Text(
+                      'En línea',
+                      style: TextStyle(
+                        color: AppColors.green,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ] else ...[
+                    const Icon(Icons.power_settings_new, color: Colors.white, size: 18),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Fuera de línea',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                  if (enLinea && vehiculo != null) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 8 : 10,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.28),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Text(
+                        vehiculo.placa.toUpperCase(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: fsPlaca,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      ' · Orden ${vehiculo.asignacionPropietarios.first.afiliacion.numero}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.95),
+                        fontSize: fs,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (enLinea && zona.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      size: compact ? 15 : 16,
+                      color: Colors.white.withValues(alpha: 0.95),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        zona,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          fontSize: fs,
+                          fontWeight: FontWeight.w800,
+                          height: 1.25,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  double _topPanelServicios(BuildContext context, ConductorHomeProvider provider) {
+    final compact = ConductorMapServiciosTabs.pantallaCompacta(context);
+    return ConductorMapServiciosTabs.headerBlockHeight(
+      context,
+      provider,
+      chipAltura: _chipEstadoAltura(provider, compact: compact),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ConductorHomeProvider>(
       builder: (context, provider, child) {
         _sincronizarCamaraNavegacion(provider);
+        final mostrarTabsServicios = _dockVisible(provider);
+        final compact = ConductorMapServiciosTabs.pantallaCompacta(context);
         return Stack(
           children: [
             // Mapa de Google Maps
@@ -1115,234 +1384,104 @@ class _HomeConductorState extends State<HomeConductor>
                     ),
                   ),
 
-            // Chip de estado del conductor (superior izquierda)
-            if (provider.currentPosition != null)
+            // Chip + TabBar compactos (no ocupan toda la pantalla)
+            if (provider.currentPosition != null && mostrarTabsServicios)
               Positioned(
-                top: 16,
-                left: 16,
+                top: 12,
+                left: 10,
+                right: 10,
                 child: Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(20),
-                  shadowColor: provider.enDescanso
-                      ? const Color(0xFFF59E0B).withValues(alpha: 0.35)
-                      : provider.isOnline
-                      ? AppColors.accent.withValues(alpha: 0.3)
-                      : Colors.grey.withValues(alpha: 0.3),
-                  child: InkWell(
-                    onTap: _cambiarEstadoConductor,
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      constraints: BoxConstraints(
-                        maxWidth: MediaQuery.sizeOf(context).width - 32,
+                  elevation: 3,
+                  borderRadius: BorderRadius.circular(10),
+                  clipBehavior: Clip.antiAlias,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF1E1E1E)
+                      : Colors.white,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildChipEstadoConductor(
+                        context,
+                        provider,
+                        compact: compact,
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+                      ConductorMapServiciosTabs.tabBar(
+                        context: context,
+                        controller: _serviciosTabController,
+                        llegando: provider.solicitudesOrdenadas.length,
+                        enEspera: _pendientesProvider.total,
                       ),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: provider.enDescanso
-                              ? [
-                                  const Color(0xFFF59E0B),
-                                  const Color(0xFFD97706),
-                                ]
-                              : provider.isOnline
-                              ? [AppColors.accent, AppColors.accent]
-                              : [Colors.grey.shade400, Colors.grey.shade600],
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Icon(
-                            provider.enDescanso
-                                ? Icons.nightlight_round
-                                : provider.isOnline
-                                ? Icons.check_circle
-                                : Icons.cancel,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                          Text(
-                            provider.enDescanso
-                                ? 'En descanso'
-                                : provider.isOnline
-                                ? 'En Línea'
-                                : 'Desconectado',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (provider.isOnline &&
-                              provider.vehiculoSeleccionado != null) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.yellow.withValues(
-                                        alpha: 0.25,
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          provider.vehiculoSeleccionado!.placa,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-
-                                        const SizedBox(width: 8),
-
-                                        Text(
-                                          'Nro orden: ${provider.vehiculoSeleccionado!.asignacionPropietarios[0].afiliacion.numero}',
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          if (provider.isOnline &&
-                              provider.zonaActual != null &&
-                              provider.zonaActual!.trim().isNotEmpty)
-                            ConductorHomeZonaChip(
-                              zona: provider.zonaActual!,
-                              labelPrefix: 'Tu zona',
-                            ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 ),
+              )
+            else if (provider.currentPosition != null)
+              Positioned(
+                top: 12,
+                left: 10,
+                right: 10,
+                child: Material(
+                  elevation: 3,
+                  borderRadius: BorderRadius.circular(10),
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildChipEstadoConductor(
+                    context,
+                    provider,
+                    compact: compact,
+                  ),
+                ),
+              ),
+
+            // Panel de solicitudes (altura limitada; vacío en Llegando = solo mapa)
+            if (provider.currentPosition != null && mostrarTabsServicios)
+              ListenableBuilder(
+                listenable: _pendientesProvider,
+                builder: (context, _) {
+                  final panelH = ConductorMapServiciosTabs.panelHeight(
+                    context,
+                    controller: _serviciosTabController,
+                    home: provider,
+                    pendientes: _pendientesProvider,
+                  );
+                  if (panelH <= 0) return const SizedBox.shrink();
+                  return Positioned(
+                    top: _topPanelServicios(context, provider),
+                    left: 12,
+                    right: 12,
+                    child: ConductorMapServiciosTabs.panel(
+                      context: context,
+                      controller: _serviciosTabController,
+                      home: provider,
+                      pendientes: _pendientesProvider,
+                      getSolicitudId: _getSolicitudId,
+                      segundosRestantes: provider.obtenerSegundosRestantes,
+                      onAceptarLlegando: (id) => _aceptarSolicitud(id),
+                      onRechazarLlegando: _rechazarSolicitud,
+                      onAceptarEspera: _aceptarSolicitud,
+                      onDescartarEspera: (id) {
+                        _rechazarSolicitud(id);
+                        _pendientesProvider.quitarPorId(id);
+                      },
+                    ),
+                  );
+                },
               ),
 
             // Banner de sanciones
             if (_sancionesActivas.isNotEmpty && _bannerVisible)
               Positioned(
-                top: 60,
+                top: mostrarTabsServicios
+                    ? _topPanelServicios(context, provider) + 8
+                    : _chipEstadoAltura(provider, compact: compact) + 20,
                 left: 16,
                 right: 16,
                 child: _buildSancionesBanner(),
               ),
 
-            // Vista híbrida tipo inDriver: solicitud principal + cola scrolleable
-            if (provider.solicitudesOrdenadas.isNotEmpty)
-              Positioned(
-                top: 100,
-                left: 0,
-                right: 0,
-                bottom: 20,
-                child: RepaintBoundary(
-                  child: Builder(
-                    builder: (context) {
-                      final solicitudes = provider.solicitudesOrdenadas;
-                      return ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: solicitudes.length,
-                        itemBuilder: (context, index) {
-                          final solicitud = solicitudes[index];
-                          final solicitudId = _getSolicitudId(solicitud);
-
-                          if (solicitudId.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-
-                          final esPrincipal = index == 0;
-                          final segundosRestantes = provider
-                              .obtenerSegundosRestantes(solicitudId);
-
-                          return Dismissible(
-                                key: Key('solicitud_$solicitudId'),
-                                direction: DismissDirection.horizontal,
-                                onDismissed: (direction) {
-                                  provider.rechazarSolicitud(solicitudId);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Solicitud descartada'),
-                                      duration: Duration(seconds: 1),
-                                    ),
-                                  );
-                                },
-                                background: Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  alignment: Alignment.centerLeft,
-                                  padding: const EdgeInsets.only(left: 20),
-                                  child: const Icon(
-                                    Icons.delete,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                ),
-                                secondaryBackground: Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 20),
-                                  child: const Icon(
-                                    Icons.delete,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: SolicitudServicioCard(
-                                    solicitud: solicitud,
-                                    segundosRestantes: segundosRestantes,
-                                    destacada: esPrincipal,
-                                    onAceptar: () =>
-                                        _aceptarSolicitud(solicitudId),
-                                    onRechazar: () =>
-                                        _rechazarSolicitud(solicitudId),
-                                  ),
-                                ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ),
-
             if (provider.currentPosition != null)
               Positioned(
                 right: 16,
-                bottom: provider.solicitudesOrdenadas.isNotEmpty ? 196 : 80,
+                bottom: _fabBottomOffset(provider) + 72,
                 child: Consumer<EmergenciaProvider>(
                   builder: (context, emergenciaProvider, _) {
                     if (!emergenciaProvider.estaEnEmergencia) {
@@ -1419,7 +1558,7 @@ class _HomeConductorState extends State<HomeConductor>
             if (provider.currentPosition != null)
               Positioned(
                 right: 16,
-                bottom: provider.solicitudesOrdenadas.isNotEmpty ? 140 : 24,
+                bottom: _fabBottomOffset(provider) + 16,
                 child: FloatingActionButton.small(
                   heroTag: 'fab_ubicacion',
                   onPressed: () => _reanudarNavegacionAhora(provider),
@@ -1436,6 +1575,8 @@ class _HomeConductorState extends State<HomeConductor>
                   ),
                 ),
               ),
+
+            const ConductorPendientesDock(),
           ],
         );
       },
