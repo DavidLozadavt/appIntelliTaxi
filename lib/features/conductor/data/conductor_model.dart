@@ -1,3 +1,5 @@
+import 'package:intellitaxi/core/geo/map_marker_bearing_helper.dart';
+
 class Conductor {
   final int conductorId;
   final String nombre;
@@ -9,6 +11,8 @@ class Conductor {
   final Vehiculo? vehiculo;
   final double? distanciaKm;
   final String? estado;
+  /// Rumbo GPS en grados (0–360), campo `direccion` del backend.
+  final double? rumbo;
 
   Conductor({
     required this.conductorId,
@@ -21,6 +25,7 @@ class Conductor {
     this.vehiculo,
     this.distanciaKm,
     this.estado,
+    this.rumbo,
   });
 
   factory Conductor.fromJson(Map<String, dynamic> json) {
@@ -61,6 +66,9 @@ class Conductor {
           ? _asDouble(json['distancia_km'])
           : null,
       estado: json['estado'] ?? 'disponible',
+      rumbo: MapMarkerBearingHelper.parseRumbo(
+        json['direccion'] ?? json['bearing'] ?? json['heading'] ?? json['rumbo'],
+      ),
     );
   }
 

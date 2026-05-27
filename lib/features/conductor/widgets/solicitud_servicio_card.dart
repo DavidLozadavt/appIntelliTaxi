@@ -253,25 +253,31 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                       child: OutlinedButton(
                         onPressed: () => _dismiss(widget.onRechazar),
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 14,
+                          ),
                           side: const BorderSide(color: Colors.red, width: 1.5),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text(
-                          'Rechazar',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Rechazar',
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                            ),
                           ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      flex: 2,
                       child: ElevatedButton(
                         onPressed: () => _dismiss(widget.onAceptar),
                         style: ElevatedButton.styleFrom(

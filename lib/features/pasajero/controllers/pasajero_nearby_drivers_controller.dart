@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/geo/map_marker_bearing_helper.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 import 'package:intellitaxi/features/conductor/services/conductores_service.dart';
@@ -19,11 +20,14 @@ class PasajeroNearbyDriversController {
 
   final Map<int, Conductor> conductores = {};
   final Map<int, LatLng> displayedPositions = {};
+  final Map<int, double> displayedBearings = {};
+  final Map<int, bool> _bearingInitialized = {};
   Conductor? selectedDirectDriver;
   BitmapDescriptor? driverMarkerIcon;
 
   static const double lerpFactor = 0.2;
   static const double snapDistanceMeters = 2.0;
+  static const double bearingSmoothFactor = 0.28;
 
   bool get hasConductores => conductores.isNotEmpty;
 
@@ -67,6 +71,8 @@ class PasajeroNearbyDriversController {
         if (!receivedIds.contains(id)) {
           conductores.remove(id);
           displayedPositions.remove(id);
+          displayedBearings.remove(id);
+          _bearingInitialized.remove(id);
           if (selectedDirectDriver?.conductorId == id) {
             selectedDirectDriver = null;
           }
@@ -86,8 +92,34 @@ class PasajeroNearbyDriversController {
 
   void seedDisplayedPositions() {
     for (final entry in conductores.entries) {
-      displayedPositions[entry.key] = LatLng(entry.value.lat, entry.value.lng);
+      final id = entry.key;
+      final conductor = entry.value;
+      final pos = LatLng(conductor.lat, conductor.lng);
+      displayedPositions[id] = pos;
+      _syncBearingForConductor(id, conductor, pos, previous: null);
     }
+  }
+
+  void _syncBearingForConductor(
+    int id,
+    Conductor conductor,
+    LatLng position, {
+    LatLng? previous,
+  }) {
+    final objetivo = MapMarkerBearingHelper.resolveBearing(
+      to: position,
+      from: previous,
+      backendRumbo: conductor.rumbo,
+      fallback: displayedBearings[id],
+    );
+    final suavizado = MapMarkerBearingHelper.smoothBearing(
+      current: displayedBearings[id] ?? objetivo,
+      target: objetivo,
+      factor: bearingSmoothFactor,
+      initialized: _bearingInitialized[id] ?? false,
+    );
+    displayedBearings[id] = suavizado;
+    _bearingInitialized[id] = true;
   }
 
   void applyDriverUpdate(Conductor conductor, {required bool showDrivers}) {
@@ -115,6 +147,8 @@ class PasajeroNearbyDriversController {
     }
     conductores.remove(conductorId);
     displayedPositions.remove(conductorId);
+    displayedBearings.remove(conductorId);
+    _bearingInitialized.remove(conductorId);
   }
 
   /// Interpola posiciones de marcadores; devuelve true si hubo cambio visual.
@@ -123,6 +157,8 @@ class PasajeroNearbyDriversController {
     if (conductores.isEmpty) {
       if (displayedPositions.isNotEmpty) {
         displayedPositions.clear();
+        displayedBearings.clear();
+        _bearingInitialized.clear();
         return true;
       }
       return false;
@@ -137,6 +173,7 @@ class PasajeroNearbyDriversController {
 
       if (current == null) {
         displayedPositions[id] = target;
+        _syncBearingForConductor(id, entry.value, target, previous: null);
         changed = true;
         continue;
       }
@@ -152,24 +189,27 @@ class PasajeroNearbyDriversController {
         if (current.latitude != target.latitude ||
             current.longitude != target.longitude) {
           displayedPositions[id] = target;
+          _syncBearingForConductor(id, entry.value, target, previous: current);
           changed = true;
         }
         continue;
       }
 
-      final lat =
-          current.latitude +
-          (target.latitude - current.latitude) * lerpFactor;
-      final lng =
-          current.longitude +
-          (target.longitude - current.longitude) * lerpFactor;
-      displayedPositions[id] = LatLng(lat, lng);
+      final next = MapMarkerBearingHelper.advanceToward(
+        current,
+        target,
+        lerpFactor,
+      );
+      displayedPositions[id] = next;
+      _syncBearingForConductor(id, entry.value, next, previous: current);
       changed = true;
     }
 
     for (final id in displayedPositions.keys.toList()) {
       if (!conductores.containsKey(id)) {
         displayedPositions.remove(id);
+        displayedBearings.remove(id);
+        _bearingInitialized.remove(id);
         changed = true;
       }
     }
@@ -188,10 +228,14 @@ class PasajeroNearbyDriversController {
       final position = displayedPositions[conductor.conductorId] ??
           LatLng(conductor.lat, conductor.lng);
       final ocupado = conductor.estado?.toLowerCase() == 'ocupado';
+      final rotation = displayedBearings[conductor.conductorId] ?? 0;
       markers.add(
         Marker(
           markerId: MarkerId('driver_${conductor.conductorId}'),
           position: position,
+          rotation: rotation,
+          flat: true,
+          anchor: const Offset(0.5, 0.5),
           icon: ocupado
               ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)
               : (driverMarkerIcon ??
@@ -232,6 +276,8 @@ class PasajeroNearbyDriversController {
     _pusher = null;
     conductores.clear();
     displayedPositions.clear();
+    displayedBearings.clear();
+    _bearingInitialized.clear();
     selectedDirectDriver = null;
   }
 }

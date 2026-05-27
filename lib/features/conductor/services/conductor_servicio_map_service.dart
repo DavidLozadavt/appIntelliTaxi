@@ -30,6 +30,7 @@ class ConductorServicioMapService {
     required Map<String, dynamic> servicio,
     required LatLng? miUbicacion,
     required BitmapDescriptor? carIcon,
+    double? miBearing,
   }) {
     final origenLat =
         ConductorServicioEstadoHelper.parseDouble(servicio['origen_lat']);
@@ -76,6 +77,8 @@ class ConductorServicioMapService {
         Marker(
           markerId: const MarkerId('mi_ubicacion'),
           position: miUbicacion,
+          rotation: miBearing ?? 0,
+          flat: true,
           icon: carIcon ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
           infoWindow: const InfoWindow(title: 'Mi ubicación'),

@@ -30,6 +30,7 @@ import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/geo/map_marker_bearing_helper.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
   final Map<String, dynamic> servicio;
@@ -66,6 +67,8 @@ class _ConductorServicioActivoScreenState
 
   String _estadoActual = 'aceptado';
   LatLng? _miUbicacion;
+  double _miBearing = 0;
+  bool _miBearingInicializado = false;
   LatLng? _destinoActual;
   Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
@@ -473,9 +476,7 @@ class _ConductorServicioActivoScreenState
       // Verificar que el widget siga montado antes de llamar setState
       if (!mounted) return;
 
-      _safeSetState(() {
-        _miUbicacion = LatLng(position.latitude, position.longitude);
-      });
+      _aplicarUbicacionConductor(position);
 
       // Actualizar marcadores y ruta
       _actualizarMarcadores();
@@ -504,10 +505,7 @@ class _ConductorServicioActivoScreenState
         ).listen((position) {
           if (!_canUpdateUi) return;
 
-          _safeSetState(() {
-            _miUbicacion = LatLng(position.latitude, position.longitude);
-          });
-
+          _aplicarUbicacionConductor(position);
           _actualizarMarcadores();
 
           // Redibujar ruta máximo cada 30 segundos para no abusar de la API
@@ -522,6 +520,43 @@ class _ConductorServicioActivoScreenState
         });
   }
 
+  void _aplicarUbicacionConductor(Position position) {
+    final nueva = LatLng(position.latitude, position.longitude);
+    final anterior = _miUbicacion;
+    final speed = position.speed.isFinite && position.speed >= 0
+        ? position.speed
+        : 0.0;
+    final headingValido =
+        position.heading.isFinite &&
+        position.heading >= 0 &&
+        position.heading <= 360;
+
+    double objetivo;
+    if (headingValido && speed > 1.2) {
+      objetivo = position.heading;
+    } else {
+      objetivo = MapMarkerBearingHelper.resolveBearing(
+        to: nueva,
+        from: anterior,
+        backendRumbo: null,
+        fallback: _miBearing,
+      );
+    }
+
+    final suavizado = MapMarkerBearingHelper.smoothBearing(
+      current: _miBearing,
+      target: objetivo,
+      factor: 0.35,
+      initialized: _miBearingInicializado,
+    );
+
+    _safeSetState(() {
+      _miUbicacion = nueva;
+      _miBearing = suavizado;
+      _miBearingInicializado = true;
+    });
+  }
+
   Future<void> _crearDotMarkers() => _mapService.ensureDotMarkers();
 
   void _actualizarMarcadores() {
@@ -531,6 +566,7 @@ class _ConductorServicioActivoScreenState
         servicio: widget.servicio,
         miUbicacion: _miUbicacion,
         carIcon: _carIcon,
+        miBearing: _miBearing,
       );
     });
   }
