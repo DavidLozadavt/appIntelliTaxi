@@ -278,55 +278,36 @@ class ConductorMapServiciosTabs {
     Future<void> onRefresh() => pendientes.refrescar(silencioso: false);
 
     if (lista.isEmpty) {
+      final mensaje = home.radioAccion.activo && !home.radioAccion.sinLimite
+          ? 'Sin servicios a ${home.radioAccion.radioEfectivoKm.round()} km (Popayán)'
+          : 'Sin publicados en Popayán';
+
       return RefreshIndicator(
         color: AppColors.accent,
         onRefresh: onRefresh,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: _minHeightForPullRefresh(
-                    context,
-                    constraints,
-                    fallbackFraction: 0.12,
-                    fallbackMin: 72,
-                  ),
-                ),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          home.radioAccion.activo && !home.radioAccion.sinLimite
-                              ? 'Sin servicios a ${home.radioAccion.radioEfectivoKm.round()} km (Popayán)'
-                              : 'Sin publicados en Popayán',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade600,
-                          ),
-                          maxLines: 2,
-                        ),
-                      ),
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 36,
-                          minHeight: 36,
-                        ),
-                        onPressed: pendientes.refrescar,
-                        icon: const Icon(Icons.refresh_rounded, size: 20),
-                        tooltip: 'Actualizar',
-                      ),
-                    ],
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    mensaje,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade500,
+                      height: 1.35,
+                    ),
+                    maxLines: 3,
                   ),
                 ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       );
     }
