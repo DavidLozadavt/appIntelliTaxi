@@ -3,6 +3,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 
 /// Listado de ofertas cercanas al destino del viaje actual (conductor ocupado).
@@ -40,24 +41,8 @@ class _OfertasEnRutaPanelState extends State<OfertasEnRutaPanel> {
         '';
   }
 
-  String? _telefonoOferta(Map<String, dynamic> s) {
-    for (final key in const [
-      'pasajero_telefono',
-      'telefono_pasajero',
-      'telefono',
-    ]) {
-      final v = s[key]?.toString().trim();
-      if (v != null && v.isNotEmpty) return v;
-    }
-    final pasajero = s['pasajero'];
-    if (pasajero is Map) {
-      for (final key in const ['telefono', 'phone', 'celular']) {
-        final v = pasajero[key]?.toString().trim();
-        if (v != null && v.isNotEmpty) return v;
-      }
-    }
-    return null;
-  }
+  String? _telefonoOferta(Map<String, dynamic> s) =>
+      ConductorServicioPasajeroHelper.telefono(s);
 
   @override
   Widget build(BuildContext context) {

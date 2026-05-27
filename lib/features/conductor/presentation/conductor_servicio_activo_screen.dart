@@ -924,31 +924,10 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _llamarOfertaEnRuta(Map<String, dynamic> solicitud) async {
-    String? telefono;
-    for (final key in const [
-      'pasajero_telefono',
-      'telefono_pasajero',
-      'telefono',
-    ]) {
-      final v = solicitud[key]?.toString().trim();
-      if (v != null && v.isNotEmpty) {
-        telefono = v;
-        break;
-      }
-    }
-    final pasajero = solicitud['pasajero'];
-    if (telefono == null && pasajero is Map) {
-      for (final key in const ['telefono', 'phone', 'celular']) {
-        final v = pasajero[key]?.toString().trim();
-        if (v != null && v.isNotEmpty) {
-          telefono = v;
-          break;
-        }
-      }
-    }
+    final telefono = ConductorServicioPasajeroHelper.telefono(solicitud);
 
     if (telefono == null || telefono.isEmpty) {
-      _mostrarError('Este pasajero no tiene teléfono en la oferta');
+      _mostrarError('No hay teléfono de contacto en esta solicitud');
       return;
     }
 

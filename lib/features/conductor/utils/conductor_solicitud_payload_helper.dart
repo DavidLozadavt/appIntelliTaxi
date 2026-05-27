@@ -1,6 +1,7 @@
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 
 /// Normalización de solicitudes recibidas por Pusher / sync API.
@@ -72,7 +73,13 @@ class ConductorSolicitudPayloadHelper {
       'servicio_id': solicitudId,
       'id': solicitudId,
       'pasajero_id': merged['pasajero_id'],
-      'pasajero_nombre': merged['pasajero_nombre'] ?? 'Pasajero',
+      'pasajero_nombre': merged['pasajero_nombre'] ??
+          ConductorServicioPasajeroHelper.nombre(merged),
+      'pasajero_telefono': merged['pasajero_telefono'] ??
+          ConductorServicioPasajeroHelper.telefono(merged),
+      'telefonoLlamada': merged['telefonoLlamada'] ??
+          merged['telefono_llamada'] ??
+          ConductorServicioPasajeroHelper.telefonoLlamada(merged),
       'pasajero_foto': resolverFotoPasajero(merged['pasajero_foto']?.toString()),
       'origen': SolicitudDisplayHelper.pickupName(merged),
       'destino': SolicitudDisplayHelper.destinationName(merged),

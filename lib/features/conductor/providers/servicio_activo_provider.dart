@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Provider para gestionar la lógica del servicio activo del conductor
@@ -65,97 +66,19 @@ class ServicioActivoProvider extends ChangeNotifier {
     return 0.0;
   }
 
-  /// Obtiene el nombre del pasajero desde los datos del servicio
   String getNombrePasajero() {
     if (_servicioData == null) return 'Pasajero';
-
-    if (_servicioData!['pasajero_nombre'] != null) {
-      return _servicioData!['pasajero_nombre'];
-    }
-
-    if (_servicioData!['usuario_pasajero'] != null) {
-      final usuarioPasajero = _servicioData!['usuario_pasajero'];
-      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
-        final persona = usuarioPasajero['persona'];
-        if (persona is Map) {
-          final nombre1 = persona['nombre1'] ?? '';
-          final nombre2 = persona['nombre2'] ?? '';
-          final apellido1 = persona['apellido1'] ?? '';
-          final apellido2 = persona['apellido2'] ?? '';
-
-          final nombreCompleto =
-              '$nombre1 ${nombre2.isEmpty ? '' : nombre2} $apellido1 ${apellido2.isEmpty ? '' : apellido2}'
-                  .trim();
-          if (nombreCompleto.isNotEmpty) {
-            return nombreCompleto;
-          }
-        }
-      }
-    }
-
-    if (_servicioData!['pasajero'] != null) {
-      final pasajero = _servicioData!['pasajero'];
-      if (pasajero is Map) {
-        return pasajero['nombre'] ?? pasajero['name'] ?? 'Pasajero';
-      }
-    }
-
-    return 'Pasajero';
+    return ConductorServicioPasajeroHelper.nombre(_servicioData!);
   }
 
-  /// Obtiene el teléfono del pasajero
   String? getTelefonoPasajero() {
     if (_servicioData == null) return null;
-
-    if (_servicioData!['usuario_pasajero'] != null) {
-      final usuarioPasajero = _servicioData!['usuario_pasajero'];
-      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
-        final persona = usuarioPasajero['persona'];
-        if (persona is Map) {
-          final celular = persona['celular'];
-          if (celular != null && celular.toString().isNotEmpty) {
-            return celular.toString();
-          }
-        }
-      }
-    }
-
-    if (_servicioData!['pasajero_telefono'] != null) {
-      return _servicioData!['pasajero_telefono'];
-    }
-
-    if (_servicioData!['pasajero'] != null) {
-      final pasajero = _servicioData!['pasajero'];
-      if (pasajero is Map) {
-        return pasajero['telefono'] ?? pasajero['phone'] ?? pasajero['celular'];
-      }
-    }
-
-    return null;
+    return ConductorServicioPasajeroHelper.telefono(_servicioData!);
   }
 
-  /// Obtiene la foto del pasajero
   String? getFotoPasajero() {
     if (_servicioData == null) return null;
-
-    if (_servicioData!['usuario_pasajero'] != null) {
-      final usuarioPasajero = _servicioData!['usuario_pasajero'];
-      if (usuarioPasajero is Map && usuarioPasajero['persona'] != null) {
-        final persona = usuarioPasajero['persona'];
-        if (persona is Map) {
-          return persona['foto'];
-        }
-      }
-    }
-
-    if (_servicioData!['pasajero'] != null) {
-      final pasajero = _servicioData!['pasajero'];
-      if (pasajero is Map) {
-        return pasajero['foto'] ?? pasajero['photo'];
-      }
-    }
-
-    return null;
+    return ConductorServicioPasajeroHelper.fotoUrl(_servicioData!);
   }
 
   // ==================== UBICACIÓN Y MAPA ====================

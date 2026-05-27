@@ -64,7 +64,8 @@ class _HomeConductorState extends State<HomeConductor>
 
   BitmapDescriptor? _dotMarker;
   late TabController _serviciosTabController;
-  bool _validandoTurno = true;
+  /// Solo true si aún no sabemos si hay turno (evita bloquear al volver de un viaje).
+  bool _validandoTurno = false;
 
   void _onNuevaSolicitudRecibida(Map<String, dynamic> _) {
     if (!mounted) return;
@@ -79,6 +80,7 @@ class _HomeConductorState extends State<HomeConductor>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _provider = context.read<ConductorHomeProvider>();
+    _validandoTurno = !_provider.tieneTurnoActivo;
     _provider.addNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     _pendientesProvider = SolicitudesPendientesProvider();
     _emergencyPulseController = AnimationController(
@@ -89,20 +91,7 @@ class _HomeConductorState extends State<HomeConductor>
       parent: _emergencyPulseController,
       curve: Curves.easeInOut,
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      await _overlayService.requestPermissionIfNeeded();
-      await _provider.initialize();
-      if (!mounted) return;
-      _pendientesProvider.attachHome(_provider);
-      await _provider.cargarRadioAccion();
-      await _pendientesProvider.refrescar(silencioso: true);
-      _pendientesProvider.iniciarRefrescoPeriodico();
-      if (!mounted) return;
-      await _navigateToActiveServiceIfNeeded();
-      if (!mounted) return;
-      setState(() => _validandoTurno = false);
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapHome());
     _serviciosTabController = TabController(length: 2, vsync: this);
     _serviciosTabController.addListener(() {
       if (_serviciosTabController.indexIsChanging) return;
@@ -153,6 +142,37 @@ class _HomeConductorState extends State<HomeConductor>
       context,
       radioSliderVisible: sliderVisible,
     );
+  }
+
+  Future<void> _bootstrapHome() async {
+    if (!mounted) return;
+
+    if (!_provider.tieneTurnoActivo) {
+      final desdeCache = await _provider.restaurarTurnoDesdeCache();
+      if (desdeCache && mounted) {
+        setState(() => _validandoTurno = false);
+      }
+    } else if (_validandoTurno && mounted) {
+      setState(() => _validandoTurno = false);
+    }
+
+    await _overlayService.requestPermissionIfNeeded();
+    if (!mounted) return;
+
+    await _provider.initialize();
+    if (!mounted) return;
+
+    _pendientesProvider.attachHome(_provider);
+    unawaited(_provider.cargarRadioAccion());
+    unawaited(_pendientesProvider.refrescar(silencioso: true));
+    _pendientesProvider.iniciarRefrescoPeriodico();
+
+    if (!mounted) return;
+    await _navigateToActiveServiceIfNeeded();
+    if (!mounted) return;
+    if (_validandoTurno) {
+      setState(() => _validandoTurno = false);
+    }
   }
 
   Future<void> _crearDotMarker() async {

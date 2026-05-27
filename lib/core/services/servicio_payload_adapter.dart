@@ -114,6 +114,20 @@ class ServicioPayloadAdapter {
       };
     }
 
+    final telLlamada = servicio['telefonoLlamada'] ??
+        servicio['telefono_llamada'];
+    if (telLlamada != null && telLlamada.toString().trim().isNotEmpty) {
+      normalized['telefonoLlamada'] = telLlamada;
+      if (pasajero == null && servicio['usuario_pasajero'] == null) {
+        normalized['pasajero_telefono'] ??= telLlamada.toString().trim();
+      }
+    }
+
+    final origen = servicio['origenServicio'] ?? servicio['origen_servicio'];
+    if (origen != null) {
+      normalized['origenServicio'] = origen;
+    }
+
     return normalized;
   }
 }

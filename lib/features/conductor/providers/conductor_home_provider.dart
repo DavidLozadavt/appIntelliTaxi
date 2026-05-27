@@ -234,15 +234,52 @@ class ConductorHomeProvider extends ChangeNotifier {
     _nuevaSolicitudListeners.remove(listener);
   }
 
+  /// Restaura turno desde SharedPreferences (sin red) para no bloquear el home.
+  Future<bool> restaurarTurnoDesdeCache() async {
+    if (_turnoActivo != null) return true;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final turnoId = prefs.getInt('turno_activo_id');
+      if (turnoId == null || turnoId <= 0) return false;
+
+      final idVehiculo = prefs.getInt('turno_vehiculo_id') ?? 0;
+      _turnoActivo = TurnoActivo(
+        id: turnoId,
+        idConductor: 0,
+        idVehiculo: idVehiculo,
+        fechaTurno: prefs.getString('turno_fecha') ?? '',
+        horaInicio: prefs.getString('turno_hora_inicio') ?? '',
+        estado: 'ACTIVO',
+      );
+      _isOnline = true;
+      _sincronizarVehiculoSeleccionadoConTurno();
+      if (!_isDisposed) notifyListeners();
+      AppLogger.d('✅ Turno restaurado desde cache: $turnoId');
+      return true;
+    } catch (e) {
+      AppLogger.d('⚠️ restaurarTurnoDesdeCache: $e');
+      return false;
+    }
+  }
+
   /// Inicializar el provider
   Future<void> initialize() async {
+    await restaurarTurnoDesdeCache();
     await initializeLocation();
     await cargarVehiculos();
+    if (_turnoActivo != null) {
+      _sincronizarVehiculoSeleccionadoConTurno();
+    }
     unawaited(cargarRadioAccion());
     await bootstrapTaxiConductor();
     await cargarSolicitudesRechazadas();
     if (!_enServicio) {
-      await cargarTurnoActual();
+      if (_turnoActivo != null) {
+        unawaited(cargarTurnoActual());
+      } else {
+        await cargarTurnoActual();
+      }
     }
   }
 
@@ -403,6 +440,17 @@ class ConductorHomeProvider extends ChangeNotifier {
     _limpiarColaSolicitudesLocal();
 
     await _sincronizarModoDescansoDesdeBackend();
+
+    // El turno sigue abierto; solo re-sincronizar en segundo plano.
+    if (_turnoActivo != null) {
+      unawaited(cargarTurnoActual());
+    } else {
+      unawaited(
+        restaurarTurnoDesdeCache().then((ok) {
+          if (ok) unawaited(cargarTurnoActual());
+        }),
+      );
+    }
 
     if (_isOnline && !_enDescanso && !_suscritoAPusher) {
       await conectarPusher();
