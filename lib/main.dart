@@ -10,6 +10,7 @@ import 'package:intellitaxi/core/services/performance_monitor_service.dart';
 import 'package:intellitaxi/core/services/background_location_service.dart';
 
 import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
+import 'package:intellitaxi/features/chat/providers/chat_badge_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/documentos_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/historial_servicios_conductor_screen.dart';
@@ -268,6 +269,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           lazy: true,
         ),
         ChangeNotifierProvider(create: (_) => ChatProvider(), lazy: true),
+        ChangeNotifierProvider(create: (_) => ChatBadgeProvider(), lazy: true),
 
         // Providers del conductor
         ChangeNotifierProvider(

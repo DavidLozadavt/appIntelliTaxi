@@ -1,5 +1,7 @@
 // lib/features/chat/controllers/chat_taxi_controller.dart
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../data/mensaje_taxi_model.dart';
 import '../services/chat_taxi_service.dart';
@@ -77,6 +79,8 @@ class ChatTaxiController extends ChangeNotifier {
       _mensajes = await _service.obtenerMensajes(servicioId);
       _mensajes.sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
+      await marcarTodosComoLeidos();
+
       // Suscribirse al canal (usa Pusher global secundario)
       await _service.suscribirseAlChat(
         servicioId: servicioId,
@@ -107,16 +111,7 @@ class ChatTaxiController extends ChangeNotifier {
       );
 
       if (mensaje != null) {
-        // El mensaje llegará por Pusher, pero lo agregamos inmediatamente
-        // para mejor UX
-        if (!_mensajes.any(
-          (m) =>
-              m.id == mensaje.id ||
-              (m.mensaje == mensaje.mensaje &&
-                  m.remitenteId == mensaje.remitenteId &&
-                  m.createdAt.difference(mensaje.createdAt).abs().inSeconds <
-                      2),
-        )) {
+        if (!_esDuplicado(mensaje)) {
           _mensajes.add(mensaje);
           _mensajes.sort((a, b) => a.createdAt.compareTo(b.createdAt));
           notifyListeners();
@@ -131,18 +126,49 @@ class ChatTaxiController extends ChangeNotifier {
     }
   }
 
+  Future<bool> enviarImagen(File imageFile, {String? caption}) async {
+    try {
+      final mensaje = await _service.enviarImagen(
+        servicioId: servicioId,
+        imageFile: imageFile,
+        caption: caption,
+      );
+
+      if (mensaje != null) {
+        if (!_mensajes.any((m) => m.id == mensaje.id)) {
+          _mensajes.add(mensaje);
+          _mensajes.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+          notifyListeners();
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      AppLogger.d('Error enviando imagen: $e');
+      rethrow;
+    }
+  }
+
+  bool _esDuplicado(MensajeTaxi mensaje) {
+    if (mensaje.id > 0 && _mensajes.any((m) => m.id == mensaje.id)) {
+      return true;
+    }
+    return _mensajes.any(
+      (m) =>
+          m.remitenteId == mensaje.remitenteId &&
+          m.tipo == mensaje.tipo &&
+          m.createdAt.difference(mensaje.createdAt).abs().inSeconds < 3 &&
+          (mensaje.esImagen
+              ? m.imagenUrl == mensaje.imagenUrl
+              : m.mensaje == mensaje.mensaje),
+    );
+  }
+
   /// Callback cuando llega un nuevo mensaje por Pusher
   void _onNuevoMensaje(MensajeTaxi mensaje) {
-    AppLogger.d('📨 Nuevo mensaje recibido: ${mensaje.mensaje}');
+    AppLogger.d('📨 Nuevo mensaje: ${mensaje.textoVista}');
 
-    // Evitar duplicados
-    final existe = _mensajes.any(
-      (m) =>
-          m.id == mensaje.id ||
-          (m.mensaje == mensaje.mensaje &&
-              m.remitenteId == mensaje.remitenteId &&
-              m.createdAt.difference(mensaje.createdAt).abs().inSeconds < 2),
-    );
+    final existe = _esDuplicado(mensaje);
 
     if (!existe) {
       _mensajes.add(mensaje);
@@ -229,7 +255,7 @@ class ChatTaxiController extends ChangeNotifier {
   @override
   void dispose() {
     if (_pusherInicializado) {
-      _service.desuscribirse(servicioId);
+      _service.desuscribirse(servicioId, quitarCanal: false);
     }
     _service.dispose();
     super.dispose();

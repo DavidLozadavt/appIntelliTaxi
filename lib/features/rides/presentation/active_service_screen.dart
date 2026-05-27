@@ -8,6 +8,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
+import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/utils/phone_launcher.dart';
 
@@ -28,7 +29,9 @@ class ActiveServiceScreen extends StatelessWidget {
         servicio: servicio,
         onServiceCompleted: onServiceCompleted,
       ),
-      child: Consumer<ActiveServiceProvider>(
+      child: ChatBadgeLifecycle(
+        servicioId: servicio.id,
+        child: Consumer<ActiveServiceProvider>(
         builder: (context, provider, _) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
           final isServiceActive = provider.isServiceActive;
@@ -144,6 +147,7 @@ class ActiveServiceScreen extends StatelessWidget {
           );
         },
       ),
+      ),
     );
   }
 
@@ -252,6 +256,7 @@ class ActiveServiceScreen extends StatelessWidget {
               color: AppColors.accent,
               tooltip: 'Mensaje',
               onTap: () => _abrirChat(context),
+              servicioIdBadge: servicio.id,
             ),
           ],
         ),
@@ -313,7 +318,16 @@ class ActiveServiceScreen extends StatelessWidget {
     required Color color,
     required String tooltip,
     required VoidCallback onTap,
+    int? servicioIdBadge,
   }) {
+    Widget iconWidget = Icon(icon, color: color, size: 24);
+    if (servicioIdBadge != null && servicioIdBadge > 0) {
+      iconWidget = ChatUnreadBadge(
+        servicioId: servicioIdBadge,
+        child: iconWidget,
+      );
+    }
+
     return Material(
       color: color.withValues(alpha: 0.14),
       borderRadius: BorderRadius.circular(12),
@@ -324,7 +338,7 @@ class ActiveServiceScreen extends StatelessWidget {
           message: tooltip,
           child: Padding(
             padding: const EdgeInsets.all(10),
-            child: Icon(icon, color: color, size: 24),
+            child: iconWidget,
           ),
         ),
       ),

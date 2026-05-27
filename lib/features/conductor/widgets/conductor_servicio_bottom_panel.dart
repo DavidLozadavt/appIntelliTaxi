@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/shared/widgets/standard_button.dart';
 
@@ -16,6 +17,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     required this.onChat,
     required this.onAccionPrincipal,
     required this.onCancelar,
+    this.servicioId,
     this.isLoading = false,
   });
 
@@ -27,6 +29,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
   final VoidCallback onChat;
   final VoidCallback onAccionPrincipal;
   final VoidCallback onCancelar;
+  final int? servicioId;
   final bool isLoading;
 
   @override
@@ -62,6 +65,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                   isDark: isDark,
                   onLlamar: onLlamar,
                   onChat: onChat,
+                  servicioId: servicioId,
                 ),
                 const SizedBox(height: 12),
                 _RutaUnificada(
@@ -149,6 +153,7 @@ class _BarraPasajero extends StatelessWidget {
     required this.isDark,
     required this.onLlamar,
     required this.onChat,
+    this.servicioId,
   });
 
   final String nombre;
@@ -156,6 +161,7 @@ class _BarraPasajero extends StatelessWidget {
   final bool isDark;
   final VoidCallback onLlamar;
   final VoidCallback onChat;
+  final int? servicioId;
 
   @override
   Widget build(BuildContext context) {
@@ -198,6 +204,7 @@ class _BarraPasajero extends StatelessWidget {
           color: AppColors.accent,
           onTap: onChat,
           tooltip: 'Mensaje',
+          servicioIdBadge: servicioId,
         ),
       ],
     );
@@ -210,15 +217,25 @@ class _AccionRapida extends StatelessWidget {
     required this.color,
     required this.onTap,
     required this.tooltip,
+    this.servicioIdBadge,
   });
 
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
   final String tooltip;
+  final int? servicioIdBadge;
 
   @override
   Widget build(BuildContext context) {
+    Widget iconWidget = Icon(icon, color: color, size: 24);
+    if (servicioIdBadge != null && servicioIdBadge! > 0) {
+      iconWidget = ChatUnreadBadge(
+        servicioId: servicioIdBadge!,
+        child: iconWidget,
+      );
+    }
+
     return Material(
       color: color.withValues(alpha: 0.14),
       borderRadius: BorderRadius.circular(12),
@@ -229,7 +246,7 @@ class _AccionRapida extends StatelessWidget {
           message: tooltip,
           child: Padding(
             padding: const EdgeInsets.all(10),
-            child: Icon(icon, color: color, size: 24),
+            child: iconWidget,
           ),
         ),
       ),

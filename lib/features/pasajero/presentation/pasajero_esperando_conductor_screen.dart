@@ -7,6 +7,7 @@ import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_conductor_dialog.dart';
 import 'package:intellitaxi/features/pasajero/providers/pasajero_servicio_activo_provider.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
+import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:provider/provider.dart';
@@ -312,7 +313,9 @@ class _PasajeroEsperandoConductorScreenState
             }
           });
 
-          return PopScope(
+          return ChatBadgeLifecycle(
+            servicioId: widget.servicioId,
+            child: PopScope(
             canPop: false,
             onPopInvokedWithResult: (didPop, _) {
               if (!didPop) {
@@ -410,6 +413,7 @@ class _PasajeroEsperandoConductorScreenState
                 ],
               ),
             ),
+          ),
           );
         },
       ),
@@ -881,6 +885,7 @@ class _PasajeroEsperandoConductorScreenState
           color: AppColors.accent,
           tooltip: 'Mensaje',
           onTap: _abrirChat,
+          servicioIdBadge: widget.servicioId,
         ),
       ],
     );
@@ -891,7 +896,16 @@ class _PasajeroEsperandoConductorScreenState
     required Color color,
     required String tooltip,
     required VoidCallback onTap,
+    int? servicioIdBadge,
   }) {
+    Widget iconWidget = Icon(icon, color: color, size: 22);
+    if (servicioIdBadge != null && servicioIdBadge > 0) {
+      iconWidget = ChatUnreadBadge(
+        servicioId: servicioIdBadge,
+        child: iconWidget,
+      );
+    }
+
     return Material(
       color: color.withValues(alpha: 0.14),
       borderRadius: BorderRadius.circular(12),
@@ -902,7 +916,7 @@ class _PasajeroEsperandoConductorScreenState
           message: tooltip,
           child: Padding(
             padding: const EdgeInsets.all(8),
-            child: Icon(icon, color: color, size: 22),
+            child: iconWidget,
           ),
         ),
       ),

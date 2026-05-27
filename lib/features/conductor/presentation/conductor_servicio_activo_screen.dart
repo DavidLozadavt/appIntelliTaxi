@@ -23,6 +23,7 @@ import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
+import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
@@ -988,7 +989,9 @@ class _ConductorServicioActivoScreenState
   Widget build(BuildContext context) {
     final puntoRuta = _puntoReferenciaRuta();
 
-    return PopScope(
+    return ChatBadgeLifecycle(
+      servicioId: _safeServiceId(),
+      child: PopScope(
       canPop: false,
       child: Scaffold(
         appBar: AppBar(
@@ -1112,6 +1115,7 @@ class _ConductorServicioActivoScreenState
                       Expanded(
                         child: ConductorServicioBottomPanel(
                           servicio: widget.servicio,
+                          servicioId: _safeServiceId(),
                           estadoUi: _estadoUiEfectivo,
                           nombrePasajero: _getNombrePasajero(),
                           fotoPasajeroUrl: _getFotoPasajero(),
@@ -1137,6 +1141,7 @@ class _ConductorServicioActivoScreenState
           ],
         ),
       ),
+    ),
     );
   }
 

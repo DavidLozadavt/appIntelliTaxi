@@ -9,6 +9,8 @@ class MensajeTaxi {
   final int destinatarioId;
   final String mensaje;
   final String tipo;
+  final String? imagenUrl;
+  final String? caption;
   final bool leido;
   final DateTime? fechaLectura;
   final DateTime createdAt;
@@ -22,10 +24,23 @@ class MensajeTaxi {
     required this.destinatarioId,
     required this.mensaje,
     required this.tipo,
+    this.imagenUrl,
+    this.caption,
     required this.leido,
     this.fechaLectura,
     required this.createdAt,
   });
+
+  bool get esImagen => tipo == 'imagen';
+  bool get esTexto => tipo == 'texto';
+
+  String get textoVista {
+    if (esImagen) {
+      if (caption != null && caption!.trim().isNotEmpty) return caption!.trim();
+      return '📷 Imagen';
+    }
+    return mensaje;
+  }
 
   factory MensajeTaxi.fromJson(Map<String, dynamic> json) {
     return MensajeTaxi(
@@ -35,14 +50,16 @@ class MensajeTaxi {
       remitenteNombre: json['remitente_nombre'] ?? 'Usuario',
       remitenteFoto: json['remitente_foto'],
       destinatarioId: _toInt(json['destinatario_id']),
-      mensaje: json['mensaje'] ?? '',
-      tipo: json['tipo'] ?? 'texto',
-      leido: json['leido'] ?? false,
+      mensaje: json['mensaje']?.toString() ?? '',
+      tipo: json['tipo']?.toString() ?? 'texto',
+      imagenUrl: json['imagen_url']?.toString(),
+      caption: json['caption']?.toString(),
+      leido: json['leido'] == true,
       fechaLectura: json['fecha_lectura'] != null
-          ? DateTime.tryParse(json['fecha_lectura'])
+          ? DateTime.tryParse(json['fecha_lectura'].toString())
           : null,
       createdAt: json['created_at'] != null
-          ? DateTime.tryParse(json['created_at']) ?? DateTime.now()
+          ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
     );
   }
@@ -56,12 +73,14 @@ class MensajeTaxi {
       remitenteNombre: json['remitente_nombre'] ?? 'Usuario',
       remitenteFoto: json['remitente_foto'],
       destinatarioId: _toInt(json['destinatario_id']),
-      mensaje: json['mensaje'] ?? '',
-      tipo: json['tipo'] ?? 'texto',
+      mensaje: json['mensaje']?.toString() ?? '',
+      tipo: json['tipo']?.toString() ?? 'texto',
+      imagenUrl: json['imagen_url']?.toString(),
+      caption: json['caption']?.toString(),
       leido: false,
       fechaLectura: null,
       createdAt: json['timestamp'] != null
-          ? DateTime.tryParse(json['timestamp']) ?? DateTime.now()
+          ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
           : DateTime.now(),
     );
   }
@@ -76,13 +95,14 @@ class MensajeTaxi {
       'destinatario_id': destinatarioId,
       'mensaje': mensaje,
       'tipo': tipo,
+      'imagen_url': imagenUrl,
+      'caption': caption,
       'leido': leido,
       'fecha_lectura': fechaLectura?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
     };
   }
 
-  /// Copia con modificaciones
   MensajeTaxi copyWith({
     int? id,
     int? servicioId,
@@ -92,6 +112,8 @@ class MensajeTaxi {
     int? destinatarioId,
     String? mensaje,
     String? tipo,
+    String? imagenUrl,
+    String? caption,
     bool? leido,
     DateTime? fechaLectura,
     DateTime? createdAt,
@@ -105,6 +127,8 @@ class MensajeTaxi {
       destinatarioId: destinatarioId ?? this.destinatarioId,
       mensaje: mensaje ?? this.mensaje,
       tipo: tipo ?? this.tipo,
+      imagenUrl: imagenUrl ?? this.imagenUrl,
+      caption: caption ?? this.caption,
       leido: leido ?? this.leido,
       fechaLectura: fechaLectura ?? this.fechaLectura,
       createdAt: createdAt ?? this.createdAt,

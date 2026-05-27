@@ -1,10 +1,15 @@
 // lib/features/chat/presentation/chat_taxi_screen.dart
 
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../controllers/chat_taxi_controller.dart';
+import '../providers/chat_badge_provider.dart';
 import '../services/chat_taxi_service.dart';
 import '../widgets/mensaje_burbuja_widget.dart';
 import '../../../core/theme/app_colors.dart';
@@ -54,10 +59,14 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
       miUserId: widget.miUserId,
     );
 
-    // Inicializar (usa Pusher global secundario)
     _controller.inicializar();
 
     _controller.addListener(_scrollToBottom);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ChatBadgeProvider>().limpiarNoLeidos(widget.servicioId);
+    });
   }
 
   @override
@@ -380,7 +389,14 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
       child: SafeArea(
         child: Row(
           children: [
-            // Campo de texto
+            IconButton(
+              onPressed: _enviando ? null : _enviarFoto,
+              icon: Icon(
+                Iconsax.gallery,
+                color: isDark ? AppColors.accent : AppColors.primary,
+              ),
+              tooltip: 'Enviar imagen',
+            ),
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -493,6 +509,60 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
         },
       ),
     );
+  }
+
+  Future<void> _enviarFoto() async {
+    if (_enviando) return;
+
+    final picker = ImagePicker();
+    final xfile = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1920,
+      imageQuality: 85,
+    );
+    if (xfile == null || !mounted) return;
+
+    final caption = _textController.text.trim();
+    setState(() => _enviando = true);
+
+    try {
+      final ok = await _controller.enviarImagen(
+        File(xfile.path),
+        caption: caption.isEmpty ? null : caption,
+      );
+      if (!mounted) return;
+      if (ok) {
+        _textController.clear();
+        _scrollToBottom();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo enviar la imagen'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final data = e.response?.data;
+      String msg = 'Error al enviar imagen';
+      if (data is Map && data['message'] != null) {
+        msg = data['message'].toString();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: Colors.red),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Error al enviar imagen'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
   }
 
   Future<void> _enviarMensaje() async {

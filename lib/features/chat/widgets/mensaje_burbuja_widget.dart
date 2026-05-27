@@ -1,6 +1,6 @@
-// lib/features/chat/widgets/mensaje_burbuja_widget.dart
-
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
 import '../data/mensaje_taxi_model.dart';
 import '../../../core/theme/app_colors.dart';
 
@@ -22,7 +22,9 @@ class MensajeBurbujaWidget extends StatelessWidget {
       alignment: esMio ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: mensaje.esImagen
+            ? const EdgeInsets.all(4)
+            : const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
@@ -47,19 +49,19 @@ class MensajeBurbujaWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Texto del mensaje
-            Text(
-              mensaje.mensaje,
-              style: TextStyle(
-                color: esMio
-                    ? Colors.white
-                    : (isDark ? AppColors.darkOnSurface : Colors.black87),
-                fontSize: 15,
+            if (mensaje.esImagen && mensaje.imagenUrl != null)
+              _buildImagen(context)
+            else
+              Text(
+                mensaje.textoVista,
+                style: TextStyle(
+                  color: esMio
+                      ? Colors.white
+                      : (isDark ? AppColors.darkOnSurface : Colors.black87),
+                  fontSize: 15,
+                ),
               ),
-            ),
             const SizedBox(height: 4),
-
-            // Hora y estado
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -88,22 +90,58 @@ class MensajeBurbujaWidget extends StatelessWidget {
     );
   }
 
+  Widget _buildImagen(BuildContext context) {
+    final caption = mensaje.caption?.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: CachedNetworkImage(
+            imageUrl: mensaje.imagenUrl!,
+            width: 220,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => const SizedBox(
+              width: 220,
+              height: 160,
+              child: Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            errorWidget: (_, __, ___) => const SizedBox(
+              width: 220,
+              height: 120,
+              child: Icon(Icons.broken_image_outlined, size: 40),
+            ),
+          ),
+        ),
+        if (caption != null && caption.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+            child: Text(
+              caption,
+              style: TextStyle(
+                color: esMio ? Colors.white : Colors.black87,
+                fontSize: 14,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   String _formatTime(DateTime dateTime) {
     final now = DateTime.now();
     final difference = now.difference(dateTime);
 
     if (difference.inDays == 0) {
-      // Hoy - mostrar hora
       return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
     } else if (difference.inDays == 1) {
-      // Ayer
       return 'Ayer ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
     } else if (difference.inDays < 7) {
-      // Esta semana - mostrar día
       final dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
       return '${dias[dateTime.weekday - 1]} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
     } else {
-      // Más antiguo - mostrar fecha
       return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
     }
   }

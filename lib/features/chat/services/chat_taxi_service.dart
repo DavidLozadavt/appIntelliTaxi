@@ -1,6 +1,8 @@
 // lib/features/chat/services/chat_taxi_service.dart
 
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import '../data/mensaje_taxi_model.dart';
 import '../../../config/pusher_config.dart';
@@ -45,6 +47,50 @@ class ChatTaxiService {
       return null;
     } catch (e) {
       AppLogger.d('Error: $e');
+      return null;
+    }
+  }
+
+  /// Subir imagen al chat (multipart)
+  Future<MensajeTaxi?> enviarImagen({
+    required int servicioId,
+    required File imageFile,
+    String? caption,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'servicio_id': servicioId,
+        if (caption != null && caption.trim().isNotEmpty)
+          'mensaje': caption.trim(),
+        'imagen': await MultipartFile.fromFile(
+          imageFile.path,
+          filename: imageFile.path.split(Platform.pathSeparator).last,
+        ),
+      });
+
+      final response = await _dio.post(
+        '/chat-taxi/enviar-imagen',
+        data: formData,
+      );
+
+      if (response.statusCode == 201 && response.data['success'] == true) {
+        final data = response.data['data'];
+        final payload = data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map);
+        return MensajeTaxi.fromJson(payload);
+      }
+
+      AppLogger.d('Error enviando imagen: ${response.data['message']}');
+      return null;
+    } on DioException catch (e) {
+      AppLogger.d('DioException imagen: ${e.message}');
+      if (e.response != null) {
+        AppLogger.d('Response data: ${e.response?.data}');
+      }
+      rethrow;
+    } catch (e) {
+      AppLogger.d('Error enviando imagen: $e');
       return null;
     }
   }
@@ -191,23 +237,28 @@ class ChatTaxiService {
     }
   }
 
-  /// Desuscribirse del canal
-  Future<void> desuscribirse(int servicioId) async {
+  static void desregistrarHandlers(int servicioId) {
+    final channel = 'chat.servicio.$servicioId';
+    PusherService.unregisterEventHandlerSecondary('$channel:nuevo.mensaje');
+    PusherService.unregisterEventHandlerSecondary('$channel:mensaje.leido');
+  }
+
+  /// Desuscribirse del canal ([quitarCanal] false si otro listener sigue activo).
+  Future<void> desuscribirse(
+    int servicioId, {
+    bool quitarCanal = true,
+  }) async {
     try {
-      if (_currentChannel != null) {
-        // Desregistrar handlers
-        final keyNuevoMensaje = '$_currentChannel:nuevo.mensaje';
-        final keyMensajeLeido = '$_currentChannel:mensaje.leido';
+      final channel = _currentChannel ?? 'chat.servicio.$servicioId';
+      desregistrarHandlers(servicioId);
 
-        PusherService.unregisterEventHandlerSecondary(keyNuevoMensaje);
-        PusherService.unregisterEventHandlerSecondary(keyMensajeLeido);
-
-        // Desuscribirse del canal
-        await PusherService.unsubscribeSecondary(_currentChannel!);
-
-        AppLogger.d('❌ Chat Taxi: Desuscrito del canal $_currentChannel');
-        _currentChannel = null;
+      if (quitarCanal) {
+        await PusherService.unsubscribeSecondary(channel);
+        AppLogger.d('❌ Chat Taxi: Desuscrito del canal $channel');
+      } else {
+        AppLogger.d('❌ Chat Taxi: Handlers quitados, canal $channel activo');
       }
+      _currentChannel = null;
     } catch (e) {
       AppLogger.d('Error desuscribiendo: $e');
     }
