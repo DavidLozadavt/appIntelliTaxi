@@ -190,6 +190,9 @@ class _HomeConductorState extends State<HomeConductor>
       if (!_provider.enServicio) {
         unawaited(_provider.sincronizarSolicitudesPublicadasConductor());
       }
+      // Al volver del background, recargar turno desde backend y forzar
+      // un heartbeat inmediato para evitar “parpadeo” a inactivo.
+      unawaited(_provider.refrescarTurnoYHeartbeatEnResume());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       if (_provider.isOnline &&

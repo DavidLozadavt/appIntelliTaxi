@@ -1176,6 +1176,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     try {
       final turno = await _conductorService.getTurnoActivo();
 
+      AppLogger.d(
+        '🔄 cargarTurnoActual: encontrado=${turno?.id ?? 'null'}',
+      );
       if (turno != null) {
         _turnoActivo = turno;
         _isOnline = true;
@@ -1201,6 +1204,50 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
     } catch (e) {
       AppLogger.d('❌ Error cargando turno: $e');
+    }
+  }
+
+  /// Re-sincroniza estado de turno y manda un heartbeat inmediato al volver
+  /// al foreground. Esto ayuda a detectar si el backend cierra el turno
+  /// mientras la app estuvo en background.
+  Future<void> refrescarTurnoYHeartbeatEnResume() async {
+    if (_isDisposed) return;
+    if (_enServicio) return;
+
+    try {
+      AppLogger.d(
+        '🔄 [Resume] estado antes: isOnline=$_isOnline turno=${_turnoActivo?.id} enDescanso=$_enDescanso',
+      );
+
+      await cargarTurnoActual();
+
+      if (_turnoActivo == null || !_isOnline) {
+        // No hay turno activo; nada que hacer.
+        return;
+      }
+
+      // En caso de que el stream de ubicación haya pausado, pedimos una
+      // posición puntual para enviar el heartbeat.
+      Position? position = _currentPosition;
+      if (position == null) {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 6),
+          ),
+        );
+        _currentPosition = position;
+      }
+
+      await _sendMapHeartbeat(position, force: true);
+
+      if (!_isDisposed) notifyListeners();
+
+      AppLogger.d(
+        '✅ [Resume] estado después: isOnline=$_isOnline turno=${_turnoActivo?.id} enDescanso=$_enDescanso',
+      );
+    } catch (e) {
+      AppLogger.d('⚠️ [Resume] Error refrescando turno/heartbeat: $e');
     }
   }
 

@@ -128,7 +128,8 @@ class PasajeroNearbyDriversController {
     final estado = conductor.estado?.toLowerCase();
     if (!conductor.debeMostrarseEnMapa ||
         estado == 'desconectado' ||
-        estado == 'descanso') {
+        estado == 'descanso' ||
+        estado == 'ocupado') {
       removeDriver(conductor.conductorId);
       return;
     }
@@ -232,6 +233,7 @@ class PasajeroNearbyDriversController {
       final position = displayedPositions[conductor.conductorId] ??
           LatLng(conductor.lat, conductor.lng);
       final ocupado = conductor.estado?.toLowerCase() == 'ocupado';
+      if (ocupado) continue;
       final rotation = displayedBearings[conductor.conductorId] ?? 0;
       markers.add(
         Marker(
@@ -240,16 +242,13 @@ class PasajeroNearbyDriversController {
           rotation: rotation,
           flat: true,
           anchor: const Offset(0.5, 0.5),
-          icon: ocupado
-              ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure)
-              : (driverMarkerIcon ??
-                    BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueGreen,
-                    )),
+          icon: driverMarkerIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueGreen,
+              ),
           infoWindow: InfoWindow(
             title: '🚗 ${conductor.nombre}',
             snippet:
-                '${ocupado ? 'Ocupado • ' : ''}'
                 '⭐ ${conductor.calificacion.toStringAsFixed(1)} • '
                 '${conductor.vehiculo?.descripcion ?? 'Sin vehículo'}',
           ),
