@@ -164,7 +164,7 @@ class ServicioActivoProvider extends ChangeNotifier {
   Future<void> _cargarIconoCarro() async {
     try {
       _carIcon = await BitmapDescriptor.asset(
-        const ImageConfiguration(size: Size(48, 48)),
+        const ImageConfiguration(size: Size(30, 30)),
         'assets/images/taxi.png',
       );
     } catch (e) {

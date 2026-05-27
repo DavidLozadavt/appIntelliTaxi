@@ -299,7 +299,7 @@ class _ConductorServicioActivoScreenState
   Future<void> _cargarIconoCarro() async {
     try {
       _carIcon = await BitmapDescriptor.asset(
-        const ImageConfiguration(size: Size(48, 48)),
+        const ImageConfiguration(size: Size(30, 30)),
         'assets/images/marker.png',
       );
       AppLogger.d('✅ CONDUCTOR: Ícono del carro cargado');

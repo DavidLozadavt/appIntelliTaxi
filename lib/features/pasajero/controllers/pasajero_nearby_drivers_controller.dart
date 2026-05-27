@@ -263,7 +263,7 @@ class PasajeroNearbyDriversController {
   Future<void> loadDriverMarkerIcon() async {
     try {
       driverMarkerIcon = await BitmapDescriptor.asset(
-        const ImageConfiguration(size: Size(48, 48)),
+        const ImageConfiguration(size: Size(30, 30)),
         'assets/images/marker.png',
       );
     } catch (e) {
