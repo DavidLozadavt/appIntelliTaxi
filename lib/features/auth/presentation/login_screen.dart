@@ -162,10 +162,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextFormField(
                     controller: _emailController,
                     decoration: buildInputDecoration(
-                      label: 'Correo electrónico',
+                      label: 'Usuario',
                     ),
                     validator: (value) =>
-                        value!.isEmpty ? 'Ingrese su email' : null,
+                        value!.isEmpty ? 'Ingrese su usuario' : null,
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
