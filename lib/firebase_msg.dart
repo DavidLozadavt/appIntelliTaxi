@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
+import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/main.dart';
@@ -189,6 +190,9 @@ Future<void> _handleBackgroundNotification(RemoteMessage message) async {
     await FleetEmergencyAlertService.instance.handlePayload(map);
   } else if (await _shouldShowConductorIncomingAlert(map)) {
     await IncomingServiceNotificationService.instance.showIncomingService(map);
+  } else if (!await _isActiveConductorRole() &&
+      _isConductorIncomingServiceNotification(map)) {
+    await IncomingServiceNotificationService.instance.dismiss();
   }
 }
 
@@ -350,9 +354,16 @@ class FirebaseMsg {
       return;
     }
 
+    final isConductor = await _isActiveConductorRole();
+
+    // El pasajero no debe ver "nueva solicitud" (es eco de su propia petición).
+    if (!isConductor && _isConductorIncomingServiceNotification(data)) {
+      await IncomingServiceNotificationService.instance.dismiss();
+      return;
+    }
+
     // Pasajero o cambio de estado: quitar alerta de conductor si quedó activa.
-    if (_isServicioTripUpdateNotification(data) ||
-        !await _isActiveConductorRole()) {
+    if (_isServicioTripUpdateNotification(data) || !isConductor) {
       await IncomingServiceNotificationService.instance.dismiss();
     }
 
@@ -393,9 +404,19 @@ class FirebaseMsg {
     );
 
     final payload = jsonEncode(message.data);
+    final servicioIdRaw =
+        data['servicio_id'] ?? data['servicioId'] ?? data['id_servicio'];
+    final servicioId = servicioIdRaw != null
+        ? int.tryParse(servicioIdRaw.toString())
+        : null;
+    final notificationId = servicioId != null
+        ? PasajeroServicioNotificationHelper.fcmNotificationIdForServicio(
+            servicioId,
+          )
+        : message.hashCode & 0x7FFFFFFF;
 
     await localNotifications.show(
-      id: message.hashCode & 0x7FFFFFFF,
+      id: notificationId,
       title: title,
       body: body,
       notificationDetails: NotificationDetails(android: androidDetails),

@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -51,7 +52,9 @@ class _PasajeroEsperandoConductorScreenState
       type: 'pasajero',
       serviceId: widget.servicioId,
     );
-    // La lógica ahora está en el provider
+    unawaited(
+      PasajeroServicioNotificationHelper.clearForServicio(widget.servicioId),
+    );
   }
 
   Future<void> _mostrarDialogoFinalizado(
@@ -344,9 +347,11 @@ class _PasajeroEsperandoConductorScreenState
             },
             child: Scaffold(
               appBar: AppBar(
-                title: const Text(
-                  'Servicio Activo',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                title: Text(
+                  provider.isBuscando
+                      ? 'Buscando conductor'
+                      : 'Servicio activo',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 automaticallyImplyLeading: false,
               ),
@@ -483,9 +488,14 @@ class _PasajeroEsperandoConductorScreenState
     final seconds = remainingSeconds % 60;
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final origenAddr =
+        widget.datosServicio['origen_address']?.toString().trim() ?? '';
+    final destinoAddr =
+        widget.datosServicio['destino_address']?.toString().trim() ?? '';
+    final cerca = provider.conductoresCercanosCount;
 
     return Container(
-      padding: const EdgeInsets.all(30),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -499,35 +509,92 @@ class _PasajeroEsperandoConductorScreenState
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildCustomLoader(
-            size: 60,
-            progress: provider.elapsedSeconds / 120,
-            color: remainingSeconds > 30 ? AppColors.accent : Colors.orange,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '$minutes:${seconds.toString().padLeft(2, '0')}',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
           const SizedBox(height: 14),
-          Text(
-            'Buscando conductor disponible...',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Por favor espera mientras encontramos un conductor cerca de ti',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.78),
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildCustomLoader(
+                size: 52,
+                progress: provider.elapsedSeconds / 120,
+                color: remainingSeconds > 30 ? AppColors.accent : Colors.orange,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$minutes:${seconds.toString().padLeft(2, '0')}',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'Tiempo de búsqueda',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.textTheme.bodySmall?.color
+                            ?.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildConductoresCercaChip(
+                theme: theme,
+                count: cerca,
+                loading: provider.cargandoConductoresCercanos,
+              ),
+            ],
           ),
           const SizedBox(height: 16),
+          _buildPasosBusqueda(provider.elapsedSeconds),
+          const SizedBox(height: 14),
+          if (origenAddr.isNotEmpty) ...[
+            _buildDireccionResumen(
+              label: 'Recogida',
+              address: origenAddr,
+              color: AppColors.green,
+              icon: Iconsax.location_copy,
+            ),
+            if (destinoAddr.isNotEmpty &&
+                destinoAddr != 'Destino no definido') ...[
+              const SizedBox(height: 8),
+              _buildDireccionResumen(
+                label: 'Destino',
+                address: destinoAddr,
+                color: AppColors.primary,
+                icon: Iconsax.routing_2_copy,
+              ),
+            ],
+            const SizedBox(height: 14),
+          ],
+          Text(
+            provider.mensajeActividadBusqueda,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            provider.subtituloActividadBusqueda,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.78),
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 18),
           TextButton.icon(
             onPressed: () => _cancelarServicio(provider),
             icon: const Icon(Iconsax.close_circle_copy, size: 18),
@@ -536,6 +603,161 @@ class _PasajeroEsperandoConductorScreenState
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildConductoresCercaChip({
+    required ThemeData theme,
+    required int count,
+    required bool loading,
+  }) {
+    final Color bg;
+    final String label;
+    final IconData icon;
+    if (loading && count == 0) {
+      bg = AppColors.primary.withValues(alpha: 0.12);
+      label = 'Revisando…';
+      icon = Iconsax.refresh_copy;
+    } else if (count > 0) {
+      bg = AppColors.green.withValues(alpha: 0.14);
+      label = count == 1 ? '1 cerca' : '$count cerca';
+      icon = Iconsax.car_copy;
+    } else {
+      bg = Colors.orange.withValues(alpha: 0.12);
+      label = 'Sin taxis';
+      icon = Iconsax.search_normal_1_copy;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: bg.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: AppColors.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPasosBusqueda(int elapsedSeconds) {
+    final step = elapsedSeconds < 8
+        ? 0
+        : elapsedSeconds < 40
+        ? 1
+        : 2;
+    const labels = [
+      'Solicitud enviada',
+      'Avisando conductores',
+      'Esperando respuesta',
+    ];
+
+    return Row(
+      children: List.generate(labels.length * 2 - 1, (i) {
+        if (i.isOdd) {
+          final lineDone = (i ~/ 2) < step;
+          return Expanded(
+            child: Container(
+              height: 2,
+              margin: const EdgeInsets.only(bottom: 18),
+              color: lineDone
+                  ? AppColors.green
+                  : AppColors.primary.withValues(alpha: 0.2),
+            ),
+          );
+        }
+        final index = i ~/ 2;
+        final done = index < step;
+        final active = index == step;
+        return Expanded(
+          child: Column(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: done || active
+                      ? (done ? AppColors.green : AppColors.accent)
+                      : AppColors.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  done
+                      ? Icons.check
+                      : active
+                      ? Icons.more_horiz
+                      : Icons.circle,
+                  size: done ? 16 : 10,
+                  color: done || active ? Colors.white : AppColors.grey,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                labels[index],
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: active ? FontWeight.w800 : FontWeight.w500,
+                  color: active ? AppColors.accent : AppColors.grey,
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildDireccionResumen({
+    required String label,
+    required String address,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              Text(
+                address,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
