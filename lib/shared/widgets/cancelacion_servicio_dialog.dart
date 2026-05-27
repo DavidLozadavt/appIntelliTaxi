@@ -15,41 +15,37 @@ class CancelacionServicioDialog extends StatefulWidget {
     BuildContext context, {
     required String tipoUsuario,
   }) {
-    return showDialog<String?>(
+    final esConductor = tipoUsuario == 'conductor';
+    return showGeneralDialog<String?>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => CancelacionServicioDialog(tipoUsuario: tipoUsuario),
+      barrierLabel: 'Cancelar servicio',
+      barrierColor: esConductor
+          ? Colors.black.withValues(alpha: 0.88)
+          : Colors.black.withValues(alpha: 0.55),
+      transitionDuration: Duration(milliseconds: esConductor ? 140 : 280),
+      pageBuilder: (context, _, _) =>
+          CancelacionServicioDialog(tipoUsuario: tipoUsuario),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curve = esConductor ? Curves.easeOutCubic : Curves.easeOutBack;
+        return FadeTransition(
+          opacity: CurvedAnimation(parent: animation, curve: curve),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: esConductor ? 0.96 : 0.88, end: 1)
+                .animate(CurvedAnimation(parent: animation, curve: curve)),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }
 
-class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
-    with SingleTickerProviderStateMixin {
+class _CancelacionServicioDialogState extends State<CancelacionServicioDialog> {
   String? _motivoSeleccionado;
   final TextEditingController _otroMotivoController = TextEditingController();
-  late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
 
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _scaleAnimation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutBack,
-    );
-    _animationController.forward();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    _otroMotivoController.dispose();
-    super.dispose();
-  }
+  bool get _esConductor => widget.tipoUsuario == 'conductor';
 
   List<String> get _motivosPredefinidos {
     if (widget.tipoUsuario == 'pasajero') {
@@ -102,6 +98,12 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
   }
 
   @override
+  void dispose() {
+    _otroMotivoController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -113,28 +115,29 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
     final textColor = isDark ? AppColors.darkOnSurface : Colors.black87;
     final borderColor = isDark ? Colors.grey.shade800 : Colors.grey.shade300;
 
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        elevation: 10,
+    final pad = _esConductor ? 16.0 : 24.0;
+
+    return Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_esConductor ? 18 : 24),
+        ),
+        elevation: _esConductor ? 16 : 10,
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 500),
+          constraints: BoxConstraints(maxWidth: _esConductor ? 420 : 500),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(_esConductor ? 18 : 24),
             color: cardColor,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header con diseño elegante
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: EdgeInsets.all(pad),
                 decoration: BoxDecoration(
                   color: isDark ? AppColors.darkCard : Colors.red.shade50,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(24),
-                    topRight: Radius.circular(24),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(_esConductor ? 18 : 24),
+                    topRight: Radius.circular(_esConductor ? 18 : 24),
                   ),
                 ),
                 child: Row(
@@ -155,25 +158,27 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                       child: Icon(
                         Iconsax.danger,
                         color: Colors.red.shade600,
-                        size: 28,
+                        size: _esConductor ? 24 : 28,
                       ),
                     ),
                     const SizedBox(width: 16),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Cancelar servicio',
                             style: TextStyle(
-                              fontSize: 20,
+                              fontSize: _esConductor ? 18 : 20,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
                             '¿Por qué deseas cancelar?',
-                            style: TextStyle(fontSize: 14),
+                            style: TextStyle(
+                              fontSize: _esConductor ? 13 : 14,
+                            ),
                           ),
                         ],
                       ),
@@ -182,31 +187,22 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                 ),
               ),
 
-              // Contenido
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
+                  padding: EdgeInsets.all(pad),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Opciones de motivos
                       ..._motivosPredefinidos.asMap().entries.map((entry) {
                         final index = entry.key;
                         final motivo = entry.value;
                         final isSelected = _motivoSeleccionado == motivo;
                         final isLast = index == _motivosPredefinidos.length - 1;
 
-                        return TweenAnimationBuilder<double>(
-                          duration: Duration(milliseconds: 200 + (index * 50)),
-                          tween: Tween(begin: 0.0, end: 1.0),
-                          builder: (context, value, child) {
-                            return Transform.translate(
-                              offset: Offset(0, 20 * (1 - value)),
-                              child: Opacity(opacity: value, child: child),
-                            );
-                          },
-                          child: Container(
-                            margin: EdgeInsets.only(bottom: isLast ? 0 : 12),
+                        final tile = Container(
+                            margin: EdgeInsets.only(
+                              bottom: isLast ? 0 : (_esConductor ? 8 : 12),
+                            ),
                             child: Material(
                               color: Colors.transparent,
                               child: InkWell(
@@ -215,10 +211,16 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                                     _motivoSeleccionado = motivo;
                                   });
                                 },
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(
+                                  _esConductor ? 12 : 16,
+                                ),
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.all(16),
+                                  duration: Duration(
+                                    milliseconds: _esConductor ? 100 : 200,
+                                  ),
+                                  padding: EdgeInsets.all(
+                                    _esConductor ? 12 : 16,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? AppColors.accent.withValues(
@@ -246,8 +248,8 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                                   child: Row(
                                     children: [
                                       AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 200,
+                                        duration: Duration(
+                                          milliseconds: _esConductor ? 100 : 200,
                                         ),
                                         width: 24,
                                         height: 24,
@@ -291,98 +293,57 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      }),
+                          );
 
-                      // Campo de texto para "Otro motivo"
-                      if (_motivoSeleccionado == 'Otro motivo') ...[
-                        const SizedBox(height: 20),
-                        TweenAnimationBuilder<double>(
-                          duration: const Duration(milliseconds: 300),
+                        if (_esConductor) return tile;
+
+                        return TweenAnimationBuilder<double>(
+                          duration: Duration(milliseconds: 200 + (index * 50)),
                           tween: Tween(begin: 0.0, end: 1.0),
                           builder: (context, value, child) {
-                            return Transform.scale(
-                              scale: value,
+                            return Transform.translate(
+                              offset: Offset(0, 20 * (1 - value)),
                               child: Opacity(opacity: value, child: child),
                             );
                           },
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.blue.shade200),
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Iconsax.edit_2,
-                                      color: Colors.blue.shade700,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Especifica el motivo',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.blue.shade700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: _otroMotivoController,
-                                  autofocus: true,
-                                  maxLines: 3,
-                                  maxLength: 150,
-                                  decoration: InputDecoration(
-                                    hintText: 'Describe brevemente...',
-                                    filled: true,
-                                    fillColor: cardColor,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: Colors.grey.shade300,
-                                      ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: Colors.blue.shade400,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    contentPadding: const EdgeInsets.all(16),
-                                  ),
-                                ),
-                              ],
+                          child: tile,
+                        );
+                      }),
+
+                      if (_motivoSeleccionado == 'Otro motivo') ...[
+                        SizedBox(height: _esConductor ? 10 : 14),
+                        if (_esConductor)
+                          _buildOtroMotivoField(
+                            backgroundColor: backgroundColor,
+                            textColor: textColor,
+                            isDark: isDark,
+                          )
+                        else
+                          TweenAnimationBuilder<double>(
+                            duration: const Duration(milliseconds: 220),
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            builder: (context, value, child) {
+                              return Opacity(opacity: value, child: child);
+                            },
+                            child: _buildOtroMotivoField(
+                              backgroundColor: backgroundColor,
+                              textColor: textColor,
+                              isDark: isDark,
                             ),
                           ),
-                        ),
                       ],
                     ],
                   ),
                 ),
               ),
 
-              // Footer con botones
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: EdgeInsets.all(pad),
                 decoration: BoxDecoration(
                   color: backgroundColor,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(24),
-                    bottomRight: Radius.circular(24),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(_esConductor ? 18 : 24),
+                    bottomRight: Radius.circular(_esConductor ? 18 : 24),
                   ),
                   border: Border(top: BorderSide(color: Colors.grey.shade200)),
                 ),
@@ -392,7 +353,9 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                       child: OutlinedButton(
                         onPressed: () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: EdgeInsets.symmetric(
+                            vertical: _esConductor ? 12 : 16,
+                          ),
                           side: BorderSide(color: Colors.grey.shade400),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -401,7 +364,7 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                         child: Text(
                           'Volver',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: _esConductor ? 15 : 16,
                             fontWeight: FontWeight.w600,
                             color: Colors.grey.shade700,
                           ),
@@ -414,7 +377,9 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                       child: ElevatedButton(
                         onPressed: _confirmarCancelacion,
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: EdgeInsets.symmetric(
+                            vertical: _esConductor ? 12 : 16,
+                          ),
                           backgroundColor: Colors.red.shade600,
                           foregroundColor: Colors.white,
                           elevation: 2,
@@ -422,15 +387,18 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Iconsax.close_circle, size: 20),
-                            SizedBox(width: 8),
+                            Icon(
+                              Iconsax.close_circle,
+                              size: _esConductor ? 18 : 20,
+                            ),
+                            const SizedBox(width: 8),
                             Text(
                               'Confirmar',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: _esConductor ? 15 : 16,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -444,6 +412,82 @@ class _CancelacionServicioDialogState extends State<CancelacionServicioDialog>
             ],
           ),
         ),
+      );
+  }
+
+  Widget _buildOtroMotivoField({
+    required Color backgroundColor,
+    required Color textColor,
+    required bool isDark,
+  }) {
+    final radius = _esConductor ? 12.0 : 14.0;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: isDark ? 0.12 : 0.08),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: AppColors.accent, width: 1.5),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        _esConductor ? 12 : 14,
+        _esConductor ? 10 : 12,
+        _esConductor ? 12 : 14,
+        _esConductor ? 8 : 10,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Describe el motivo',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.accent,
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _otroMotivoController,
+            autofocus: true,
+            maxLines: 2,
+            minLines: 2,
+            maxLength: 150,
+            style: TextStyle(fontSize: 15, color: textColor, height: 1.35),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Ej. tráfico, dirección incorrecta…',
+              hintStyle: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+              filled: true,
+              fillColor: backgroundColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: AppColors.accent.withValues(alpha: 0.5),
+                  width: 1,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              counterStyle: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.grey[600] : Colors.grey[500],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
