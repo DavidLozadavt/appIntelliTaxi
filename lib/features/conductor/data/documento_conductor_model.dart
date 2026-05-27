@@ -1,3 +1,5 @@
+import 'package:intellitaxi/features/conductor/utils/documento_tipo_fecha_helper.dart';
+
 class DocumentoConductor {
   final int id;
   final String fechaCarga;
@@ -89,27 +91,20 @@ class DocumentoConductor {
   bool get estaCargado =>
       diligenciado || id > 0 || ruta.isNotEmpty || rutaUrl.isNotEmpty;
 
-  bool get requiereVigencia {
-    final titulo = tipoDocumento.tituloDocumento.toUpperCase();
-    if (titulo.contains('IDENTIFICACION') ||
-        titulo.contains('IDENTIFICACIÓN') ||
-        titulo.contains('CEDULA') ||
-        titulo.contains('CÉDULA')) {
-      return false;
-    }
+  bool get requiereVigencia => DocumentoTipoFechaHelper.requiereControlVigencia(
+        tipoFecha: tipoDocumento.tipoFecha,
+        tituloDocumento: tipoDocumento.tituloDocumento,
+      );
 
-    final tipoFecha = tipoDocumento.tipoFecha?.trim().toUpperCase();
-    if (tipoFecha == null || tipoFecha.isEmpty) return true;
-    return tipoFecha != 'N/A' &&
-        tipoFecha != 'NA' &&
-        tipoFecha != 'NO APLICA' &&
-        tipoFecha != 'SIN FECHA';
-  }
+  String get etiquetaFecha => DocumentoTipoFechaHelper.etiquetaFecha(
+        tipoFecha: tipoDocumento.tipoFecha,
+      );
 
   String? get fechaVigenciaDisplay => fechaFinVigencia ?? fechaVigencia;
 
   /// Calcula los días restantes hasta que venza el documento
   int? get diasRestantes {
+    if (!requiereVigencia) return null;
     final fecha = fechaVigenciaDisplay;
     if (fecha == null) return null;
     try {

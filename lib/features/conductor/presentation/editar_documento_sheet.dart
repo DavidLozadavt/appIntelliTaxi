@@ -310,11 +310,14 @@ class EditarDocumentoSheet extends StatefulWidget {
                                 const SizedBox(height: 4),
                                 Text(
                                   !widget.documento.requiereVigencia
-                                      ? 'No requiere vigencia'
+                                      ? (widget.documento.fechaVigenciaDisplay ==
+                                              null
+                                          ? 'Documento cargado'
+                                          : '${widget.documento.etiquetaFecha}: ${widget.documento.fechaVigenciaDisplay}')
                                       : widget.documento.fechaVigenciaDisplay ==
                                             null
                                       ? 'Cargado sin fecha de vigencia'
-                                      : 'Vigencia: ${widget.documento.fechaVigenciaDisplay}',
+                                      : '${widget.documento.etiquetaFecha}: ${widget.documento.fechaVigenciaDisplay}',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: isDark

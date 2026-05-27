@@ -249,15 +249,22 @@ class DocumentosAlertDialog extends StatelessWidget {
     String mensaje = doc.mensajeAlerta ?? '';
 
     if (mensaje.isEmpty) {
-      final dias = doc.diasRestantes;
-      if (dias == null) {
-        mensaje = 'Sin fecha de vigencia';
-      } else if (dias < 0) {
-        mensaje = 'Vencido hace ${dias.abs()} día${dias.abs() != 1 ? 's' : ''}';
-      } else if (dias == 0) {
-        mensaje = 'Vence hoy';
+      if (!doc.requiereVigencia) {
+        mensaje = doc.fechaVigenciaDisplay?.trim().isNotEmpty == true
+            ? '${doc.etiquetaFecha}: ${doc.fechaVigenciaDisplay}'
+            : 'Documento cargado';
       } else {
-        mensaje = 'Vence en $dias día${dias != 1 ? 's' : ''}';
+        final dias = doc.diasRestantes;
+        if (dias == null) {
+          mensaje = 'Sin fecha de vigencia';
+        } else if (dias < 0) {
+          mensaje =
+              'Vencido hace ${dias.abs()} día${dias.abs() != 1 ? 's' : ''}';
+        } else if (dias == 0) {
+          mensaje = 'Vence hoy';
+        } else {
+          mensaje = 'Vence en $dias día${dias != 1 ? 's' : ''}';
+        }
       }
     }
 

@@ -61,6 +61,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   // Vehículos y turnos
   VehiculoConductor? _vehiculoSeleccionado;
   List<VehiculoConductor> _vehiculosDisponibles = [];
+  String? _lastVehiculosLoadError;
   TurnoActivo? _turnoActivo;
 
   // Solicitudes de servicio
@@ -107,6 +108,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool get isOnline => _isOnline;
   VehiculoConductor? get vehiculoSeleccionado => _vehiculoSeleccionado;
   List<VehiculoConductor> get vehiculosDisponibles => _vehiculosDisponibles;
+  String? get lastVehiculosLoadError => _lastVehiculosLoadError;
   TurnoActivo? get turnoActivo => _turnoActivo;
   bool get enServicio => _enServicio;
   int? get servicioActivoId => _servicioActivoId;
@@ -1008,16 +1010,25 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   // ==================== VEHÍCULOS ====================
 
-  /// Carga los vehículos disponibles del conductor
-  Future<void> cargarVehiculos() async {
+  /// Carga los vehículos disponibles del conductor.
+  /// Devuelve `true` si la petición terminó bien (aunque la lista venga vacía).
+  Future<bool> cargarVehiculos() async {
     try {
       final vehiculos = await _conductorService.getVehiculosConductor();
-      if (_isDisposed) return;
+      if (_isDisposed) return false;
       _vehiculosDisponibles = vehiculos;
+      _lastVehiculosLoadError = null;
       _sincronizarVehiculoSeleccionadoConTurno();
       if (!_isDisposed) notifyListeners();
+      return true;
     } catch (e) {
+      _lastVehiculosLoadError = e
+          .toString()
+          .replaceAll('Exception: ', '')
+          .trim();
       AppLogger.d('❌ Error cargando vehículos: $e');
+      if (!_isDisposed) notifyListeners();
+      return false;
     }
   }
 

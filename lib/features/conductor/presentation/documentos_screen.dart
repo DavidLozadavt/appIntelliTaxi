@@ -356,8 +356,10 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
         ? 'SIN FECHA'
         : estadoVigencia;
     final vigenciaLabel = documento.requiereVigencia
-        ? documento.fechaVigenciaDisplay ?? 'Sin fecha de vigencia'
-        : 'No requiere vigencia';
+        ? documento.fechaVigenciaDisplay ??
+            'Sin ${documento.etiquetaFecha.toLowerCase()}'
+        : documento.fechaVigenciaDisplay ??
+            'No requiere vigencia';
     final mostrarMensajeAlerta =
         documento.mensajeAlerta != null && !estaCargadoSinVigencia;
 
@@ -381,13 +383,15 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
       estadoColor = Colors.orange;
       estadoIcon = Icons.event_busy_outlined;
       progreso = 0.5;
-    } else if (estadoVigencia == 'VENCIDO' ||
-        (diasRestantes != null && diasRestantes < 0)) {
+    } else if (documento.requiereVigencia &&
+        (estadoVigencia == 'VENCIDO' ||
+            (diasRestantes != null && diasRestantes < 0))) {
       estadoColor = Colors.red;
       estadoIcon = Icons.error;
       progreso = 0.0; // Sin progreso cuando está vencido
-    } else if (estadoVigencia == 'POR VENCER' ||
-        (diasRestantes != null && diasRestantes <= 15)) {
+    } else if (documento.requiereVigencia &&
+        (estadoVigencia == 'POR VENCER' ||
+            (diasRestantes != null && diasRestantes <= 15))) {
       estadoColor = Colors.orange;
       estadoIcon = Icons.warning_amber;
       // Progreso proporcional de 0 a 15 días
@@ -531,8 +535,10 @@ class _DocumentosScreenState extends State<DocumentosScreen> {
                   Expanded(
                     child: Text(
                       documento.requiereVigencia
-                          ? 'Vigencia: $vigenciaLabel'
-                          : vigenciaLabel,
+                          ? '${documento.etiquetaFecha}: $vigenciaLabel'
+                          : documento.fechaVigenciaDisplay != null
+                          ? '${documento.etiquetaFecha}: ${documento.fechaVigenciaDisplay}'
+                          : 'No requiere vigencia',
                       style: TextStyle(
                         fontSize: 13,
                         color: isDark
@@ -902,11 +908,14 @@ class _EditarDocumentoSheetState extends State<EditarDocumentoSheet> {
                                 const SizedBox(height: 4),
                                 Text(
                                   !widget.documento.requiereVigencia
-                                      ? 'No requiere vigencia'
+                                      ? (widget.documento.fechaVigenciaDisplay ==
+                                              null
+                                          ? 'Documento cargado'
+                                          : '${widget.documento.etiquetaFecha}: ${widget.documento.fechaVigenciaDisplay}')
                                       : widget.documento.fechaVigenciaDisplay ==
                                             null
                                       ? 'Cargado sin fecha de vigencia'
-                                      : 'Vigencia: ${widget.documento.fechaVigenciaDisplay}',
+                                      : '${widget.documento.etiquetaFecha}: ${widget.documento.fechaVigenciaDisplay}',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: isDark

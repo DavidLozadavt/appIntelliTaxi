@@ -87,8 +87,22 @@ class ConductorService {
       final response = await _dio.get('get_vehiculos_conductores');
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = response.data;
-        return data.map((json) => VehiculoConductor.fromJson(json)).toList();
+        final rawList = _extractJsonList(response.data);
+        final vehiculos = <VehiculoConductor>[];
+        for (final item in rawList) {
+          if (item is! Map) continue;
+          try {
+            vehiculos.add(
+              VehiculoConductor.fromJson(
+                Map<String, dynamic>.from(item),
+              ),
+            );
+          } catch (e) {
+            AppLogger.w('⚠️ Vehículo omitido por error de parseo: $e');
+          }
+        }
+        AppLogger.d('✅ ${vehiculos.length} vehículo(s) cargados');
+        return vehiculos;
       } else {
         throw Exception('Error al obtener vehículos: ${response.statusCode}');
       }
@@ -96,6 +110,24 @@ class ConductorService {
       AppLogger.d('⚠️ Error obteniendo vehículos del conductor: $e');
       rethrow;
     }
+  }
+
+  /// Normaliza respuestas del API: lista directa o envuelta en `data` / `vehiculos`.
+  static List<dynamic> _extractJsonList(dynamic data) {
+    if (data is List) return data;
+    if (data is Map) {
+      for (final key in const [
+        'data',
+        'vehiculos',
+        'vehículos',
+        'items',
+        'results',
+      ]) {
+        final value = data[key];
+        if (value is List) return value;
+      }
+    }
+    return const [];
   }
 
   /// Obtiene los documentos de un vehículo

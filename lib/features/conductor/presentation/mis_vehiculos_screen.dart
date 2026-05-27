@@ -461,22 +461,23 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
   Widget _buildDocTile(DocumentoVehiculo doc) {
     final vencido = doc.estaVencido;
     final porVencer = doc.estaPorVencer;
-    final color = vencido
+    final sinVigencia = !doc.requiereVigencia;
+    final color = sinVigencia
+        ? AppColors.green
+        : vencido
         ? Colors.red
         : porVencer
         ? Colors.orange
         : AppColors.green;
 
-    String estado = 'Vigente';
-    if (vencido) estado = 'Vencido';
-    if (porVencer) estado = 'Por vencer';
+    final estado = doc.estadoDisplay;
 
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
       leading: Icon(Icons.badge_outlined, color: color),
       title: Text(doc.tituloDocumento),
-      subtitle: Text('Vigencia: ${doc.fechaVigencia ?? 'No definida'}'),
+      subtitle: Text(doc.subtituloFecha),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -738,7 +739,7 @@ class _EditarDocumentoVehiculoSheetState
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'Vigencia: ${widget.documento.fechaVigenciaDisplay ?? 'No definida'}',
+                                widget.documento.subtituloFecha,
                                 style: TextStyle(color: secondaryText),
                               ),
                             ],
@@ -801,7 +802,7 @@ class _EditarDocumentoVehiculoSheetState
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Fecha de vigencia',
+                    widget.documento.etiquetaFecha,
                     style: TextStyle(
                       color: secondaryText,
                       fontWeight: FontWeight.w700,

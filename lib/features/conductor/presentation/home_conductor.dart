@@ -609,7 +609,30 @@ class _HomeConductorState extends State<HomeConductor>
     // Guardar referencia al messenger antes de operaciones asíncronas
     final messenger = ScaffoldMessenger.of(context);
 
+    // Siempre recargar: la lista del home puede quedar vacía si falló al iniciar la app.
+    await _provider.cargarVehiculos();
+    if (!mounted) return;
+
     if (_provider.vehiculosDisponibles.isEmpty) {
+      final loadError = _provider.lastVehiculosLoadError;
+      if (loadError != null && loadError.isNotEmpty) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'No se pudieron cargar tus vehículos: $loadError',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Reintentar',
+              textColor: Colors.white,
+              onPressed: () => unawaited(_mostrarSelectorVehiculo()),
+            ),
+          ),
+        );
+        return;
+      }
+
       await showDialog<void>(
         context: context,
         barrierDismissible: true,

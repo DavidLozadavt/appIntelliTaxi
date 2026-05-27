@@ -26,6 +26,7 @@ class DocumentosProvider extends ChangeNotifier {
     if (_documentos.isEmpty) return 0.0;
 
     final documentosVigentes = _documentos.where((doc) {
+      if (!doc.requiereVigencia) return doc.estaCargado;
       final estado = doc.estadoVigencia?.toUpperCase() ?? 'VIGENTE';
       return estado == 'VIGENTE';
     }).length;
@@ -36,6 +37,7 @@ class DocumentosProvider extends ChangeNotifier {
   /// Cantidad de documentos vigentes
   int get documentosVigentes {
     return _documentos.where((doc) {
+      if (!doc.requiereVigencia) return doc.estaCargado;
       final estado = doc.estadoVigencia?.toUpperCase() ?? 'VIGENTE';
       return estado == 'VIGENTE';
     }).length;
@@ -47,18 +49,16 @@ class DocumentosProvider extends ChangeNotifier {
   /// Verifica si hay documentos por vencer (próximos 30 días)
   bool get tieneDocumentosPorVencer {
     return _documentos.any((doc) {
-      if (doc.fechaVigencia == null) return false;
-      final fechaVigencia = DateTime.parse(doc.fechaVigencia!);
-      final diasRestantes = fechaVigencia.difference(DateTime.now()).inDays;
-      return diasRestantes > 0 && diasRestantes <= 30;
+      if (!doc.requiereVigencia) return false;
+      return doc.estaPorVencer;
     });
   }
 
   /// Verifica si hay documentos vencidos
   bool get tieneDocumentosVencidos {
     return _documentos.any((doc) {
-      final estado = doc.estadoVigencia?.toUpperCase() ?? 'VIGENTE';
-      return estado == 'VENCIDO';
+      if (!doc.requiereVigencia) return false;
+      return doc.estaVencido;
     });
   }
 
