@@ -12,19 +12,6 @@ class ConductorMapServiciosTabs {
   static bool pantallaCompacta(BuildContext context) =>
       MediaQuery.sizeOf(context).height < 680;
 
-  /// Evita `minHeight: infinity` cuando el panel no tiene altura acotada (crash al llegar solicitud).
-  static double _minHeightForPullRefresh(
-    BuildContext context,
-    BoxConstraints constraints, {
-    double fallbackFraction = 0.18,
-    double fallbackMin = 160,
-  }) {
-    final maxH = constraints.maxHeight;
-    if (maxH.isFinite && maxH > 0) return maxH;
-    final screenH = MediaQuery.sizeOf(context).height;
-    return (screenH * fallbackFraction).clamp(fallbackMin, screenH * 0.45);
-  }
-
   static double tabBarHeight(BuildContext context) =>
       pantallaCompacta(context) ? 30 : 34;
 
@@ -124,26 +111,42 @@ class ConductorMapServiciosTabs {
     return true;
   }
 
-  /// Altura del panel «En espera» (Llegando usa altura intrínseca de la tarjeta).
-  static double panelHeight(
+  /// Tarjetas compactas en lista (~3–4 visibles en pantalla).
+  static int _visibleCardsCount(BuildContext context) =>
+      pantallaCompacta(context) ? 3 : 4;
+
+  static double _compactCardExtent(BuildContext context) =>
+      pantallaCompacta(context) ? 98.0 : 106.0;
+
+  static double _listPanelHeight(
     BuildContext context, {
-    required TabController controller,
-    required ConductorHomeProvider home,
-    required SolicitudesPendientesProvider pendientes,
+    required bool conBarraRefresh,
   }) {
+    final n = _visibleCardsCount(context);
+    final cardH = _compactCardExtent(context);
+    var h = cardH * n + 6 * (n - 1) + 12;
+    if (conBarraRefresh) h += 34;
     final screenH = MediaQuery.sizeOf(context).height;
-    final maxH = screenH * (pantallaCompacta(context) ? 0.22 : 0.26);
-    if (controller.index == 0) {
-      return 0;
-    }
-    if (pendientes.cargando && pendientes.total == 0) return 56;
-    if (pendientes.total == 0) return 44;
-    return maxH.clamp(140, maxH);
+    final maxH = screenH * (pantallaCompacta(context) ? 0.36 : 0.40);
+    final minH = cardH * 2 + 18 + (conBarraRefresh ? 34 : 0);
+    return h.clamp(minH, maxH);
   }
 
-  static double _enEsperaPanelHeight(BuildContext context) {
-    final screenH = MediaQuery.sizeOf(context).height;
-    return screenH * (pantallaCompacta(context) ? 0.22 : 0.26);
+  static Widget _panelShell({
+    required BuildContext context,
+    required Widget child,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      elevation: 6,
+      borderRadius: BorderRadius.circular(10),
+      color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: _listPanelHeight(context, conBarraRefresh: false),
+        child: child,
+      ),
+    );
   }
 
   static Widget panel({
@@ -168,6 +171,7 @@ class ConductorMapServiciosTabs {
 
     if (controller.index == 0) {
       return _llegandoTab(
+        context: context,
         home: home,
         getSolicitudId: getSolicitudId,
         segundosRestantes: segundosRestantes,
@@ -176,27 +180,17 @@ class ConductorMapServiciosTabs {
       );
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final enEsperaH = _enEsperaPanelHeight(context);
-
-    return Material(
-      elevation: 6,
-      borderRadius: BorderRadius.circular(10),
-      color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: enEsperaH,
-        child: _enEsperaTab(
-          home: home,
-          pendientes: pendientes,
-          onAceptar: onAceptarEspera,
-          onDescartar: onDescartarEspera,
-        ),
-      ),
+    return _enEsperaTab(
+      context: context,
+      home: home,
+      pendientes: pendientes,
+      onAceptar: onAceptarEspera,
+      onDescartar: onDescartarEspera,
     );
   }
 
   static Widget _llegandoTab({
+    required BuildContext context,
     required ConductorHomeProvider home,
     required String Function(Map<String, dynamic>) getSolicitudId,
     required int Function(String id) segundosRestantes,
@@ -204,92 +198,76 @@ class ConductorMapServiciosTabs {
     required void Function(String id) onRechazar,
   }) {
     final lista = home.solicitudesOrdenadas;
-    Future<void> onRefresh() =>
-        home.sincronizarSolicitudesPublicadasConductor();
-
     if (lista.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    return Builder(
-      builder: (context) {
-        return RefreshIndicator(
-          color: AppColors.accent,
-          onRefresh: onRefresh,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: _minHeightForPullRefresh(
-                  context,
-                  const BoxConstraints(),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var index = 0; index < lista.length; index++) ...[
-                    if (index > 0) const SizedBox(height: 8),
-                    Builder(
-                      builder: (context) {
-                        final solicitud = lista[index];
-                        final id = getSolicitudId(solicitud);
-                        if (id.isEmpty) return const SizedBox.shrink();
-                        final seg = segundosRestantes(id);
-                        return SolicitudServicioCard(
-                          solicitud: solicitud,
-                          marginExterno: false,
-                          segundosRestantes: seg > 0 ? seg : null,
-                          destacada: index == 0,
-                          onAceptar: () => onAceptar(id),
-                          onRechazar: () => onRechazar(id),
-                        );
-                      },
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    Future<void> onRefresh() =>
+        home.sincronizarSolicitudesPublicadasConductor();
+
+    return _panelShell(
+      context: context,
+      child: RefreshIndicator(
+        color: AppColors.accent,
+        onRefresh: onRefresh,
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+          itemCount: lista.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 6),
+          itemBuilder: (context, index) {
+            final solicitud = lista[index];
+            final id = getSolicitudId(solicitud);
+            if (id.isEmpty) return const SizedBox.shrink();
+            final seg = segundosRestantes(id);
+            return SolicitudServicioCard(
+              solicitud: solicitud,
+              marginExterno: false,
+              compact: true,
+              segundosRestantes: seg > 0 ? seg : null,
+              destacada: index == 0,
+              onAceptar: () => onAceptar(id),
+              onRechazar: () => onRechazar(id),
+            );
+          },
+        ),
+      ),
     );
   }
 
   static Widget _enEsperaTab({
+    required BuildContext context,
     required ConductorHomeProvider home,
     required SolicitudesPendientesProvider pendientes,
     required void Function(String id, Map<String, dynamic> s) onAceptar,
     void Function(String id)? onDescartar,
   }) {
     final lista = pendientes.pendientes;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    Future<void> onRefresh() => pendientes.refrescar(silencioso: false);
+    final panelH = _listPanelHeight(context, conBarraRefresh: true);
 
+    Widget body;
     if (pendientes.cargando && lista.isEmpty) {
-      return const Center(
+      body = const Center(
         child: SizedBox(
           width: 22,
           height: 22,
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       );
-    }
-
-    Future<void> onRefresh() => pendientes.refrescar(silencioso: false);
-
-    if (lista.isEmpty) {
+    } else if (lista.isEmpty) {
       final mensaje = home.radioAccion.activo && !home.radioAccion.sinLimite
           ? 'Sin servicios a ${home.radioAccion.radioEfectivoKm.round()} km (Popayán)'
           : 'Sin publicados en Popayán';
-
-      return RefreshIndicator(
+      body = RefreshIndicator(
         color: AppColors.accent,
         onRefresh: onRefresh,
-        child: CustomScrollView(
+        child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverFillRemaining(
-              hasScrollBody: false,
+          children: [
+            SizedBox(
+              height: panelH - 34 - 24,
               child: Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -310,53 +288,58 @@ class ConductorMapServiciosTabs {
           ],
         ),
       );
+    } else {
+      body = RefreshIndicator(
+        color: AppColors.accent,
+        onRefresh: onRefresh,
+        child: ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+          itemCount: lista.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 6),
+          itemBuilder: (context, index) {
+            final item = lista[index];
+            final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
+            if (id == null || id.isEmpty) return const SizedBox.shrink();
+            return SolicitudServicioCard(
+              solicitud: item,
+              marginExterno: false,
+              compact: true,
+              distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
+              tiempoPublicado: pendientes.tiempoPublicado(item),
+              precioOfertado: pendientes.precioOfertadoDe(item),
+              onAceptar: () => onAceptar(id, item),
+              onRechazar: onDescartar != null ? () => onDescartar(id) : null,
+            );
+          },
+        ),
+      );
     }
 
-    return Column(
-      children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: IconButton(
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.only(right: 4, top: 2),
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 32),
-            onPressed: pendientes.cargando ? null : pendientes.refrescar,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
-            tooltip: 'Actualizar',
-          ),
-        ),
-        Expanded(
-          child: RefreshIndicator(
-            color: AppColors.accent,
-            onRefresh: onRefresh,
-            child: ListView.builder(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-              itemCount: lista.length,
-              itemBuilder: (context, index) {
-                final item = lista[index];
-                final id =
-                    ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
-                if (id == null || id.isEmpty) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: SolicitudServicioCard(
-                    solicitud: item,
-                    marginExterno: false,
-                    compact: true,
-                    distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
-                    tiempoPublicado: pendientes.tiempoPublicado(item),
-                    precioOfertado: pendientes.precioOfertadoDe(item),
-                    onAceptar: () => onAceptar(id, item),
-                    onRechazar:
-                        onDescartar != null ? () => onDescartar(id) : null,
-                  ),
-                );
-              },
+    return Material(
+      elevation: 6,
+      borderRadius: BorderRadius.circular(10),
+      color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: panelH,
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.only(right: 4, top: 2),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 32),
+                onPressed: pendientes.cargando ? null : pendientes.refrescar,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                tooltip: 'Actualizar',
+              ),
             ),
-          ),
+            Expanded(child: body),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
