@@ -6,17 +6,26 @@ import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.da
 class SolicitudServicioCard extends StatefulWidget {
   final Map<String, dynamic> solicitud;
   final VoidCallback onAceptar;
-  final VoidCallback onRechazar;
+  final VoidCallback? onRechazar;
   final int? segundosRestantes;
   final bool destacada;
+  /// Metadatos para lista «En espera» (distancia al conductor, antigüedad, precio).
+  final String? distanciaDesdeMi;
+  final String? tiempoPublicado;
+  final double? precioOfertado;
+  final bool marginExterno;
 
   const SolicitudServicioCard({
     super.key,
     required this.solicitud,
     required this.onAceptar,
-    required this.onRechazar,
+    this.onRechazar,
     this.segundosRestantes,
     this.destacada = false,
+    this.distanciaDesdeMi,
+    this.tiempoPublicado,
+    this.precioOfertado,
+    this.marginExterno = true,
   });
 
   @override
@@ -58,6 +67,39 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
 
   void _dismiss(VoidCallback callback) {
     _controller.reverse().then((_) => callback());
+  }
+
+  Widget _infoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: isDark ? Colors.white.withValues(alpha: 0.9) : color,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildLocationBlock({
@@ -122,13 +164,22 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         !SolicitudDisplayHelper.isPlaceholderDestino(destinoNombre);
     final segundosRestantes = widget.segundosRestantes ?? 0;
     final enRiesgo = segundosRestantes <= 7;
+    final distanciaMi = widget.distanciaDesdeMi?.trim() ?? '';
+    final tiempoPub = widget.tiempoPublicado?.trim() ?? '';
+    final precio = widget.precioOfertado;
+    final tieneMeta =
+        distanciaMi.isNotEmpty || tiempoPub.isNotEmpty || (precio != null && precio > 0);
+    final viajeDist = SolicitudDisplayHelper.tripDistanceText(widget.solicitud);
+    final viajeDur = SolicitudDisplayHelper.tripDurationText(widget.solicitud);
 
     return SlideTransition(
       position: _slideAnimation,
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: widget.marginExterno
+              ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
+              : EdgeInsets.zero,
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
             borderRadius: BorderRadius.circular(20),
@@ -216,6 +267,28 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             fontSize: 16,
                           ),
                         ),
+                      )
+                    else if (tiempoPub.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: AppColors.accent.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Text(
+                          tiempoPub,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: isDark ? AppColors.accent : Colors.orange.shade900,
+                          ),
+                        ),
                       ),
                   ],
                 ),
@@ -246,37 +319,102 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     ],
                   ),
                 ],
+                if (viajeDist.isNotEmpty || viajeDur.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      if (viajeDist.isNotEmpty) ...[
+                        Icon(
+                          Iconsax.routing,
+                          size: 16,
+                          color: Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          viajeDist,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
+                      if (viajeDist.isNotEmpty && viajeDur.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            '·',
+                            style: TextStyle(color: Colors.grey.shade500),
+                          ),
+                        ),
+                      if (viajeDur.isNotEmpty)
+                        Text(
+                          viajeDur,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                if (tieneMeta) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      if (distanciaMi.isNotEmpty)
+                        _infoChip(
+                          icon: Iconsax.gps,
+                          label: distanciaMi,
+                          color: AppColors.accent,
+                          isDark: isDark,
+                        ),
+                      if (precio != null && precio > 0)
+                        _infoChip(
+                          icon: Iconsax.dollar_circle,
+                          label: '\$${precio.toStringAsFixed(0)}',
+                          color: Colors.green.shade700,
+                          isDark: isDark,
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _dismiss(widget.onRechazar),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 14,
+                    if (widget.onRechazar != null) ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _dismiss(widget.onRechazar!),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 14,
+                            ),
+                            side: const BorderSide(color: Colors.red, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          side: const BorderSide(color: Colors.red, width: 1.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            'Rechazar',
-                            maxLines: 1,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Rechazar',
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
+                      const SizedBox(width: 12),
+                    ],
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () => _dismiss(widget.onAceptar),

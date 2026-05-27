@@ -130,3 +130,18 @@ class TaxiSolicitudesPendientesResult {
     );
   }
 }
+
+/// Resultado de `GET /taxi/conductor/solicitudes-rechazadas`.
+class TaxiSolicitudesRechazadasResult {
+  final int total;
+  final Set<int> servicioIds;
+
+  const TaxiSolicitudesRechazadasResult({
+    required this.total,
+    required this.servicioIds,
+  });
+
+  factory TaxiSolicitudesRechazadasResult.empty() {
+    return const TaxiSolicitudesRechazadasResult(total: 0, servicioIds: {});
+  }
+}

@@ -656,7 +656,20 @@ class _HomeConductorState extends State<HomeConductor>
       );
     }
 
-    _provider.rechazarSolicitud(solicitudId);
+    final okRemoto = await _provider.rechazarSolicitudParaConductor(solicitudId);
+    _pendientesProvider.quitarPorId(solicitudId);
+
+    if (!mounted) return;
+    if (!okRemoto && servicioId != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ocultado en la app. Si vuelve a aparecer, revisa tu conexión.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
   }
 
   /// Verifica documentos del conductor y muestra alertas
@@ -1458,10 +1471,7 @@ class _HomeConductorState extends State<HomeConductor>
                       onAceptarLlegando: (id) => _aceptarSolicitud(id),
                       onRechazarLlegando: _rechazarSolicitud,
                       onAceptarEspera: _aceptarSolicitud,
-                      onDescartarEspera: (id) {
-                        _rechazarSolicitud(id);
-                        _pendientesProvider.quitarPorId(id);
-                      },
+                      onDescartarEspera: _rechazarSolicitud,
                     ),
                   );
                 },

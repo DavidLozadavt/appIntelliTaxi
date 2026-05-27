@@ -96,7 +96,13 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
         _pendientes
           ..clear()
           ..addAll(
-            result.pendientes.map(ConductorSolicitudPayloadHelper.normalizarSolicitud),
+            result.pendientes
+                .map(ConductorSolicitudPayloadHelper.normalizarSolicitud)
+                .where((s) {
+              final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
+              if (id == null || id.isEmpty) return false;
+              return !(_home?.esServicioRechazado(id) ?? false);
+            }),
           );
       }
       _error = null;

@@ -934,7 +934,11 @@ class _ConductorServicioActivoScreenState
   }
 
   void _rechazarOfertaEnRuta(String solicitudId) {
-    context.read<ConductorHomeProvider>().rechazarSolicitud(solicitudId);
+    unawaited(
+      context.read<ConductorHomeProvider>().rechazarSolicitudParaConductor(
+        solicitudId,
+      ),
+    );
   }
 
   Future<void> _llamarOfertaEnRuta(Map<String, dynamic> solicitud) async {

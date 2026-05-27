@@ -311,4 +311,33 @@ class SolicitudDisplayHelper {
     if (value is num) return value.toDouble();
     return double.tryParse(value.toString().replaceAll(',', '.'));
   }
+
+  /// Distancia del trayecto (origen → destino), si viene en el payload.
+  static String tripDistanceText(Map<String, dynamic> data) {
+    final n = normalizeSolicitudMap(data);
+    final t = n['distancia_texto']?.toString().trim();
+    if (t != null && t.isNotEmpty) return t;
+    final km = n['distancia_km'] ?? n['distanciaKm'];
+    if (km != null) {
+      final v = parseCoordinate(km);
+      if (v != null && v > 0) return '${v.toStringAsFixed(1)} km trayecto';
+    }
+    return '';
+  }
+
+  /// Duración estimada del trayecto.
+  static String tripDurationText(Map<String, dynamic> data) {
+    final n = normalizeSolicitudMap(data);
+    final t = n['duracion_texto']?.toString().trim();
+    if (t != null && t.isNotEmpty) return t;
+    final seg = n['duracion_segundos'] ?? n['duracionSegundos'];
+    if (seg != null) {
+      final s = int.tryParse(seg.toString());
+      if (s != null && s > 0) {
+        if (s < 60) return '$s s';
+        return '${s ~/ 60} min';
+      }
+    }
+    return '';
+  }
 }

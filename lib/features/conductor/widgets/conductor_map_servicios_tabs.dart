@@ -3,7 +3,6 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_pendiente_quick_card.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 
 /// Pestañas compactas bajo el chip «En línea».
@@ -267,14 +266,15 @@ class ConductorMapServiciosTabs {
               final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
               if (id == null || id.isEmpty) return const SizedBox.shrink();
               return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: ConductorPendienteQuickCard(
-                  anchoCompleto: true,
+                padding: const EdgeInsets.only(bottom: 10),
+                child: SolicitudServicioCard(
                   solicitud: item,
+                  marginExterno: false,
                   distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
                   tiempoPublicado: pendientes.tiempoPublicado(item),
+                  precioOfertado: pendientes.precioOfertadoDe(item),
                   onAceptar: () => onAceptar(id, item),
-                  onDescartar:
+                  onRechazar:
                       onDescartar != null ? () => onDescartar(id) : null,
                 ),
               );

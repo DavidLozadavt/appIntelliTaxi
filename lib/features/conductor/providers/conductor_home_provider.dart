@@ -93,6 +93,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   final List<void Function(String servicioId)> _solicitudTomadaListeners = [];
   final List<void Function(Map<String, dynamic> solicitud)>
       _nuevaSolicitudListeners = [];
+  final Set<int> _serviciosRechazados = {};
 
   // Control de dispose
   bool _isDisposed = false;
@@ -238,9 +239,77 @@ class ConductorHomeProvider extends ChangeNotifier {
     await cargarVehiculos();
     unawaited(cargarRadioAccion());
     await bootstrapTaxiConductor();
+    await cargarSolicitudesRechazadas();
     if (!_enServicio) {
       await cargarTurnoActual();
     }
+  }
+
+  /// Sync rechazos: `GET /conductor/solicitudes-rechazadas` + cache local.
+  Future<void> cargarSolicitudesRechazadas() async {
+    _serviciosRechazados.addAll(
+      await ConductorSessionHelper.cargarServiciosRechazadosLocal(),
+    );
+
+    final remoto = await _conductorService.getSolicitudesRechazadas();
+    _serviciosRechazados.addAll(remoto.servicioIds);
+
+    await ConductorSessionHelper.guardarServiciosRechazados(_serviciosRechazados);
+
+    // Quitar de cola local cualquier id ya rechazado.
+    _solicitudesActivas.removeWhere((s) {
+      final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
+      return id != null && esServicioRechazado(id);
+    });
+
+    if (!_isDisposed) notifyListeners();
+  }
+
+  static int? servicioIdNumerico(String? id) {
+    if (id == null || id.isEmpty) return null;
+    if (id.startsWith('temp_')) return null;
+    return int.tryParse(id);
+  }
+
+  bool esServicioRechazado(String? solicitudId) {
+    final num = servicioIdNumerico(solicitudId);
+    return num != null && _serviciosRechazados.contains(num);
+  }
+
+  bool _esServicioRechazadoEnPayload(Map<String, dynamic> raw) {
+    for (final key in const [
+      'servicio_id',
+      'servicioId',
+      'solicitud_id',
+      'solicitudId',
+      'id',
+    ]) {
+      if (esServicioRechazado(raw[key]?.toString())) return true;
+    }
+    return false;
+  }
+
+  /// Rechaza en backend y oculta en app (no vuelve en pendientes ni Pusher).
+  Future<bool> rechazarSolicitudParaConductor(String solicitudId) async {
+    final servicioId = servicioIdNumerico(solicitudId);
+    var exitoRemoto = true;
+
+    if (servicioId != null) {
+      try {
+        await _conductorService.rechazarSolicitud(servicioId: servicioId);
+        _serviciosRechazados.add(servicioId);
+        await ConductorSessionHelper.agregarServicioRechazado(servicioId);
+      } catch (e) {
+        exitoRemoto = false;
+        AppLogger.d('⚠️ Error POST solicitud/rechazar: $e');
+        _serviciosRechazados.add(servicioId);
+        await ConductorSessionHelper.agregarServicioRechazado(servicioId);
+      }
+    }
+
+    rechazarSolicitud(solicitudId);
+    if (!_isDisposed) notifyListeners();
+    return exitoRemoto;
   }
 
   /// Bootstrap taxi: estado-actual → servicio activo si aplica.
@@ -810,6 +879,10 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     try {
       final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+      if (_esServicioRechazadoEnPayload(raw)) {
+        AppLogger.d('ℹ️ Ignorando solicitud: rechazada por este conductor');
+        return;
+      }
       if (!fromSync && !_pasaFiltroRadioAccion(raw)) {
         AppLogger.d('ℹ️ Solicitud fuera del radio de acción');
         return;
@@ -830,6 +903,11 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
       solicitud['_local_id'] = solicitudId;
       AppLogger.d('📩 Solicitud decodificada: $solicitudId');
+
+      if (esServicioRechazado(solicitudId)) {
+        AppLogger.d('ℹ️ Ignorando solicitud rechazada: $solicitudId');
+        return;
+      }
 
       // Verificar si ya existe la solicitud
       final yaExiste = _solicitudesActivas.any(
@@ -946,12 +1024,58 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Rechaza una solicitud
   void rechazarSolicitud(String solicitudId) {
     AppLogger.d('❌ Rechazando solicitud: $solicitudId');
-    _solicitudesActivas.removeWhere(
-      (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
-    );
-    _expiracionPorSolicitud.remove(solicitudId);
-    _timersExpiracion[solicitudId]?.cancel();
-    _timersExpiracion.remove(solicitudId);
+
+    bool coincideId(Map<String, dynamic> s, String id) {
+      final obtenido = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
+      if (obtenido != null && obtenido == id) return true;
+
+      // Algunas respuestas (GET vs Pusher) pueden traer IDs en campos distintos.
+      final candidatos = <String>{
+        s['_local_id']?.toString() ?? '',
+        s['solicitud_id']?.toString() ?? '',
+        s['solicitudId']?.toString() ?? '',
+        s['servicio_id']?.toString() ?? '',
+        s['servicioId']?.toString() ?? '',
+        s['id']?.toString() ?? '',
+        s['ride_id']?.toString() ?? '',
+        s['request_id']?.toString() ?? '',
+        s['temp_id']?.toString() ?? '',
+      };
+      candidatos.removeWhere((v) => v.isEmpty);
+      return candidatos.contains(id);
+    }
+
+    // Recolectamos IDs para poder cancelar timers por cualquiera de las claves.
+    final idsAEliminar = <String>{};
+    _solicitudesActivas.removeWhere((s) {
+      final match = coincideId(s, solicitudId);
+      if (match) {
+        final obtenido = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
+        if (obtenido != null && obtenido.isNotEmpty) idsAEliminar.add(obtenido);
+        for (final k in const [
+          '_local_id',
+          'solicitud_id',
+          'solicitudId',
+          'servicio_id',
+          'servicioId',
+          'id',
+          'ride_id',
+          'request_id',
+          'temp_id',
+        ]) {
+          final v = s[k]?.toString();
+          if (v != null && v.isNotEmpty) idsAEliminar.add(v);
+        }
+      }
+      return match;
+    });
+
+    for (final id in idsAEliminar) {
+      _expiracionPorSolicitud.remove(id);
+      _timersExpiracion[id]?.cancel();
+      _timersExpiracion.remove(id);
+    }
+
     _detenerTickerSiNoHaySolicitudes();
     if (!_isDisposed) notifyListeners();
   }

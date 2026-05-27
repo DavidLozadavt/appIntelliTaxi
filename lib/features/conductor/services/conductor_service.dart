@@ -614,6 +614,73 @@ class ConductorService {
     }
   }
 
+  /// Rechaza un servicio para este conductor (`POST /taxi/solicitud/rechazar`).
+  Future<Map<String, dynamic>> rechazarSolicitud({
+    required int servicioId,
+  }) async {
+    try {
+      final response = await _dio.post(
+        'taxi/solicitud/rechazar',
+        data: {'servicio_id': servicioId},
+      );
+
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        return Map<String, dynamic>.from(data);
+      }
+
+      throw Exception(
+        data is Map
+            ? data['message']?.toString() ?? 'No se pudo rechazar el servicio'
+            : 'No se pudo rechazar el servicio',
+      );
+    } on DioException catch (e) {
+      throw Exception(
+        _extractErrorMessage(e, 'No se pudo rechazar el servicio'),
+      );
+    }
+  }
+
+  /// IDs de servicios rechazados por el conductor (`GET /taxi/conductor/solicitudes-rechazadas`).
+  Future<TaxiSolicitudesRechazadasResult> getSolicitudesRechazadas() async {
+    try {
+      final response = await _dio.get('taxi/conductor/solicitudes-rechazadas');
+      final data = response.data;
+      if (data is! Map || data['success'] != true) {
+        return TaxiSolicitudesRechazadasResult.empty();
+      }
+
+      final raw = data['servicio_ids'] ?? data['servicioIds'];
+      final ids = <int>{};
+      if (raw is List) {
+        for (final item in raw) {
+          final id = int.tryParse(item.toString());
+          if (id != null && id > 0) ids.add(id);
+        }
+      }
+
+      final total =
+          int.tryParse((data['total'] ?? ids.length).toString()) ?? ids.length;
+
+      return TaxiSolicitudesRechazadasResult(total: total, servicioIds: ids);
+    } catch (e) {
+      AppLogger.d('⚠️ Error obteniendo solicitudes rechazadas: $e');
+      return TaxiSolicitudesRechazadasResult.empty();
+    }
+  }
+
+  /// Marca que el conductor vio la solicitud (`POST /taxi/solicitud/vista`).
+  Future<void> marcarSolicitudVista({required int servicioId}) async {
+    try {
+      await _dio.post(
+        'taxi/solicitud/vista',
+        data: {'servicio_id': servicioId},
+      );
+    } catch (e) {
+      AppLogger.d('⚠️ Error marcando solicitud vista: $e');
+    }
+  }
+
   /// Radio de acción (`GET /taxi/conductor/radio-accion`).
   Future<TaxiRadioAccion> getRadioAccion() async {
     try {
