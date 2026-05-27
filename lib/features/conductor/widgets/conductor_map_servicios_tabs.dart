@@ -99,7 +99,19 @@ class ConductorMapServiciosTabs {
     return h;
   }
 
-  /// Altura del panel de contenido (0 = solo mapa visible).
+  /// Si debe mostrarse el bloque bajo las pestañas.
+  static bool shouldShowPanel({
+    required TabController controller,
+    required ConductorHomeProvider home,
+    required SolicitudesPendientesProvider pendientes,
+  }) {
+    if (controller.index == 0) {
+      return home.solicitudesOrdenadas.isNotEmpty;
+    }
+    return true;
+  }
+
+  /// Altura del panel «En espera» (Llegando usa altura intrínseca de la tarjeta).
   static double panelHeight(
     BuildContext context, {
     required TabController controller,
@@ -109,12 +121,16 @@ class ConductorMapServiciosTabs {
     final screenH = MediaQuery.sizeOf(context).height;
     final maxH = screenH * (pantallaCompacta(context) ? 0.28 : 0.34);
     if (controller.index == 0) {
-      if (home.solicitudesOrdenadas.isEmpty) return 0;
-      return maxH.clamp(140, maxH);
+      return 0;
     }
     if (pendientes.cargando && pendientes.total == 0) return 56;
     if (pendientes.total == 0) return 44;
     return maxH.clamp(140, maxH);
+  }
+
+  static double _enEsperaPanelHeight(BuildContext context) {
+    final screenH = MediaQuery.sizeOf(context).height;
+    return screenH * (pantallaCompacta(context) ? 0.28 : 0.34);
   }
 
   static Widget panel({
@@ -129,15 +145,26 @@ class ConductorMapServiciosTabs {
     required String Function(Map<String, dynamic>) getSolicitudId,
     required int Function(String id) segundosRestantes,
   }) {
-    final h = panelHeight(
-      context,
+    if (!shouldShowPanel(
       controller: controller,
       home: home,
       pendientes: pendientes,
-    );
-    if (h <= 0) return const SizedBox.shrink();
+    )) {
+      return const SizedBox.shrink();
+    }
+
+    if (controller.index == 0) {
+      return _llegandoTab(
+        home: home,
+        getSolicitudId: getSolicitudId,
+        segundosRestantes: segundosRestantes,
+        onAceptar: onAceptarLlegando,
+        onRechazar: onRechazarLlegando,
+      );
+    }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final enEsperaH = _enEsperaPanelHeight(context);
 
     return Material(
       elevation: 6,
@@ -145,24 +172,12 @@ class ConductorMapServiciosTabs {
       color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        height: h,
-        child: TabBarView(
-          controller: controller,
-          children: [
-            _llegandoTab(
-              home: home,
-              getSolicitudId: getSolicitudId,
-              segundosRestantes: segundosRestantes,
-              onAceptar: onAceptarLlegando,
-              onRechazar: onRechazarLlegando,
-            ),
-            _enEsperaTab(
-              home: home,
-              pendientes: pendientes,
-              onAceptar: onAceptarEspera,
-              onDescartar: onDescartarEspera,
-            ),
-          ],
+        height: enEsperaH,
+        child: _enEsperaTab(
+          home: home,
+          pendientes: pendientes,
+          onAceptar: onAceptarEspera,
+          onDescartar: onDescartarEspera,
         ),
       ),
     );
@@ -176,25 +191,30 @@ class ConductorMapServiciosTabs {
     required void Function(String id) onRechazar,
   }) {
     final lista = home.solicitudesOrdenadas;
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-      itemCount: lista.length,
-      itemBuilder: (context, index) {
-        final solicitud = lista[index];
-        final id = getSolicitudId(solicitud);
-        if (id.isEmpty) return const SizedBox.shrink();
-        final seg = segundosRestantes(id);
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: SolicitudServicioCard(
-            solicitud: solicitud,
-            segundosRestantes: seg > 0 ? seg : null,
-            destacada: index == 0,
-            onAceptar: () => onAceptar(id),
-            onRechazar: () => onRechazar(id),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < lista.length; index++) ...[
+          if (index > 0) const SizedBox(height: 8),
+          Builder(
+            builder: (context) {
+              final solicitud = lista[index];
+              final id = getSolicitudId(solicitud);
+              if (id.isEmpty) return const SizedBox.shrink();
+              final seg = segundosRestantes(id);
+              return SolicitudServicioCard(
+                solicitud: solicitud,
+                marginExterno: false,
+                segundosRestantes: seg > 0 ? seg : null,
+                destacada: index == 0,
+                onAceptar: () => onAceptar(id),
+                onRechazar: () => onRechazar(id),
+              );
+            },
           ),
-        );
-      },
+        ],
+      ],
     );
   }
 

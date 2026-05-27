@@ -1450,13 +1450,13 @@ class _HomeConductorState extends State<HomeConductor>
               ListenableBuilder(
                 listenable: _pendientesProvider,
                 builder: (context, _) {
-                  final panelH = ConductorMapServiciosTabs.panelHeight(
-                    context,
+                  if (!ConductorMapServiciosTabs.shouldShowPanel(
                     controller: _serviciosTabController,
                     home: provider,
                     pendientes: _pendientesProvider,
-                  );
-                  if (panelH <= 0) return const SizedBox.shrink();
+                  )) {
+                    return const SizedBox.shrink();
+                  }
                   return Positioned(
                     top: _topPanelServicios(context, provider),
                     left: 12,
