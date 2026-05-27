@@ -64,6 +64,7 @@ class PasajeroNearbyDriversController {
 
       final receivedIds = list.map((c) => c.conductorId).toSet();
       for (final conductor in list) {
+        if (!conductor.debeMostrarseEnMapa) continue;
         conductores[conductor.conductorId] = conductor;
       }
 
@@ -124,7 +125,10 @@ class PasajeroNearbyDriversController {
 
   void applyDriverUpdate(Conductor conductor, {required bool showDrivers}) {
     if (!showDrivers) return;
-    if (conductor.estado?.toLowerCase() == 'desconectado') {
+    final estado = conductor.estado?.toLowerCase();
+    if (!conductor.debeMostrarseEnMapa ||
+        estado == 'desconectado' ||
+        estado == 'descanso') {
       removeDriver(conductor.conductorId);
       return;
     }

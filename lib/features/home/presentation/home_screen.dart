@@ -1,5 +1,7 @@
 import 'package:intellitaxi/features/home/presentation/custom_drawer.dart';
 import 'package:intellitaxi/features/conductor/presentation/home_conductor.dart';
+import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_descanso_app_bar_switch.dart';
 import 'package:intellitaxi/features/pasajero/presentation/home_pasajero_screen.dart';
 import 'package:intellitaxi/features/profile/presentation/profile_screen.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -65,8 +67,10 @@ class _HomeScreenState extends State<HomeScreen> {
         Widget body;
 
         // Verificar rol activo/conductor
-        if (activeRole == AuthProvider.roleConductor ||
-            (!authProvider.canSwitchRole && authProvider.hasConductorRole)) {
+        final isConductor = activeRole == AuthProvider.roleConductor ||
+            (!authProvider.canSwitchRole && authProvider.hasConductorRole);
+
+        if (isConductor) {
           AppLogger.d('✅ HomeScreen: Mostrando pantalla de CONDUCTOR');
           body = const HomeConductor(stories: []);
         }
@@ -103,99 +107,109 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        return Scaffold(
-          appBar: AppBar(
-            // backgroundColor: Colors.white,
-            elevation: 0,
-            title: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("Hola,", style: TextStyle(fontSize: 14)),
-                      Text(
-                        user.persona.nombre1,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
+        return Consumer<ConductorHomeProvider>(
+          builder: (context, conductorProvider, _) {
+            final showDescansoSwitch = isConductor &&
+                (conductorProvider.puedeUsarModoDescanso ||
+                    conductorProvider.enDescanso);
+
+            return Scaffold(
+              appBar: AppBar(
+                // backgroundColor: Colors.white,
+                elevation: 0,
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // IconButton(
-                    //   icon:  Icon(Icons.emergency, color: Colors.red.shade400),
-                    //   onPressed: () =>
-                    //       Navigator.pushNamed(context, '/emergencias'),
-                    // ),
-                    IconButton(
-                      icon: const Icon(Icons.notifications_none),
-                      onPressed: () =>
-                          Navigator.pushNamed(context, '/notifications'),
-                    ),
-                    if (authProvider.canSwitchRole)
-                      IconButton(
-                        tooltip: 'Cambiar rol',
-                        icon: const Icon(Icons.swap_horiz),
-                        onPressed: () {
-                          _mostrarSelectorRol(
-                            context,
-                            authProvider,
-                            canDismiss: true,
-                          );
-                        },
-                      ),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ProfileTab(),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Hola,", style: TextStyle(fontSize: 14)),
+                          Text(
+                            user.persona.nombre1,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
                           ),
-                        );
-                      },
-                      child: CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Colors.blue.shade100,
-                        backgroundImage:
-                            user.persona.rutaFotoUrl != null &&
-                                user.persona.rutaFotoUrl!.isNotEmpty
-                            ? NetworkImage(user.persona.rutaFotoUrl!)
-                            : null,
-                        onBackgroundImageError: user.persona.rutaFotoUrl != null
-                            ? (exception, stackTrace) {
-                                debugPrint(
-                                  '⚠️ Error cargando avatar: $exception',
-                                );
-                              }
-                            : null,
-                        child:
-                            (user.persona.rutaFotoUrl == null ||
-                                user.persona.rutaFotoUrl!.isEmpty)
-                            ? Text(
-                                user.persona.nombre1.isNotEmpty
-                                    ? user.persona.nombre1[0].toUpperCase()
-                                    : '?',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              )
-                            : null,
+                        ],
                       ),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.notifications_none),
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/notifications'),
+                        ),
+                        if (authProvider.canSwitchRole)
+                          IconButton(
+                            tooltip: 'Cambiar rol',
+                            icon: const Icon(Icons.swap_horiz),
+                            onPressed: () {
+                              _mostrarSelectorRol(
+                                context,
+                                authProvider,
+                                canDismiss: true,
+                              );
+                            },
+                          ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProfileTab(),
+                              ),
+                            );
+                          },
+                          child: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: Colors.blue.shade100,
+                            backgroundImage:
+                                user.persona.rutaFotoUrl != null &&
+                                    user.persona.rutaFotoUrl!.isNotEmpty
+                                ? NetworkImage(user.persona.rutaFotoUrl!)
+                                : null,
+                            onBackgroundImageError:
+                                user.persona.rutaFotoUrl != null
+                                ? (exception, stackTrace) {
+                                    debugPrint(
+                                      '⚠️ Error cargando avatar: $exception',
+                                    );
+                                  }
+                                : null,
+                            child:
+                                (user.persona.rutaFotoUrl == null ||
+                                    user.persona.rutaFotoUrl!.isEmpty)
+                                ? Text(
+                                    user.persona.nombre1.isNotEmpty
+                                        ? user.persona.nombre1[0].toUpperCase()
+                                        : '?',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          drawer: const CustomDrawer(),
-          body: body,
+                bottom: showDescansoSwitch
+                    ? const PreferredSize(
+                        preferredSize: Size.fromHeight(52),
+                        child: ConductorDescansoAppBarSwitch(),
+                      )
+                    : null,
+              ),
+              drawer: const CustomDrawer(),
+              body: body,
+            );
+          },
         );
       },
     );

@@ -58,13 +58,23 @@ class PusherConductoresService {
       // El evento puede venir con estructura anidada
       final driverData = eventData['data'] ?? eventData;
 
-      // Verificar si el conductor se desconectó
+      // Verificar si el conductor se desconectó o está en descanso
       final estado = driverData['estado']?.toString().toLowerCase();
-      if (estado == 'desconectado') {
+      final visibleEnMapa = driverData['visible_en_mapa'] != false;
+      final modoDescanso =
+          driverData['modo_descanso'] == true ||
+          driverData['en_descanso'] == true ||
+          estado == 'descanso';
+
+      if (estado == 'desconectado' ||
+          modoDescanso ||
+          visibleEnMapa == false) {
         final conductorId = _asInt(
           driverData['conductor_id'] ?? driverData['id'],
         );
-        AppLogger.d('🔴 Conductor desconectado: $conductorId');
+        AppLogger.d(
+          '🔴 Conductor oculto del mapa: $conductorId ($estado)',
+        );
         if (conductorId != null) {
           onDriverOffline?.call(conductorId);
         }

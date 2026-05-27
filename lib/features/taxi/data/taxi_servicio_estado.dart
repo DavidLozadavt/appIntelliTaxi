@@ -2,25 +2,49 @@
 class TaxiConductorEstadoActual {
   final bool disponible;
   final bool enServicio;
+  final bool enDescanso;
+  final bool turnoActivo;
+  final bool recibeServicios;
+  final bool visibleEnMapa;
   final int? servicioActivoId;
   final int? idEstado;
 
   const TaxiConductorEstadoActual({
     required this.disponible,
     required this.enServicio,
+    this.enDescanso = false,
+    this.turnoActivo = false,
+    this.recibeServicios = true,
+    this.visibleEnMapa = true,
     this.servicioActivoId,
     this.idEstado,
   });
 
   factory TaxiConductorEstadoActual.fromJson(Map<String, dynamic> json) {
+    final payload = _unwrapPayload(json);
     return TaxiConductorEstadoActual(
-      disponible: json['disponible'] == true,
-      enServicio: json['en_servicio'] == true,
+      disponible: payload['disponible'] == true,
+      enServicio: payload['en_servicio'] == true,
+      enDescanso: payload['en_descanso'] == true,
+      turnoActivo: payload['turno_activo'] == true,
+      recibeServicios: payload['recibe_servicios'] != false,
+      visibleEnMapa: payload['visible_en_mapa'] != false,
       servicioActivoId: _parseInt(
-        json['servicio_activo_id'] ?? json['servicioActivoId'],
+        payload['servicio_activo_id'] ?? payload['servicioActivoId'],
       ),
-      idEstado: _parseInt(json['id_estado'] ?? json['idEstado']),
+      idEstado: _parseInt(payload['id_estado'] ?? payload['idEstado']),
     );
+  }
+
+  static Map<String, dynamic> _unwrapPayload(Map<String, dynamic> json) {
+    final nested = json['data'];
+    if (nested is Map<String, dynamic>) {
+      return {...json, ...nested};
+    }
+    if (nested is Map) {
+      return {...json, ...Map<String, dynamic>.from(nested)};
+    }
+    return json;
   }
 
   static int? _parseInt(dynamic value) {
@@ -30,14 +54,47 @@ class TaxiConductorEstadoActual {
   }
 }
 
+/// Resultado de `GET/POST /taxi/conductor/modo-descanso`.
+class TaxiModoDescansoEstado {
+  final bool enDescanso;
+  final bool turnoActivo;
+  final String? estadoMapa;
+  final bool recibeServicios;
+  final bool visibleEnMapa;
+  final String? mensaje;
+
+  const TaxiModoDescansoEstado({
+    required this.enDescanso,
+    required this.turnoActivo,
+    this.estadoMapa,
+    this.recibeServicios = true,
+    this.visibleEnMapa = true,
+    this.mensaje,
+  });
+
+  factory TaxiModoDescansoEstado.fromJson(Map<String, dynamic> json) {
+    final payload = TaxiConductorEstadoActual._unwrapPayload(json);
+    return TaxiModoDescansoEstado(
+      enDescanso: payload['en_descanso'] == true,
+      turnoActivo: payload['turno_activo'] == true,
+      estadoMapa: payload['estado_mapa']?.toString(),
+      recibeServicios: payload['recibe_servicios'] != false,
+      visibleEnMapa: payload['visible_en_mapa'] != false,
+      mensaje: payload['mensaje']?.toString(),
+    );
+  }
+}
+
 /// Resultado de `GET /taxi/solicitudes-publicadas-conductor`.
 class TaxiSolicitudesPublicadasResult {
   final bool enServicio;
+  final bool enDescanso;
   final int? servicioActivoId;
   final List<Map<String, dynamic>> solicitudes;
 
   const TaxiSolicitudesPublicadasResult({
     required this.enServicio,
+    this.enDescanso = false,
     this.servicioActivoId,
     required this.solicitudes,
   });

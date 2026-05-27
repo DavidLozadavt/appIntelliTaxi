@@ -11,6 +11,8 @@ class Conductor {
   final Vehiculo? vehiculo;
   final double? distanciaKm;
   final String? estado;
+  final bool visibleEnMapa;
+  final bool modoDescanso;
   /// Rumbo GPS en grados (0–360), campo `direccion` del backend.
   final double? rumbo;
 
@@ -25,8 +27,18 @@ class Conductor {
     this.vehiculo,
     this.distanciaKm,
     this.estado,
+    this.visibleEnMapa = true,
+    this.modoDescanso = false,
     this.rumbo,
   });
+
+  bool get debeMostrarseEnMapa {
+    if (modoDescanso) return false;
+    if (visibleEnMapa == false) return false;
+    final e = estado?.trim().toLowerCase();
+    if (e == 'descanso' || e == 'desconectado') return false;
+    return true;
+  }
 
   factory Conductor.fromJson(Map<String, dynamic> json) {
     // Manejar diferentes formatos de respuesta del backend
@@ -66,6 +78,9 @@ class Conductor {
           ? _asDouble(json['distancia_km'])
           : null,
       estado: json['estado'] ?? 'disponible',
+      visibleEnMapa: json['visible_en_mapa'] != false,
+      modoDescanso:
+          json['modo_descanso'] == true || json['en_descanso'] == true,
       rumbo: MapMarkerBearingHelper.parseRumbo(
         json['direccion'] ?? json['bearing'] ?? json['heading'] ?? json['rumbo'],
       ),

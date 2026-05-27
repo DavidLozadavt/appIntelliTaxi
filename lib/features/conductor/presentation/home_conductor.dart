@@ -931,11 +931,8 @@ class _HomeConductorState extends State<HomeConductor>
   /// Cambia el estado del conductor (online/offline)
   Future<void> _cambiarEstadoConductor() async {
     if (!_provider.isOnline) {
-      // Activándose: abrir siempre el selector para evitar reintentos
-      // silenciosos si antes se canceló un diálogo de turno activo.
       await _mostrarSelectorVehiculo();
     } else {
-      // Desactivándose: finalizar turno
       final success = await _provider.finalizarTurno();
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1123,7 +1120,9 @@ class _HomeConductorState extends State<HomeConductor>
                 child: Material(
                   elevation: 4,
                   borderRadius: BorderRadius.circular(20),
-                  shadowColor: provider.isOnline
+                  shadowColor: provider.enDescanso
+                      ? const Color(0xFFF59E0B).withValues(alpha: 0.35)
+                      : provider.isOnline
                       ? AppColors.accent.withValues(alpha: 0.3)
                       : Colors.grey.withValues(alpha: 0.3),
                   child: InkWell(
@@ -1139,7 +1138,12 @@ class _HomeConductorState extends State<HomeConductor>
                       ),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: provider.isOnline
+                          colors: provider.enDescanso
+                              ? [
+                                  const Color(0xFFF59E0B),
+                                  const Color(0xFFD97706),
+                                ]
+                              : provider.isOnline
                               ? [AppColors.accent, AppColors.accent]
                               : [Colors.grey.shade400, Colors.grey.shade600],
                         ),
@@ -1151,14 +1155,20 @@ class _HomeConductorState extends State<HomeConductor>
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Icon(
-                            provider.isOnline
+                            provider.enDescanso
+                                ? Icons.nightlight_round
+                                : provider.isOnline
                                 ? Icons.check_circle
                                 : Icons.cancel,
                             color: Colors.white,
                             size: 18,
                           ),
                           Text(
-                            provider.isOnline ? 'En Línea' : 'Desconectado',
+                            provider.enDescanso
+                                ? 'En descanso'
+                                : provider.isOnline
+                                ? 'En Línea'
+                                : 'Desconectado',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 15,

@@ -15,6 +15,7 @@ import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
+import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
@@ -79,6 +80,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   final Set<String> _offerHandlerKeys = {};
   String? _lastAcceptError;
   String? _lastTurnoError;
+  bool _enDescanso = false;
+  bool _recibeServicios = true;
+  bool _visibleEnMapa = true;
+  bool _cambiandoDescanso = false;
+  String? _lastDescansoError;
 
   // Control de dispose
   bool _isDisposed = false;
@@ -120,11 +126,17 @@ class ConductorHomeProvider extends ChangeNotifier {
     _servicioActivoPendienteNavegacion = null;
   }
 
-  List<Map<String, dynamic>> get solicitudesActivas => _enServicio
-      ? const []
-      : _solicitudesActivas;
+  List<Map<String, dynamic>> get solicitudesActivas =>
+      (_enServicio || _enDescanso) ? const [] : _solicitudesActivas;
   String? get lastAcceptError => _lastAcceptError;
   String? get lastTurnoError => _lastTurnoError;
+  bool get enDescanso => _enDescanso;
+  bool get visibleEnMapa => _visibleEnMapa;
+  bool get recibeServicios => _recibeServicios && !_enDescanso;
+  bool get cambiandoDescanso => _cambiandoDescanso;
+  String? get lastDescansoError => _lastDescansoError;
+  bool get puedeUsarModoDescanso =>
+      _isOnline && !_enServicio && _turnoActivo != null;
   List<Map<String, dynamic>> get solicitudesOrdenadas {
     final solicitudes = List<Map<String, dynamic>>.from(_solicitudesActivas);
     solicitudes.sort(
@@ -206,6 +218,22 @@ class ConductorHomeProvider extends ChangeNotifier {
         return;
       }
 
+      if (estado != null) {
+        _aplicarFlagsDescanso(
+          enDescanso: estado.enDescanso,
+          recibeServicios: estado.recibeServicios,
+          visibleEnMapa: estado.visibleEnMapa,
+        );
+        if (estado.enDescanso && estado.turnoActivo) {
+          _isOnline = true;
+          await _desuscribirRecepcionServicios();
+          await _suscribirEmergenciasFlota();
+          _limpiarColaSolicitudesLocal();
+          if (!_isDisposed) notifyListeners();
+          return;
+        }
+      }
+
       final detalle = await _conductorService.getServicioActivoConductor();
       if (detalle != null) {
         await _activarModoEnServicio(
@@ -268,12 +296,107 @@ class ConductorHomeProvider extends ChangeNotifier {
     _servicioActivoPendienteNavegacion = null;
     _limpiarColaSolicitudesLocal();
 
-    if (_isOnline && !_suscritoAPusher) {
+    await _sincronizarModoDescansoDesdeBackend();
+
+    if (_isOnline && !_enDescanso && !_suscritoAPusher) {
       await conectarPusher();
     }
 
     if (!_isDisposed) notifyListeners();
   }
+
+  void _aplicarFlagsDescanso({
+    required bool enDescanso,
+    required bool recibeServicios,
+    required bool visibleEnMapa,
+  }) {
+    _enDescanso = enDescanso;
+    _recibeServicios = recibeServicios;
+    _visibleEnMapa = visibleEnMapa;
+  }
+
+  void _aplicarResultadoDescanso(TaxiModoDescansoEstado result) {
+    _aplicarFlagsDescanso(
+      enDescanso: result.enDescanso,
+      recibeServicios: result.recibeServicios,
+      visibleEnMapa: result.visibleEnMapa,
+    );
+  }
+
+  Future<void> _sincronizarModoDescansoDesdeBackend() async {
+    try {
+      final estado =
+          await _conductorService.getModoDescanso() ??
+          await _conductorService.getEstadoActualConductor().then(
+            (e) => e == null
+                ? null
+                : TaxiModoDescansoEstado(
+                    enDescanso: e.enDescanso,
+                    turnoActivo: e.turnoActivo,
+                    recibeServicios: e.recibeServicios,
+                    visibleEnMapa: e.visibleEnMapa,
+                  ),
+          );
+      if (estado == null) return;
+      _aplicarResultadoDescanso(estado);
+    } catch (e) {
+      AppLogger.d('⚠️ Sync modo descanso: $e');
+    }
+  }
+
+  /// Activa o desactiva modo descanso (turno activo, sin viaje).
+  Future<bool> setModoDescanso(bool descanso) async {
+    if (_cambiandoDescanso) return false;
+    if (descanso && !puedeUsarModoDescanso) return false;
+    if (!descanso && !_enDescanso) return true;
+
+    _cambiandoDescanso = true;
+    _lastDescansoError = null;
+    if (!_isDisposed) notifyListeners();
+
+    try {
+      var position = _currentPosition;
+      if (position == null) {
+        position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 8),
+          ),
+        );
+        _currentPosition = position;
+      }
+
+      final result = await _conductorService.setModoDescanso(
+        descanso: descanso,
+        lat: position.latitude,
+        lng: position.longitude,
+      );
+      _aplicarResultadoDescanso(result);
+
+      if (descanso) {
+        _limpiarColaSolicitudesLocal();
+        await _desuscribirRecepcionServicios();
+        await _suscribirEmergenciasFlota();
+        await _sendMapHeartbeat(position, force: true);
+      } else {
+        await conectarPusher();
+        await _sendMapHeartbeat(position, force: true);
+      }
+
+      if (!_isDisposed) notifyListeners();
+      return true;
+    } catch (e) {
+      _lastDescansoError = e.toString().replaceAll('Exception: ', '').trim();
+      AppLogger.d('❌ Error cambiando modo descanso: $e');
+      if (!_isDisposed) notifyListeners();
+      return false;
+    } finally {
+      _cambiandoDescanso = false;
+      if (!_isDisposed) notifyListeners();
+    }
+  }
+
+  Future<bool> toggleModoDescanso() => setModoDescanso(!_enDescanso);
 
   void _limpiarColaSolicitudesLocal() {
     for (final timer in _timersExpiracion.values) {
@@ -309,6 +432,12 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> conectarPusher() async {
     if (_enServicio) {
       AppLogger.d('ℹ️ En servicio: no suscribir solicitudes-servicio');
+      await _suscribirEmergenciasFlota();
+      return;
+    }
+
+    if (_enDescanso) {
+      AppLogger.d('ℹ️ En descanso: no suscribir solicitudes-servicio');
       await _suscribirEmergenciasFlota();
       return;
     }
@@ -398,10 +527,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   void _iniciarSincronizacionSolicitudes() {
-    if (_enServicio) return;
+    if (_enServicio || _enDescanso) return;
     _syncSolicitudesTimer?.cancel();
     _syncSolicitudesTimer = Timer.periodic(const Duration(seconds: 50), (_) {
-      if (!_isDisposed && _suscritoAPusher && _isOnline) {
+      if (!_isDisposed && _suscritoAPusher && _isOnline && !_enDescanso) {
         sincronizarSolicitudesPublicadasConductor();
       }
     });
@@ -414,7 +543,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Alinea la cola local con el backend (otro conductor aceptó, realtime perdido, etc.).
   Future<void> sincronizarSolicitudesPublicadasConductor() async {
-    if (_isDisposed || !_isOnline || _enServicio) return;
+    if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
     try {
       final result = await _conductorService
           .listarSolicitudesPublicadasConductor();
@@ -423,6 +552,18 @@ class ConductorHomeProvider extends ChangeNotifier {
         await _activarModoEnServicio(
           servicioActivoId: result.servicioActivoId,
         );
+        return;
+      }
+
+      if (result.enDescanso) {
+        _aplicarFlagsDescanso(
+          enDescanso: true,
+          recibeServicios: false,
+          visibleEnMapa: false,
+        );
+        _limpiarColaSolicitudesLocal();
+        await _desuscribirRecepcionServicios();
+        if (!_isDisposed) notifyListeners();
         return;
       }
 
@@ -454,44 +595,15 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Desconecta de Pusher
   Future<void> desconectarPusher() async {
     try {
-      _detenerSincronizacionSolicitudes();
-      AppLogger.d('🔌 Desconectándose de Pusher...');
-      for (final eventName in const [
-        TaxiPusherEvents.nuevaSolicitud,
-        'nueva_solicitud',
-        'nueva-oferta',
-        'nueva_oferta',
-        TaxiPusherEvents.solicitudTomada,
-        'solicitud_tomada',
-      ]) {
-        PusherService.unregisterEventHandlerSecondary(
-          '${TaxiPusherChannels.solicitudesServicio}:$eventName',
-        );
-      }
-      await PusherService.unsubscribeSecondary(
-        TaxiPusherChannels.solicitudesServicio,
-      );
-
-      for (final key in _offerHandlerKeys) {
-        PusherService.unregisterEventHandlerSecondary(key);
-      }
-      _offerHandlerKeys.clear();
-
-      for (final channel in _offerChannels) {
-        await PusherService.unsubscribeSecondary(channel);
-      }
-      _offerChannels.clear();
-
+      await _desuscribirRecepcionServicios();
       await _desuscribirEmergenciasFlota();
-
-      _suscritoAPusher = false;
       AppLogger.d('✅ Desconectado de Pusher');
     } catch (e) {
       AppLogger.d('❌ Error al desconectar Pusher: $e');
     }
   }
 
-  Future<void> _desuscribirCanalSolicitudesServicio() async {
+  Future<void> _desuscribirRecepcionServicios() async {
     _detenerSincronizacionSolicitudes();
     for (final eventName in const [
       TaxiPusherEvents.nuevaSolicitud,
@@ -510,7 +622,22 @@ class ConductorHomeProvider extends ChangeNotifier {
         TaxiPusherChannels.solicitudesServicio,
       );
     } catch (_) {}
+
+    for (final key in _offerHandlerKeys) {
+      PusherService.unregisterEventHandlerSecondary(key);
+    }
+    _offerHandlerKeys.clear();
+
+    for (final channel in _offerChannels) {
+      await PusherService.unsubscribeSecondary(channel);
+    }
+    _offerChannels.clear();
+
     _suscritoAPusher = false;
+  }
+
+  Future<void> _desuscribirCanalSolicitudesServicio() async {
+    await _desuscribirRecepcionServicios();
   }
 
   void _procesarSolicitudTomada(dynamic data) {
@@ -577,6 +704,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   }) {
     if (_enServicio) {
       AppLogger.d('ℹ️ Ignorando nueva solicitud: conductor en servicio');
+      return;
+    }
+    if (_enDescanso) {
+      AppLogger.d('ℹ️ Ignorando nueva solicitud: conductor en descanso');
       return;
     }
 
@@ -954,7 +1085,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         direccion: position.heading.isFinite && position.heading >= 0
             ? position.heading
             : 0,
-        estado: 'disponible',
+        estado: _enDescanso ? 'descanso' : 'disponible',
       );
       _lastMapHeartbeatAt = DateTime.now();
     } catch (e) {
@@ -1050,15 +1181,21 @@ class ConductorHomeProvider extends ChangeNotifier {
         _isOnline = true;
         _sincronizarVehiculoSeleccionadoConTurno();
 
-        // Conectar a Pusher automáticamente si hay turno activo
-        await conectarPusher();
-
         // Guardar datos del turno en SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt('turno_activo_id', turno.id);
         await prefs.setInt('turno_vehiculo_id', turno.idVehiculo);
         await prefs.setString('turno_fecha', turno.fechaTurno);
         await prefs.setString('turno_hora_inicio', turno.horaInicio);
+
+        await _sincronizarModoDescansoDesdeBackend();
+        if (_enDescanso) {
+          await _desuscribirRecepcionServicios();
+          await _suscribirEmergenciasFlota();
+          _limpiarColaSolicitudesLocal();
+        } else {
+          await conectarPusher();
+        }
 
         if (!_isDisposed) notifyListeners();
       }
@@ -1117,6 +1254,9 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       _turnoActivo = turno;
       _isOnline = true;
+      _enDescanso = false;
+      _recibeServicios = true;
+      _visibleEnMapa = true;
       _sincronizarVehiculoSeleccionadoConTurno();
       unawaited(_sendMapHeartbeat(position, force: true));
 
@@ -1319,6 +1459,9 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     _turnoActivo = null;
     _isOnline = false;
+    _enDescanso = false;
+    _recibeServicios = true;
+    _visibleEnMapa = true;
     if (clearSelectedVehicle) {
       _vehiculoSeleccionado = null;
     }

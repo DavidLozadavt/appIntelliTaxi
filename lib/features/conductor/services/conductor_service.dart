@@ -31,6 +31,56 @@ class ConductorService {
     }
   }
 
+  /// Consulta modo descanso (`GET /taxi/conductor/modo-descanso`).
+  Future<TaxiModoDescansoEstado?> getModoDescanso() async {
+    try {
+      final response = await _dio.get('taxi/conductor/modo-descanso');
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        return TaxiModoDescansoEstado.fromJson(
+          Map<String, dynamic>.from(data),
+        );
+      }
+      return null;
+    } catch (e) {
+      AppLogger.d('⚠️ Error consultando modo descanso: $e');
+      return null;
+    }
+  }
+
+  /// Activa o desactiva modo descanso (`POST /taxi/conductor/modo-descanso`).
+  Future<TaxiModoDescansoEstado> setModoDescanso({
+    required bool descanso,
+    required double lat,
+    required double lng,
+  }) async {
+    try {
+      final response = await _dio.post(
+        'taxi/conductor/modo-descanso',
+        data: {
+          'descanso': descanso,
+          'lat': lat,
+          'lng': lng,
+        },
+      );
+
+      final data = response.data;
+      if (data is Map && data['success'] == true) {
+        return TaxiModoDescansoEstado.fromJson(
+          Map<String, dynamic>.from(data),
+        );
+      }
+
+      throw Exception(
+        data is Map
+            ? data['message']?.toString() ?? 'No se pudo cambiar el modo descanso'
+            : 'No se pudo cambiar el modo descanso',
+      );
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e, 'No se pudo cambiar el modo descanso'));
+    }
+  }
+
   /// Detalle del viaje activo (`GET /taxi/servicio-activo-conductor`). 404 → null.
   Future<Map<String, dynamic>?> getServicioActivoConductor() async {
     try {
@@ -583,6 +633,7 @@ class ConductorService {
       }
 
       final enServicio = data['en_servicio'] == true;
+      final enDescanso = data['en_descanso'] == true;
       final servicioActivoId = int.tryParse(
         (data['servicio_activo_id'] ?? '').toString(),
       );
@@ -590,6 +641,16 @@ class ConductorService {
       if (enServicio) {
         return TaxiSolicitudesPublicadasResult(
           enServicio: true,
+          enDescanso: enDescanso,
+          servicioActivoId: servicioActivoId,
+          solicitudes: const [],
+        );
+      }
+
+      if (enDescanso) {
+        return TaxiSolicitudesPublicadasResult(
+          enServicio: false,
+          enDescanso: true,
           servicioActivoId: servicioActivoId,
           solicitudes: const [],
         );
