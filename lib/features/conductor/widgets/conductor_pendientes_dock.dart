@@ -14,8 +14,8 @@ class ConductorPendientesDock extends StatelessWidget {
     final bottom = MediaQuery.paddingOf(context).bottom;
     final compact = MediaQuery.sizeOf(context).height < 680;
     final base = radioSliderVisible
-        ? (compact ? 70.0 : 76.0)
-        : (compact ? 40.0 : 44.0);
+        ? (compact ? 78.0 : 84.0)
+        : (compact ? 48.0 : 52.0);
     return base + bottom;
   }
 

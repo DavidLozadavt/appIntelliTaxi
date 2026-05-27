@@ -33,8 +33,7 @@ class ReverseGeocodingService {
     return _extractAreaFromResults(neighborhoodResults);
   }
 
-  /// Chip «Tu zona» del conductor: barrio real o referencia legible al moverse.
-  /// No usar la lógica estricta del pasajero (evita quedar sin etiqueta).
+  /// Chip «Tu zona» del conductor: ubicación real donde está el vehículo.
   Future<String?> resolveZonaConductor({
     required double lat,
     required double lng,
@@ -264,7 +263,7 @@ class ReverseGeocodingService {
     return null;
   }
 
-  /// Fallback histórico del chip de zona (calle/barrio visible en mapa).
+  /// Fallback: calle, barrio o referencia visible en el mapa.
   String? _extractZonaConductorFallback(List<Map<String, dynamic>> results) {
     for (final result in results) {
       final resultTypes = (result['types'] as List<dynamic>? ?? [])

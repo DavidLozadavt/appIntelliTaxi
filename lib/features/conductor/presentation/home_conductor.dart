@@ -1303,7 +1303,7 @@ class _HomeConductorState extends State<HomeConductor>
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        zona,
+                        'Zona: $zona',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

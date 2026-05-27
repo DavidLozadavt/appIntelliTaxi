@@ -224,8 +224,8 @@ class ConductorMapServiciosTabs {
             Expanded(
               child: Text(
                 home.radioAccion.activo && !home.radioAccion.sinLimite
-                    ? 'Sin publicados a ${home.radioAccion.radioEfectivoKm.round()} km'
-                    : 'Sin publicados',
+                    ? 'Sin servicios a ${home.radioAccion.radioEfectivoKm.round()} km (Popayán)'
+                    : 'Sin publicados en Popayán',
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

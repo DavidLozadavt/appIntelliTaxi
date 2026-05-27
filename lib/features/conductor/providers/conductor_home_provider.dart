@@ -21,6 +21,7 @@ import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.
 import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
 import 'package:intellitaxi/features/taxi/utils/taxi_radio_accion_filter.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
@@ -763,9 +764,31 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
+  static double get _radioAccionMaxUrbanoKm => PopayanUrbanArea.maxRadiusKm;
+
+  TaxiRadioAccion _aplicarLimiteUrbanoPopayan(TaxiRadioAccion config) {
+    final maxUrbano = _radioAccionMaxUrbanoKm;
+    final maxKm = config.maxKm > maxUrbano ? maxUrbano : config.maxKm;
+    final radioKm = config.radioKm;
+    final efectivo = config.radioEfectivoKm > maxUrbano
+        ? maxUrbano
+        : config.radioEfectivoKm;
+    return TaxiRadioAccion(
+      activo: config.activo,
+      radioKm: radioKm != null && radioKm > maxUrbano ? maxUrbano : radioKm,
+      radioEfectivoKm: efectivo,
+      sinLimite: config.sinLimite,
+      minKm: config.minKm,
+      maxKm: maxKm,
+      defaultKm: config.defaultKm > maxUrbano ? maxUrbano : config.defaultKm,
+    );
+  }
+
   Future<void> cargarRadioAccion() async {
     try {
-      _radioAccion = await _conductorService.getRadioAccion();
+      _radioAccion = _aplicarLimiteUrbanoPopayan(
+        await _conductorService.getRadioAccion(),
+      );
       _lastRadioAccionError = null;
     } catch (e) {
       _lastRadioAccionError = e.toString().replaceAll('Exception: ', '');
@@ -775,7 +798,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   void aplicarRadioAccion(TaxiRadioAccion config) {
-    _radioAccion = config;
+    _radioAccion = _aplicarLimiteUrbanoPopayan(config);
     if (!_isDisposed) notifyListeners();
   }
 
@@ -788,10 +811,18 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
 
     try {
+      double? kmGuardar = radioKm;
+      if (activo && kmGuardar != null) {
+        kmGuardar = kmGuardar.clamp(
+          _radioAccion.minKm,
+          _radioAccionMaxUrbanoKm,
+        );
+      }
       _radioAccion = await _conductorService.setRadioAccion(
         activo: activo,
-        radioKm: radioKm,
+        radioKm: kmGuardar,
       );
+      _radioAccion = _aplicarLimiteUrbanoPopayan(_radioAccion);
       return null;
     } catch (e) {
       _lastRadioAccionError = e.toString().replaceAll('Exception: ', '');
@@ -808,6 +839,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _currentPosition?.latitude,
       _currentPosition?.longitude,
       _radioAccion,
+      limitarAUrbanoPopayan: true,
     );
   }
 

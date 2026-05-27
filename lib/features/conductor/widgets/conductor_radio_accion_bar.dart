@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
+import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
@@ -24,7 +25,11 @@ class _ConductorRadioAccionBarState extends State<ConductorRadioAccionBar> {
     super.initState();
     final config = context.read<ConductorHomeProvider>().radioAccion;
     _activo = config.activo && !config.sinLimite;
-    _km = config.radioKm ?? config.radioEfectivoKm;
+    final maxUrbano = PopayanUrbanArea.maxRadiusKm;
+    _km = (config.radioKm ?? config.radioEfectivoKm).clamp(
+      config.minKm,
+      config.maxKm.clamp(config.minKm, maxUrbano),
+    );
   }
 
   @override
@@ -56,7 +61,10 @@ class _ConductorRadioAccionBarState extends State<ConductorRadioAccionBar> {
       builder: (context, provider, _) {
         final config = provider.radioAccion;
         final min = config.minKm;
-        final max = config.maxKm;
+        final max = config.maxKm.clamp(
+          config.minKm,
+          PopayanUrbanArea.maxRadiusKm,
+        );
 
         return Material(
           color: Theme.of(context).brightness == Brightness.dark
@@ -81,16 +89,32 @@ class _ConductorRadioAccionBarState extends State<ConductorRadioAccionBar> {
                     ),
                     const SizedBox(width: 5),
                     Expanded(
-                      child: Text(
-                        _activo
-                            ? 'Radio ${_km.round()} km'
-                            : 'Sin límite',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _activo
+                                ? 'Recibir servicios: ${_km.round()} km'
+                                : 'Todos en Popayán (sin límite km)',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            'Urbano Popayán · máx. ${PopayanUrbanArea.maxRadiusKm.round()} km',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
                     if (provider.guardandoRadioAccion)
