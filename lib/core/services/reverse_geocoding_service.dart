@@ -33,16 +33,27 @@ class ReverseGeocodingService {
     return _extractAreaFromResults(neighborhoodResults);
   }
 
-  /// Chip «Tu zona» del conductor: ubicación real donde está el vehículo.
+  /// Chip «Tu zona» del conductor: el nombre más útil entre varias etiquetas del mapa.
+  ///
+  /// Google suele devolver a la vez «Ruta Nacional 25» y «Timbío-Popayán»; priorizamos
+  /// el tramo local / corredor sobre la numeración genérica de ruta nacional.
   Future<String?> resolveZonaConductor({
     required double lat,
     required double lng,
   }) async {
-    final results = await _fetchGeocodeResults(lat: lat, lng: lng);
-    if (results == null) return null;
+    final candidates = <String>{};
 
-    var zona = _extractAreaFromResults(results);
-    if (zona != null) return zona;
+    final results = await _fetchGeocodeResults(
+      lat: lat,
+      lng: lng,
+      logLabel: 'zona',
+    );
+    if (results != null) {
+      if (kDebugMode) {
+        _logGeocodeRawResponse(lat: lat, lng: lng, results: results);
+      }
+      _collectZonaConductorCandidates(results, candidates);
+    }
 
     final neighborhoodResults = await _fetchGeocodeResults(
       lat: lat,
@@ -52,11 +63,171 @@ class ReverseGeocodingService {
       logLabel: 'neighborhood',
     );
     if (neighborhoodResults != null) {
-      zona = _extractAreaFromResults(neighborhoodResults);
-      if (zona != null) return zona;
+      _collectZonaConductorCandidates(neighborhoodResults, candidates);
     }
 
-    return _extractZonaConductorFallback(results);
+    if (candidates.isEmpty) {
+      if (kDebugMode) {
+        AppLogger.w(
+          'Zona conductor: sin candidatos lat=$lat lng=$lng',
+          tag: 'ZonaConductor',
+        );
+      }
+      return null;
+    }
+
+    final picked = _pickBestZonaConductorLabel(candidates);
+    if (kDebugMode) {
+      _logZonaConductorPick(
+        lat: lat,
+        lng: lng,
+        candidates: candidates,
+        picked: picked,
+      );
+    }
+    return picked;
+  }
+
+  void _collectZonaConductorCandidates(
+    List<Map<String, dynamic>> results,
+    Set<String> out,
+  ) {
+    const barrioTypes = [
+      'neighborhood',
+      'sublocality',
+      'sublocality_level_1',
+      'sublocality_level_2',
+      'sublocality_level_3',
+      'administrative_area_level_3',
+    ];
+
+    void addCandidate(String? value) {
+      if (!_isValidZonaCandidate(value)) return;
+      out.add(value!.trim());
+    }
+
+    for (final result in results) {
+      final resultTypes = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+
+      if (resultTypes.contains('plus_code') &&
+          resultTypes.length == 1 &&
+          !resultTypes.any(barrioTypes.contains)) {
+        continue;
+      }
+
+      final components = result['address_components'] as List<dynamic>? ?? [];
+      for (final item in components) {
+        final component = item is Map<String, dynamic>
+            ? item
+            : Map<String, dynamic>.from(item as Map);
+        final types = (component['types'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toList();
+
+        if (types.contains('country') ||
+            types.contains('administrative_area_level_1') ||
+            types.contains('administrative_area_level_2') ||
+            types.contains('continent')) {
+          continue;
+        }
+
+        if (barrioTypes.any(types.contains)) {
+          addCandidate(component['long_name']?.toString());
+          addCandidate(component['short_name']?.toString());
+        }
+
+        if (types.contains('route')) {
+          addCandidate(component['long_name']?.toString());
+          addCandidate(component['short_name']?.toString());
+        }
+
+        if (types.contains('locality') || types.contains('postal_town')) {
+          addCandidate(component['long_name']?.toString());
+          addCandidate(component['short_name']?.toString());
+        }
+      }
+
+      final formatted = result['formatted_address']?.toString();
+      if (formatted != null && formatted.isNotEmpty) {
+        for (final part in formatted.split(',')) {
+          addCandidate(part.trim());
+        }
+      }
+
+      final resultPlusCode = result['plus_code'] is Map
+          ? Map<String, dynamic>.from(result['plus_code'] as Map)
+          : null;
+      addCandidate(
+        _extractHumanAreaFromCompoundCode(
+          resultPlusCode?['compound_code']?.toString(),
+        ),
+      );
+    }
+  }
+
+  String? _pickBestZonaConductorLabel(Set<String> candidates) {
+    String? best;
+    var bestScore = -0x7fffffff;
+
+    for (final label in candidates) {
+      final score = _scoreZonaConductorLabel(label);
+      if (score > bestScore) {
+        bestScore = score;
+        best = label;
+      }
+    }
+    return best;
+  }
+
+  int _scoreZonaConductorLabel(String label) {
+    final v = label.trim().toLowerCase();
+    var score = 0;
+
+    if (_isGenericNationalRouteName(v)) {
+      score -= 80;
+    }
+    if (_isTooBroadGeographicName(v)) {
+      score -= 120;
+    }
+
+    final hasPopayan = v.contains('popayán') || v.contains('popayan');
+    final hasTimbio = v.contains('timbío') || v.contains('timbio');
+    if (hasPopayan) score += 35;
+    if (hasTimbio) score += 35;
+    if (hasPopayan && hasTimbio) score += 55;
+    if (v.contains('-') && (hasPopayan || hasTimbio)) score += 30;
+    if (v.contains('–') && (hasPopayan || hasTimbio)) score += 30;
+
+    const localRefs = [
+      'el bordo',
+      'cajete',
+      'morro',
+      'vinagrón',
+      'vinagron',
+      'coconuco',
+      'silvia',
+      'puracé',
+      'purace',
+    ];
+    for (final ref in localRefs) {
+      if (v.contains(ref)) score += 18;
+    }
+
+    if (!_isGenericNationalRouteName(v) && !_looksLikeStreetName(label)) {
+      score += 14;
+    }
+
+    if (label.length >= 6 && label.length <= 48) score += 6;
+
+    return score;
+  }
+
+  bool _isGenericNationalRouteName(String v) {
+    return RegExp(r'^ruta\s+nacional\s*\d').hasMatch(v) ||
+        RegExp(r'^rn\s*\d').hasMatch(v) ||
+        v.startsWith('ruta nacional ');
   }
 
   /// Dirección formateada para un punto (ej. destino final al cerrar viaje).
@@ -263,69 +434,6 @@ class ReverseGeocodingService {
     return null;
   }
 
-  /// Fallback: calle, barrio o referencia visible en el mapa.
-  String? _extractZonaConductorFallback(List<Map<String, dynamic>> results) {
-    for (final result in results) {
-      final resultTypes = (result['types'] as List<dynamic>? ?? [])
-          .map((e) => e.toString())
-          .toList();
-
-      if (resultTypes.contains('plus_code') ||
-          resultTypes.contains('postal_code') ||
-          resultTypes.contains('administrative_area_level_2')) {
-        continue;
-      }
-
-      final components = result['address_components'] as List<dynamic>? ?? [];
-      final neighborhood = _firstComponentValue(
-        components,
-        acceptedTypes: const [
-          'neighborhood',
-          'sublocality',
-          'sublocality_level_1',
-          'sublocality_level_2',
-          'sublocality_level_3',
-        ],
-      );
-      if (_isValidZonaCandidate(neighborhood)) return neighborhood;
-
-      final route = _firstComponentValue(
-        components,
-        acceptedTypes: const [
-          'route',
-          'point_of_interest',
-          'establishment',
-          'street_address',
-          'premise',
-        ],
-      );
-      if (_isValidZonaCandidate(route)) return route;
-
-      final resultPlusCode = result['plus_code'] is Map
-          ? Map<String, dynamic>.from(result['plus_code'] as Map)
-          : null;
-      final fromCompound = _extractHumanAreaFromCompoundCode(
-        resultPlusCode?['compound_code']?.toString(),
-      );
-      if (_isValidZonaCandidate(fromCompound)) return fromCompound;
-    }
-
-    final first = results.first;
-    final shortAddress = first['formatted_address']?.toString();
-    if (shortAddress != null && shortAddress.isNotEmpty) {
-      final parts = shortAddress
-          .split(',')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-      for (final part in parts) {
-        if (_isValidZonaCandidate(part)) return part;
-      }
-    }
-
-    return null;
-  }
-
   String? _extractHumanAreaFromCompoundCode(String? compoundCode) {
     if (compoundCode == null || compoundCode.trim().isEmpty) return null;
     final cleaned = compoundCode.trim();
@@ -462,9 +570,28 @@ class ReverseGeocodingService {
     if (v.length < 2) return false;
     if (_isPlusCodeLike(v)) return false;
     if (_isCityLike(v)) return false;
+    if (_isTooBroadGeographicName(v)) return false;
     if (_looksLikeSubpremise(v)) return false;
     if (RegExp(r'^\d+$').hasMatch(v)) return false;
     return true;
+  }
+
+  /// País, departamento u otras etiquetas demasiado amplias para el chip.
+  bool _isTooBroadGeographicName(String value) {
+    final v = value.trim().toLowerCase();
+    const blocked = {
+      'colombia',
+      'cauca',
+      'departamento del cauca',
+      'suramérica',
+      'sur america',
+      'south america',
+      'américa del sur',
+      'america del sur',
+    };
+    if (blocked.contains(v)) return true;
+    if (v == 'co' || v.length <= 2) return true;
+    return false;
   }
 
   bool _looksLikeSubpremise(String value) {
@@ -534,6 +661,31 @@ class ReverseGeocodingService {
     return RegExp(
       r'^(calle|carrera|cr\.?|cl\.?|av\.?|avenida|diag\.?|diagonal|trans\.?|transversal|km\.?)\b',
     ).hasMatch(v);
+  }
+
+  void _logZonaConductorPick({
+    required double lat,
+    required double lng,
+    required Set<String> candidates,
+    required String? picked,
+  }) {
+    final ranked = candidates
+        .map((c) => MapEntry(c, _scoreZonaConductorLabel(c)))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final buffer = StringBuffer()
+      ..writeln('══════════════════════════════════════════')
+      ..writeln('📍 ZONA CONDUCTOR lat=$lat lng=$lng')
+      ..writeln('   elegido: ${picked ?? "—"}')
+      ..writeln('   candidatos (${ranked.length}):');
+
+    for (final entry in ranked) {
+      final mark = entry.key == picked ? ' ← ELEGIDO' : '';
+      buffer.writeln('   · [${entry.value}] ${entry.key}$mark');
+    }
+    buffer.writeln('══════════════════════════════════════════');
+    AppLogger.d(buffer.toString(), tag: 'ZonaConductor');
   }
 
   void _logGeocodeRawResponse({
