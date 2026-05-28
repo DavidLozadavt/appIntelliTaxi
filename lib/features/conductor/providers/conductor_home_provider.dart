@@ -1593,7 +1593,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         position.longitude,
       );
       final elapsed = DateTime.now().difference(lastAt);
-      if (movedMeters < 280 && elapsed < const Duration(seconds: 90)) {
+      if (movedMeters < 45 && elapsed < const Duration(seconds: 50)) {
         return;
       }
     }

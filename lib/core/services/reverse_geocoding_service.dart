@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -60,9 +61,35 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
-    final zonaKey = 'zona|${GeocodeMemoryCache.gridKey(lat, lng)}';
+    // Cuadrícula fina (~11 m): evita reutilizar «Cra. 20c» al estar en la 20b.
+    final zonaKey = 'zona|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
     final cachedZona = _cache.get<String>(zonaKey);
     if (cachedZona != null) return cachedZona;
+
+    final streetResults = await _fetchGeocodeResults(
+      lat: lat,
+      lng: lng,
+      resultType: 'street_address|premise|subpremise|route',
+      logLabel: 'zona_street',
+    );
+    if (streetResults != null && streetResults.isNotEmpty) {
+      final streetLine = _extractStreetFromNearestGeocodeResult(
+        streetResults,
+        lat: lat,
+        lng: lng,
+      );
+      if (streetLine != null && streetLine.trim().isNotEmpty) {
+        final compact = compactStreetLabelForZona(streetLine);
+        if (kDebugMode) {
+          AppLogger.d(
+            'Zona conductor (calle GPS): $compact ← $streetLine lat=$lat lng=$lng',
+            tag: 'ZonaConductor',
+          );
+        }
+        _cache.put(zonaKey, compact, _zonaLabelCacheTtl);
+        return compact;
+      }
+    }
 
     final candidates = <String>{};
 
@@ -75,7 +102,7 @@ class ReverseGeocodingService {
       if (kDebugMode) {
         _logGeocodeRawResponse(lat: lat, lng: lng, results: results);
       }
-      _collectZonaConductorCandidates(results, candidates);
+      _collectZonaConductorBarrioCandidates(results, candidates);
     }
 
     final neighborhoodResults = await _fetchGeocodeResults(
@@ -86,7 +113,7 @@ class ReverseGeocodingService {
       logLabel: 'neighborhood',
     );
     if (neighborhoodResults != null) {
-      _collectZonaConductorCandidates(neighborhoodResults, candidates);
+      _collectZonaConductorBarrioCandidates(neighborhoodResults, candidates);
     }
 
     if (candidates.isEmpty) {
@@ -112,10 +139,129 @@ class ReverseGeocodingService {
     return picked;
   }
 
-  void _collectZonaConductorCandidates(
+  /// Etiqueta corta para chip «Zona:» (ej. Carrera 20b → Cra. 20b).
+  static String compactStreetLabelForZona(String streetLine) {
+    var s = streetLine.trim();
+    if (s.isEmpty) return s;
+
+    final rules = <(RegExp, String)>[
+      (RegExp(r'^carrera\s+', caseSensitive: false), 'Cra. '),
+      (RegExp(r'^calle\s+', caseSensitive: false), 'Cl. '),
+      (RegExp(r'^avenida\s+', caseSensitive: false), 'Av. '),
+      (RegExp(r'^diagonal\s+', caseSensitive: false), 'Diag. '),
+      (RegExp(r'^transversal\s+', caseSensitive: false), 'Trans. '),
+      (RegExp(r'^kr\.?\s+', caseSensitive: false), 'Cra. '),
+      (RegExp(r'^cl\.?\s+', caseSensitive: false), 'Cl. '),
+    ];
+    for (final rule in rules) {
+      if (rule.$1.hasMatch(s)) {
+        s = s.replaceFirst(rule.$1, rule.$2);
+        break;
+      }
+    }
+    return s;
+  }
+
+  /// Calle del resultado de geocode más cercano al GPS (no la vía vecina del texto).
+  String? _extractStreetFromNearestGeocodeResult(
+    List<Map<String, dynamic>> results, {
+    required double lat,
+    required double lng,
+  }) {
+    final ranked = <MapEntry<double, Map<String, dynamic>>>[];
+
+    for (final result in results) {
+      final types = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+      if (types.length == 1 && types.contains('plus_code')) continue;
+
+      final components = result['address_components'] as List<dynamic>? ?? [];
+      final route = _firstComponentValue(
+        components,
+        acceptedTypes: const ['route'],
+      );
+      if (route == null || route.trim().isEmpty) continue;
+
+      final score = _geocodeResultProximityScore(result, lat: lat, lng: lng);
+      if (!score.isFinite) continue;
+      ranked.add(MapEntry(score, result));
+    }
+
+    if (ranked.isEmpty) return null;
+    ranked.sort((a, b) => a.key.compareTo(b.key));
+
+    for (final entry in ranked) {
+      final components =
+          entry.value['address_components'] as List<dynamic>? ?? [];
+      final route = _firstComponentValue(
+        components,
+        acceptedTypes: const ['route'],
+      );
+      final number = _firstComponentValue(
+        components,
+        acceptedTypes: const ['street_number'],
+      );
+      final line = _formatStreetLine(route, number);
+      if (line != null && line.trim().isNotEmpty) return line;
+    }
+    return null;
+  }
+
+  double _geocodeResultProximityScore(
+    Map<String, dynamic> result, {
+    required double lat,
+    required double lng,
+  }) {
+    final geo = result['geometry'];
+    if (geo is! Map) return double.infinity;
+    final loc = geo['location'];
+    if (loc is! Map) return double.infinity;
+    final rLat = (loc['lat'] as num?)?.toDouble();
+    final rLng = (loc['lng'] as num?)?.toDouble();
+    if (rLat == null || rLng == null) return double.infinity;
+
+    var meters = Geolocator.distanceBetween(lat, lng, rLat, rLng);
+    final locationType = geo['location_type']?.toString().toUpperCase() ?? '';
+    switch (locationType) {
+      case 'ROOFTOP':
+        meters *= 0.55;
+      case 'RANGE_INTERPOLATED':
+        meters *= 0.72;
+      case 'GEOMETRIC_CENTER':
+        meters *= 1.35;
+      case 'APPROXIMATE':
+        meters *= 1.6;
+    }
+
+    final types = (result['types'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList();
+    if (types.contains('street_address')) meters *= 0.65;
+    if (types.contains('premise') || types.contains('subpremise')) {
+      meters *= 0.85;
+    }
+    return meters;
+  }
+
+  void _collectZonaConductorBarrioCandidates(
     List<Map<String, dynamic>> results,
     Set<String> out,
   ) {
+    _collectZonaConductorCandidates(
+      results,
+      out,
+      includeRoutes: false,
+      includeFormattedParts: false,
+    );
+  }
+
+  void _collectZonaConductorCandidates(
+    List<Map<String, dynamic>> results,
+    Set<String> out, {
+    bool includeRoutes = true,
+    bool includeFormattedParts = true,
+  }) {
     const barrioTypes = [
       'neighborhood',
       'sublocality',
@@ -162,7 +308,7 @@ class ReverseGeocodingService {
           addCandidate(component['short_name']?.toString());
         }
 
-        if (types.contains('route')) {
+        if (includeRoutes && types.contains('route')) {
           addCandidate(component['long_name']?.toString());
           addCandidate(component['short_name']?.toString());
         }
@@ -173,10 +319,12 @@ class ReverseGeocodingService {
         }
       }
 
-      final formatted = result['formatted_address']?.toString();
-      if (formatted != null && formatted.isNotEmpty) {
-        for (final part in formatted.split(',')) {
-          addCandidate(part.trim());
+      if (includeFormattedParts) {
+        final formatted = result['formatted_address']?.toString();
+        if (formatted != null && formatted.isNotEmpty) {
+          for (final part in formatted.split(',')) {
+            addCandidate(part.trim());
+          }
         }
       }
 
