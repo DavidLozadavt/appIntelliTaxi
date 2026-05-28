@@ -3,3 +3,6 @@ const int kOportunidadConductorSegundos = 120;
 
 /// Tras Pusher/FCM, no quitar del mapa por sync API hasta este margen (evita sonido sin tarjeta).
 const int kConservarRealtimeTrasSyncSegundos = 180;
+
+/// Evita doble sonido si la misma solicitud llega por Pusher + FCM + sync a la vez.
+const int kSonidoSolicitudDedupeSegundos = 75;

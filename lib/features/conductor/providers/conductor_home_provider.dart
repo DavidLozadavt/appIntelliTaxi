@@ -74,6 +74,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   final Map<String, Map<String, dynamic>> _solicitudesPorId = {};
   final Set<String> _overlayOcultoPorTtl = {};
   final Map<String, DateTime> _recibidaPorRealtimeEn = {};
+  final Map<String, DateTime> _sonidoEmitidoPorSolicitudId = {};
   final Map<String, Timer> _timersExpiracion = {};
   final Map<String, DateTime> _expiracionPorSolicitud = {};
   String? _ultimaSyncSolicitudesEn;
@@ -611,6 +612,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _expiracionPorSolicitud.clear();
     _overlayOcultoPorTtl.clear();
     _recibidaPorRealtimeEn.clear();
+    _sonidoEmitidoPorSolicitudId.clear();
     _solicitudesPorId.clear();
     _detenerTickerSiNoHaySolicitudes();
   }
@@ -619,6 +621,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _solicitudesPorId.remove(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
     _recibidaPorRealtimeEn.remove(solicitudId);
+    _sonidoEmitidoPorSolicitudId.remove(solicitudId);
     _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion[solicitudId]?.cancel();
     _timersExpiracion.remove(solicitudId);
@@ -626,6 +629,22 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   void _marcarRecibidaPorRealtime(String solicitudId) {
     _recibidaPorRealtimeEn[solicitudId] = DateTime.now();
+  }
+
+  /// Tono de alerta: Pusher, FCM y sync API (no solo pestaña «Llegando»).
+  void _dispararSonidoNuevaSolicitud(String solicitudId) {
+    if (_isDisposed || _enServicio || _enDescanso || !_isOnline) return;
+
+    final prev = _sonidoEmitidoPorSolicitudId[solicitudId];
+    if (prev != null &&
+        DateTime.now().difference(prev).inSeconds <
+            kSonidoSolicitudDedupeSegundos) {
+      return;
+    }
+    _sonidoEmitidoPorSolicitudId[solicitudId] = DateTime.now();
+
+    unawaited(_reproducirSonidoNotificacion());
+    unawaited(VoiceAlertService.announceNewService());
   }
 
   /// No borrar en sync si acaba de llegar por Pusher/FCM o sigue en «Llegando».
@@ -1157,6 +1176,10 @@ class ConductorHomeProvider extends ChangeNotifier {
         unawaited(_enriquecerDireccionesSolicitud(solicitudId));
       }
 
+      if (esNueva || overlayEstabaOculto) {
+        _dispararSonidoNuevaSolicitud(solicitudId);
+      }
+
       final esperaPoi =
           enOverlay && (esNueva || overlayEstabaOculto);
       if (!_isDisposed && !esperaPoi) notifyListeners();
@@ -1178,8 +1201,6 @@ class ConductorHomeProvider extends ChangeNotifier {
     _marcarRecibidaPorRealtime(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
     if (esNueva) {
-      unawaited(_reproducirSonidoNotificacion());
-      unawaited(VoiceAlertService.announceNewService());
       unawaited(_notificarYEnriquecerSolicitud(solicitudId));
     } else {
       unawaited(_enriquecerDireccionesSolicitud(solicitudId));
