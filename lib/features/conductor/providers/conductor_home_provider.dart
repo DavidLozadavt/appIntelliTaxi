@@ -67,9 +67,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? _lastVehiculosLoadError;
   TurnoActivo? _turnoActivo;
 
-  // Solicitudes de servicio (mapa canónico por servicio_id; TTL solo oculta overlay)
+  // Solicitudes: un mapa por servicio_id. API = verdad de lista; Pusher/FCM = merge;
+  // TTL solo oculta overlay «Llegando»; el ítem sigue en mapa / «En espera».
   final Map<String, Map<String, dynamic>> _solicitudesPorId = {};
   final Set<String> _overlayOcultoPorTtl = {};
+  final Map<String, DateTime> _recibidaPorRealtimeEn = {};
   final Map<String, Timer> _timersExpiracion = {};
   final Map<String, DateTime> _expiracionPorSolicitud = {};
   String? _ultimaSyncSolicitudesEn;
@@ -606,6 +608,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _timersExpiracion.clear();
     _expiracionPorSolicitud.clear();
     _overlayOcultoPorTtl.clear();
+    _recibidaPorRealtimeEn.clear();
     _solicitudesPorId.clear();
     _detenerTickerSiNoHaySolicitudes();
   }
@@ -613,9 +616,25 @@ class ConductorHomeProvider extends ChangeNotifier {
   void _removerSolicitudDelMapa(String solicitudId) {
     _solicitudesPorId.remove(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
+    _recibidaPorRealtimeEn.remove(solicitudId);
     _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion[solicitudId]?.cancel();
     _timersExpiracion.remove(solicitudId);
+  }
+
+  void _marcarRecibidaPorRealtime(String solicitudId) {
+    _recibidaPorRealtimeEn[solicitudId] = DateTime.now();
+  }
+
+  /// No borrar en sync si acaba de llegar por Pusher/FCM o sigue en «Llegando».
+  bool _conservarEnMapaTrasSync(String id) {
+    if (!_overlayOcultoPorTtl.contains(id)) {
+      return true;
+    }
+    final recibida = _recibidaPorRealtimeEn[id];
+    if (recibida == null) return false;
+    return DateTime.now().difference(recibida).inSeconds <
+        kConservarRealtimeTrasSyncSegundos;
   }
 
   @override
@@ -724,6 +743,19 @@ class ConductorHomeProvider extends ChangeNotifier {
               if (data != null) _procesarNuevaSolicitud(data);
             });
           }
+
+          // Mismo merge que `solicitudes-servicio` (modo broadcast / backend legacy).
+          for (final eventName in const [
+            TaxiPusherEvents.nuevaSolicitud,
+            'nueva_solicitud',
+          ]) {
+            final key = '$channel:$eventName';
+            _offerHandlerKeys.add(key);
+            PusherService.registerEventHandlerSecondary(key, (data) {
+              AppLogger.d('🔔 Evento recibido: $eventName en $channel');
+              if (data != null) _procesarNuevaSolicitud(data);
+            });
+          }
         }
 
         AppLogger.d(
@@ -804,11 +836,21 @@ class ConductorHomeProvider extends ChangeNotifier {
         if (id.startsWith('temp_')) continue;
         if (int.tryParse(id) == null) continue;
         if (!serverIds.contains(id)) {
+          if (_conservarEnMapaTrasSync(id)) {
+            AppLogger.d(
+              'ℹ️ Sync: conservando $id (realtime/overlay; API no lo listó)',
+            );
+            continue;
+          }
           _removerSolicitudDelMapa(id);
         }
       }
 
       for (final m in list) {
+        final sid = m['servicio_id'] ?? m['solicitud_id'] ?? m['id'];
+        if (sid != null) {
+          _recibidaPorRealtimeEn.remove(sid.toString());
+        }
         _procesarNuevaSolicitud(m, fromSync: true);
       }
 
@@ -1011,7 +1053,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _suscritoEmergenciasFlota = false;
   }
 
-  /// FCM / alerta en primer plano: sync + tarjeta en «Llegando» (no solo notificación).
+  /// FCM / alerta: primero tarjeta + sonido; sync después (sin borrar overlay activo).
   Future<void> procesarAlertaSolicitudEntrante(Map<String, dynamic> data) async {
     if (_isDisposed || _enServicio || _enDescanso) return;
 
@@ -1019,17 +1061,20 @@ class ConductorHomeProvider extends ChangeNotifier {
     final servicioId =
         ConductorSolicitudPayloadHelper.servicioIdFromAlertaPayload(raw);
 
-    if (raw.isNotEmpty &&
-        servicioId != null &&
-        ConductorSolicitudPayloadHelper.obtenerSolicitudId(raw) != null) {
-      _procesarNuevaSolicitud(raw, mostrarEnOverlay: true);
+    if (servicioId != null) {
+      final payload = raw.isNotEmpty
+          ? raw
+          : <String, dynamic>{
+              'servicio_id': servicioId,
+              'solicitud_id': servicioId,
+              'id': servicioId,
+            };
+      _procesarNuevaSolicitud(payload, mostrarEnOverlay: true);
+      unawaited(sincronizarSolicitudesPublicadasConductor());
       return;
     }
 
     await sincronizarSolicitudesPublicadasConductor();
-    if (servicioId != null) {
-      _promoverSolicitudAOverlayLlegando(servicioId, reproducirAlerta: true);
-    }
   }
 
   /// Procesa una nueva solicitud (Pusher, sync API o alerta FCM).
@@ -1084,6 +1129,8 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       final existente = _solicitudesPorId[solicitudId];
       final esNueva = existente == null;
+      final overlayEstabaOculto =
+          !esNueva && _overlayOcultoPorTtl.contains(solicitudId);
       _solicitudesPorId[solicitudId] = existente != null
           ? {...existente, ...solicitud}
           : solicitud;
@@ -1093,7 +1140,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         _aplicarOverlayLlegando(
           solicitudId,
           solicitud: _solicitudesPorId[solicitudId]!,
-          esNueva: esNueva,
+          esNueva: esNueva || overlayEstabaOculto,
         );
       } else {
         if (esNueva) {
@@ -1113,24 +1160,12 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  void _promoverSolicitudAOverlayLlegando(
-    String solicitudId, {
-    bool reproducirAlerta = false,
-  }) {
-    if (!_solicitudesPorId.containsKey(solicitudId)) return;
-    _aplicarOverlayLlegando(
-      solicitudId,
-      solicitud: _solicitudesPorId[solicitudId]!,
-      esNueva: reproducirAlerta,
-    );
-    if (!_isDisposed) notifyListeners();
-  }
-
   void _aplicarOverlayLlegando(
     String solicitudId, {
     required Map<String, dynamic> solicitud,
     required bool esNueva,
   }) {
+    _marcarRecibidaPorRealtime(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
     if (esNueva) {
       unawaited(_reproducirSonidoNotificacion());
@@ -1140,11 +1175,12 @@ class ConductorHomeProvider extends ChangeNotifier {
       unawaited(_enriquecerDireccionesSolicitud(solicitudId));
     }
 
+    final expiraEn =
+        ConductorSolicitudPayloadHelper.resolverOverlayExpiraEn(solicitud);
     final ttlSegundos =
         ConductorSolicitudPayloadHelper.resolverTtlSegundos(solicitud);
-    _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
-      Duration(seconds: ttlSegundos),
-    );
+    _expiracionPorSolicitud[solicitudId] = expiraEn ??
+        DateTime.now().add(Duration(seconds: ttlSegundos));
     _configurarTimerExpiracion(solicitudId, ttlSegundos: ttlSegundos);
     _iniciarTickerExpiracionUI();
     _notificarNuevaSolicitudExterna(_solicitudesPorId[solicitudId]!);

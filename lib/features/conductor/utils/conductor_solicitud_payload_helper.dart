@@ -27,15 +27,31 @@ class ConductorSolicitudPayloadHelper {
   static String generarSolicitudTemporalId() =>
       'temp_${DateTime.now().microsecondsSinceEpoch}';
 
+  static const int _maxTtlSegundos = 180;
+
+  /// `overlay_expira_en` del API (ISO) o derivado de `ttl_segundos`.
+  static DateTime? resolverOverlayExpiraEn(Map<String, dynamic> solicitud) {
+    final raw =
+        solicitud['overlay_expira_en'] ?? solicitud['overlayExpiraEn'];
+    if (raw == null) return null;
+    return DateTime.tryParse(raw.toString());
+  }
+
   static int resolverTtlSegundos(Map<String, dynamic> solicitud) {
+    final expiraEn = resolverOverlayExpiraEn(solicitud);
+    if (expiraEn != null) {
+      final restantes = expiraEn.difference(DateTime.now()).inSeconds;
+      if (restantes > 0) {
+        return restantes > _maxTtlSegundos ? _maxTtlSegundos : restantes;
+      }
+    }
+
     final ttlRaw = solicitud['ttl_segundos'] ??
         solicitud['ttl'] ??
         solicitud['tiempo_restante'];
     final ttl = int.tryParse(ttlRaw?.toString() ?? '');
     if (ttl == null || ttl <= 0) return kOportunidadConductorSegundos;
-    return ttl > kOportunidadConductorSegundos
-        ? kOportunidadConductorSegundos
-        : ttl;
+    return ttl > _maxTtlSegundos ? _maxTtlSegundos : ttl;
   }
 
   static String? resolverFotoPasajero(String? value) {

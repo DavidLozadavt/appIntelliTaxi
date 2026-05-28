@@ -459,6 +459,10 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         distanciaMi.isNotEmpty || tiempoPub.isNotEmpty || (precio != null && precio > 0);
     final viajeDist = SolicitudDisplayHelper.tripDistanceText(widget.solicitud);
     final viajeDur = SolicitudDisplayHelper.tripDurationText(widget.solicitud);
+    final canalOrigen =
+        SolicitudDisplayHelper.etiquetaOrigenServicio(widget.solicitud);
+    final telefonoLlamada =
+        SolicitudDisplayHelper.telefonoLlamadaVisible(widget.solicitud);
     final compact = widget.compact;
     final dense = widget.denseList && compact;
     final titleLarge = widget.destacada && !compact;
@@ -556,6 +560,34 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                               ),
                             ),
                             SizedBox(height: compact ? 6 : 10),
+                          ],
+                          if (canalOrigen != null &&
+                              canalOrigen != 'App móvil') ...[
+                            Row(
+                              children: [
+                                Icon(
+                                  canalOrigen == 'WhatsApp'
+                                      ? Iconsax.message
+                                      : Iconsax.call,
+                                  size: 14,
+                                  color: AppColors.accent,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  telefonoLlamada != null
+                                      ? '$canalOrigen · $telefonoLlamada'
+                                      : canalOrigen,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: compact ? 6 : 8),
                           ],
                           _buildLocationBlock(
                             label: 'RECOGIDA',

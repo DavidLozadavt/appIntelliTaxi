@@ -71,12 +71,49 @@ class SolicitudDisplayHelper {
     m['duracion_segundos'] ??= m['duracionSegundos'] ?? m['duration_value'];
     m['duracion_texto'] ??= m['duracionTexto'] ?? m['duration'];
 
+    m['origen_servicio'] ??= m['origenServicio'];
+    m['telefono_llamada'] ??=
+        m['telefonoLlamada'] ?? m['telefono_llamada_servicio'];
+    m['overlay_expira_en'] ??= m['overlayExpiraEn'];
+    m['dentro_radio_accion'] ??= m['dentroRadioAccion'];
+
     final barrio = barrioFromPayload(m);
     if (barrio != null) {
       m['origen_barrio'] = compactBarrio(barrio);
     }
 
     return m;
+  }
+
+  /// Etiqueta corta para `origen_servicio` (WHATSAPP, LLAMADA, APP_MOVIL, …).
+  static String? etiquetaOrigenServicio(Map<String, dynamic> data) {
+    final raw =
+        (data['origen_servicio'] ?? data['origenServicio'])?.toString().trim();
+    if (raw == null || raw.isEmpty) return null;
+    switch (raw.toUpperCase()) {
+      case 'WHATSAPP':
+        return 'WhatsApp';
+      case 'LLAMADA':
+        return 'Llamada';
+      case 'APP_MOVIL':
+      case 'APP_MOVIL_PASAJERO':
+        return 'App móvil';
+      case 'APP_WEB':
+        return 'Web';
+      default:
+        return raw.replaceAll('_', ' ');
+    }
+  }
+
+  /// Teléfono a mostrar en solicitudes telefónicas (`pasajero_id` puede ser 0).
+  static String? telefonoLlamadaVisible(Map<String, dynamic> data) {
+    final t = (data['telefono_llamada'] ??
+            data['telefonoLlamada'] ??
+            data['pasajero_telefono'])
+        ?.toString()
+        .trim();
+    if (t == null || t.isEmpty) return null;
+    return t;
   }
 
   static String? _firstNonEmpty(

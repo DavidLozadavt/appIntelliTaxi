@@ -67,10 +67,34 @@ class _HomeConductorState extends State<HomeConductor>
   /// Solo true si aún no sabemos si hay turno (evita bloquear al volver de un viaje).
   bool _validandoTurno = false;
 
-  void _onNuevaSolicitudRecibida(Map<String, dynamic> _) {
+  void _onNuevaSolicitudRecibida(Map<String, dynamic> solicitud) {
     if (!mounted) return;
     if (_serviciosTabController.index != 0) {
       _serviciosTabController.animateTo(0);
+    }
+    if (!_dockVisible(_provider)) {
+      final nombre = solicitud['pasajero_nombre']?.toString().trim();
+      final origen = solicitud['origen']?.toString().trim();
+      final detalle = [
+        if (nombre != null && nombre.isNotEmpty) nombre,
+        if (origen != null && origen.isNotEmpty) origen,
+      ].join(' · ');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            detalle.isNotEmpty
+                ? 'Nueva solicitud: $detalle. Activa tu turno para verla en el mapa.'
+                : 'Nueva solicitud. Activa tu turno en línea para verla en el mapa.',
+          ),
+          duration: const Duration(seconds: 5),
+          action: !_provider.isOnline
+              ? SnackBarAction(
+                  label: 'En línea',
+                  onPressed: () => unawaited(_mostrarSelectorVehiculo()),
+                )
+              : null,
+        ),
+      );
     }
     setState(() {});
   }
