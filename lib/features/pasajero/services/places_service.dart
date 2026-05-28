@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
@@ -16,7 +17,17 @@ class PlacesService {
   final Map<String, _CacheEntry<List<PlaceResult>>> _searchCache = {};
   final Map<String, _CacheEntry<List<PlacePrediction>>> _autocompleteCache = {};
   final Map<String, _CacheEntry<PlaceDetails>> _detailsCache = {};
+  final Map<String, _CacheEntry<PlaceResult?>> _nearbyCache = {};
   final _PlacesMetrics _metrics = _PlacesMetrics();
+
+  static const Set<String> _mapPoiTypes = {
+    'shopping_mall',
+    'establishment',
+    'store',
+    'point_of_interest',
+    'food',
+    'lodging',
+  };
 
   String? _autocompleteSessionToken;
   DateTime? _autocompleteSessionStartedAt;
@@ -172,6 +183,88 @@ class PlacesService {
     }
   }
 
+  /// Comercio o POI más cercano al punto tocado en el mapa (pasajero).
+  Future<PlaceResult?> findNearestPlaceAt(
+    double lat,
+    double lng, {
+    double maxDistanceMeters = 130,
+  }) async {
+    if (!PopayanUrbanArea.contains(lat, lng)) return null;
+
+    final cacheKey =
+        'nearby|${lat.toStringAsFixed(4)}|${lng.toStringAsFixed(4)}';
+    final cached = _getCached(_nearbyCache, cacheKey);
+    if (cached != null) {
+      _metrics.nearbyCacheHits++;
+      _metrics.logIfNeeded();
+      return cached;
+    }
+
+    try {
+      final url = Uri.parse(
+        '$_baseUrl/place/nearbysearch/json?'
+        'location=$lat,$lng'
+        '&radius=${maxDistanceMeters.round()}'
+        '&key=${AppConfig.googleMapsApiKey}'
+        '&language=es',
+      );
+
+      final response = await http.get(url);
+      _metrics.nearbyApiCalls++;
+      _metrics.logIfNeeded();
+
+      if (response.statusCode != 200) {
+        _nearbyCache[cacheKey] = _CacheEntry(
+          value: null,
+          expiresAt: DateTime.now().add(_cacheTtl),
+        );
+        return null;
+      }
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      _metrics.trackStatus('nearbysearch', data['status']?.toString());
+
+      PlaceResult? best;
+      var bestScore = double.negativeInfinity;
+
+      if (data['status'] == 'OK') {
+        for (final raw in data['results'] as List<dynamic>? ?? []) {
+          if (raw is! Map) continue;
+          final place = PlaceResult.fromJson(Map<String, dynamic>.from(raw));
+          if (!PopayanUrbanArea.contains(place.lat, place.lng)) continue;
+
+          final distance = Geolocator.distanceBetween(
+            lat,
+            lng,
+            place.lat,
+            place.lng,
+          );
+          if (distance > maxDistanceMeters) continue;
+
+          final types = (raw['types'] as List<dynamic>? ?? [])
+              .map((e) => e.toString())
+              .toSet();
+          final poiBoost = types.any(_mapPoiTypes.contains) ? 40.0 : 0.0;
+          final score = poiBoost - distance;
+          if (score > bestScore) {
+            bestScore = score;
+            best = place;
+          }
+        }
+      }
+
+      _nearbyCache[cacheKey] = _CacheEntry(
+        value: best,
+        expiresAt: DateTime.now().add(_cacheTtl),
+      );
+      return best;
+    } catch (e, stackTrace) {
+      AppLogger.d('❌ Error nearby en mapa: $e');
+      AppLogger.d('   Stack trace: $stackTrace');
+      return null;
+    }
+  }
+
   /// Detalles del lugar; `null` si queda fuera del perímetro urbano.
   Future<PlaceDetails?> getPlaceDetails(
     String placeId, {
@@ -309,6 +402,8 @@ class _PlacesMetrics {
   int autocompleteCacheHits = 0;
   int detailsApiCalls = 0;
   int detailsCacheHits = 0;
+  int nearbyApiCalls = 0;
+  int nearbyCacheHits = 0;
   int _lastLoggedTotal = 0;
   final Map<String, int> statusCounters = {};
 
@@ -323,9 +418,12 @@ class _PlacesMetrics {
   }
 
   int get totalApiCalls =>
-      searchApiCalls + autocompleteApiCalls + detailsApiCalls;
+      searchApiCalls + autocompleteApiCalls + detailsApiCalls + nearbyApiCalls;
   int get totalCacheHits =>
-      searchCacheHits + autocompleteCacheHits + detailsCacheHits;
+      searchCacheHits +
+      autocompleteCacheHits +
+      detailsCacheHits +
+      nearbyCacheHits;
 
   void trackStatus(String operation, String? status) {
     final normalized = (status == null || status.isEmpty) ? 'UNKNOWN' : status;

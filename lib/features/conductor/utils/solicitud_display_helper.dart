@@ -251,12 +251,18 @@ class SolicitudDisplayHelper {
         v == 'a convenir';
   }
 
-  /// Nombre principal de recogida: barrio/zona primero; calle solo si no hay barrio.
+  /// Nombre principal de recogida: comercio/zona; barrio; calle.
   static String pickupName(Map<String, dynamic> data) {
     final n = normalizeSolicitudMap(data);
     final barrio = barrioFromPayload(n);
     final name = _pickupNameRaw(n);
     final addr = _pickupAddressRaw(n);
+
+    if (name != null &&
+        !isPlaceholderPickup(name) &&
+        !looksLikeStreetAddress(name)) {
+      return name.trim();
+    }
 
     if (barrio != null && barrio.isNotEmpty) {
       if (name == null ||
@@ -291,6 +297,62 @@ class SolicitudDisplayHelper {
   }
 
   /// Título principal en tarjeta del conductor (calle/número, no solo barrio).
+  /// Origen listo para mostrar/navegar sin reverse geocode (API o Places).
+  static bool tieneOrigenCompletoParaMapa(Map<String, dynamic> data) {
+    final n = normalizeSolicitudMap(data);
+    final name = _pickupNameRaw(n)?.trim();
+    final addr = _pickupAddressRaw(n)?.trim();
+
+    if (addr != null &&
+        !isPlaceholderPickup(addr) &&
+        addr.length >= 10 &&
+        (addr.contains(',') || RegExp(r'\d').hasMatch(addr))) {
+      return true;
+    }
+    if (name != null &&
+        !isPlaceholderPickup(name) &&
+        looksLikeStreetAddress(name)) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Destino listo o viaje sin destino fijo.
+  static bool tieneDestinoCompletoParaMapa(Map<String, dynamic> data) {
+    final n = normalizeSolicitudMap(data);
+    if (!hasDestination(n)) return true;
+
+    final name = _destinationNameRaw(n)?.trim();
+    final addr = _destinationAddressRaw(n)?.trim();
+    if (addr != null &&
+        !isPlaceholderDestino(addr) &&
+        addr.length >= 8) {
+      return true;
+    }
+    if (name != null && !isPlaceholderDestino(name)) return true;
+    return false;
+  }
+
+  /// Nombre de referencia (mall, droguería), no calle ni placeholder.
+  static bool tieneNombreLugarRecogida(Map<String, dynamic> data) {
+    final name = _pickupNameRaw(normalizeSolicitudMap(data));
+    if (name == null || isPlaceholderPickup(name)) return false;
+    return !looksLikeStreetAddress(name);
+  }
+
+  static bool necesitaEnriquecimientoGeocode(
+    Map<String, dynamic> solicitud, {
+    bool forzarBarrio = false,
+  }) {
+    if (!tieneOrigenCompletoParaMapa(solicitud)) return true;
+    if (!tieneNombreLugarRecogida(solicitud)) return true;
+    if (!tieneDestinoCompletoParaMapa(solicitud)) return true;
+    final barrio = barrioFromPayload(normalizeSolicitudMap(solicitud));
+    if ((barrio == null || barrio.isEmpty) && forzarBarrio) return true;
+    return false;
+  }
+
+  /// Título en tarjeta/alerta: punto de referencia primero; calle como respaldo.
   static String pickupTitleForDriver(Map<String, dynamic> data) {
     final n = normalizeSolicitudMap(data);
     final name = _pickupNameRaw(n);
@@ -298,16 +360,26 @@ class SolicitudDisplayHelper {
 
     if (name != null &&
         !isPlaceholderPickup(name) &&
+        !looksLikeStreetAddress(name)) {
+      return name.trim();
+    }
+
+    if (name != null &&
+        !isPlaceholderPickup(name) &&
         looksLikeStreetAddress(name)) {
       return name.trim();
     }
+
     if (addr != null && !isPlaceholderPickup(addr)) {
       final first = addr.split(',').first.trim();
       if (looksLikeStreetAddress(first) || RegExp(r'\d').hasMatch(first)) {
         return first;
       }
-      if (!looksLikeStreetAddress(pickupName(n))) return addr.split(',').take(2).join(', ');
+      if (!looksLikeStreetAddress(pickupName(n))) {
+        return addr.split(',').take(2).join(', ');
+      }
     }
+
     if (name != null && !isPlaceholderPickup(name)) return name.trim();
     return pickupName(n);
   }
@@ -341,17 +413,38 @@ class SolicitudDisplayHelper {
     return '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
   }
 
+  /// Nombres en MAYÚSCULAS (API) → lectura natural en pantalla.
+  static String formatReadablePlaceName(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return s;
+
+    final letters = s.replaceAll(RegExp(r'[^A-Za-zÁÉÍÓÚÑáéíóúñÜü]'), '');
+    if (letters.length < 6 || letters != letters.toUpperCase()) return s;
+
+    const keepUpper = {'de', 'del', 'la', 'las', 'el', 'los', 'y', 'e'};
+    return s
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .map((word) {
+          final lower = word.toLowerCase();
+          if (keepUpper.contains(lower)) return lower;
+          if (word.length <= 2) return word.toUpperCase();
+          return '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}';
+        })
+        .join(' ');
+  }
+
   /// Título legible al volante: «Recogida en Aguas Vivas».
   static String pickupHeadline(Map<String, dynamic> data) {
     final place = pickupName(data);
     if (isPlaceholderPickup(place)) {
       final barrio = barrioFromPayload(normalizeSolicitudMap(data));
       if (barrio != null && barrio.isNotEmpty) {
-        return 'Recogida en $barrio';
+        return 'Recogida en ${formatReadablePlaceName(barrio)}';
       }
       return 'Nueva recogida';
     }
-    return 'Recogida en $place';
+    return 'Recogida en ${formatReadablePlaceName(place)}';
   }
 
   /// Título de destino: «Destino en Hospital Susana López».
@@ -359,7 +452,7 @@ class SolicitudDisplayHelper {
     if (!hasDestination(data)) return '';
     final place = destinationName(data);
     if (isPlaceholderDestino(place)) return 'Destino en mapa';
-    return 'Destino en $place';
+    return 'Destino en ${formatReadablePlaceName(place)}';
   }
 
   /// Calle / dirección completa cuando difiere del nombre (subtítulo).

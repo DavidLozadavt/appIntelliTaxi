@@ -259,12 +259,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                         const SizedBox(height: 2),
                         Text(
                           recogidaHeadline,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          softWrap: true,
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
-                            height: 1.15,
+                            height: 1.2,
                             color: isDark ? Colors.white : Colors.black87,
                           ),
                         ),
@@ -272,12 +271,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           const SizedBox(height: 2),
                           Text(
                             origenSub,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            softWrap: true,
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
-                              height: 1.15,
+                              height: 1.2,
                               color: isDark
                                   ? Colors.white.withValues(alpha: 0.78)
                                   : Colors.black54,
@@ -296,12 +294,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                 const SizedBox(height: 2),
                 Text(
                   destinoHeadline,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    height: 1.15,
+                    height: 1.2,
                     color: isDark
                         ? Colors.white.withValues(alpha: 0.9)
                         : Colors.black87,
@@ -311,12 +308,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   const SizedBox(height: 2),
                   Text(
                     destinoSub,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      height: 1.15,
+                      height: 1.2,
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.75)
                           : Colors.black45,
@@ -411,12 +407,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         SizedBox(height: c ? 2 : 4),
         Text(
           title,
-          maxLines: c ? 1 : 2,
-          overflow: TextOverflow.ellipsis,
+          softWrap: true,
           style: TextStyle(
             fontSize: dense ? 14 : (c ? 16 : (titleLarge ? 22 : 18)),
             fontWeight: FontWeight.w800,
-            height: 1.15,
+            height: 1.25,
             color: isDark ? Colors.white : Colors.black87,
           ),
         ),
@@ -424,8 +419,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           const SizedBox(height: 4),
           Text(
             subtitle,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            softWrap: true,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
@@ -441,8 +435,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final origenNombre =
-        SolicitudDisplayHelper.pickupTitleForDriver(widget.solicitud);
+    final compact = widget.compact;
+    final dense = widget.denseList && compact;
+    final origenNombre = compact
+        ? SolicitudDisplayHelper.pickupHeadline(widget.solicitud)
+        : SolicitudDisplayHelper.pickupTitleForDriver(widget.solicitud);
     var origenSub = SolicitudDisplayHelper.pickupDetailForDriver(widget.solicitud);
     if (origenSub.isEmpty) {
       origenSub = SolicitudDisplayHelper.pickupSubtitle(widget.solicitud);
@@ -469,8 +466,6 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         SolicitudDisplayHelper.etiquetaOrigenServicio(widget.solicitud);
     final telefonoLlamada =
         SolicitudDisplayHelper.telefonoLlamadaVisible(widget.solicitud);
-    final compact = widget.compact;
-    final dense = widget.denseList && compact;
     final titleLarge = widget.destacada && !compact;
 
     return SlideTransition(
@@ -623,11 +618,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             const SizedBox(height: 4),
                             Text(
                               origenSub,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                              softWrap: true,
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w500,
+                                height: 1.2,
                                 color: Colors.grey.shade600,
                               ),
                             ),

@@ -3,8 +3,6 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
-import 'package:intellitaxi/shared/widgets/standard_button.dart';
-
 /// Panel inferior del viaje activo del conductor (contacto, ruta, acciones).
 class ConductorServicioBottomPanel extends StatelessWidget {
   const ConductorServicioBottomPanel({
@@ -68,6 +66,9 @@ class ConductorServicioBottomPanel extends StatelessWidget {
       children: [
         Expanded(
           child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -116,13 +117,43 @@ class ConductorServicioBottomPanel extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (accion != null)
-                StandardButton(
-                  text: accion.label,
-                  icon: accion.icon,
-                  onPressed: onAccionPrincipal,
-                  isLoading: isLoading,
+                SizedBox(
                   width: double.infinity,
-                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: isLoading ? null : onAccionPrincipal,
+                    icon: isLoading
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(accion.icon, size: 22),
+                    label: Text(
+                      accion.label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      softWrap: true,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 56),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
               if (estadoUi != 'en_curso' &&
                   estadoUi != 'finalizado' &&
@@ -608,12 +639,11 @@ class _ParadaViaje extends StatelessWidget {
             children: [
               Text(
                 headline,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                softWrap: true,
                 style: TextStyle(
                   fontSize: activa ? 16 : 15,
                   fontWeight: FontWeight.w800,
-                  height: 1.15,
+                  height: 1.25,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
@@ -621,12 +651,11 @@ class _ParadaViaje extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   detalle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    height: 1.2,
+                    height: 1.3,
                     color: isDark
                         ? Colors.white.withValues(alpha: 0.72)
                         : Colors.black54,

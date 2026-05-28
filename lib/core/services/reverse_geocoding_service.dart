@@ -4,10 +4,19 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/geocode_memory_cache.dart';
 
 class ReverseGeocodingService {
+  ReverseGeocodingService._();
+  static final ReverseGeocodingService shared = ReverseGeocodingService._();
+  factory ReverseGeocodingService() => shared;
+
   static const String _baseUrl =
       'https://maps.googleapis.com/maps/api/geocode/json';
+  static const Duration _fetchCacheTtl = Duration(minutes: 20);
+  static const Duration _zonaLabelCacheTtl = Duration(minutes: 30);
+
+  final GeocodeMemoryCache _cache = GeocodeMemoryCache.instance;
   static final RegExp _plusCodeRegex = RegExp(
     r'^[23456789CFGHJMPQRVWX]{4,}\+[23456789CFGHJMPQRVWX]{2,}$',
     caseSensitive: false,
@@ -17,10 +26,18 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
+    final labelKey =
+        'area|${GeocodeMemoryCache.gridKey(lat, lng)}';
+    final cachedLabel = _cache.get<String>(labelKey);
+    if (cachedLabel != null) return cachedLabel;
+
     final results = await _fetchGeocodeResults(lat: lat, lng: lng);
     if (results == null) return null;
     var area = _extractAreaFromResults(results);
-    if (area != null) return area;
+    if (area != null) {
+      _cache.put(labelKey, area, _zonaLabelCacheTtl);
+      return area;
+    }
 
     final neighborhoodResults = await _fetchGeocodeResults(
       lat: lat,
@@ -30,7 +47,9 @@ class ReverseGeocodingService {
       logLabel: 'neighborhood',
     );
     if (neighborhoodResults == null) return null;
-    return _extractAreaFromResults(neighborhoodResults);
+    area = _extractAreaFromResults(neighborhoodResults);
+    if (area != null) _cache.put(labelKey, area, _zonaLabelCacheTtl);
+    return area;
   }
 
   /// Chip «Tu zona» del conductor: el nombre más útil entre varias etiquetas del mapa.
@@ -41,6 +60,10 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
+    final zonaKey = 'zona|${GeocodeMemoryCache.gridKey(lat, lng)}';
+    final cachedZona = _cache.get<String>(zonaKey);
+    if (cachedZona != null) return cachedZona;
+
     final candidates = <String>{};
 
     final results = await _fetchGeocodeResults(
@@ -85,6 +108,7 @@ class ReverseGeocodingService {
         picked: picked,
       );
     }
+    if (picked != null) _cache.put(zonaKey, picked, _zonaLabelCacheTtl);
     return picked;
   }
 
@@ -228,6 +252,77 @@ class ReverseGeocodingService {
     return RegExp(r'^ruta\s+nacional\s*\d').hasMatch(v) ||
         RegExp(r'^rn\s*\d').hasMatch(v) ||
         v.startsWith('ruta nacional ');
+  }
+
+  /// Etiqueta para destino elegido tocando el mapa (sin Places nearby).
+  Future<MapDestinationLabel> resolveMapDestinationLabel({
+    required double lat,
+    required double lng,
+  }) async {
+    const fallback = MapDestinationLabel(
+      name: 'Destino en mapa',
+      address: 'Ubicación seleccionada',
+    );
+
+    final results = await _fetchGeocodeResults(lat: lat, lng: lng);
+    if (results == null || results.isEmpty) return fallback;
+
+    for (final result in results) {
+      final resultTypes = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+      if (resultTypes.length == 1 && resultTypes.contains('plus_code')) {
+        continue;
+      }
+      final isPoi = resultTypes.contains('establishment') ||
+          resultTypes.contains('point_of_interest') ||
+          resultTypes.contains('shopping_mall') ||
+          resultTypes.contains('store');
+      if (!isPoi) continue;
+
+      final formatted = _stripPlusCodes(
+        result['formatted_address']?.toString() ?? '',
+      );
+      if (formatted.isEmpty) continue;
+      final name = formatted.split(',').first.trim();
+      if (name.isNotEmpty) {
+        return MapDestinationLabel(name: name, address: formatted);
+      }
+    }
+
+    final streetLine = _extractStreetLineFromResults(results);
+    final fullAddress =
+        _extractFormattedAddress(results) ??
+        results.first['formatted_address']?.toString() ??
+        '';
+    final cleaned = _stripPlusCodes(fullAddress);
+    var area = _extractAreaFromResults(results);
+    area ??= await resolveAreaName(lat: lat, lng: lng);
+
+    if (streetLine != null && streetLine.trim().isNotEmpty) {
+      return MapDestinationLabel(
+        name: streetLine.trim(),
+        address: cleaned.isNotEmpty ? cleaned : streetLine.trim(),
+        area: area,
+      );
+    }
+
+    if (area != null && area.trim().isNotEmpty) {
+      return MapDestinationLabel(
+        name: area.trim(),
+        address: cleaned.isNotEmpty ? cleaned : area.trim(),
+        area: area,
+      );
+    }
+
+    if (cleaned.isNotEmpty) {
+      return MapDestinationLabel(
+        name: placeNameFromAddressForDriver(cleaned),
+        address: cleaned,
+      );
+    }
+
+    return fallback;
   }
 
   /// Dirección formateada para un punto (ej. destino final al cerrar viaje).
@@ -376,6 +471,11 @@ class ReverseGeocodingService {
     String? resultType,
     String logLabel = 'default',
   }) async {
+    final cacheKey =
+        'fetch|${GeocodeMemoryCache.gridKey(lat, lng)}|${resultType ?? ''}|$logLabel';
+    final cached = _cache.get<List<Map<String, dynamic>>>(cacheKey);
+    if (cached != null) return cached;
+
     final key = AppConfig.googleMapsApiKey.trim();
     if (key.isEmpty) return null;
 
@@ -429,6 +529,9 @@ class ReverseGeocodingService {
         }
       }
 
+      if (results.isNotEmpty) {
+        _cache.put(cacheKey, results, _fetchCacheTtl);
+      }
       return results;
     } catch (e) {
       AppLogger.d('⚠️ Error en geocode reverso: $e');
@@ -797,6 +900,18 @@ class ReverseGeocodingService {
       tag: 'ReverseGeocode',
     );
   }
+}
+
+class MapDestinationLabel {
+  final String name;
+  final String address;
+  final String? area;
+
+  const MapDestinationLabel({
+    required this.name,
+    required this.address,
+    this.area,
+  });
 }
 
 class CurrentLocationData {

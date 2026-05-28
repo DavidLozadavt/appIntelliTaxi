@@ -92,9 +92,9 @@ class _ConductorServicioActivoScreenState
   bool get _canUpdateUi => mounted && !_terminalNavigationInProgress;
 
   // 📏 Control de altura del BottomSheet
-  double _sheetHeight = 0.52;
-  final double _minHeight = 0.38;
-  final double _maxHeight = 0.78;
+  double _sheetHeight = 0.58;
+  final double _minHeight = 0.42;
+  final double _maxHeight = 0.82;
 
   @override
   void initState() {

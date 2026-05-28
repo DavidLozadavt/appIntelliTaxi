@@ -122,8 +122,9 @@ class ConductorSolicitudPayloadHelper {
 
   static bool hasMeaningfulPlaceName(String? value) {
     if (value == null || value.trim().isEmpty) return false;
-    return !SolicitudDisplayHelper.isPlaceholderPickup(value) &&
-        !SolicitudDisplayHelper.isPlaceholderDestino(value);
+    if (SolicitudDisplayHelper.isPlaceholderPickup(value)) return false;
+    if (SolicitudDisplayHelper.isPlaceholderDestino(value)) return false;
+    return !SolicitudDisplayHelper.looksLikeStreetAddress(value);
   }
 
   static bool hasMeaningfulAddress(String? value) {

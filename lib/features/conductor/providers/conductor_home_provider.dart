@@ -55,7 +55,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
   final ConductorSolicitudEnrichmentService _solicitudEnrichment =
-      ConductorSolicitudEnrichmentService();
+      ConductorSolicitudEnrichmentService(
+        reverseGeocoding: ReverseGeocodingService.shared,
+      );
 
   // Estado online/offline
   bool _isOnline = false;
@@ -1136,12 +1138,18 @@ class ConductorHomeProvider extends ChangeNotifier {
           : solicitud;
 
       final enOverlay = mostrarEnOverlay || !fromSync;
+      final solicitudMap = _solicitudesPorId[solicitudId]!;
       if (enOverlay) {
-        _aplicarOverlayLlegando(
-          solicitudId,
-          solicitud: _solicitudesPorId[solicitudId]!,
-          esNueva: esNueva || overlayEstabaOculto,
-        );
+        if (esNueva || overlayEstabaOculto) {
+          unawaited(_enriquecerPoiYOverlay(solicitudId, solicitudMap,
+              esNueva: esNueva || overlayEstabaOculto));
+        } else {
+          _aplicarOverlayLlegando(
+            solicitudId,
+            solicitud: solicitudMap,
+            esNueva: false,
+          );
+        }
       } else {
         if (esNueva) {
           _overlayOcultoPorTtl.add(solicitudId);
@@ -1149,7 +1157,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         unawaited(_enriquecerDireccionesSolicitud(solicitudId));
       }
 
-      if (!_isDisposed) notifyListeners();
+      final esperaPoi =
+          enOverlay && (esNueva || overlayEstabaOculto);
+      if (!_isDisposed && !esperaPoi) notifyListeners();
     } catch (e, st) {
       AppLogger.e(
         'Error procesando solicitud Pusher',
@@ -1211,9 +1221,34 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   bool _isAppInForeground() => AppLifecycleHelper.isInForeground();
 
+  Future<void> _enriquecerPoiYOverlay(
+    String solicitudId,
+    Map<String, dynamic> solicitud, {
+    required bool esNueva,
+  }) async {
+    await _enriquecerPoiAntesDeAlerta(solicitudId);
+    if (_isDisposed) return;
+    _aplicarOverlayLlegando(
+      solicitudId,
+      solicitud: _solicitudesPorId[solicitudId] ?? solicitud,
+      esNueva: esNueva,
+    );
+    if (!_isDisposed) notifyListeners();
+  }
+
+  Future<void> _enriquecerPoiAntesDeAlerta(String solicitudId) async {
+    final solicitud = _solicitudesPorId[solicitudId];
+    if (solicitud == null || _isDisposed) return;
+    await _solicitudEnrichment.enrichPickupPoiIfNeeded(solicitud);
+  }
+
   Future<void> _enriquecerDireccionesSolicitud(String solicitudId) async {
     final solicitud = _solicitudesPorId[solicitudId];
     if (solicitud == null || _isDisposed) return;
+
+    if (!SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(solicitud)) {
+      return;
+    }
 
     final changed = await _solicitudEnrichment.enrich(solicitud);
     if (changed && !_isDisposed) notifyListeners();
@@ -1537,7 +1572,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         position.longitude,
       );
       final elapsed = DateTime.now().difference(lastAt);
-      if (movedMeters < 180 && elapsed < const Duration(seconds: 40)) {
+      if (movedMeters < 280 && elapsed < const Duration(seconds: 90)) {
         return;
       }
     }

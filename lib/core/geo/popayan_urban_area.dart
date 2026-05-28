@@ -1,27 +1,27 @@
 import 'dart:math' as math;
 
-/// Perímetro urbano aproximado de Popayán (Cauca) para búsqueda de direcciones.
+/// Perímetro de servicio en Popayán y sectores aledaños (veredas, expansiones).
 ///
-/// Viewport ajustado al casco urbano (no el área metropolitana de ~20 km).
+/// Incluye casco urbano, Vereda de Torres, Calibío, vías de ingreso, etc.
 class PopayanUrbanArea {
   PopayanUrbanArea._();
 
   static const double centerLat = 2.4419;
   static const double centerLng = -76.6063;
 
-  /// Esquina suroeste del rectángulo urbano.
-  static const double southWestLat = 2.4220;
-  static const double southWestLng = -76.6380;
+  /// Esquina suroeste del rectángulo de cobertura.
+  static const double southWestLat = 2.4120;
+  static const double southWestLng = -76.6600;
 
-  /// Esquina noreste del rectángulo urbano.
-  static const double northEastLat = 2.4620;
-  static const double northEastLng = -76.5780;
+  /// Esquina noreste del rectángulo de cobertura.
+  static const double northEastLat = 2.4780;
+  static const double northEastLng = -76.5580;
 
-  /// Radio máximo desde el centro (~4 km) como respaldo al rectángulo.
-  static const double maxRadiusKm = 4.0;
+  /// Radio máximo desde el centro (~6 km) como respaldo al rectángulo.
+  static const double maxRadiusKm = 6.0;
 
   static const String searchNotice =
-      'Búsqueda limitada al perímetro urbano de Popayán.';
+      'Servicio disponible en Popayán y zonas cercanas (hasta ~6 km del centro).';
 
   /// Parámetro `bounds` de Places Autocomplete (legacy): sw|ne.
   static const String autocompleteBounds =

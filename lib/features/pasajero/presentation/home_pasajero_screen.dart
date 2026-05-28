@@ -38,6 +38,8 @@ import 'package:intellitaxi/features/pasajero/controllers/pasajero_nearby_driver
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_pusher_offers_controller.dart';
 import 'package:intellitaxi/core/services/device_location_service.dart';
+import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
+import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/pasajero/widgets/pasajero_home_ride_sheet.dart';
 
 class HomePasajero extends StatefulWidget {
@@ -53,6 +55,11 @@ enum _SheetVisualState { compact, middle, expanded }
 
 class _HomePasajeroState extends State<HomePasajero>
     with TickerProviderStateMixin {
+  /// Vista cenital tipo apps de movilidad (sin inclinación 3D).
+  static const double _mapZoomPasajero = 16.5;
+  static const double _mapTiltPasajero = 0;
+  static const double _mapBearingPasajero = 0;
+
   GoogleMapController? _mapController;
   Position? _currentPosition;
   bool _isLoadingLocation = true;
@@ -91,6 +98,7 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _isSearchingDestination = false;
   bool _isSubmittingRide = false;
   bool _isDrawingRoute = false;
+  bool _isResolvingMapDestination = false;
   late final PasajeroPlacesSearchController _placesSearch;
   final PasajeroPusherOffersController _pusherOffers =
       PasajeroPusherOffersController();
@@ -481,6 +489,7 @@ class _HomePasajeroState extends State<HomePasajero>
       newMarkers.add(
         _buildDestinationMarker(
           destinationLatLng,
+          _selectedDestination!.name,
           _destinationMarkerSnippet(_selectedDestination!),
         ),
       );
@@ -591,11 +600,14 @@ class _HomePasajeroState extends State<HomePasajero>
                     _currentPosition!.latitude,
                     _currentPosition!.longitude,
                   ),
-                  zoom: 15,
+                  zoom: _mapZoomPasajero,
+                  tilt: _mapTiltPasajero,
+                  bearing: _mapBearingPasajero,
+                  buildingsEnabled: false,
+                  tiltGesturesEnabled: false,
                   polylines: _polylines,
                   markers: _markers,
-                  // onTap: _onMapTap,
-                  // onLongPress: _onMapLongPress,
+                  onTap: _onMapTap,
                   onMapCreated: (controller) {
                     _mapController = controller;
                   },
@@ -998,9 +1010,8 @@ class _HomePasajeroState extends State<HomePasajero>
       if (_mapController != null) {
         _mapController!.animateCamera(
           CameraUpdate.newCameraPosition(
-            CameraPosition(
-              target: LatLng(position.latitude, position.longitude),
-              zoom: 15,
+            _overheadCamera(
+              LatLng(position.latitude, position.longitude),
             ),
           ),
         );
@@ -1061,24 +1072,39 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _refineOriginAddress(Position position) async {
+    final nearby = await _placesService.findNearestPlaceAt(
+      position.latitude,
+      position.longitude,
+      maxDistanceMeters: 100,
+    );
+
     final locationData = await _getAddressFromCoordinates(
       position.latitude,
       position.longitude,
     );
     if (!mounted) return;
 
+    final poiName = nearby?.name.trim();
+    final usePoiName = poiName != null &&
+        poiName.isNotEmpty &&
+        !SolicitudDisplayHelper.looksLikeStreetAddress(poiName);
+
     _setStateSafe(() {
-      _currentLocationName = locationData.pickupLabel;
+      _currentLocationName = usePoiName ? poiName : locationData.pickupLabel;
       _currentLocationArea = locationData.area;
       _currentLocationStreet = locationData.streetLine;
-      _currentLocationAddress = locationData.address;
+      _currentLocationAddress = nearby?.address.trim().isNotEmpty == true
+          ? nearby!.address
+          : locationData.address;
 
       if (_selectedOrigin != null) {
-        _selectedOrigin = TripLocation.currentLocation(
-          lat: position.latitude,
-          lng: position.longitude,
+        _selectedOrigin = TripLocation(
+          placeId: nearby?.placeId,
           name: _currentLocationName,
           address: _currentLocationAddress,
+          lat: position.latitude,
+          lng: position.longitude,
+          isCurrentLocation: true,
         );
         _originController.removeListener(_onOriginChanged);
         _originController.text = _originPickupLabel;
@@ -1136,24 +1162,101 @@ class _HomePasajeroState extends State<HomePasajero>
     await _expandSheet();
   }
 
-  // --- Selección de destino en el mapa (deshabilitado) ---
-  // Future<void> _onMapTap(LatLng latLng) async {
-  //   await _setDestinationFromMap(
-  //     latLng,
-  //     showToast: true,
-  //     routeWithLoading: false,
-  //   );
-  // }
-  //
-  // Future<void> _onMapLongPress(LatLng latLng) async {
-  //   await _setDestinationFromMap(
-  //     latLng,
-  //     showToast: true,
-  //     routeWithLoading: true,
-  //   );
-  // }
+  Future<void> _onMapTap(LatLng latLng) async {
+    await _setDestinationFromMap(latLng);
+  }
 
-  Marker _buildDestinationMarker(LatLng position, String snippet) {
+  Future<void> _setDestinationFromMap(LatLng latLng) async {
+    if (_isResolvingMapDestination || _isSubmittingRide) return;
+
+    if (!PopayanUrbanArea.contains(latLng.latitude, latLng.longitude)) {
+      _scaffoldMessenger?.showSnackBar(
+        SnackBar(
+          content: Text(PopayanUrbanArea.searchNotice),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (_currentPosition == null) {
+      _scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Text('Espera a que cargue tu ubicación'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    _setStateSafe(() => _isResolvingMapDestination = true);
+
+    try {
+      if (_selectedOrigin == null) {
+        _applyOriginFromGps(_currentPosition!, markReady: false);
+      }
+
+      final nearby = await _placesService.findNearestPlaceAt(
+        latLng.latitude,
+        latLng.longitude,
+      );
+
+      late final TripLocation destination;
+      if (nearby != null) {
+        destination = TripLocation.fromPlaceDetails(
+          placeId: nearby.placeId,
+          name: nearby.name,
+          address: nearby.address,
+          lat: nearby.lat,
+          lng: nearby.lng,
+        );
+      } else {
+        final label = await _reverseGeocodingService.resolveMapDestinationLabel(
+          lat: latLng.latitude,
+          lng: latLng.longitude,
+        );
+        destination = TripLocation(
+          name: label.name,
+          address: label.address,
+          lat: latLng.latitude,
+          lng: latLng.longitude,
+        );
+      }
+
+      if (!mounted) return;
+
+      await _applyDestinationLocation(destination);
+
+      if (!mounted) return;
+      _scaffoldMessenger?.showSnackBar(
+        SnackBar(
+          content: Text('Destino: ${destination.name}'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      AppLogger.w('No se pudo fijar destino en mapa: $e');
+      if (mounted) {
+        _scaffoldMessenger?.showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo usar ese punto. Intenta de nuevo.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        _setStateSafe(() => _isResolvingMapDestination = false);
+      }
+    }
+  }
+
+  Marker _buildDestinationMarker(
+    LatLng position,
+    String title,
+    String snippet,
+  ) {
     return Marker(
       markerId: const MarkerId('destination'),
       position: position,
@@ -1161,7 +1264,7 @@ class _HomePasajeroState extends State<HomePasajero>
           _destinationPointIcon ??
           _nearbyDrivers.driverMarkerIcon ??
           BitmapDescriptor.defaultMarker,
-      infoWindow: InfoWindow(title: 'Destino seleccionado', snippet: snippet),
+      infoWindow: InfoWindow(title: title, snippet: snippet),
       draggable: false,
       // onDragEnd: _onDestinationMarkerDragged,
       zIndexInt: 6,
@@ -1207,25 +1310,12 @@ class _HomePasajeroState extends State<HomePasajero>
     nextMarkers.add(
       _buildDestinationMarker(
         LatLng(destination.lat, destination.lng),
+        destination.name,
         _destinationMarkerSnippet(destination),
       ),
     );
     _markers = nextMarkers;
   }
-
-  // Future<void> _onDestinationMarkerDragged(LatLng latLng) async {
-  //   await _setDestinationFromMap(
-  //     latLng,
-  //     showToast: false,
-  //     routeWithLoading: false,
-  //   );
-  // }
-
-  // Future<void> _setDestinationFromMap(
-  //   LatLng latLng, {
-  //   required bool showToast,
-  //   required bool routeWithLoading,
-  // }) async { ... }
 
   String _prefKey(String suffix) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -1608,6 +1698,15 @@ class _HomePasajeroState extends State<HomePasajero>
     }
   }
 
+  CameraPosition _overheadCamera(LatLng target, {double? zoom}) {
+    return CameraPosition(
+      target: target,
+      zoom: zoom ?? _mapZoomPasajero,
+      tilt: _mapTiltPasajero,
+      bearing: _mapBearingPasajero,
+    );
+  }
+
   void _fitCameraToBounds(List<LatLng> points) {
     if (_mapController == null || points.isEmpty) return;
 
@@ -1629,6 +1728,16 @@ class _HomePasajeroState extends State<HomePasajero>
     );
 
     _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
+    // Tras encuadrar la ruta, volver a vista plana (sin tilt 3D).
+    Future.delayed(const Duration(milliseconds: 450), () {
+      if (!mounted || _mapController == null) return;
+      final center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+      _mapController!.animateCamera(
+        CameraUpdate.newCameraPosition(
+          _overheadCamera(center, zoom: 15.5),
+        ),
+      );
+    });
   }
 
   void _clearRoute() {
@@ -1650,12 +1759,11 @@ class _HomePasajeroState extends State<HomePasajero>
     if (_mapController != null && _currentPosition != null) {
       _mapController!.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(
+          _overheadCamera(
+            LatLng(
               _currentPosition!.latitude,
               _currentPosition!.longitude,
             ),
-            zoom: 15,
           ),
         ),
       );

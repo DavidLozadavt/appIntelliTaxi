@@ -1,19 +1,65 @@
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 
-/// Completa nombre/dirección/barrio de origen y destino vía geocoding inverso.
+/// Completa nombre/dirección/barrio solo cuando faltan datos (evita Geocoding redundante).
 class ConductorSolicitudEnrichmentService {
   ConductorSolicitudEnrichmentService({
     ReverseGeocodingService? reverseGeocoding,
-  }) : _reverseGeocoding = reverseGeocoding ?? ReverseGeocodingService();
+    PlacesService? placesService,
+  })  : _reverseGeocoding = reverseGeocoding ?? ReverseGeocodingService.shared,
+        _placesService = placesService ?? PlacesService();
 
   final ReverseGeocodingService _reverseGeocoding;
+  final PlacesService _placesService;
+
+  /// Comercio cercano al GPS (ej. Galería las Palmas) antes de mostrar la alerta.
+  Future<bool> enrichPickupPoiIfNeeded(Map<String, dynamic> solicitud) async {
+    if (SolicitudDisplayHelper.tieneNombreLugarRecogida(solicitud)) {
+      return false;
+    }
+
+    final lat = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lat']);
+    final lng = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lng']);
+    if (lat == null || lng == null) return false;
+
+    final nearby = await _placesService.findNearestPlaceAt(
+      lat,
+      lng,
+      maxDistanceMeters: 110,
+    );
+    if (nearby == null || nearby.name.trim().isEmpty) return false;
+
+    var changed = false;
+    solicitud['origen_name'] = nearby.name.trim();
+    changed = true;
+
+    if (!ConductorSolicitudPayloadHelper.hasMeaningfulAddress(
+      solicitud['origen_address']?.toString(),
+    )) {
+      solicitud['origen_address'] = nearby.address.trim().isNotEmpty
+          ? nearby.address
+          : nearby.name;
+      changed = true;
+    }
+    if (nearby.placeId.isNotEmpty) {
+      solicitud['origen_place_id'] ??= nearby.placeId;
+    }
+    return changed;
+  }
 
   Future<bool> enrich(
     Map<String, dynamic> solicitud, {
     bool forzarBarrio = false,
   }) async {
+    if (!SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(
+      solicitud,
+      forzarBarrio: forzarBarrio,
+    )) {
+      return false;
+    }
+
     var changed = false;
 
     Future<void> enrichPoint({
@@ -21,6 +67,22 @@ class ConductorSolicitudEnrichmentService {
       required double lat,
       required double lng,
     }) async {
+      if (isDestino) {
+        if (SolicitudDisplayHelper.tieneDestinoCompletoParaMapa(solicitud)) {
+          return;
+        }
+      } else {
+        final origenCompleto =
+            SolicitudDisplayHelper.tieneOrigenCompletoParaMapa(solicitud);
+        final barrio = SolicitudDisplayHelper.barrioFromPayload(
+          SolicitudDisplayHelper.normalizeSolicitudMap(solicitud),
+        );
+        final barrioOk = barrio != null && barrio.isNotEmpty;
+        if (origenCompleto && barrioOk && !forzarBarrio) {
+          return;
+        }
+      }
+
       final label = isDestino
           ? await _reverseGeocoding.resolveCurrentLocationLabel(
               lat: lat,
@@ -58,10 +120,9 @@ class ConductorSolicitudEnrichmentService {
             !SolicitudDisplayHelper.isPlaceholderPickup(driverTitle)) {
           solicitud['origen_name'] = driverTitle;
           changed = true;
-        } else if (SolicitudDisplayHelper.looksLikeStreetAddress(
-              solicitud['origen_name']?.toString() ?? '',
-            ) ==
-            false &&
+        } else if (!ConductorSolicitudPayloadHelper.hasMeaningfulPlaceName(
+              solicitud['origen_name']?.toString(),
+            ) &&
             label.streetLine != null &&
             label.streetLine!.trim().isNotEmpty) {
           solicitud['origen_name'] = label.streetLine!.trim();
@@ -79,6 +140,7 @@ class ConductorSolicitudEnrichmentService {
           solicitud['origen_address'] = driverSub;
           changed = true;
         }
+
         final sinBarrio =
             solicitud['origen_barrio']?.toString().trim().isEmpty ?? true;
         if (forzarBarrio || sinBarrio) {
@@ -102,6 +164,7 @@ class ConductorSolicitudEnrichmentService {
     final oLat = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lat']);
     final oLng = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lng']);
     if (oLat != null && oLng != null) {
+      await enrichPickupPoiIfNeeded(solicitud);
       await enrichPoint(isDestino: false, lat: oLat, lng: oLng);
     }
 
