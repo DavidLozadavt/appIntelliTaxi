@@ -97,7 +97,7 @@ flutter:
     - assets/images/marker.png
     - assets/images/taxi.png
     - assets/images/carMarker.png
-    - assets/sound/nuevaoferta.mp3
+    - assets/sound/
     - .env
 
 

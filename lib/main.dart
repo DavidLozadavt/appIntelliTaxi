@@ -13,6 +13,7 @@ import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/features/chat/providers/chat_badge_provider.dart';
 import 'package:intellitaxi/features/chat/presentation/chat_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/documentos_screen.dart';
+import 'package:intellitaxi/features/conductor/presentation/conductor_notification_sound_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/historial_servicios_conductor_screen.dart';
 import 'package:intellitaxi/features/conductor/presentation/mis_vehiculos_screen.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
@@ -368,6 +369,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               '/mis-vehiculos': (_) => const MisVehiculosScreen(),
               '/historial-conductor': (_) =>
                   const HistorialServiciosConductorScreen(),
+              '/conductor-sonido-servicios': (_) =>
+                  const ConductorNotificationSoundScreen(),
               '/historial-pasajero': (_) =>
                   const HistorialServiciosPasajeroScreen(),
               '/calificaciones-conductor': (context) {

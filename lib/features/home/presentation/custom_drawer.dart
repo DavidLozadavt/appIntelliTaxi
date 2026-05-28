@@ -38,6 +38,12 @@ class CustomDrawer extends StatelessWidget {
         route: '/calificaciones-conductor',
         allowedRoles: [AuthProvider.roleConductor],
       ),
+      DrawerItem(
+        title: 'Sonido de servicios',
+        icon: Iconsax.music_filter_copy,
+        route: '/conductor-sonido-servicios',
+        allowedRoles: [AuthProvider.roleConductor],
+      ),
       // Opciones de historial y calificaciones para pasajero
       DrawerItem(
         title: 'Mis Viajes',

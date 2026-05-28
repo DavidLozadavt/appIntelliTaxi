@@ -4,8 +4,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/conductor/services/turno_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_notification_sound_service.dart';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
@@ -40,8 +40,6 @@ class ConductorHomeProvider extends ChangeNotifier {
   // Servicios
   final ConductorService _conductorService = ConductorService();
   final TurnoService _turnoService = TurnoService();
-  final AudioPlayer _audioPlayer = AudioPlayer();
-
   // Estado de ubicación
   Position? _currentPosition;
   bool _isLoadingLocation = true;
@@ -565,7 +563,6 @@ class ConductorHomeProvider extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
-    _audioPlayer.dispose();
     // Cancelar todos los timers
     for (var timer in _timersExpiracion.values) {
       timer.cancel();
@@ -1109,13 +1106,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
-  /// Reproduce el sonido de notificación
+  /// Reproduce el tono elegido por el conductor en ajustes.
   Future<void> _reproducirSonidoNotificacion() async {
-    try {
-      await _audioPlayer.play(AssetSource('sound/nuevaoferta.mp3'));
-    } catch (e) {
-      AppLogger.d('❌ Error reproduciendo sonido: $e');
-    }
+    await ConductorNotificationSoundService.playNewServiceSound();
   }
 
   // ==================== MANEJO DE SOLICITUDES ====================
