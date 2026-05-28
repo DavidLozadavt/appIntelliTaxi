@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_distance_helper.dart';
 
 /// Lista «En espera» delegada al mapa canónico de [ConductorHomeProvider].
 class SolicitudesPendientesProvider extends ChangeNotifier {
@@ -97,12 +98,11 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
   }
 
   String distanciaDesdeMi(Map<String, dynamic> solicitud) {
-    final km = solicitud['distancia_desde_mi_km'];
-    if (km != null) {
-      final v = JsonPayloadHelper.parseDouble(km);
-      if (v > 0) return '${v.toStringAsFixed(1)} km';
+    final home = _home;
+    if (home != null) {
+      return home.distanciaDesdeConductorTexto(solicitud);
     }
-    return solicitud['distancia']?.toString() ?? '';
+    return ConductorSolicitudDistanceHelper.resolveLabel(solicitud) ?? '';
   }
 
   String tiempoPublicado(Map<String, dynamic> solicitud) {

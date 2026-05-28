@@ -280,6 +280,22 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                       ),
                     ),
                   ],
+                  if (distanciaMi.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      distanciaMi,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        height: 1.1,
+                        color: isDark
+                            ? Colors.lightBlueAccent
+                            : Colors.blue.shade700,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -287,12 +303,12 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           ],
         ),
         if (muestraDestino && destinoHeadline.isNotEmpty) ...[
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
           _denseSectionLabel('DESTINO', Colors.red.shade400),
           const SizedBox(height: 2),
           Text(
             destinoHeadline,
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 13,
@@ -337,7 +353,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
             ),
           ),
         ],
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         _buildDenseActionButtons(compact: compact),
       ],
     );
@@ -495,7 +511,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           ),
           child: Padding(
             padding: dense
-                ? const EdgeInsets.fromLTRB(12, 10, 12, 10)
+                ? const EdgeInsets.fromLTRB(12, 8, 12, 8)
                 : compact
                 ? const EdgeInsets.fromLTRB(12, 10, 12, 11)
                 : const EdgeInsets.fromLTRB(16, 14, 16, 16),

@@ -28,6 +28,7 @@ import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_session_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_distance_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_ranking_helper.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
@@ -164,6 +165,16 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   int get totalSolicitudesEnEspera => solicitudesEnEsperaOrdenadas.length;
+
+  /// «A 450 m de ti» hasta la recogida (API o GPS actual).
+  String distanciaDesdeConductorTexto(Map<String, dynamic> solicitud) {
+    return ConductorSolicitudDistanceHelper.resolveLabel(
+          solicitud,
+          driverLat: _currentPosition?.latitude,
+          driverLng: _currentPosition?.longitude,
+        ) ??
+        '';
+  }
 
   Map<String, dynamic>? buscarSolicitudPorId(String solicitudId) =>
       _solicitudesPorId[solicitudId];

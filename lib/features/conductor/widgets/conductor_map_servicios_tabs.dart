@@ -130,7 +130,7 @@ class ConductorMapServiciosTabs {
       pantallaCompacta(context) ? 3 : 4;
 
   static double compactCardItemExtent(BuildContext context) =>
-      pantallaCompacta(context) ? 178.0 : 186.0;
+      pantallaCompacta(context) ? 198.0 : 206.0;
 
   static const double _listGap = 8.0;
   static const double _listPadding = 12.0;
@@ -273,6 +273,7 @@ class ConductorMapServiciosTabs {
             compact: true,
             denseList: true,
             segundosRestantes: seg > 0 ? seg : null,
+            distanciaDesdeMi: home.distanciaDesdeConductorTexto(solicitud),
             destacada: index == 0,
             onAceptar: () => onAceptar(id),
             onRechazar: () => onRechazar(id),
