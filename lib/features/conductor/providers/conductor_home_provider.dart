@@ -23,6 +23,7 @@ import 'package:intellitaxi/features/taxi/utils/taxi_radio_accion_filter.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 
+import 'package:dio/dio.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_session_helper.dart';
@@ -1010,11 +1011,33 @@ class ConductorHomeProvider extends ChangeNotifier {
     _suscritoEmergenciasFlota = false;
   }
 
-  /// Procesa una nueva solicitud recibida de Pusher
+  /// FCM / alerta en primer plano: sync + tarjeta en «Llegando» (no solo notificación).
+  Future<void> procesarAlertaSolicitudEntrante(Map<String, dynamic> data) async {
+    if (_isDisposed || _enServicio || _enDescanso) return;
+
+    final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+    final servicioId =
+        ConductorSolicitudPayloadHelper.servicioIdFromAlertaPayload(raw);
+
+    if (raw.isNotEmpty &&
+        servicioId != null &&
+        ConductorSolicitudPayloadHelper.obtenerSolicitudId(raw) != null) {
+      _procesarNuevaSolicitud(raw, mostrarEnOverlay: true);
+      return;
+    }
+
+    await sincronizarSolicitudesPublicadasConductor();
+    if (servicioId != null) {
+      _promoverSolicitudAOverlayLlegando(servicioId, reproducirAlerta: true);
+    }
+  }
+
+  /// Procesa una nueva solicitud (Pusher, sync API o alerta FCM).
   void _procesarNuevaSolicitud(
     dynamic data, {
     bool isDirectOffer = false,
     bool fromSync = false,
+    bool mostrarEnOverlay = false,
   }) {
     if (_enServicio) {
       AppLogger.d('ℹ️ Ignorando nueva solicitud: conductor en servicio');
@@ -1031,7 +1054,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         AppLogger.d('ℹ️ Ignorando solicitud: rechazada por este conductor');
         return;
       }
-      if (!fromSync && !_pasaFiltroRadioAccion(raw)) {
+      if (!fromSync &&
+          !mostrarEnOverlay &&
+          !_pasaFiltroRadioAccion(raw)) {
         AppLogger.d('ℹ️ Solicitud fuera del radio de acción');
         return;
       }
@@ -1063,29 +1088,18 @@ class ConductorHomeProvider extends ChangeNotifier {
           ? {...existente, ...solicitud}
           : solicitud;
 
-      if (fromSync) {
+      final enOverlay = mostrarEnOverlay || !fromSync;
+      if (enOverlay) {
+        _aplicarOverlayLlegando(
+          solicitudId,
+          solicitud: _solicitudesPorId[solicitudId]!,
+          esNueva: esNueva,
+        );
+      } else {
         if (esNueva) {
           _overlayOcultoPorTtl.add(solicitudId);
         }
         unawaited(_enriquecerDireccionesSolicitud(solicitudId));
-      } else {
-        _overlayOcultoPorTtl.remove(solicitudId);
-        if (esNueva) {
-          unawaited(_reproducirSonidoNotificacion());
-          unawaited(VoiceAlertService.announceNewService());
-          unawaited(_notificarYEnriquecerSolicitud(solicitudId));
-        } else {
-          unawaited(_enriquecerDireccionesSolicitud(solicitudId));
-        }
-
-        final ttlSegundos =
-            ConductorSolicitudPayloadHelper.resolverTtlSegundos(solicitud);
-        _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
-          Duration(seconds: ttlSegundos),
-        );
-        _configurarTimerExpiracion(solicitudId, ttlSegundos: ttlSegundos);
-        _iniciarTickerExpiracionUI();
-        _notificarNuevaSolicitudExterna(_solicitudesPorId[solicitudId]!);
       }
 
       if (!_isDisposed) notifyListeners();
@@ -1097,6 +1111,43 @@ class ConductorHomeProvider extends ChangeNotifier {
         stackTrace: st,
       );
     }
+  }
+
+  void _promoverSolicitudAOverlayLlegando(
+    String solicitudId, {
+    bool reproducirAlerta = false,
+  }) {
+    if (!_solicitudesPorId.containsKey(solicitudId)) return;
+    _aplicarOverlayLlegando(
+      solicitudId,
+      solicitud: _solicitudesPorId[solicitudId]!,
+      esNueva: reproducirAlerta,
+    );
+    if (!_isDisposed) notifyListeners();
+  }
+
+  void _aplicarOverlayLlegando(
+    String solicitudId, {
+    required Map<String, dynamic> solicitud,
+    required bool esNueva,
+  }) {
+    _overlayOcultoPorTtl.remove(solicitudId);
+    if (esNueva) {
+      unawaited(_reproducirSonidoNotificacion());
+      unawaited(VoiceAlertService.announceNewService());
+      unawaited(_notificarYEnriquecerSolicitud(solicitudId));
+    } else {
+      unawaited(_enriquecerDireccionesSolicitud(solicitudId));
+    }
+
+    final ttlSegundos =
+        ConductorSolicitudPayloadHelper.resolverTtlSegundos(solicitud);
+    _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
+      Duration(seconds: ttlSegundos),
+    );
+    _configurarTimerExpiracion(solicitudId, ttlSegundos: ttlSegundos);
+    _iniciarTickerExpiracionUI();
+    _notificarNuevaSolicitudExterna(_solicitudesPorId[solicitudId]!);
   }
 
   Future<void> _notificarYEnriquecerSolicitud(String solicitudId) async {
@@ -1542,6 +1593,11 @@ class ConductorHomeProvider extends ChangeNotifier {
         }
 
         if (!_isDisposed) notifyListeners();
+      } else if (_turnoActivo != null || _isOnline) {
+        AppLogger.d(
+          'ℹ️ Sin turno en servidor; limpiando cache local (id=${_turnoActivo?.id})',
+        );
+        await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
       }
     } catch (e) {
       AppLogger.d('❌ Error cargando turno: $e');
@@ -1661,34 +1717,49 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  /// Finaliza el turno actual
+  /// Finaliza el turno actual (por id; si 403, intenta `finalizar-activo`).
   Future<bool> finalizarTurno() async {
+    if (_turnoActivo == null) return false;
+
+    _lastTurnoError = null;
+    final idTurno = _turnoActivo!.id;
+
     try {
-      if (_turnoActivo == null) return false;
-
-      // Obtener ubicación actual
-      Position? position = _currentPosition;
-
-      if (position == null) {
-        try {
-          position = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 5),
-            ),
-          );
-        } catch (e) {
-          AppLogger.d('⚠️ Error obteniendo ubicación: $e');
-        }
-      }
-
-      // Llamar al servicio para finalizar turno
-      await _conductorService.finalizarTurno(_turnoActivo!.id);
-
+      await _conductorService.finalizarTurno(idTurno);
       await _limpiarTurnoActivoLocal();
       return true;
     } catch (e) {
-      AppLogger.d('❌ Error finalizando turno: $e');
+      AppLogger.d('❌ Error finalizando turno $idTurno: $e');
+
+      final dioStatus = e is DioException ? e.response?.statusCode : null;
+      final mensaje = e.toString().replaceAll('Exception: ', '').trim();
+      final puedeReintentar =
+          dioStatus == 403 || dioStatus == 404 || mensaje.contains('autorizado');
+
+      if (puedeReintentar) {
+        try {
+          await _conductorService.finalizarTurnoActivo();
+          await _limpiarTurnoActivoLocal();
+          AppLogger.d('✅ Turno cerrado vía finalizar-activo');
+          return true;
+        } catch (e2) {
+          AppLogger.d('⚠️ finalizar-activo falló: $e2');
+        }
+
+        final activo = await _conductorService.getTurnoActivo();
+        if (activo == null) {
+          AppLogger.d(
+            'ℹ️ Backend sin turno abierto; limpiando estado local obsoleto',
+          );
+          await _limpiarTurnoActivoLocal();
+          return true;
+        }
+      }
+
+      _lastTurnoError = mensaje.isNotEmpty
+          ? mensaje
+          : 'No se pudo finalizar el turno';
+      if (!_isDisposed) notifyListeners();
       return false;
     }
   }

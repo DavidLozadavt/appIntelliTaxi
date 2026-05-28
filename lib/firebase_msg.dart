@@ -12,6 +12,8 @@ import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -69,12 +71,12 @@ Future<bool> _shouldShowConductorIncomingAlert(
   return _isActiveConductorRole();
 }
 
-Future<void> _triggerConductorIncomingSync() async {
+Future<void> _triggerConductorIncomingSync(Map<String, dynamic> data) async {
   try {
     final context = navigatorKey.currentContext;
     if (context == null || !context.mounted) return;
     final home = context.read<ConductorHomeProvider>();
-    await home.sincronizarSolicitudesPublicadasConductor();
+    await home.procesarAlertaSolicitudEntrante(data);
   } catch (e) {
     AppLogger.d('⚠️ FCM sync conductor fallback: $e');
   }
@@ -126,7 +128,7 @@ Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
   }
   if (await _shouldShowConductorIncomingAlert(data)) {
     AppLogger.d('🚕 FCM → solicitud entrante (conductor)');
-    unawaited(_triggerConductorIncomingSync());
+    unawaited(_triggerConductorIncomingSync(data));
     IncomingServiceNotificationService.instance.bringAppToForeground();
     return;
   }
@@ -383,10 +385,14 @@ class FirebaseMsg {
       return;
     }
     if (await _shouldShowConductorIncomingAlert(data)) {
-      unawaited(_triggerConductorIncomingSync());
-      await IncomingServiceNotificationService.instance.showIncomingService(
-        data,
-      );
+      unawaited(_triggerConductorIncomingSync(data));
+      // En primer plano: panel «Llegando» en el mapa; notificación solo si no está visible.
+      if (!AppLifecycleHelper.isInForeground()) {
+        final solicitud = ConductorSolicitudPayloadHelper.parsePayload(data);
+        await IncomingServiceNotificationService.instance.showIncomingService(
+          solicitud,
+        );
+      }
       return;
     }
 

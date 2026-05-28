@@ -1061,11 +1061,23 @@ class _HomeConductorState extends State<HomeConductor>
       await _mostrarSelectorVehiculo();
     } else {
       final success = await _provider.finalizarTurno();
-      if (success && mounted) {
+      if (!mounted) return;
+      if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Turno finalizado correctamente'),
             backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _provider.lastTurnoError ??
+                  'No se pudo finalizar el turno. Intenta de nuevo.',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }

@@ -118,7 +118,14 @@ class ConductorSolicitudPayloadHelper {
   }
 
   static String? servicioIdFromTomadaPayload(Map<String, dynamic> raw) {
-    final servicioId = raw['servicio_id'] ?? raw['solicitud_id'] ?? raw['id'];
+    final servicioId = raw['servicio_id'] ??
+        raw['servicioId'] ??
+        raw['solicitud_id'] ??
+        raw['solicitudId'] ??
+        raw['id'];
     return servicioId?.toString();
   }
+
+  static String? servicioIdFromAlertaPayload(Map<String, dynamic> raw) =>
+      servicioIdFromTomadaPayload(raw) ?? obtenerSolicitudId(raw);
 }

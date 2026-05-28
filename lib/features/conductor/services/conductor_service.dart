@@ -319,17 +319,37 @@ class ConductorService {
     }
   }
 
-  /// Finaliza el turno activo
+  /// Finaliza un turno por id (`POST /turnos/{id}/finalizar`).
   Future<void> finalizarTurno(int idTurno) async {
     try {
       final response = await _dio.post('turnos/$idTurno/finalizar');
 
-      if (response.statusCode != 200) {
+      if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('Error al finalizar turno: ${response.statusCode}');
       }
+    } on DioException catch (e) {
+      AppLogger.d('⚠️ Error finalizando turno: $e');
+      throw Exception(_extractErrorMessage(e, 'No se pudo finalizar el turno'));
     } catch (e) {
       AppLogger.d('⚠️ Error finalizando turno: $e');
       rethrow;
+    }
+  }
+
+  /// Cierra el turno activo del conductor autenticado.
+  Future<void> finalizarTurnoActivo() async {
+    try {
+      final response = await _dio.post('turnos/finalizar-activo');
+      final data = response.data;
+      if (data is Map && data['success'] == false) {
+        throw Exception(
+          data['message']?.toString() ?? 'No se pudo finalizar el turno activo',
+        );
+      }
+    } on DioException catch (e) {
+      throw Exception(
+        _extractErrorMessage(e, 'No se pudo finalizar el turno activo'),
+      );
     }
   }
 
