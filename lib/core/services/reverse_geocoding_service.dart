@@ -259,6 +259,59 @@ class ReverseGeocodingService {
     }
   }
 
+  /// Etiqueta para conductor: calle/número primero; barrio como contexto.
+  Future<CurrentLocationData> resolveDriverPickupLabel({
+    required double lat,
+    required double lng,
+  }) async {
+    const fallback = CurrentLocationData(
+      name: 'Punto de recogida',
+      address: 'Ubicación en mapa',
+    );
+
+    var results = await _fetchGeocodeResults(
+      lat: lat,
+      lng: lng,
+      resultType: 'street_address|premise|subpremise|route',
+      logLabel: 'driver_street',
+    );
+    results ??= await _fetchGeocodeResults(lat: lat, lng: lng);
+    if (results == null || results.isEmpty) return fallback;
+
+    final streetLine = _extractStreetLineFromResults(results);
+    final fullAddress = _extractFormattedAddress(results) ??
+        results.first['formatted_address']?.toString();
+    var area = _extractAreaFromResults(results);
+    area ??= await resolveAreaName(lat: lat, lng: lng);
+
+    final name = (streetLine != null && streetLine.trim().isNotEmpty)
+        ? streetLine.trim()
+        : (fullAddress != null && fullAddress.isNotEmpty
+            ? placeNameFromAddressForDriver(fullAddress)
+            : (area ?? fallback.name));
+
+    return CurrentLocationData(
+      name: name,
+      address: fullAddress?.trim().isNotEmpty == true
+          ? fullAddress!.trim()
+          : name,
+      area: area,
+      streetLine: streetLine,
+    );
+  }
+
+  static String placeNameFromAddressForDriver(String value) {
+    final parts = value.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
+    final list = parts.toList();
+    if (list.isEmpty) return value.trim();
+    if (list.length >= 2 &&
+        RegExp(r'\d').hasMatch(list.first) &&
+        list.first.length < 40) {
+      return list.first;
+    }
+    return list.first;
+  }
+
   /// Devuelve nombre corto y legible para mostrar como origen (barrio + calle).
   Future<CurrentLocationData> resolveCurrentLocationLabel({
     required double lat,
@@ -774,5 +827,29 @@ class CurrentLocationData {
     }
     if (address.trim().isNotEmpty && address != name) return address;
     return '';
+  }
+
+  /// Título en tarjeta del conductor (calle o dirección, no solo barrio).
+  String get driverTitle {
+    final calle = streetLine?.trim();
+    if (calle != null && calle.isNotEmpty) return calle;
+    if (name.trim().isNotEmpty && name != 'Mi ubicación') return name;
+    return address.trim().isNotEmpty ? address : 'Punto de recogida';
+  }
+
+  /// Segunda línea: barrio + dirección completa.
+  String get driverSubtitle {
+    final barrio = area?.trim();
+    final parts = <String>[];
+    if (barrio != null &&
+        barrio.isNotEmpty &&
+        !driverTitle.toLowerCase().contains(barrio.toLowerCase())) {
+      parts.add(barrio);
+    }
+    if (address.trim().isNotEmpty &&
+        address.trim().toLowerCase() != driverTitle.trim().toLowerCase()) {
+      parts.add(address.trim());
+    }
+    return parts.join(' · ');
   }
 }

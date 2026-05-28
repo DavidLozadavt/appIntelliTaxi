@@ -207,7 +207,18 @@ class PlacesService {
         _metrics.trackStatus('details', data['status']?.toString());
 
         if (data['status'] == 'OK') {
-          final placeDetails = PlaceDetails.fromJson(data['result']);
+          var placeDetails = PlaceDetails.fromJson(data['result']);
+          final refined = await _refineCoordinatesViaGeocodePlaceId(
+            normalizedPlaceId,
+          );
+          if (refined != null) {
+            placeDetails = PlaceDetails(
+              name: placeDetails.name,
+              address: placeDetails.address,
+              lat: refined.$1,
+              lng: refined.$2,
+            );
+          }
           if (!PopayanUrbanArea.contains(placeDetails.lat, placeDetails.lng)) {
             AppLogger.w(
               'Lugar fuera del urbano de Popayán: ${placeDetails.address}',
@@ -228,6 +239,47 @@ class PlacesService {
     } catch (e, stackTrace) {
       AppLogger.d('❌ Error obteniendo detalles: $e');
       AppLogger.d('   Stack trace: $stackTrace');
+      return null;
+    }
+  }
+
+  /// Geocode por `place_id` priorizando ROOFTOP / RANGE_INTERPOLATED (más preciso que autocomplete).
+  Future<(double, double)?> _refineCoordinatesViaGeocodePlaceId(
+    String placeId,
+  ) async {
+    try {
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/geocode/json?'
+        'place_id=${Uri.encodeComponent(placeId)}'
+        '&key=${AppConfig.googleMapsApiKey}&language=es',
+      );
+      final response = await http.get(url);
+      if (response.statusCode != 200) return null;
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      if (data['status'] != 'OK') return null;
+      final results = data['results'] as List<dynamic>? ?? [];
+      if (results.isEmpty) return null;
+
+      Map<String, dynamic>? best;
+      for (final item in results) {
+        if (item is! Map) continue;
+        final m = Map<String, dynamic>.from(item);
+        final locType =
+            (m['geometry'] as Map?)?['location_type']?.toString() ?? '';
+        if (locType == 'ROOFTOP' || locType == 'RANGE_INTERPOLATED') {
+          best = m;
+          break;
+        }
+        best ??= m;
+      }
+      final geometry = best?['geometry'] as Map<String, dynamic>?;
+      final loc = geometry?['location'] as Map<String, dynamic>?;
+      final lat = (loc?['lat'] as num?)?.toDouble();
+      final lng = (loc?['lng'] as num?)?.toDouble();
+      if (lat == null || lng == null) return null;
+      return (lat, lng);
+    } catch (e) {
+      AppLogger.d('⚠️ Geocode place_id refine: $e');
       return null;
     }
   }

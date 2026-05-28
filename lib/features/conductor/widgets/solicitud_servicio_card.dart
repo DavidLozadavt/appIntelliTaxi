@@ -441,8 +441,14 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final origenNombre = SolicitudDisplayHelper.pickupName(widget.solicitud);
-    final origenSub = SolicitudDisplayHelper.pickupSubtitle(widget.solicitud);
+    final origenNombre =
+        SolicitudDisplayHelper.pickupTitleForDriver(widget.solicitud);
+    var origenSub = SolicitudDisplayHelper.pickupDetailForDriver(widget.solicitud);
+    if (origenSub.isEmpty) {
+      origenSub = SolicitudDisplayHelper.pickupSubtitle(widget.solicitud);
+    }
+    final coordsHint =
+        SolicitudDisplayHelper.pickupCoordinatesHint(widget.solicitud);
     final barrio = SolicitudDisplayHelper.barrioFromPayload(widget.solicitud);
     final destinoNombre =
         SolicitudDisplayHelper.destinationName(widget.solicitud);
@@ -504,8 +510,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
             child: dense
                 ? _buildDenseListContent(
                     isDark: isDark,
-                    recogidaHeadline:
-                        SolicitudDisplayHelper.pickupHeadline(widget.solicitud),
+                    recogidaHeadline: origenNombre,
                     origenSub: origenSub,
                     destinoHeadline: muestraDestino
                         ? SolicitudDisplayHelper.destinationHeadline(
@@ -597,6 +602,20 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             isDark: isDark,
                             titleLarge: titleLarge,
                           ),
+                          if (coordsHint != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'GPS: $coordsHint',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade600,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ],
                           if (compact &&
                               origenSub.isNotEmpty &&
                               origenSub.toLowerCase() !=

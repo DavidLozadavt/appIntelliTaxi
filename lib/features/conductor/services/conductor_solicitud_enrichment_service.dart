@@ -21,10 +21,15 @@ class ConductorSolicitudEnrichmentService {
       required double lat,
       required double lng,
     }) async {
-      final label = await _reverseGeocoding.resolveCurrentLocationLabel(
-        lat: lat,
-        lng: lng,
-      );
+      final label = isDestino
+          ? await _reverseGeocoding.resolveCurrentLocationLabel(
+              lat: lat,
+              lng: lng,
+            )
+          : await _reverseGeocoding.resolveDriverPickupLabel(
+              lat: lat,
+              lng: lng,
+            );
 
       if (isDestino) {
         if (!ConductorSolicitudPayloadHelper.hasMeaningfulPlaceName(
@@ -44,12 +49,22 @@ class ConductorSolicitudEnrichmentService {
           changed = true;
         }
       } else {
+        final driverTitle = label.driverTitle;
+        final driverSub = label.driverSubtitle;
         if (!ConductorSolicitudPayloadHelper.hasMeaningfulPlaceName(
               solicitud['origen_name']?.toString(),
             ) &&
-            label.name.trim().isNotEmpty &&
-            !SolicitudDisplayHelper.isPlaceholderPickup(label.name)) {
-          solicitud['origen_name'] = label.name;
+            driverTitle.isNotEmpty &&
+            !SolicitudDisplayHelper.isPlaceholderPickup(driverTitle)) {
+          solicitud['origen_name'] = driverTitle;
+          changed = true;
+        } else if (SolicitudDisplayHelper.looksLikeStreetAddress(
+              solicitud['origen_name']?.toString() ?? '',
+            ) ==
+            false &&
+            label.streetLine != null &&
+            label.streetLine!.trim().isNotEmpty) {
+          solicitud['origen_name'] = label.streetLine!.trim();
           changed = true;
         }
         if (!ConductorSolicitudPayloadHelper.hasMeaningfulAddress(
@@ -58,6 +73,10 @@ class ConductorSolicitudEnrichmentService {
             label.address.trim().isNotEmpty &&
             !SolicitudDisplayHelper.isPlaceholderPickup(label.address)) {
           solicitud['origen_address'] = label.address;
+          changed = true;
+        } else if (driverSub.isNotEmpty &&
+            (solicitud['origen_address']?.toString().trim().isEmpty ?? true)) {
+          solicitud['origen_address'] = driverSub;
           changed = true;
         }
         final sinBarrio =

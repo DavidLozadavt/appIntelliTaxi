@@ -290,6 +290,57 @@ class SolicitudDisplayHelper {
     return _pickupPlaceholder;
   }
 
+  /// Título principal en tarjeta del conductor (calle/número, no solo barrio).
+  static String pickupTitleForDriver(Map<String, dynamic> data) {
+    final n = normalizeSolicitudMap(data);
+    final name = _pickupNameRaw(n);
+    final addr = _pickupAddressRaw(n);
+
+    if (name != null &&
+        !isPlaceholderPickup(name) &&
+        looksLikeStreetAddress(name)) {
+      return name.trim();
+    }
+    if (addr != null && !isPlaceholderPickup(addr)) {
+      final first = addr.split(',').first.trim();
+      if (looksLikeStreetAddress(first) || RegExp(r'\d').hasMatch(first)) {
+        return first;
+      }
+      if (!looksLikeStreetAddress(pickupName(n))) return addr.split(',').take(2).join(', ');
+    }
+    if (name != null && !isPlaceholderPickup(name)) return name.trim();
+    return pickupName(n);
+  }
+
+  /// Subtítulo conductor: barrio + dirección si difiere del título.
+  static String pickupDetailForDriver(Map<String, dynamic> data) {
+    final n = normalizeSolicitudMap(data);
+    final title = pickupTitleForDriver(n);
+    final barrio = barrioFromPayload(n);
+    final addr = _pickupAddressRaw(n);
+    final parts = <String>[];
+    if (barrio != null &&
+        barrio.isNotEmpty &&
+        !_normalizeCompare(title).contains(_normalizeCompare(barrio))) {
+      parts.add(barrio);
+    }
+    if (addr != null &&
+        !isPlaceholderPickup(addr) &&
+        _normalizeCompare(addr) != _normalizeCompare(title) &&
+        !_normalizeCompare(addr).startsWith(_normalizeCompare(title))) {
+      parts.add(addr.trim());
+    }
+    return parts.join(' · ');
+  }
+
+  static String? pickupCoordinatesHint(Map<String, dynamic> data) {
+    final lat = parseCoordinate(data['origen_lat']);
+    final lng = parseCoordinate(data['origen_lng']);
+    if (lat == null || lng == null) return null;
+    if (lat.abs() < 0.0001 && lng.abs() < 0.0001) return null;
+    return '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+  }
+
   /// Título legible al volante: «Recogida en Aguas Vivas».
   static String pickupHeadline(Map<String, dynamic> data) {
     final place = pickupName(data);
