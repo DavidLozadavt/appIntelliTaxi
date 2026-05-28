@@ -843,6 +843,46 @@ class _ConductorServicioActivoScreenState
     );
   }
 
+  String _nombreConductorParaMensaje() {
+    final auth = context.read<AuthProvider>();
+    final nombre = auth.user?.nombreCompleto.trim() ?? '';
+    if (nombre.isNotEmpty) return nombre.split(RegExp(r'\s+')).first;
+    return 'tu conductor';
+  }
+
+  String? _placaConductorParaMensaje() {
+    final vehiculo = widget.servicio['vehiculo'];
+    if (vehiculo is Map) {
+      final p = vehiculo['placa']?.toString().trim();
+      if (p != null && p.isNotEmpty) return p;
+    }
+    for (final key in const [
+      'vehiculo_placa',
+      'placa_vehiculo',
+      'placa',
+    ]) {
+      final p = widget.servicio[key]?.toString().trim();
+      if (p != null && p.isNotEmpty) return p;
+    }
+    try {
+      return context.read<ConductorHomeProvider>().vehiculoSeleccionado?.placa;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _whatsappPasajero() async {
+    final mensaje = PhoneLauncher.mensajeConductorParaPasajero(
+      nombreConductor: _nombreConductorParaMensaje(),
+      placa: _placaConductorParaMensaje(),
+    );
+    await PhoneLauncher.openWhatsApp(
+      _getTelefonoPasajero(),
+      mensaje: mensaje,
+      context: context,
+    );
+  }
+
   Future<void> _abrirChatPasajero() async {
     final servicioId = _servicioActivoId;
     if (servicioId == null || servicioId <= 0) {
@@ -1116,6 +1156,7 @@ class _ConductorServicioActivoScreenState
                               .esGestionadoPorIa(widget.servicio),
                           fotoPasajeroUrl: _getFotoPasajero(),
                           onLlamar: _llamarPasajero,
+                          onWhatsApp: _whatsappPasajero,
                           onCopiarTelefono: _copiarTelefonoPasajero,
                           onChat: _abrirChatPasajero,
                           onAccionPrincipal: _onPanelAccionPrincipal,

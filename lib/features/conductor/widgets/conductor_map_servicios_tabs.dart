@@ -116,7 +116,7 @@ class ConductorMapServiciosTabs {
       pantallaCompacta(context) ? 3 : 4;
 
   static double compactCardItemExtent(BuildContext context) =>
-      pantallaCompacta(context) ? 164.0 : 172.0;
+      pantallaCompacta(context) ? 178.0 : 186.0;
 
   static const double _listGap = 8.0;
   static const double _listPadding = 12.0;

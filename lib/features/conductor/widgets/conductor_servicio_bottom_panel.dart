@@ -3,6 +3,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/shared/widgets/whatsapp_brand_icon.dart';
 /// Panel inferior del viaje activo del conductor (contacto, ruta, acciones).
 class ConductorServicioBottomPanel extends StatelessWidget {
   const ConductorServicioBottomPanel({
@@ -15,6 +16,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     this.esGestionadoPorIa = false,
     this.fotoPasajeroUrl,
     required this.onLlamar,
+    required this.onWhatsApp,
     required this.onCopiarTelefono,
     required this.onChat,
     required this.onAccionPrincipal,
@@ -31,6 +33,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
   final bool esGestionadoPorIa;
   final String? fotoPasajeroUrl;
   final VoidCallback onLlamar;
+  final VoidCallback onWhatsApp;
   final VoidCallback onCopiarTelefono;
   final VoidCallback onChat;
   final VoidCallback onAccionPrincipal;
@@ -87,6 +90,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                   esGestionadoPorIa: esGestionadoPorIa,
                   isDark: isDark,
                   onLlamar: onLlamar,
+                  onWhatsApp: onWhatsApp,
                   onCopiarTelefono: onCopiarTelefono,
                   onChat: onChat,
                   servicioId: servicioId,
@@ -297,6 +301,7 @@ class _ContactoCard extends StatelessWidget {
     required this.esGestionadoPorIa,
     required this.isDark,
     required this.onLlamar,
+    required this.onWhatsApp,
     required this.onCopiarTelefono,
     required this.onChat,
     this.servicioId,
@@ -308,6 +313,7 @@ class _ContactoCard extends StatelessWidget {
   final bool esGestionadoPorIa;
   final bool isDark;
   final VoidCallback onLlamar;
+  final VoidCallback onWhatsApp;
   final VoidCallback onCopiarTelefono;
   final VoidCallback onChat;
   final int? servicioId;
@@ -386,12 +392,17 @@ class _ContactoCard extends StatelessWidget {
                 enabled: tieneTelefono,
               ),
               const SizedBox(width: 6),
+              _WhatsAppAccionRapida(
+                onTap: onWhatsApp,
+                enabled: tieneTelefono,
+              ),
+              const SizedBox(width: 6),
               if (!esGestionadoPorIa)
                 _AccionRapida(
                   icon: Iconsax.messages_copy,
                   color: AppColors.accent,
                   onTap: onChat,
-                  tooltip: 'Mensaje',
+                  tooltip: 'Chat en app',
                   servicioIdBadge: servicioId,
                 ),
             ],
@@ -464,9 +475,32 @@ class _ContactoCard extends StatelessWidget {
             ),
           ),
           if (tieneTelefono) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onWhatsApp,
+                style: FilledButton.styleFrom(
+                  backgroundColor: WhatsAppBrandIcon.brandGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const WhatsAppBrandIcon(size: 18, solid: false),
+                label: const Text(
+                  'Escribir por WhatsApp',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
-              'Toca el número o el icono para copiarlo',
+              'Toca el número arriba para copiarlo',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11,
@@ -475,6 +509,37 @@ class _ContactoCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _WhatsAppAccionRapida extends StatelessWidget {
+  const _WhatsAppAccionRapida({
+    required this.onTap,
+    this.enabled = true,
+  });
+
+  final VoidCallback onTap;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Tooltip(
+          message: 'WhatsApp',
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Opacity(
+              opacity: enabled ? 1 : 0.45,
+              child: const WhatsAppBrandIcon(size: 32, solid: true),
+            ),
+          ),
+        ),
       ),
     );
   }

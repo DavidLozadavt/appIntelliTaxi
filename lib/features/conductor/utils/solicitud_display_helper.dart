@@ -434,6 +434,26 @@ class SolicitudDisplayHelper {
         .join(' ');
   }
 
+  /// Solo el nombre del lugar (tarjeta compacta: ya dice RECOGIDA / DESTINO).
+  static String pickupPlaceLabel(Map<String, dynamic> data) {
+    final place = pickupName(data);
+    if (isPlaceholderPickup(place)) {
+      final barrio = barrioFromPayload(normalizeSolicitudMap(data));
+      if (barrio != null && barrio.isNotEmpty) {
+        return formatReadablePlaceName(barrio);
+      }
+      return 'Punto de recogida';
+    }
+    return formatReadablePlaceName(place);
+  }
+
+  static String destinationPlaceLabel(Map<String, dynamic> data) {
+    if (!hasDestination(data)) return '';
+    final place = destinationName(data);
+    if (isPlaceholderDestino(place)) return 'Destino en mapa';
+    return formatReadablePlaceName(place);
+  }
+
   /// Título legible al volante: «Recogida en Aguas Vivas».
   static String pickupHeadline(Map<String, dynamic> data) {
     final place = pickupName(data);

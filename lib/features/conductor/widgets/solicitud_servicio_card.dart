@@ -242,104 +242,101 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              Row(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _denseSectionLabel('RECOGIDA', AppColors.accent),
-                        const SizedBox(height: 2),
-                        Text(
-                          recogidaHeadline,
-                          softWrap: true,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            height: 1.2,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                        if (origenSub.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            origenSub,
-                            softWrap: true,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              height: 1.2,
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.78)
-                                  : Colors.black54,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (badge != null) ...[const SizedBox(width: 8), badge],
-                ],
-              ),
-              if (muestraDestino && destinoHeadline.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                _denseSectionLabel('DESTINO', Colors.red.shade400),
-                const SizedBox(height: 2),
-                Text(
-                  destinoHeadline,
-                  softWrap: true,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.9)
-                        : Colors.black87,
-                  ),
-                ),
-                if (destinoSub.isNotEmpty) ...[
+                  _denseSectionLabel('RECOGIDA', AppColors.accent),
                   const SizedBox(height: 2),
                   Text(
-                    destinoSub,
-                    softWrap: true,
+                    recogidaHeadline,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      height: 1.2,
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.75)
-                          : Colors.black45,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      height: 1.18,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
+                  if (origenSub.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      origenSub,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        height: 1.15,
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.78)
+                            : Colors.black54,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-              if ((viajeDist.isNotEmpty || viajeDur.isNotEmpty) &&
-                  destinoSub.isEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  [
-                    if (viajeDist.isNotEmpty) viajeDist,
-                    if (viajeDur.isNotEmpty) viajeDur,
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ],
-          ),
+              ),
+            ),
+            if (badge != null) ...[const SizedBox(width: 8), badge],
+          ],
         ),
+        if (muestraDestino && destinoHeadline.isNotEmpty) ...[
+          const SizedBox(height: 5),
+          _denseSectionLabel('DESTINO', Colors.red.shade400),
+          const SizedBox(height: 2),
+          Text(
+            destinoHeadline,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              height: 1.18,
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.9)
+                  : Colors.black87,
+            ),
+          ),
+          if (destinoSub.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              destinoSub,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                height: 1.15,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.75)
+                    : Colors.black45,
+              ),
+            ),
+          ],
+        ],
+        if ((viajeDist.isNotEmpty || viajeDur.isNotEmpty) &&
+            destinoSub.isEmpty) ...[
+          const SizedBox(height: 3),
+          Text(
+            [
+              if (viajeDist.isNotEmpty) viajeDist,
+              if (viajeDur.isNotEmpty) viajeDur,
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
         const SizedBox(height: 6),
         _buildDenseActionButtons(compact: compact),
       ],
@@ -438,7 +435,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     final compact = widget.compact;
     final dense = widget.denseList && compact;
     final origenNombre = compact
-        ? SolicitudDisplayHelper.pickupHeadline(widget.solicitud)
+        ? SolicitudDisplayHelper.pickupPlaceLabel(widget.solicitud)
         : SolicitudDisplayHelper.pickupTitleForDriver(widget.solicitud);
     var origenSub = SolicitudDisplayHelper.pickupDetailForDriver(widget.solicitud);
     if (origenSub.isEmpty) {
@@ -508,7 +505,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     recogidaHeadline: origenNombre,
                     origenSub: origenSub,
                     destinoHeadline: muestraDestino
-                        ? SolicitudDisplayHelper.destinationHeadline(
+                        ? SolicitudDisplayHelper.destinationPlaceLabel(
                             widget.solicitud,
                           )
                         : '',
