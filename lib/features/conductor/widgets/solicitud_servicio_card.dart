@@ -16,6 +16,8 @@ class SolicitudServicioCard extends StatefulWidget {
   final bool marginExterno;
   /// Lista «En espera»: menos padding y tipografía más pequeña.
   final bool compact;
+  /// Panel mapa (3–4 tarjetas visibles): una línea de destino y menos espacio.
+  final bool denseList;
 
   const SolicitudServicioCard({
     super.key,
@@ -29,6 +31,7 @@ class SolicitudServicioCard extends StatefulWidget {
     this.precioOfertado,
     this.marginExterno = true,
     this.compact = false,
+    this.denseList = false,
   });
 
   @override
@@ -117,6 +120,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     required bool titleLarge,
   }) {
     final c = widget.compact;
+    final dense = widget.denseList && c;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -135,7 +139,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           maxLines: c ? 1 : 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: c ? 16 : (titleLarge ? 22 : 18),
+            fontSize: dense ? 14 : (c ? 16 : (titleLarge ? 22 : 18)),
             fontWeight: FontWeight.w800,
             height: 1.15,
             color: isDark ? Colors.white : Colors.black87,
@@ -181,6 +185,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     final viajeDist = SolicitudDisplayHelper.tripDistanceText(widget.solicitud);
     final viajeDur = SolicitudDisplayHelper.tripDurationText(widget.solicitud);
     final compact = widget.compact;
+    final dense = widget.denseList && compact;
     final titleLarge = widget.destacada && !compact;
 
     return SlideTransition(
@@ -191,6 +196,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           margin: widget.marginExterno
               ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
               : EdgeInsets.zero,
+          clipBehavior: dense ? Clip.hardEdge : Clip.none,
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
             borderRadius: BorderRadius.circular(compact ? 14 : 20),
@@ -211,7 +217,9 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ],
           ),
           child: Padding(
-            padding: compact
+            padding: dense
+                ? const EdgeInsets.fromLTRB(10, 8, 10, 8)
+                : compact
                 ? const EdgeInsets.fromLTRB(12, 10, 12, 11)
                 : const EdgeInsets.fromLTRB(16, 14, 16, 16),
             child: Column(
@@ -260,7 +268,8 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             isDark: isDark,
                             titleLarge: titleLarge,
                           ),
-                          if (compact &&
+                          if (!dense &&
+                              compact &&
                               origenSub.isNotEmpty &&
                               origenSub.toLowerCase() !=
                                   origenNombre.toLowerCase()) ...[
@@ -325,33 +334,59 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ],
                 ),
                 if (muestraDestino) ...[
-                  SizedBox(height: compact ? 8 : 14),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: EdgeInsets.only(top: compact ? 14 : 18),
-                        child: Icon(
+                  SizedBox(height: dense ? 4 : (compact ? 8 : 14)),
+                  if (dense)
+                    Row(
+                      children: [
+                        Icon(
                           Iconsax.location,
-                          size: compact ? 15 : 18,
+                          size: 14,
                           color: Colors.red.shade400,
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: _buildLocationBlock(
-                          label: 'DESTINO',
-                          title: destinoNombre,
-                          subtitle: destinoSub,
-                          labelColor: Colors.red.shade400,
-                          isDark: isDark,
-                          titleLarge: false,
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            destinoNombre,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.85)
+                                  : Colors.black87,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.only(top: compact ? 14 : 18),
+                          child: Icon(
+                            Iconsax.location,
+                            size: compact ? 15 : 18,
+                            color: Colors.red.shade400,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _buildLocationBlock(
+                            label: 'DESTINO',
+                            title: destinoNombre,
+                            subtitle: destinoSub,
+                            labelColor: Colors.red.shade400,
+                            isDark: isDark,
+                            titleLarge: false,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
-                if (viajeDist.isNotEmpty || viajeDur.isNotEmpty) ...[
+                if (!dense && (viajeDist.isNotEmpty || viajeDur.isNotEmpty)) ...[
                   SizedBox(height: compact ? 6 : 10),
                   Row(
                     children: [
@@ -392,7 +427,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ),
                 ],
                 if (tieneMeta) ...[
-                  SizedBox(height: compact ? 6 : 12),
+                  SizedBox(height: dense ? 4 : (compact ? 6 : 12)),
                   Wrap(
                     spacing: compact ? 6 : 8,
                     runSpacing: compact ? 4 : 6,
@@ -414,7 +449,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     ],
                   ),
                 ],
-                SizedBox(height: compact ? 10 : 16),
+                SizedBox(height: dense ? 6 : (compact ? 10 : 16)),
                 Row(
                   children: [
                     if (widget.onRechazar != null) ...[
@@ -424,7 +459,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           style: OutlinedButton.styleFrom(
                             padding: EdgeInsets.symmetric(
                               horizontal: 6,
-                              vertical: compact ? 10 : 14,
+                              vertical: dense ? 7 : (compact ? 10 : 14),
                             ),
                             side: const BorderSide(color: Colors.red, width: 1.5),
                             shape: RoundedRectangleBorder(
@@ -455,7 +490,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(
-                            vertical: compact ? 10 : 14,
+                            vertical: dense ? 7 : (compact ? 10 : 14),
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -468,13 +503,13 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           children: [
                             Icon(
                               Iconsax.tick_circle_copy,
-                              size: compact ? 17 : 20,
+                              size: dense ? 16 : (compact ? 17 : 20),
                             ),
                             SizedBox(width: compact ? 6 : 8),
                             Text(
                               'Aceptar',
                               style: TextStyle(
-                                fontSize: compact ? 14 : 16,
+                                fontSize: dense ? 13 : (compact ? 14 : 16),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),

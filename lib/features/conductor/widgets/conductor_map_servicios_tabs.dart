@@ -111,25 +111,39 @@ class ConductorMapServiciosTabs {
     return true;
   }
 
-  /// Tarjetas compactas en lista (~3–4 visibles en pantalla).
-  static int _visibleCardsCount(BuildContext context) =>
+  /// Cuántas tarjetas deben verse sin hacer scroll (3 en pantallas bajas, 4 en el resto).
+  static int visibleCardsTarget(BuildContext context) =>
       pantallaCompacta(context) ? 3 : 4;
 
-  static double _compactCardExtent(BuildContext context) =>
-      pantallaCompacta(context) ? 98.0 : 106.0;
+  static double compactCardItemExtent(BuildContext context) =>
+      pantallaCompacta(context) ? 100.0 : 104.0;
+
+  static const double _listGap = 6.0;
+  static const double _listPadding = 12.0;
+  static const double _refreshBarHeight = 34.0;
 
   static double _listPanelHeight(
     BuildContext context, {
     required bool conBarraRefresh,
   }) {
-    final n = _visibleCardsCount(context);
-    final cardH = _compactCardExtent(context);
-    var h = cardH * n + 6 * (n - 1) + 12;
-    if (conBarraRefresh) h += 34;
+    final n = visibleCardsTarget(context);
+    final cardH = compactCardItemExtent(context);
+    final refreshH = conBarraRefresh ? _refreshBarHeight : 0.0;
+    final desired =
+        cardH * n + _listGap * (n - 1) + _listPadding + refreshH;
+
     final screenH = MediaQuery.sizeOf(context).height;
-    final maxH = screenH * (pantallaCompacta(context) ? 0.36 : 0.40);
-    final minH = cardH * 2 + 18 + (conBarraRefresh ? 34 : 0);
-    return h.clamp(minH, maxH);
+    final topPad = MediaQuery.paddingOf(context).top;
+    // Espacio para chip+tabs, dock inferior y FABs.
+    const reservedInferior = 220.0;
+    const reservedSuperior = 118.0;
+    final maxH = (screenH - topPad - reservedSuperior - reservedInferior)
+        .clamp(cardH * 2 + _listGap + _listPadding + refreshH, screenH * 0.58);
+
+    return desired.clamp(
+      cardH * 2 + _listGap + _listPadding + refreshH,
+      maxH,
+    );
   }
 
   static Widget _panelShell({
@@ -210,11 +224,9 @@ class ConductorMapServiciosTabs {
       child: RefreshIndicator(
         color: AppColors.accent,
         onRefresh: onRefresh,
-        child: ListView.separated(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+        child: _serviciosListView(
+          context: context,
           itemCount: lista.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 6),
           itemBuilder: (context, index) {
             final solicitud = lista[index];
             final id = getSolicitudId(solicitud);
@@ -224,6 +236,7 @@ class ConductorMapServiciosTabs {
               solicitud: solicitud,
               marginExterno: false,
               compact: true,
+              denseList: true,
               segundosRestantes: seg > 0 ? seg : null,
               destacada: index == 0,
               onAceptar: () => onAceptar(id),
@@ -292,11 +305,10 @@ class ConductorMapServiciosTabs {
       body = RefreshIndicator(
         color: AppColors.accent,
         onRefresh: onRefresh,
-        child: ListView.separated(
-          physics: const AlwaysScrollableScrollPhysics(),
+        child: _serviciosListView(
+          context: context,
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
           itemCount: lista.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 6),
           itemBuilder: (context, index) {
             final item = lista[index];
             final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
@@ -305,6 +317,7 @@ class ConductorMapServiciosTabs {
               solicitud: item,
               marginExterno: false,
               compact: true,
+              denseList: true,
               distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
               tiempoPublicado: pendientes.tiempoPublicado(item),
               precioOfertado: pendientes.precioOfertadoDe(item),
@@ -340,6 +353,27 @@ class ConductorMapServiciosTabs {
           ],
         ),
       ),
+    );
+  }
+
+  /// Lista con altura fija por ítem para que entren 3–4 tarjetas en el panel.
+  static Widget _serviciosListView({
+    required BuildContext context,
+    required int itemCount,
+    required Widget? Function(BuildContext, int) itemBuilder,
+    EdgeInsets padding = const EdgeInsets.fromLTRB(8, 8, 8, 10),
+  }) {
+    final extent = compactCardItemExtent(context);
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: padding,
+      itemCount: itemCount,
+      itemExtent: extent + _listGap,
+      itemBuilder: (context, index) {
+        final card = itemBuilder(context, index);
+        if (card == null) return const SizedBox.shrink();
+        return SizedBox(height: extent, child: card);
+      },
     );
   }
 }
