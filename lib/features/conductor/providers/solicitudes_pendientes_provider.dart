@@ -4,58 +4,44 @@ import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
-import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
-import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
-import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
-import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
-import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_ranking_helper.dart';
-import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 
-/// Lista de servicios publicados sin conductor (pantalla dedicada).
+/// Lista «En espera» delegada al mapa canónico de [ConductorHomeProvider].
 class SolicitudesPendientesProvider extends ChangeNotifier {
-  final ConductorService _conductorService = ConductorService();
-  final ConductorSolicitudEnrichmentService _enrichment =
-      ConductorSolicitudEnrichmentService();
-
-  final List<Map<String, dynamic>> _pendientes = [];
+  ConductorHomeProvider? _home;
   bool _cargando = false;
   String? _error;
-  bool _enServicio = false;
-  bool _enDescanso = false;
-  String? _actualizadoEn;
   Timer? _refreshTimer;
-  ConductorHomeProvider? _home;
   bool _isDisposed = false;
 
-  List<Map<String, dynamic>> get pendientes {
-    final copia = List<Map<String, dynamic>>.from(_pendientes);
-    copia.sort(
-      (a, b) => ConductorSolicitudRankingHelper.calcularScore(b)
-          .compareTo(ConductorSolicitudRankingHelper.calcularScore(a)),
-    );
-    return copia;
-  }
+  List<Map<String, dynamic>> get pendientes =>
+      _home?.solicitudesEnEsperaOrdenadas ?? const [];
 
   bool get cargando => _cargando;
   String? get error => _error;
-  bool get enServicio => _enServicio;
-  bool get enDescanso => _enDescanso;
-  String? get actualizadoEn => _actualizadoEn;
-  int get total => _pendientes.length;
+  bool get enServicio => _home?.enServicio ?? false;
+  bool get enDescanso => _home?.enDescanso ?? false;
+  String? get actualizadoEn => _home?.ultimaSyncSolicitudesEn;
+  int get total => _home?.totalSolicitudesEnEspera ?? 0;
 
   void attachHome(ConductorHomeProvider home) {
     if (_home == home) return;
     detachHome();
     _home = home;
     home.addSolicitudTomadaListener(_onSolicitudTomada);
+    home.addListener(_onHomeChanged);
   }
 
   void detachHome() {
     final home = _home;
     if (home != null) {
       home.removeSolicitudTomadaListener(_onSolicitudTomada);
+      home.removeListener(_onHomeChanged);
     }
     _home = null;
+  }
+
+  void _onHomeChanged() {
+    if (!_isDisposed) notifyListeners();
   }
 
   void iniciarRefrescoPeriodico() {
@@ -73,7 +59,7 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
   }
 
   Future<void> refrescar({bool silencioso = false}) async {
-    if (_isDisposed) return;
+    if (_isDisposed || _home == null) return;
     if (!silencioso) {
       _cargando = true;
       _error = null;
@@ -81,37 +67,7 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
     }
 
     try {
-      final lat = _home?.currentPosition?.latitude;
-      final lng = _home?.currentPosition?.longitude;
-
-      final TaxiSolicitudesPendientesResult result =
-          await _conductorService.getSolicitudesPendientes(
-        lat: lat,
-        lng: lng,
-      );
-
-      _enServicio = result.enServicio;
-      _enDescanso = result.enDescanso;
-      _actualizadoEn = result.actualizadoEn;
-
-      if (_enServicio || _enDescanso) {
-        _pendientes.clear();
-      } else {
-        _pendientes
-          ..clear()
-          ..addAll(
-            result.pendientes
-                .map(ConductorSolicitudPayloadHelper.normalizarSolicitud)
-                .where((s) {
-              final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-              if (id == null || id.isEmpty) return false;
-              return !(_home?.esServicioRechazado(id) ?? false);
-            }),
-          );
-        if (_pendientes.isNotEmpty) {
-          await _enriquecerPendientes(forzarBarrio: !silencioso);
-        }
-      }
+      await _home!.sincronizarSolicitudesPublicadasConductor();
       _error = null;
     } catch (e) {
       if (!silencioso) {
@@ -124,52 +80,14 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _enriquecerPendientes({bool forzarBarrio = false}) async {
-    final targets = forzarBarrio
-        ? List<Map<String, dynamic>>.from(_pendientes)
-        : _pendientes
-              .where((s) {
-                final b = SolicitudDisplayHelper.barrioFromPayload(s);
-                return b == null || b.isEmpty;
-              })
-              .toList();
-    if (targets.isEmpty) return;
-
-    const batchSize = 4;
-    for (var i = 0; i < targets.length; i += batchSize) {
-      if (_isDisposed) return;
-      final end = i + batchSize > targets.length ? targets.length : i + batchSize;
-      final slice = targets.sublist(i, end);
-      await Future.wait(
-        slice.map((s) async {
-          final lat = SolicitudDisplayHelper.parseCoordinate(s['origen_lat']);
-          final lng = SolicitudDisplayHelper.parseCoordinate(s['origen_lng']);
-          if (lat == null || lng == null) return;
-          await _enrichment.enrich(s, forzarBarrio: forzarBarrio);
-        }),
-      );
-    }
-    if (!_isDisposed) notifyListeners();
-  }
-
   void _onSolicitudTomada(String servicioId) {
-    final antes = _pendientes.length;
-    _pendientes.removeWhere(
-      (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == servicioId,
-    );
-    if (antes != _pendientes.length && !_isDisposed) notifyListeners();
+    if (!_isDisposed) notifyListeners();
   }
 
   void quitarPorId(String servicioId) => _onSolicitudTomada(servicioId);
 
-  Map<String, dynamic>? buscarPorId(String servicioId) {
-    for (final s in _pendientes) {
-      if (ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == servicioId) {
-        return s;
-      }
-    }
-    return null;
-  }
+  Map<String, dynamic>? buscarPorId(String servicioId) =>
+      _home?.buscarSolicitudPorId(servicioId);
 
   double? precioOfertadoDe(Map<String, dynamic> solicitud) {
     final raw = solicitud['precio_ofertado'];

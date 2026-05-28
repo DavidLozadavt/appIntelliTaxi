@@ -108,7 +108,7 @@ class ConductorMapServiciosTabs {
     if (controller.index == 0) {
       return home.solicitudesOrdenadas.isNotEmpty;
     }
-    return true;
+    return pendientes.total > 0 || pendientes.cargando;
   }
 
   /// Cuántas tarjetas deben verse sin hacer scroll (3 en pantallas bajas, 4 en el resto).

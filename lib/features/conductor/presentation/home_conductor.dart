@@ -485,12 +485,13 @@ class _HomeConductorState extends State<HomeConductor>
     if (solicitudData != null) {
       solicitud = solicitudData;
     } else {
-      solicitud = _provider.solicitudesOrdenadas.firstWhere(
-        (s) => _getSolicitudId(s) == solicitudId,
-        orElse: () => {},
-      );
+      solicitud = _provider.buscarSolicitudPorId(solicitudId) ??
+          _provider.solicitudesOrdenadas.firstWhere(
+            (s) => _getSolicitudId(s) == solicitudId,
+            orElse: () => {},
+          );
       if (solicitud.isEmpty) {
-        solicitud = _pendientesProvider.buscarPorId(solicitudId) ?? {};
+        solicitud = {};
       }
     }
 
@@ -644,12 +645,14 @@ class _HomeConductorState extends State<HomeConductor>
   void _rechazarSolicitud(String solicitudId) async {
     AppLogger.d('❌ Solicitud rechazada: $solicitudId');
 
-    var solicitud = _provider.solicitudesOrdenadas.firstWhere(
-      (s) => _getSolicitudId(s) == solicitudId,
-      orElse: () => {},
-    );
+    var solicitud =
+        _provider.buscarSolicitudPorId(solicitudId) ??
+        _provider.solicitudesOrdenadas.firstWhere(
+          (s) => _getSolicitudId(s) == solicitudId,
+          orElse: () => {},
+        );
     if (solicitud.isEmpty) {
-      solicitud = _pendientesProvider.buscarPorId(solicitudId) ?? {};
+      solicitud = {};
     }
     final isOfertaDirecta = solicitud['status'] == 'oferta_directa';
     final servicioId = int.tryParse(solicitudId);
@@ -1452,7 +1455,7 @@ class _HomeConductorState extends State<HomeConductor>
                         context: context,
                         controller: _serviciosTabController,
                         llegando: provider.solicitudesOrdenadas.length,
-                        enEspera: _pendientesProvider.total,
+                        enEspera: provider.totalSolicitudesEnEspera,
                       ),
                     ],
                   ),

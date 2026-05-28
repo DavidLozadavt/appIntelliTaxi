@@ -15,6 +15,7 @@ class TaxiPusherEvents {
   TaxiPusherEvents._();
 
   static const nuevaSolicitud = 'nueva-solicitud';
+  static const servicioCercano = 'servicio.cercano';
   static const solicitudTomada = 'solicitud.tomada';
   static const servicioAceptado = 'servicio.aceptado';
   static const servicioEstadoCambiado = 'servicio.estado.cambiado';

@@ -66,10 +66,12 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? _lastVehiculosLoadError;
   TurnoActivo? _turnoActivo;
 
-  // Solicitudes de servicio
-  final List<Map<String, dynamic>> _solicitudesActivas = [];
+  // Solicitudes de servicio (mapa canónico por servicio_id; TTL solo oculta overlay)
+  final Map<String, Map<String, dynamic>> _solicitudesPorId = {};
+  final Set<String> _overlayOcultoPorTtl = {};
   final Map<String, Timer> _timersExpiracion = {};
   final Map<String, DateTime> _expiracionPorSolicitud = {};
+  String? _ultimaSyncSolicitudesEn;
   Timer? _tickerExpiracionUI;
   Timer? _syncSolicitudesTimer;
   bool _suscritoAPusher = false;
@@ -135,7 +137,30 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   List<Map<String, dynamic>> get solicitudesActivas =>
-      (_enServicio || _enDescanso) ? const [] : _solicitudesActivas;
+      (_enServicio || _enDescanso) ? const [] : _solicitudesPorId.values.toList();
+
+  String? get ultimaSyncSolicitudesEn => _ultimaSyncSolicitudesEn;
+
+  /// Pestaña «En espera»: publicados en API cuyo overlay TTL ya expiró (o solo llegaron por sync).
+  List<Map<String, dynamic>> get solicitudesEnEsperaOrdenadas {
+    if (_enServicio || _enDescanso) return const [];
+    final solicitudes = _solicitudesPorId.values
+        .where((s) {
+          final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
+          return id != null && _overlayOcultoPorTtl.contains(id);
+        })
+        .toList();
+    solicitudes.sort(
+      (a, b) => ConductorSolicitudRankingHelper.calcularScore(b)
+          .compareTo(ConductorSolicitudRankingHelper.calcularScore(a)),
+    );
+    return solicitudes;
+  }
+
+  int get totalSolicitudesEnEspera => solicitudesEnEsperaOrdenadas.length;
+
+  Map<String, dynamic>? buscarSolicitudPorId(String solicitudId) =>
+      _solicitudesPorId[solicitudId];
   String? get lastAcceptError => _lastAcceptError;
   String? get lastTurnoError => _lastTurnoError;
   bool get enDescanso => _enDescanso;
@@ -148,8 +173,26 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? get lastRadioAccionError => _lastRadioAccionError;
   bool get puedeUsarModoDescanso =>
       _isOnline && !_enServicio && _turnoActivo != null;
-  List<Map<String, dynamic>> get solicitudesOrdenadas {
-    final solicitudes = List<Map<String, dynamic>>.from(_solicitudesActivas);
+  /// Pestaña «Llegando»: overlay activo (Pusher / servicio.cercano, TTL no expirado).
+  List<Map<String, dynamic>> get solicitudesOrdenadas =>
+      _solicitudesOrdenadasVisiblesEnOverlay();
+
+  List<Map<String, dynamic>> _solicitudesOrdenadasTodas() {
+    final solicitudes = List<Map<String, dynamic>>.from(_solicitudesPorId.values);
+    solicitudes.sort(
+      (a, b) => ConductorSolicitudRankingHelper.calcularScore(b)
+          .compareTo(ConductorSolicitudRankingHelper.calcularScore(a)),
+    );
+    return solicitudes;
+  }
+
+  List<Map<String, dynamic>> _solicitudesOrdenadasVisiblesEnOverlay() {
+    final solicitudes = _solicitudesPorId.values
+        .where((s) {
+          final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
+          return id != null && !_overlayOcultoPorTtl.contains(id);
+        })
+        .toList();
     solicitudes.sort(
       (a, b) => ConductorSolicitudRankingHelper.calcularScore(b)
           .compareTo(ConductorSolicitudRankingHelper.calcularScore(a)),
@@ -165,7 +208,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     double radioKm = 18,
   }) {
     final radioMetros = radioKm * 1000;
-    final candidatas = solicitudesOrdenadas.where((s) {
+    final candidatas = _solicitudesOrdenadasTodas().where((s) {
       final idStr = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
       if (idStr == null || idStr.isEmpty) return false;
       final idNum = int.tryParse(idStr);
@@ -292,13 +335,18 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     await ConductorSessionHelper.guardarServiciosRechazados(_serviciosRechazados);
 
-    // Quitar de cola local cualquier id ya rechazado.
-    _solicitudesActivas.removeWhere((s) {
-      final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-      return id != null && esServicioRechazado(id);
-    });
+    _purgaSolicitudesRechazadasDelMapa();
 
     if (!_isDisposed) notifyListeners();
+  }
+
+  void _purgaSolicitudesRechazadasDelMapa() {
+    final rechazados = _solicitudesPorId.keys
+        .where((id) => esServicioRechazado(id))
+        .toList();
+    for (final id in rechazados) {
+      _removerSolicitudDelMapa(id);
+    }
   }
 
   static int? servicioIdNumerico(String? id) {
@@ -556,8 +604,17 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
     _timersExpiracion.clear();
     _expiracionPorSolicitud.clear();
-    _solicitudesActivas.clear();
+    _overlayOcultoPorTtl.clear();
+    _solicitudesPorId.clear();
     _detenerTickerSiNoHaySolicitudes();
+  }
+
+  void _removerSolicitudDelMapa(String solicitudId) {
+    _solicitudesPorId.remove(solicitudId);
+    _overlayOcultoPorTtl.remove(solicitudId);
+    _expiracionPorSolicitud.remove(solicitudId);
+    _timersExpiracion[solicitudId]?.cancel();
+    _timersExpiracion.remove(solicitudId);
   }
 
   @override
@@ -654,6 +711,18 @@ class ConductorHomeProvider extends ChangeNotifier {
               }
             });
           }
+
+          for (final eventName in const [
+            TaxiPusherEvents.servicioCercano,
+            'servicio_cercano',
+          ]) {
+            final key = '$channel:$eventName';
+            _offerHandlerKeys.add(key);
+            PusherService.registerEventHandlerSecondary(key, (data) {
+              AppLogger.d('🔔 Evento recibido: $eventName en $channel');
+              if (data != null) _procesarNuevaSolicitud(data);
+            });
+          }
         }
 
         AppLogger.d(
@@ -723,23 +792,21 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       final list = result.solicitudes;
+      _ultimaSyncSolicitudesEn = DateTime.now().toIso8601String();
       final serverIds = <String>{};
       for (final m in list) {
         final sid = m['servicio_id'] ?? m['solicitud_id'] ?? m['id'];
         if (sid != null) serverIds.add(sid.toString());
       }
 
-      for (final s in List<Map<String, dynamic>>.from(_solicitudesActivas)) {
-        final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-        if (id == null || id.isEmpty || id.startsWith('temp_')) continue;
+      for (final id in _solicitudesPorId.keys.toList()) {
+        if (id.startsWith('temp_')) continue;
         if (int.tryParse(id) == null) continue;
         if (!serverIds.contains(id)) {
-          rechazarSolicitud(id);
+          _removerSolicitudDelMapa(id);
         }
       }
 
-      // Fallback: si se perdió realtime pero el backend aún reporta pendientes,
-      // sembramos la cola "llegando" desde sync (sin sonido ni heads-up).
       for (final m in list) {
         _procesarNuevaSolicitud(m, fromSync: true);
       }
@@ -990,38 +1057,35 @@ class ConductorHomeProvider extends ChangeNotifier {
         return;
       }
 
-      // Verificar si ya existe la solicitud
-      final yaExiste = _solicitudesActivas.any(
-        (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
-      );
-      if (yaExiste) {
-        AppLogger.d('⚠️ Solicitud ya existe: $solicitudId');
-        return;
-      }
+      final existente = _solicitudesPorId[solicitudId];
+      final esNueva = existente == null;
+      _solicitudesPorId[solicitudId] = existente != null
+          ? {...existente, ...solicitud}
+          : solicitud;
 
-      // Agregar solicitud a la lista
-      _solicitudesActivas.add(solicitud);
-
-      if (!fromSync) {
-        unawaited(_reproducirSonidoNotificacion());
-        unawaited(VoiceAlertService.announceNewService());
-        unawaited(_notificarYEnriquecerSolicitud(solicitudId));
-      } else {
+      if (fromSync) {
+        if (esNueva) {
+          _overlayOcultoPorTtl.add(solicitudId);
+        }
         unawaited(_enriquecerDireccionesSolicitud(solicitudId));
-      }
+      } else {
+        _overlayOcultoPorTtl.remove(solicitudId);
+        if (esNueva) {
+          unawaited(_reproducirSonidoNotificacion());
+          unawaited(VoiceAlertService.announceNewService());
+          unawaited(_notificarYEnriquecerSolicitud(solicitudId));
+        } else {
+          unawaited(_enriquecerDireccionesSolicitud(solicitudId));
+        }
 
-      final ttlSegundos =
-          ConductorSolicitudPayloadHelper.resolverTtlSegundos(solicitud);
-      _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
-        Duration(seconds: ttlSegundos),
-      );
-
-      // Configurar timer de expiración
-      _configurarTimerExpiracion(solicitudId, ttlSegundos: ttlSegundos);
-      _iniciarTickerExpiracionUI();
-
-      if (!fromSync) {
-        _notificarNuevaSolicitudExterna(solicitud);
+        final ttlSegundos =
+            ConductorSolicitudPayloadHelper.resolverTtlSegundos(solicitud);
+        _expiracionPorSolicitud[solicitudId] = DateTime.now().add(
+          Duration(seconds: ttlSegundos),
+        );
+        _configurarTimerExpiracion(solicitudId, ttlSegundos: ttlSegundos);
+        _iniciarTickerExpiracionUI();
+        _notificarNuevaSolicitudExterna(_solicitudesPorId[solicitudId]!);
       }
 
       if (!_isDisposed) notifyListeners();
@@ -1039,16 +1103,13 @@ class ConductorHomeProvider extends ChangeNotifier {
     try {
       await _enriquecerDireccionesSolicitud(solicitudId);
       if (_isDisposed) return;
-      final index = _solicitudesActivas.indexWhere(
-        (s) =>
-            ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
-      );
-      if (index < 0) return;
+      final solicitud = _solicitudesPorId[solicitudId];
+      if (solicitud == null) return;
 
       // Full-screen / heads-up solo si la app no está visible (otra app encima).
       if (!_isAppInForeground()) {
         await IncomingServiceNotificationService.instance.showIncomingService(
-          _solicitudesActivas[index],
+          solicitud,
         );
       }
     } catch (e, st) {
@@ -1064,12 +1125,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _isAppInForeground() => AppLifecycleHelper.isInForeground();
 
   Future<void> _enriquecerDireccionesSolicitud(String solicitudId) async {
-    final index = _solicitudesActivas.indexWhere(
-      (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
-    );
-    if (index < 0 || _isDisposed) return;
+    final solicitud = _solicitudesPorId[solicitudId];
+    if (solicitud == null || _isDisposed) return;
 
-    final changed = await _solicitudEnrichment.enrich(_solicitudesActivas[index]);
+    final changed = await _solicitudEnrichment.enrich(solicitud);
     if (changed && !_isDisposed) notifyListeners();
   }
 
@@ -1085,21 +1144,11 @@ class ConductorHomeProvider extends ChangeNotifier {
     });
   }
 
-  /// Expira una solicitud después del tiempo límite
+  /// TTL del overlay: oculta tarjeta en «Llegando»; el ítem sigue en el mapa (p. ej. «En espera»).
   void _expirarSolicitud(String solicitudId) {
-    AppLogger.d('⏱️ Solicitud expirada: $solicitudId');
-    final index = _solicitudesActivas.indexWhere(
-      (s) =>
-          (s['_local_id']?.toString() == solicitudId) ||
-          (ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId),
-    );
-    if (index != -1) {
-      _solicitudesActivas.removeAt(index);
-    } else {
-      _solicitudesActivas.removeWhere(
-        (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
-      );
-    }
+    if (!_solicitudesPorId.containsKey(solicitudId)) return;
+    AppLogger.d('⏱️ Overlay TTL expirado (sigue en lista API): $solicitudId');
+    _overlayOcultoPorTtl.add(solicitudId);
     _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion.remove(solicitudId);
     _detenerTickerSiNoHaySolicitudes();
@@ -1113,59 +1162,22 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   // ==================== MANEJO DE SOLICITUDES ====================
 
-  /// Rechaza una solicitud
+  /// Quita una solicitud del mapa local (tomada por otro, cancelada, rechazo, etc.).
   void rechazarSolicitud(String solicitudId) {
-    AppLogger.d('❌ Rechazando solicitud: $solicitudId');
+    AppLogger.d('❌ Quitando solicitud del mapa local: $solicitudId');
 
-    bool coincideId(Map<String, dynamic> s, String id) {
+    final idsAEliminar = <String>{solicitudId};
+    for (final entry in _solicitudesPorId.entries) {
+      final s = entry.value;
       final obtenido = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-      if (obtenido != null && obtenido == id) return true;
-
-      // Algunas respuestas (GET vs Pusher) pueden traer IDs en campos distintos.
-      final candidatos = <String>{
-        s['_local_id']?.toString() ?? '',
-        s['solicitud_id']?.toString() ?? '',
-        s['solicitudId']?.toString() ?? '',
-        s['servicio_id']?.toString() ?? '',
-        s['servicioId']?.toString() ?? '',
-        s['id']?.toString() ?? '',
-        s['ride_id']?.toString() ?? '',
-        s['request_id']?.toString() ?? '',
-        s['temp_id']?.toString() ?? '',
-      };
-      candidatos.removeWhere((v) => v.isEmpty);
-      return candidatos.contains(id);
+      if (obtenido == solicitudId || entry.key == solicitudId) {
+        idsAEliminar.add(entry.key);
+        if (obtenido != null) idsAEliminar.add(obtenido);
+      }
     }
 
-    // Recolectamos IDs para poder cancelar timers por cualquiera de las claves.
-    final idsAEliminar = <String>{};
-    _solicitudesActivas.removeWhere((s) {
-      final match = coincideId(s, solicitudId);
-      if (match) {
-        final obtenido = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-        if (obtenido != null && obtenido.isNotEmpty) idsAEliminar.add(obtenido);
-        for (final k in const [
-          '_local_id',
-          'solicitud_id',
-          'solicitudId',
-          'servicio_id',
-          'servicioId',
-          'id',
-          'ride_id',
-          'request_id',
-          'temp_id',
-        ]) {
-          final v = s[k]?.toString();
-          if (v != null && v.isNotEmpty) idsAEliminar.add(v);
-        }
-      }
-      return match;
-    });
-
     for (final id in idsAEliminar) {
-      _expiracionPorSolicitud.remove(id);
-      _timersExpiracion[id]?.cancel();
-      _timersExpiracion.remove(id);
+      _removerSolicitudDelMapa(id);
     }
 
     _detenerTickerSiNoHaySolicitudes();
@@ -1193,15 +1205,12 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       var precio = precioOfertado ?? 0.0;
       if (precioOfertado == null) {
-        for (final s in _solicitudesActivas) {
-          if (ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) ==
-              solicitudId) {
-            precio = JsonPayloadHelper.parseDouble(
-              s['precio_ofertado'],
-              fallback: 0,
-            );
-            break;
-          }
+        final s = _solicitudesPorId[solicitudId];
+        if (s != null) {
+          precio = JsonPayloadHelper.parseDouble(
+            s['precio_ofertado'],
+            fallback: 0,
+          );
         }
       }
 
@@ -1225,11 +1234,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         );
       }
 
-      // Remover de la lista de solicitudes activas
-      _solicitudesActivas.removeWhere(
-        (s) => ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) == solicitudId,
-      );
-      _expiracionPorSolicitud.remove(solicitudId);
+      _removerSolicitudDelMapa(solicitudId);
       _detenerTickerSiNoHaySolicitudes();
 
       if (!_isDisposed) notifyListeners();
@@ -1758,14 +1763,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         motivo: motivo,
       );
 
-      // Limpiar solicitudes activas si es necesario
-      _solicitudesActivas.removeWhere(
-        (s) =>
-            ConductorSolicitudPayloadHelper.obtenerSolicitudId(s) ==
-                servicioId.toString() ||
-            s['servicio_id']?.toString() == servicioId.toString(),
-      );
-      _expiracionPorSolicitud.remove(servicioId.toString());
+      _removerSolicitudDelMapa(servicioId.toString());
       _detenerTickerSiNoHaySolicitudes();
 
       if (!_isDisposed) notifyListeners();
@@ -1777,6 +1775,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   int obtenerSegundosRestantes(String solicitudId) {
+    if (_overlayOcultoPorTtl.contains(solicitudId)) return 0;
     final expiracion = _expiracionPorSolicitud[solicitudId];
     if (expiracion == null) return 0;
     final restantes = expiracion.difference(DateTime.now()).inSeconds;
@@ -1796,7 +1795,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   void _detenerTickerSiNoHaySolicitudes() {
-    if (_solicitudesActivas.isEmpty && _tickerExpiracionUI != null) {
+    if (_expiracionPorSolicitud.isEmpty && _tickerExpiracionUI != null) {
       _tickerExpiracionUI?.cancel();
       _tickerExpiracionUI = null;
     }
@@ -1848,7 +1847,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (clearSelectedVehicle) {
       _vehiculoSeleccionado = null;
     }
-    _solicitudesActivas.clear();
+    _solicitudesPorId.clear();
+    _overlayOcultoPorTtl.clear();
     _expiracionPorSolicitud.clear();
     _tickerExpiracionUI?.cancel();
     _tickerExpiracionUI = null;
