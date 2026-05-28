@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 
@@ -53,8 +54,11 @@ class IncomingServiceNotificationService {
     try {
       await ensureInitialized();
 
-      final title = SolicitudDisplayHelper.notificationTitle(solicitud);
-      final body = SolicitudDisplayHelper.notificationBody(solicitud);
+      final normalizada = SolicitudDisplayHelper.normalizeSolicitudMap(
+        ConductorSolicitudPayloadHelper.normalizarSolicitud(solicitud),
+      );
+      final title = SolicitudDisplayHelper.notificationTitle(normalizada);
+      final body = SolicitudDisplayHelper.notificationBody(normalizada);
       final payload = jsonEncode({
         'tipo': 'nueva_solicitud_servicio',
         'route': 'servicio',
@@ -76,9 +80,10 @@ class IncomingServiceNotificationService {
         styleInformation: BigTextStyleInformation(
           body,
           contentTitle: title,
-          summaryText: SolicitudDisplayHelper.pickupSubtitle(solicitud).isNotEmpty
-              ? SolicitudDisplayHelper.pickupSubtitle(solicitud)
-              : SolicitudDisplayHelper.pickupName(solicitud),
+          summaryText: SolicitudDisplayHelper.pickupDetailForDriver(normalizada)
+                  .isNotEmpty
+              ? SolicitudDisplayHelper.pickupDetailForDriver(normalizada)
+              : SolicitudDisplayHelper.pickupTitleForDriver(normalizada),
         ),
         ticker: 'Nuevo servicio',
       );

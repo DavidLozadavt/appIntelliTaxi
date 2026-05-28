@@ -436,15 +436,15 @@ class SolicitudDisplayHelper {
 
   /// Solo el nombre del lugar (tarjeta compacta: ya dice RECOGIDA / DESTINO).
   static String pickupPlaceLabel(Map<String, dynamic> data) {
-    final place = pickupName(data);
-    if (isPlaceholderPickup(place)) {
-      final barrio = barrioFromPayload(normalizeSolicitudMap(data));
-      if (barrio != null && barrio.isNotEmpty) {
-        return formatReadablePlaceName(barrio);
-      }
-      return 'Punto de recogida';
+    final title = pickupTitleForDriver(data);
+    if (!isPlaceholderPickup(title) && title.trim().isNotEmpty) {
+      return formatReadablePlaceName(title);
     }
-    return formatReadablePlaceName(place);
+    final barrio = barrioFromPayload(normalizeSolicitudMap(data));
+    if (barrio != null && barrio.isNotEmpty) {
+      return formatReadablePlaceName(barrio);
+    }
+    return 'Punto de recogida';
   }
 
   static String destinationPlaceLabel(Map<String, dynamic> data) {
@@ -533,10 +533,10 @@ class SolicitudDisplayHelper {
   }
 
   static String notificationTitle(Map<String, dynamic> data) {
-    final origen = pickupName(data);
-    if (!isPlaceholderPickup(origen)) {
-      if (origen.length <= 48) return origen;
-      return '${origen.substring(0, 45)}…';
+    final titulo = formatReadablePlaceName(pickupTitleForDriver(data));
+    if (!isPlaceholderPickup(titulo) && titulo.trim().isNotEmpty) {
+      if (titulo.length <= 48) return titulo;
+      return '${titulo.substring(0, 45)}…';
     }
     final barrio = barrioFromPayload(data);
     if (barrio != null) return 'Recogida · $barrio';
@@ -544,15 +544,18 @@ class SolicitudDisplayHelper {
   }
 
   static String notificationBody(Map<String, dynamic> data) {
-    final origen = pickupName(data);
-    final origenSub = pickupSubtitle(data);
-    final destino = destinationName(data);
+    final titulo = formatReadablePlaceName(pickupTitleForDriver(data));
+    final detalle = pickupDetailForDriver(data);
+    final destino = formatReadablePlaceName(destinationName(data));
     final destinoSub = destinationSubtitle(data);
     final buffer = StringBuffer();
 
-    if (!isPlaceholderPickup(origen)) {
-      buffer.writeln('Recogida: $origen');
-      if (origenSub.isNotEmpty) buffer.writeln(origenSub);
+    if (!isPlaceholderPickup(titulo) && titulo.trim().isNotEmpty) {
+      buffer.writeln('Recogida: $titulo');
+      if (detalle.isNotEmpty &&
+          !_normalizeCompare(detalle).contains(_normalizeCompare(titulo))) {
+        buffer.writeln(detalle);
+      }
     }
     if (hasDestination(data) && !isPlaceholderDestino(destino)) {
       buffer.write('Destino: $destino');

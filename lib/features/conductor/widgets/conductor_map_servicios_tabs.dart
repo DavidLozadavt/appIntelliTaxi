@@ -3,6 +3,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_servicios_espera_hint.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 
 /// Pestañas compactas bajo el chip «En línea».
@@ -90,11 +91,15 @@ class ConductorMapServiciosTabs {
     BuildContext context,
     ConductorHomeProvider provider, {
     required double chipAltura,
+    bool avisoEsperaEnLlegando = false,
   }) {
     final compact = pantallaCompacta(context);
     var h = 12.0;
     h += chipAltura;
     h += tabBarHeight(context);
+    if (avisoEsperaEnLlegando) {
+      h += ConductorServiciosEsperaHint.alturaEstimada;
+    }
     h += compact ? 4.0 : 6.0;
     return h;
   }
@@ -106,10 +111,19 @@ class ConductorMapServiciosTabs {
     required SolicitudesPendientesProvider pendientes,
   }) {
     if (controller.index == 0) {
-      return home.solicitudesOrdenadas.isNotEmpty;
+      return home.solicitudesOrdenadas.isNotEmpty ||
+          home.totalSolicitudesEnEspera > 0;
     }
     return pendientes.total > 0 || pendientes.cargando;
   }
+
+  static bool mostrarAvisoEnEsperaEnLlegando({
+    required TabController controller,
+    required ConductorHomeProvider home,
+  }) =>
+      controller.index == 0 &&
+      home.solicitudesOrdenadas.isEmpty &&
+      home.totalSolicitudesEnEspera > 0;
 
   /// Cuántas tarjetas deben verse sin hacer scroll (3 en pantallas bajas, 4 en el resto).
   static int visibleCardsTarget(BuildContext context) =>
@@ -174,6 +188,8 @@ class ConductorMapServiciosTabs {
     void Function(String id)? onDescartarEspera,
     required String Function(Map<String, dynamic>) getSolicitudId,
     required int Function(String id) segundosRestantes,
+    VoidCallback? onVerEnEspera,
+    VoidCallback? onDismissEsperaHint,
   }) {
     if (!shouldShowPanel(
       controller: controller,
@@ -191,6 +207,8 @@ class ConductorMapServiciosTabs {
         segundosRestantes: segundosRestantes,
         onAceptar: onAceptarLlegando,
         onRechazar: onRechazarLlegando,
+        onVerEnEspera: onVerEnEspera,
+        onDismissEsperaHint: onDismissEsperaHint,
       );
     }
 
@@ -210,40 +228,78 @@ class ConductorMapServiciosTabs {
     required int Function(String id) segundosRestantes,
     required void Function(String id) onAceptar,
     required void Function(String id) onRechazar,
+    VoidCallback? onVerEnEspera,
+    VoidCallback? onDismissEsperaHint,
   }) {
     final lista = home.solicitudesOrdenadas;
-    if (lista.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    final espera = home.totalSolicitudesEnEspera;
+    final soloAvisoEspera = lista.isEmpty && espera > 0;
 
     Future<void> onRefresh() =>
         home.sincronizarSolicitudesPublicadasConductor();
 
+    if (lista.isEmpty && espera == 0) {
+      return const SizedBox.shrink();
+    }
+
+    Widget listBody;
+    if (soloAvisoEspera) {
+      listBody = ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        children: [
+          Text(
+            'No hay servicios en «Llegando» ahora. Revisa los que siguen disponibles en espera.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      );
+    } else {
+      listBody = _serviciosListView(
+        context: context,
+        itemCount: lista.length,
+        itemBuilder: (context, index) {
+          final solicitud = lista[index];
+          final id = getSolicitudId(solicitud);
+          if (id.isEmpty) return const SizedBox.shrink();
+          final seg = segundosRestantes(id);
+          return SolicitudServicioCard(
+            solicitud: solicitud,
+            marginExterno: false,
+            compact: true,
+            denseList: true,
+            segundosRestantes: seg > 0 ? seg : null,
+            destacada: index == 0,
+            onAceptar: () => onAceptar(id),
+            onRechazar: () => onRechazar(id),
+          );
+        },
+      );
+    }
+
     return _panelShell(
       context: context,
-      child: RefreshIndicator(
-        color: AppColors.accent,
-        onRefresh: onRefresh,
-        child: _serviciosListView(
-          context: context,
-          itemCount: lista.length,
-          itemBuilder: (context, index) {
-            final solicitud = lista[index];
-            final id = getSolicitudId(solicitud);
-            if (id.isEmpty) return const SizedBox.shrink();
-            final seg = segundosRestantes(id);
-            return SolicitudServicioCard(
-              solicitud: solicitud,
-              marginExterno: false,
-              compact: true,
-              denseList: true,
-              segundosRestantes: seg > 0 ? seg : null,
-              destacada: index == 0,
-              onAceptar: () => onAceptar(id),
-              onRechazar: () => onRechazar(id),
-            );
-          },
-        ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (soloAvisoEspera && onVerEnEspera != null)
+            ConductorServiciosEsperaHint(
+              cantidad: espera,
+              onVerEnEspera: onVerEnEspera,
+              onDismiss: onDismissEsperaHint,
+            ),
+          Expanded(
+            child: RefreshIndicator(
+              color: AppColors.accent,
+              onRefresh: onRefresh,
+              child: listBody,
+            ),
+          ),
+        ],
       ),
     );
   }

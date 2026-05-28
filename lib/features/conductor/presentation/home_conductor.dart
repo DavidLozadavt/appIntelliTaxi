@@ -23,7 +23,9 @@ import 'package:intellitaxi/features/emergencias/providers/emergencia_provider.d
 import 'package:intellitaxi/features/emergencias/utils/emergencia_quick_report.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
 import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
+import 'package:intellitaxi/core/services/driver_overlay_permission_flow.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_servicios_espera_hint.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 
 class HomeConductor extends StatefulWidget {
@@ -66,11 +68,43 @@ class _HomeConductorState extends State<HomeConductor>
   late TabController _serviciosTabController;
   /// Solo true si aún no sabemos si hay turno (evita bloquear al volver de un viaje).
   bool _validandoTurno = false;
+  bool _avisoEsperaDescartado = false;
+
+  void _irATabEnEspera() {
+    if (_serviciosTabController.index != 1) {
+      _serviciosTabController.animateTo(1);
+    }
+    unawaited(_pendientesProvider.refrescar(silencioso: true));
+  }
+
+  bool _mostrarAvisoEsperaEnHeader(ConductorHomeProvider provider) =>
+      _dockVisible(provider) &&
+      _serviciosTabController.index == 0 &&
+      provider.totalSolicitudesEnEspera > 0 &&
+      !_avisoEsperaDescartado;
 
   void _onNuevaSolicitudRecibida(Map<String, dynamic> solicitud) {
     if (!mounted) return;
     if (_serviciosTabController.index != 0) {
       _serviciosTabController.animateTo(0);
+    }
+    if (_provider.solicitudesOrdenadas.isEmpty &&
+        _provider.totalSolicitudesEnEspera > 0) {
+      final enEspera = _provider.totalSolicitudesEnEspera;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            enEspera == 1
+                ? 'Hay 1 servicio en «En espera»'
+                : 'Hay $enEspera servicios en «En espera»',
+          ),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Ver',
+            onPressed: _irATabEnEspera,
+          ),
+        ),
+      );
     }
     if (!_dockVisible(_provider)) {
       final nombre = solicitud['pasajero_nombre']?.toString().trim();
@@ -137,6 +171,7 @@ class _HomeConductorState extends State<HomeConductor>
               context,
               provider,
               chipAltura: chipH,
+              avisoEsperaEnLlegando: _mostrarAvisoEsperaEnHeader(provider),
             ) +
             4
         : chipH + 24;
@@ -180,9 +215,6 @@ class _HomeConductorState extends State<HomeConductor>
       setState(() => _validandoTurno = false);
     }
 
-    await _overlayService.requestPermissionIfNeeded();
-    if (!mounted) return;
-
     await _provider.initialize();
     if (!mounted) return;
 
@@ -197,6 +229,11 @@ class _HomeConductorState extends State<HomeConductor>
     if (_validandoTurno) {
       setState(() => _validandoTurno = false);
     }
+
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    await DriverOverlayPermissionFlow.promptOnConductorHomeEntered(context);
   }
 
   Future<void> _crearDotMarker() async {
@@ -307,11 +344,9 @@ class _HomeConductorState extends State<HomeConductor>
       // un heartbeat inmediato para evitar “parpadeo” a inactivo.
       unawaited(_provider.refrescarTurnoYHeartbeatEnResume());
     } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      if (_provider.isOnline &&
-          !_provider.enServicio &&
-          !_overlayService.isRequestingPermission) {
-        unawaited(_overlayService.showTurnoBubble());
+        state == AppLifecycleState.hidden) {
+      if (!_overlayService.isRequestingPermission) {
+        unawaited(_overlayService.syncBubbleForConductor(_provider));
       }
     }
   }
@@ -742,8 +777,9 @@ class _HomeConductorState extends State<HomeConductor>
     final porVencer = resultado['porVencer'] ?? [];
 
     if ((vencidos.isNotEmpty || porVencer.isNotEmpty) && mounted) {
-      showDialog(
+      await showDialog<void>(
         context: context,
+        useRootNavigator: true,
         barrierDismissible: false,
         builder: (context) => DocumentosAlertDialog(
           documentosVencidos: vencidos,
@@ -751,6 +787,13 @@ class _HomeConductorState extends State<HomeConductor>
         ),
       );
     }
+  }
+
+  /// Tras turno OK: documentos (sin avisos extra de burbuja).
+  Future<void> _trasTurnoIniciadoConExito() async {
+    if (!mounted) return;
+    unawaited(_reanudarNavegacionAhora(_provider));
+    await _verificarDocumentos();
   }
 
   /// Muestra el selector de vehículo
@@ -856,9 +899,7 @@ class _HomeConductorState extends State<HomeConductor>
               ),
             );
 
-            // Verificar documentos después de iniciar turno
-            _verificarDocumentos();
-            unawaited(_reanudarNavegacionAhora(_provider));
+            await _trasTurnoIniciadoConExito();
           } else if (mounted) {
             final errorMessage = _provider.lastTurnoError;
             if (_esVehiculoOcupadoError(errorMessage)) {
@@ -884,8 +925,7 @@ class _HomeConductorState extends State<HomeConductor>
                         backgroundColor: Colors.green,
                       ),
                     );
-                    _verificarDocumentos();
-                    unawaited(_reanudarNavegacionAhora(_provider));
+                    await _trasTurnoIniciadoConExito();
                   } else {
                     messenger.showSnackBar(
                       SnackBar(
@@ -1399,6 +1439,7 @@ class _HomeConductorState extends State<HomeConductor>
       context,
       provider,
       chipAltura: _chipEstadoAltura(provider, compact: compact),
+      avisoEsperaEnLlegando: _mostrarAvisoEsperaEnHeader(provider),
     );
   }
 
@@ -1493,6 +1534,14 @@ class _HomeConductorState extends State<HomeConductor>
                         llegando: provider.solicitudesOrdenadas.length,
                         enEspera: provider.totalSolicitudesEnEspera,
                       ),
+                      if (_mostrarAvisoEsperaEnHeader(provider))
+                        ConductorServiciosEsperaHint(
+                          cantidad: provider.totalSolicitudesEnEspera,
+                          onVerEnEspera: _irATabEnEspera,
+                          onDismiss: () {
+                            setState(() => _avisoEsperaDescartado = true);
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -1541,6 +1590,10 @@ class _HomeConductorState extends State<HomeConductor>
                       onRechazarLlegando: _rechazarSolicitud,
                       onAceptarEspera: _aceptarSolicitud,
                       onDescartarEspera: _rechazarSolicitud,
+                      onVerEnEspera: _irATabEnEspera,
+                      onDismissEsperaHint: () {
+                        setState(() => _avisoEsperaDescartado = true);
+                      },
                     ),
                   );
                 },

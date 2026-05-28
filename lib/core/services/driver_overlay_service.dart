@@ -21,9 +21,14 @@ class DriverOverlayService {
   StreamSubscription<dynamic>? _overlayTapSubscription;
   String? _activeMode;
   Timer? _showDebounce;
+  static const String _stableDriverMode = 'driver_bubble';
 
   bool get _isSupported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  /// Android: burbuja sobre otras apps. iOS no usa este canal.
+  bool get isPlatformSupported => _isSupported;
+
   bool get isRequestingPermission => _isRequestingPermission;
 
   /// Escucha taps en la burbuja (`open_app`) y trae la app al frente.
@@ -57,7 +62,6 @@ class DriverOverlayService {
     }
 
     if (state != AppLifecycleState.paused &&
-        state != AppLifecycleState.inactive &&
         state != AppLifecycleState.hidden) {
       return;
     }
@@ -68,6 +72,31 @@ class DriverOverlayService {
     _showDebounce = Timer(const Duration(milliseconds: 350), () {
       unawaited(_showForBackgroundIfNeeded(context));
     });
+  }
+
+  /// Muestra o actualiza la burbuja según estado del conductor (sin exigir turno activo).
+  Future<void> syncBubbleForConductor(ConductorHomeProvider provider) async {
+    if (!_isSupported) return;
+
+    final granted = await hasPermission();
+    if (!granted) {
+      AppLogger.d('🔵 Overlay: sin permiso SYSTEM_ALERT_WINDOW');
+      return;
+    }
+
+    if (provider.enServicio) {
+      final id = provider.servicioActivoId;
+      if (id != null && id > 0) {
+        await showTripBubble(servicioId: id);
+        return;
+      }
+    }
+
+    await showDriverBubble(
+      llegando: provider.solicitudesOrdenadas.length,
+      enEspera: provider.totalSolicitudesEnEspera,
+      enLinea: provider.isOnline,
+    );
   }
 
   Future<void> _showForBackgroundIfNeeded(BuildContext context) async {
@@ -86,27 +115,7 @@ class DriverOverlayService {
         await provider.cargarTurnoActual();
       }
 
-      if (!provider.tieneTurnoActivo) {
-        AppLogger.d('🔵 Overlay: sin turno activo, no se muestra burbuja');
-        await hide();
-        return;
-      }
-
-      final granted = await hasPermission();
-      if (!granted) {
-        AppLogger.d('🔵 Overlay: sin permiso SYSTEM_ALERT_WINDOW');
-        return;
-      }
-
-      if (provider.enServicio) {
-        final id = provider.servicioActivoId;
-        if (id != null && id > 0) {
-          await showTripBubble(servicioId: id);
-          return;
-        }
-      }
-
-      await showTurnoBubble();
+      await syncBubbleForConductor(provider);
     } catch (e, st) {
       AppLogger.e(
         'Error mostrando burbuja',
@@ -135,14 +144,35 @@ class DriverOverlayService {
     }
   }
 
-  /// Burbuja con turno activo (home conductor en segundo plano).
-  Future<void> showTurnoBubble() async {
+  /// Burbuja en home conductor (con o sin turno iniciado).
+  Future<void> showDriverBubble({
+    int llegando = 0,
+    int enEspera = 0,
+    bool enLinea = false,
+  }) async {
+    final total = llegando + enEspera;
+    final String content;
+    if (total > 0) {
+      content = '$total servicio${total == 1 ? '' : 's'} · Toca para abrir';
+    } else if (enLinea) {
+      content = 'En línea · Toca para abrir';
+    } else {
+      content = 'TaxbelUrbano · Toca para abrir';
+    }
     await _showBubble(
-      mode: 'turno',
-      title: 'TaxbelUrbano — Turno activo',
-      content: 'Toca para volver a la app',
+      mode: _stableDriverMode,
+      title: 'TaxbelUrbano',
+      content: content,
+      shareData: 'servicios:$llegando:$enEspera',
     );
   }
+
+  /// Alias histórico (turno / segundo plano).
+  Future<void> showTurnoBubble({
+    int llegando = 0,
+    int enEspera = 0,
+  }) =>
+      showDriverBubble(llegando: llegando, enEspera: enEspera, enLinea: true);
 
   /// Burbuja durante viaje activo.
   Future<void> showTripBubble({required int servicioId}) async {
@@ -175,27 +205,30 @@ class DriverOverlayService {
     }
 
     final isActive = await FlutterOverlayWindow.isActive();
-    if (_activeMode == mode && isActive) {
+    if (isActive &&
+        (_activeMode == mode ||
+            (_activeMode == _stableDriverMode && mode == _stableDriverMode))) {
       if (shareData != null) {
         await FlutterOverlayWindow.shareData(shareData);
       }
       return;
     }
 
-    if (isActive) {
+    if (isActive && _activeMode != mode) {
       await FlutterOverlayWindow.closeOverlay();
       _activeMode = null;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
     }
 
     try {
       await FlutterOverlayWindow.showOverlay(
         height: _overlayWindowSize,
         width: _overlayWindowSize,
-        enableDrag: false,
+        enableDrag: true,
         alignment: OverlayAlignment.centerRight,
         overlayTitle: title,
         overlayContent: content,
-        positionGravity: PositionGravity.auto,
+        positionGravity: PositionGravity.right,
       );
 
       _activeMode = mode;

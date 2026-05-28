@@ -14,6 +14,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -226,7 +227,12 @@ Future<void> _handleBackgroundNotification(RemoteMessage message) async {
   if (_isFleetEmergencyNotificationData(map)) {
     await FleetEmergencyAlertService.instance.handlePayload(map);
   } else if (await _shouldShowConductorIncomingAlert(map)) {
-    await IncomingServiceNotificationService.instance.showIncomingService(map);
+    final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
+      ConductorSolicitudPayloadHelper.normalizarSolicitud(map),
+    );
+    await IncomingServiceNotificationService.instance.showIncomingService(
+      solicitud,
+    );
   } else if (!await _isActiveConductorRole() &&
       _isConductorIncomingServiceNotification(map)) {
     await IncomingServiceNotificationService.instance.dismiss();
@@ -388,7 +394,11 @@ class FirebaseMsg {
       unawaited(_triggerConductorIncomingSync(data));
       // En primer plano: panel «Llegando» en el mapa; notificación solo si no está visible.
       if (!AppLifecycleHelper.isInForeground()) {
-        final solicitud = ConductorSolicitudPayloadHelper.parsePayload(data);
+        final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
+          ConductorSolicitudPayloadHelper.normalizarSolicitud(
+            ConductorSolicitudPayloadHelper.parsePayload(data),
+          ),
+        );
         await IncomingServiceNotificationService.instance.showIncomingService(
           solicitud,
         );

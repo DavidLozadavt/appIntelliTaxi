@@ -1156,12 +1156,20 @@ class ConductorHomeProvider extends ChangeNotifier {
           ? {...existente, ...solicitud}
           : solicitud;
 
-      final enOverlay = mostrarEnOverlay || !fromSync;
+      // Sync API también debe mostrar tarjeta en «Llegando» (no solo sonido + «En espera»).
+      final enOverlay = mostrarEnOverlay || !fromSync || esNueva;
       final solicitudMap = _solicitudesPorId[solicitudId]!;
       if (enOverlay) {
         if (esNueva || overlayEstabaOculto) {
-          unawaited(_enriquecerPoiYOverlay(solicitudId, solicitudMap,
-              esNueva: esNueva || overlayEstabaOculto));
+          _aplicarOverlayLlegando(
+            solicitudId,
+            solicitud: solicitudMap,
+            esNueva: esNueva || overlayEstabaOculto,
+          );
+          unawaited(_enriquecerPoiTrasMostrar(
+            solicitudId,
+            esNueva: esNueva || overlayEstabaOculto,
+          ));
         } else {
           _aplicarOverlayLlegando(
             solicitudId,
@@ -1180,9 +1188,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         _dispararSonidoNuevaSolicitud(solicitudId);
       }
 
-      final esperaPoi =
-          enOverlay && (esNueva || overlayEstabaOculto);
-      if (!_isDisposed && !esperaPoi) notifyListeners();
+      if (!_isDisposed) notifyListeners();
     } catch (e, st) {
       AppLogger.e(
         'Error procesando solicitud Pusher',
@@ -1242,18 +1248,22 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   bool _isAppInForeground() => AppLifecycleHelper.isInForeground();
 
-  Future<void> _enriquecerPoiYOverlay(
-    String solicitudId,
-    Map<String, dynamic> solicitud, {
+  /// POI/nombres extra sin bloquear la tarjeta «Llegando» (antes esperaba Places y no pintaba UI).
+  Future<void> _enriquecerPoiTrasMostrar(
+    String solicitudId, {
     required bool esNueva,
   }) async {
-    await _enriquecerPoiAntesDeAlerta(solicitudId);
+    try {
+      await _enriquecerPoiAntesDeAlerta(solicitudId)
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Timeout o red: la tarjeta ya está visible con datos del API.
+    }
     if (_isDisposed) return;
-    _aplicarOverlayLlegando(
-      solicitudId,
-      solicitud: _solicitudesPorId[solicitudId] ?? solicitud,
-      esNueva: esNueva,
-    );
+    if (esNueva) {
+      await _enriquecerDireccionesSolicitud(solicitudId)
+          .timeout(const Duration(seconds: 8));
+    }
     if (!_isDisposed) notifyListeners();
   }
 
