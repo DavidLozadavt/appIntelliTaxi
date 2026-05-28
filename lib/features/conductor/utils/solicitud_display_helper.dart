@@ -253,6 +253,27 @@ class SolicitudDisplayHelper {
     return _pickupPlaceholder;
   }
 
+  /// Título legible al volante: «Recogida en Aguas Vivas».
+  static String pickupHeadline(Map<String, dynamic> data) {
+    final place = pickupName(data);
+    if (isPlaceholderPickup(place)) {
+      final barrio = barrioFromPayload(normalizeSolicitudMap(data));
+      if (barrio != null && barrio.isNotEmpty) {
+        return 'Recogida en $barrio';
+      }
+      return 'Nueva recogida';
+    }
+    return 'Recogida en $place';
+  }
+
+  /// Título de destino: «Destino en Hospital Susana López».
+  static String destinationHeadline(Map<String, dynamic> data) {
+    if (!hasDestination(data)) return '';
+    final place = destinationName(data);
+    if (isPlaceholderDestino(place)) return 'Destino en mapa';
+    return 'Destino en $place';
+  }
+
   /// Calle / dirección completa cuando difiere del nombre (subtítulo).
   static String pickupSubtitle(Map<String, dynamic> data) {
     final n = normalizeSolicitudMap(data);

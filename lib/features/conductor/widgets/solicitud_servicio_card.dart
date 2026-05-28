@@ -75,6 +75,281 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     _controller.reverse().then((_) => callback());
   }
 
+  Widget? _denseTrailingBadge({
+    required bool isDark,
+    required int segundosRestantes,
+    required bool enRiesgo,
+    required String tiempoPub,
+    required String distanciaMi,
+    required double? precio,
+  }) {
+    if (segundosRestantes > 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: enRiesgo ? Colors.red : Colors.black.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          '${segundosRestantes}s',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 14,
+          ),
+        ),
+      );
+    }
+    if (tiempoPub.isNotEmpty) {
+      return Text(
+        tiempoPub,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: isDark ? AppColors.accent : Colors.orange.shade900,
+        ),
+      );
+    }
+    if (distanciaMi.isNotEmpty) {
+      return Text(
+        distanciaMi,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: Colors.grey.shade600,
+        ),
+      );
+    }
+    if (precio != null && precio > 0) {
+      return Text(
+        '\$${precio.toStringAsFixed(0)}',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: Colors.green.shade700,
+        ),
+      );
+    }
+    return null;
+  }
+
+  Widget _buildDenseActionButtons({required bool compact}) {
+    const btnHeight = 38.0;
+    final btnStyle = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(0, btnHeight)),
+      maximumSize: const WidgetStatePropertyAll(Size(double.infinity, btnHeight)),
+      padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+
+    return SizedBox(
+      height: btnHeight,
+      child: Row(
+        children: [
+          if (widget.onRechazar != null) ...[
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _dismiss(widget.onRechazar!),
+                style: btnStyle.merge(
+                  OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red, width: 1.5),
+                    foregroundColor: Colors.red,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+                child: const Text(
+                  'Rechazar',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            SizedBox(width: compact ? 6 : 8),
+          ],
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => _dismiss(widget.onAceptar),
+              style: btnStyle.merge(
+                ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Iconsax.tick_circle_copy, size: 18),
+                  SizedBox(width: 6),
+                  Text(
+                    'Aceptar',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _denseSectionLabel(String text, Color color) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.45,
+        color: color,
+      ),
+    );
+  }
+
+  Widget _buildDenseListContent({
+    required bool isDark,
+    required String recogidaHeadline,
+    required String origenSub,
+    required String destinoHeadline,
+    required String destinoSub,
+    required bool muestraDestino,
+    required String viajeDist,
+    required String viajeDur,
+    required int segundosRestantes,
+    required bool enRiesgo,
+    required String tiempoPub,
+    required String distanciaMi,
+    required double? precio,
+    required bool compact,
+  }) {
+    final badge = _denseTrailingBadge(
+      isDark: isDark,
+      segundosRestantes: segundosRestantes,
+      enRiesgo: enRiesgo,
+      tiempoPub: tiempoPub,
+      distanciaMi: distanciaMi,
+      precio: precio,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _denseSectionLabel('RECOGIDA', AppColors.accent),
+                        const SizedBox(height: 2),
+                        Text(
+                          recogidaHeadline,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            height: 1.15,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        if (origenSub.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            origenSub,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              height: 1.15,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.78)
+                                  : Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (badge != null) ...[const SizedBox(width: 8), badge],
+                ],
+              ),
+              if (muestraDestino && destinoHeadline.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                _denseSectionLabel('DESTINO', Colors.red.shade400),
+                const SizedBox(height: 2),
+                Text(
+                  destinoHeadline,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.9)
+                        : Colors.black87,
+                  ),
+                ),
+                if (destinoSub.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    destinoSub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      height: 1.15,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.75)
+                          : Colors.black45,
+                    ),
+                  ),
+                ],
+              ],
+              if ((viajeDist.isNotEmpty || viajeDur.isNotEmpty) &&
+                  destinoSub.isEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if (viajeDist.isNotEmpty) viajeDist,
+                    if (viajeDur.isNotEmpty) viajeDur,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        _buildDenseActionButtons(compact: compact),
+      ],
+    );
+  }
+
   Widget _infoChip({
     required IconData icon,
     required String label,
@@ -199,7 +474,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           clipBehavior: dense ? Clip.hardEdge : Clip.none,
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-            borderRadius: BorderRadius.circular(compact ? 14 : 20),
+            borderRadius: BorderRadius.circular(compact ? 16 : 20),
             border: Border.all(
               color: widget.destacada
                   ? AppColors.accent
@@ -218,11 +493,33 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           ),
           child: Padding(
             padding: dense
-                ? const EdgeInsets.fromLTRB(10, 8, 10, 8)
+                ? const EdgeInsets.fromLTRB(12, 10, 12, 10)
                 : compact
                 ? const EdgeInsets.fromLTRB(12, 10, 12, 11)
                 : const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: Column(
+            child: dense
+                ? _buildDenseListContent(
+                    isDark: isDark,
+                    recogidaHeadline:
+                        SolicitudDisplayHelper.pickupHeadline(widget.solicitud),
+                    origenSub: origenSub,
+                    destinoHeadline: muestraDestino
+                        ? SolicitudDisplayHelper.destinationHeadline(
+                            widget.solicitud,
+                          )
+                        : '',
+                    destinoSub: destinoSub,
+                    muestraDestino: muestraDestino,
+                    viajeDist: viajeDist,
+                    viajeDur: viajeDur,
+                    segundosRestantes: segundosRestantes,
+                    enRiesgo: enRiesgo,
+                    tiempoPub: tiempoPub,
+                    distanciaMi: distanciaMi,
+                    precio: precio,
+                    compact: compact,
+                  )
+                : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -268,8 +565,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             isDark: isDark,
                             titleLarge: titleLarge,
                           ),
-                          if (!dense &&
-                              compact &&
+                          if (compact &&
                               origenSub.isNotEmpty &&
                               origenSub.toLowerCase() !=
                                   origenNombre.toLowerCase()) ...[
@@ -334,59 +630,33 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ],
                 ),
                 if (muestraDestino) ...[
-                  SizedBox(height: dense ? 4 : (compact ? 8 : 14)),
-                  if (dense)
-                    Row(
-                      children: [
-                        Icon(
+                  SizedBox(height: compact ? 8 : 14),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: compact ? 14 : 18),
+                        child: Icon(
                           Iconsax.location,
-                          size: 14,
+                          size: compact ? 15 : 18,
                           color: Colors.red.shade400,
                         ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            destinoNombre,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: isDark
-                                  ? Colors.white.withValues(alpha: 0.85)
-                                  : Colors.black87,
-                            ),
-                          ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _buildLocationBlock(
+                          label: 'DESTINO',
+                          title: destinoNombre,
+                          subtitle: destinoSub,
+                          labelColor: Colors.red.shade400,
+                          isDark: isDark,
+                          titleLarge: false,
                         ),
-                      ],
-                    )
-                  else
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: EdgeInsets.only(top: compact ? 14 : 18),
-                          child: Icon(
-                            Iconsax.location,
-                            size: compact ? 15 : 18,
-                            color: Colors.red.shade400,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _buildLocationBlock(
-                            label: 'DESTINO',
-                            title: destinoNombre,
-                            subtitle: destinoSub,
-                            labelColor: Colors.red.shade400,
-                            isDark: isDark,
-                            titleLarge: false,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
                 ],
-                if (!dense && (viajeDist.isNotEmpty || viajeDur.isNotEmpty)) ...[
+                if (viajeDist.isNotEmpty || viajeDur.isNotEmpty) ...[
                   SizedBox(height: compact ? 6 : 10),
                   Row(
                     children: [
@@ -427,7 +697,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ),
                 ],
                 if (tieneMeta) ...[
-                  SizedBox(height: dense ? 4 : (compact ? 6 : 12)),
+                  SizedBox(height: compact ? 6 : 12),
                   Wrap(
                     spacing: compact ? 6 : 8,
                     runSpacing: compact ? 4 : 6,
@@ -449,7 +719,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     ],
                   ),
                 ],
-                SizedBox(height: dense ? 6 : (compact ? 10 : 16)),
+                SizedBox(height: compact ? 10 : 16),
                 Row(
                   children: [
                     if (widget.onRechazar != null) ...[
@@ -459,7 +729,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           style: OutlinedButton.styleFrom(
                             padding: EdgeInsets.symmetric(
                               horizontal: 6,
-                              vertical: dense ? 7 : (compact ? 10 : 14),
+                              vertical: compact ? 10 : 14,
                             ),
                             side: const BorderSide(color: Colors.red, width: 1.5),
                             shape: RoundedRectangleBorder(
@@ -490,7 +760,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(
-                            vertical: dense ? 7 : (compact ? 10 : 14),
+                            vertical: compact ? 10 : 14,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -503,13 +773,13 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           children: [
                             Icon(
                               Iconsax.tick_circle_copy,
-                              size: dense ? 16 : (compact ? 17 : 20),
+                              size: compact ? 17 : 20,
                             ),
                             SizedBox(width: compact ? 6 : 8),
                             Text(
                               'Aceptar',
                               style: TextStyle(
-                                fontSize: dense ? 13 : (compact ? 14 : 16),
+                                fontSize: compact ? 14 : 16,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),

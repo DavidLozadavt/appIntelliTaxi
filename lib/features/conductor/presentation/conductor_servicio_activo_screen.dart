@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
@@ -91,9 +92,9 @@ class _ConductorServicioActivoScreenState
   bool get _canUpdateUi => mounted && !_terminalNavigationInProgress;
 
   // 📏 Control de altura del BottomSheet
-  double _sheetHeight = 0.48;
-  final double _minHeight = 0.36;
-  final double _maxHeight = 0.72;
+  double _sheetHeight = 0.52;
+  final double _minHeight = 0.38;
+  final double _maxHeight = 0.78;
 
   @override
   void initState() {
@@ -293,7 +294,18 @@ class _ConductorServicioActivoScreenState
       ConductorServicioPasajeroHelper.nombre(widget.servicio);
 
   String? _getTelefonoPasajero() =>
-      ConductorServicioPasajeroHelper.telefono(widget.servicio);
+      ConductorServicioPasajeroHelper.telefonoParaMostrar(widget.servicio);
+
+  Future<void> _copiarTelefonoPasajero() async {
+    final telefono = _getTelefonoPasajero();
+    if (telefono == null || telefono.trim().isEmpty) {
+      _mostrarError('No hay teléfono para copiar');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: telefono.trim()));
+    if (!mounted) return;
+    _mostrarMensaje('Teléfono copiado al portapapeles');
+  }
 
   String? _getFotoPasajero() =>
       ConductorServicioPasajeroHelper.fotoUrl(widget.servicio);
@@ -1097,8 +1109,14 @@ class _ConductorServicioActivoScreenState
                           servicioId: _safeServiceId(),
                           estadoUi: _estadoUiEfectivo,
                           nombrePasajero: _getNombrePasajero(),
+                          telefonoPasajero: _getTelefonoPasajero(),
+                          etiquetaOrigen: ConductorServicioPasajeroHelper
+                              .etiquetaOrigenServicio(widget.servicio),
+                          esGestionadoPorIa: ConductorServicioPasajeroHelper
+                              .esGestionadoPorIa(widget.servicio),
                           fotoPasajeroUrl: _getFotoPasajero(),
                           onLlamar: _llamarPasajero,
+                          onCopiarTelefono: _copiarTelefonoPasajero,
                           onChat: _abrirChatPasajero,
                           onAccionPrincipal: _onPanelAccionPrincipal,
                           onCancelar: _mostrarDialogoCancelacion,

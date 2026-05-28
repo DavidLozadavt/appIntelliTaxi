@@ -6,13 +6,69 @@ import 'package:intellitaxi/config/app_config.dart';
 class ConductorServicioPasajeroHelper {
   ConductorServicioPasajeroHelper._();
 
-  static bool esOrigenWeb(Map<String, dynamic> servicio) {
-    final origen = (servicio['origenServicio'] ??
+  static String _origenServicioUpper(Map<String, dynamic> servicio) {
+    return (servicio['origenServicio'] ??
             servicio['origen_servicio'] ??
             '')
         .toString()
+        .trim()
         .toUpperCase();
+  }
+
+  static bool esOrigenWeb(Map<String, dynamic> servicio) {
+    final origen = _origenServicioUpper(servicio);
     return origen.contains('WEB') || origen == 'APP_WEB';
+  }
+
+  /// Servicio creado/asignado desde central Operna (operador humano).
+  static bool esDesdeOperna(Map<String, dynamic> servicio) {
+    final origen = _origenServicioUpper(servicio);
+    if (origen.contains('OPERNA')) return true;
+    if (origen.contains('OPERADOR') || origen.contains('CENTRAL')) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Web / solicitud sin pasajero en app — no viene de Operna (central).
+  static bool esGestionadoPorIa(Map<String, dynamic> servicio) {
+    if (esDesdeOperna(servicio)) return false;
+    if (esOrigenWeb(servicio)) return true;
+    if (!tienePasajeroEnPayload(servicio) &&
+        telefonoLlamada(servicio) != null) {
+      return true;
+    }
+
+    final method = (servicio['assignment_method'] ??
+            servicio['assignmentMethod'] ??
+            '')
+        .toString()
+        .toUpperCase();
+    if (method.contains('IA') || method.contains('WEB')) return true;
+
+    return false;
+  }
+
+  static String? etiquetaOrigenServicio(Map<String, dynamic> servicio) {
+    if (esGestionadoPorIa(servicio)) {
+      return 'Servicio gestionado por IA';
+    }
+    if (esDesdeOperna(servicio)) return 'Asignado desde central';
+    return null;
+  }
+
+  /// Teléfono visible en pantalla: en IA prioriza [telefonoLlamada].
+  static String? telefonoParaMostrar(Map<String, dynamic> servicio) {
+    if (esGestionadoPorIa(servicio)) {
+      return telefonoLlamada(servicio) ?? telefono(servicio);
+    }
+    return telefono(servicio) ?? telefonoLlamada(servicio);
+  }
+
+  static String telefonoFormateadoVisible(Map<String, dynamic> servicio) {
+    final raw = telefonoParaMostrar(servicio);
+    if (raw == null || raw.trim().isEmpty) return '';
+    return raw.trim();
   }
 
   static bool tienePasajeroEnPayload(Map<String, dynamic> servicio) {

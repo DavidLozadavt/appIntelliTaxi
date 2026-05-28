@@ -6,11 +6,13 @@ import 'package:intellitaxi/core/services/incoming_service_notification_service.
 import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
 import 'package:intellitaxi/features/chat/utils/chat_notification_navigation.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
+import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _activeRoleKey = 'active_role';
@@ -67,6 +69,17 @@ Future<bool> _shouldShowConductorIncomingAlert(
   return _isActiveConductorRole();
 }
 
+Future<void> _triggerConductorIncomingSync() async {
+  try {
+    final context = navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    final home = context.read<ConductorHomeProvider>();
+    await home.sincronizarSolicitudesPublicadasConductor();
+  } catch (e) {
+    AppLogger.d('⚠️ FCM sync conductor fallback: $e');
+  }
+}
+
 bool _isCalificacionNotificationData(Map<String, dynamic> data) {
   final tipo = data['tipo']?.toString().toLowerCase() ?? '';
   return tipo.contains('calificacion');
@@ -113,6 +126,7 @@ Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
   }
   if (await _shouldShowConductorIncomingAlert(data)) {
     AppLogger.d('🚕 FCM → solicitud entrante (conductor)');
+    unawaited(_triggerConductorIncomingSync());
     IncomingServiceNotificationService.instance.bringAppToForeground();
     return;
   }
@@ -369,6 +383,7 @@ class FirebaseMsg {
       return;
     }
     if (await _shouldShowConductorIncomingAlert(data)) {
+      unawaited(_triggerConductorIncomingSync());
       await IncomingServiceNotificationService.instance.showIncomingService(
         data,
       );

@@ -5,15 +5,19 @@ import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/shared/widgets/standard_button.dart';
 
-/// Panel inferior del viaje activo del conductor (pasajero, ruta, acciones).
+/// Panel inferior del viaje activo del conductor (contacto, ruta, acciones).
 class ConductorServicioBottomPanel extends StatelessWidget {
   const ConductorServicioBottomPanel({
     super.key,
     required this.servicio,
     required this.estadoUi,
     required this.nombrePasajero,
+    this.telefonoPasajero,
+    this.etiquetaOrigen,
+    this.esGestionadoPorIa = false,
     this.fotoPasajeroUrl,
     required this.onLlamar,
+    required this.onCopiarTelefono,
     required this.onChat,
     required this.onAccionPrincipal,
     required this.onCancelar,
@@ -24,8 +28,12 @@ class ConductorServicioBottomPanel extends StatelessWidget {
   final Map<String, dynamic> servicio;
   final String estadoUi;
   final String nombrePasajero;
+  final String? telefonoPasajero;
+  final String? etiquetaOrigen;
+  final bool esGestionadoPorIa;
   final String? fotoPasajeroUrl;
   final VoidCallback onLlamar;
+  final VoidCallback onCopiarTelefono;
   final VoidCallback onChat;
   final VoidCallback onAccionPrincipal;
   final VoidCallback onCancelar;
@@ -40,16 +48,21 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     final soloDestino = enCurso || llegue;
     final recogidaActiva = !soloDestino;
 
-    final etiqueta = enCurso
+    final etiquetaEstado = enCurso
         ? 'VIAJE EN CURSO'
         : (llegue ? 'ESPERANDO PASAJERO' : 'IR A RECOGIDA');
 
-    final nombreRecogida = SolicitudDisplayHelper.pickupName(servicio);
-    final nombreDestino = SolicitudDisplayHelper.destinationName(servicio);
+    final recogidaHeadline =
+        SolicitudDisplayHelper.pickupHeadline(servicio);
+    final destinoHeadline = SolicitudDisplayHelper.hasDestination(servicio)
+        ? SolicitudDisplayHelper.destinationHeadline(servicio)
+        : '';
     final subtituloRecogida = SolicitudDisplayHelper.pickupSubtitle(servicio);
-    final subtituloDestino = SolicitudDisplayHelper.destinationSubtitle(servicio);
+    final subtituloDestino =
+        SolicitudDisplayHelper.destinationSubtitle(servicio);
 
-  final accion = _accionPrincipal(estadoUi);
+    final telefono = telefonoPasajero?.trim() ?? '';
+    final accion = _accionPrincipal(estadoUi);
 
     return Column(
       children: [
@@ -59,23 +72,33 @@ class ConductorServicioBottomPanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _BarraPasajero(
+                _EstadoYOrigenBar(
+                  etiquetaEstado: etiquetaEstado,
+                  etiquetaOrigen: etiquetaOrigen,
+                  esGestionadoPorIa: esGestionadoPorIa,
+                  soloDestino: soloDestino,
+                ),
+                const SizedBox(height: 12),
+                _ContactoCard(
                   nombre: nombrePasajero,
+                  telefono: telefono,
                   fotoUrl: fotoPasajeroUrl,
+                  esGestionadoPorIa: esGestionadoPorIa,
                   isDark: isDark,
                   onLlamar: onLlamar,
+                  onCopiarTelefono: onCopiarTelefono,
                   onChat: onChat,
                   servicioId: servicioId,
                 ),
                 const SizedBox(height: 12),
-                _RutaUnificada(
-                  etiqueta: etiqueta,
+                _RutaCard(
                   soloDestino: soloDestino,
                   recogidaActiva: recogidaActiva,
-                  nombreRecogida: nombreRecogida,
+                  recogidaHeadline: recogidaHeadline,
                   subtituloRecogida: subtituloRecogida,
-                  nombreDestino: nombreDestino,
+                  destinoHeadline: destinoHeadline,
                   subtituloDestino: subtituloDestino,
+                  muestraDestino: SolicitudDisplayHelper.hasDestination(servicio),
                   isDark: isDark,
                 ),
               ],
@@ -99,7 +122,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                   onPressed: onAccionPrincipal,
                   isLoading: isLoading,
                   width: double.infinity,
-                  height: 60,
+                  height: 56,
                 ),
               if (estadoUi != 'en_curso' &&
                   estadoUi != 'finalizado' &&
@@ -107,7 +130,11 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                 const SizedBox(height: 8),
                 TextButton.icon(
                   onPressed: onCancelar,
-                  icon: Icon(Iconsax.close_circle, color: Colors.red.shade600, size: 20),
+                  icon: Icon(
+                    Iconsax.close_circle,
+                    color: Colors.red.shade600,
+                    size: 20,
+                  ),
                   label: Text(
                     'Cancelar servicio',
                     style: TextStyle(
@@ -146,67 +173,278 @@ class _AccionPrincipal {
   final IconData icon;
 }
 
-class _BarraPasajero extends StatelessWidget {
-  const _BarraPasajero({
+class _EstadoYOrigenBar extends StatelessWidget {
+  const _EstadoYOrigenBar({
+    required this.etiquetaEstado,
+    this.etiquetaOrigen,
+    required this.esGestionadoPorIa,
+    required this.soloDestino,
+  });
+
+  final String etiquetaEstado;
+  final String? etiquetaOrigen;
+  final bool esGestionadoPorIa;
+  final bool soloDestino;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: soloDestino ? AppColors.green : AppColors.accent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            etiquetaEstado,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+        if (etiquetaOrigen != null && etiquetaOrigen!.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: esGestionadoPorIa
+                  ? Colors.deepPurple.withValues(alpha: 0.18)
+                  : Colors.blue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: esGestionadoPorIa
+                    ? Colors.deepPurple.withValues(alpha: 0.45)
+                    : Colors.blue.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  esGestionadoPorIa ? Iconsax.cpu : Iconsax.building,
+                  size: 14,
+                  color: esGestionadoPorIa
+                      ? Colors.deepPurple.shade300
+                      : Colors.blue.shade700,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    etiquetaOrigen!,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: esGestionadoPorIa
+                          ? Colors.deepPurple.shade200
+                          : Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ContactoCard extends StatelessWidget {
+  const _ContactoCard({
     required this.nombre,
+    required this.telefono,
     this.fotoUrl,
+    required this.esGestionadoPorIa,
     required this.isDark,
     required this.onLlamar,
+    required this.onCopiarTelefono,
     required this.onChat,
     this.servicioId,
   });
 
   final String nombre;
+  final String telefono;
   final String? fotoUrl;
+  final bool esGestionadoPorIa;
   final bool isDark;
   final VoidCallback onLlamar;
+  final VoidCallback onCopiarTelefono;
   final VoidCallback onChat;
   final int? servicioId;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        if (fotoUrl != null && fotoUrl!.isNotEmpty)
-          CircleAvatar(
-            radius: 22,
-            backgroundImage: NetworkImage(fotoUrl!),
-            onBackgroundImageError: (_, _) {},
-          )
-        else
-          const CircleAvatar(
-            radius: 22,
-            backgroundColor: AppColors.primary,
-            child: Icon(Icons.person, color: Colors.white, size: 24),
+    final tieneTelefono = telefono.isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              if (fotoUrl != null && fotoUrl!.isNotEmpty)
+                CircleAvatar(
+                  radius: 22,
+                  backgroundImage: NetworkImage(fotoUrl!),
+                  onBackgroundImageError: (_, _) {},
+                )
+              else
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: esGestionadoPorIa
+                      ? Colors.deepPurple.shade700
+                      : AppColors.primary,
+                  child: Icon(
+                    esGestionadoPorIa ? Iconsax.cpu : Icons.person,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      esGestionadoPorIa ? 'CLIENTE' : 'PASAJERO',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      nombre,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _AccionRapida(
+                icon: Iconsax.call,
+                color: AppColors.green,
+                onTap: onLlamar,
+                tooltip: 'Llamar',
+                enabled: tieneTelefono,
+              ),
+              const SizedBox(width: 6),
+              if (!esGestionadoPorIa)
+                _AccionRapida(
+                  icon: Iconsax.messages_copy,
+                  color: AppColors.accent,
+                  onTap: onChat,
+                  tooltip: 'Mensaje',
+                  servicioIdBadge: servicioId,
+                ),
+            ],
           ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            nombre,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: isDark ? Colors.white : Colors.black87,
+          const SizedBox(height: 10),
+          Material(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              onTap: tieneTelefono ? onCopiarTelefono : null,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      Iconsax.call,
+                      size: 18,
+                      color: tieneTelefono
+                          ? AppColors.green
+                          : Colors.grey.shade500,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Teléfono de contacto',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            tieneTelefono
+                                ? telefono
+                                : 'No disponible',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.3,
+                              color: tieneTelefono
+                                  ? (isDark
+                                      ? Colors.white
+                                      : Colors.black87)
+                                  : Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (tieneTelefono)
+                      IconButton(
+                        onPressed: onCopiarTelefono,
+                        icon: const Icon(Iconsax.copy, size: 20),
+                        tooltip: 'Copiar teléfono',
+                        visualDensity: VisualDensity.compact,
+                        color: AppColors.accent,
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-        _AccionRapida(
-          icon: Iconsax.call,
-          color: AppColors.green,
-          onTap: onLlamar,
-          tooltip: 'Llamar',
-        ),
-        const SizedBox(width: 6),
-        _AccionRapida(
-          icon: Iconsax.messages_copy,
-          color: AppColors.accent,
-          onTap: onChat,
-          tooltip: 'Mensaje',
-          servicioIdBadge: servicioId,
-        ),
-      ],
+          if (tieneTelefono) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Toca el número o el icono para copiarlo',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -218,6 +456,7 @@ class _AccionRapida extends StatelessWidget {
     required this.onTap,
     required this.tooltip,
     this.servicioIdBadge,
+    this.enabled = true,
   });
 
   final IconData icon;
@@ -225,10 +464,15 @@ class _AccionRapida extends StatelessWidget {
   final VoidCallback onTap;
   final String tooltip;
   final int? servicioIdBadge;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    Widget iconWidget = Icon(icon, color: color, size: 24);
+    Widget iconWidget = Icon(
+      icon,
+      color: enabled ? color : Colors.grey.shade500,
+      size: 24,
+    );
     if (servicioIdBadge != null && servicioIdBadge! > 0) {
       iconWidget = ChatUnreadBadge(
         servicioId: servicioIdBadge!,
@@ -237,10 +481,10 @@ class _AccionRapida extends StatelessWidget {
     }
 
     return Material(
-      color: color.withValues(alpha: 0.14),
+      color: (enabled ? color : Colors.grey).withValues(alpha: 0.14),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(12),
         child: Tooltip(
           message: tooltip,
@@ -254,101 +498,77 @@ class _AccionRapida extends StatelessWidget {
   }
 }
 
-class _RutaUnificada extends StatelessWidget {
-  const _RutaUnificada({
-    required this.etiqueta,
+class _RutaCard extends StatelessWidget {
+  const _RutaCard({
     required this.soloDestino,
     required this.recogidaActiva,
-    required this.nombreRecogida,
+    required this.recogidaHeadline,
     required this.subtituloRecogida,
-    required this.nombreDestino,
+    required this.destinoHeadline,
     required this.subtituloDestino,
+    required this.muestraDestino,
     required this.isDark,
   });
 
-  final String etiqueta;
   final bool soloDestino;
   final bool recogidaActiva;
-  final String nombreRecogida;
+  final String recogidaHeadline;
   final String subtituloRecogida;
-  final String nombreDestino;
+  final String destinoHeadline;
   final String subtituloDestino;
+  final bool muestraDestino;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.black.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(18),
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.black.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: (soloDestino ? AppColors.green : AppColors.accent)
-              .withValues(alpha: 0.35),
-          width: 1.5,
+              .withValues(alpha: 0.3),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: soloDestino ? AppColors.green : AppColors.accent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              etiqueta,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
           if (!soloDestino) ...[
-            _ParadaRuta(
+            _ParadaViaje(
               icon: Iconsax.location_add,
-              label: 'RECOGIDA',
-              nombre: nombreRecogida,
-              subtitulo: subtituloRecogida,
               color: AppColors.accent,
+              headline: recogidaHeadline,
+              detalle: subtituloRecogida,
               activa: recogidaActiva,
               isDark: isDark,
             ),
-            Padding(
-              padding: const EdgeInsets.only(left: 11, top: 6, bottom: 6),
-              child: Align(
-                alignment: Alignment.centerLeft,
+            if (muestraDestino && destinoHeadline.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.only(left: 10, top: 8, bottom: 8),
                 child: Container(
                   width: 2,
-                  height: 18,
+                  height: 16,
                   color: Colors.grey.withValues(alpha: 0.35),
                 ),
               ),
-            ),
-            _ParadaRuta(
+              _ParadaViaje(
+                icon: Iconsax.location,
+                color: AppColors.green,
+                headline: destinoHeadline,
+                detalle: subtituloDestino,
+                activa: false,
+                isDark: isDark,
+              ),
+            ],
+          ] else if (muestraDestino && destinoHeadline.isNotEmpty)
+            _ParadaViaje(
               icon: Iconsax.location,
-              label: 'DESTINO',
-              nombre: nombreDestino,
-              subtitulo: subtituloDestino,
               color: AppColors.green,
-              activa: false,
-              resaltada: true,
-              isDark: isDark,
-            ),
-          ] else
-            _ParadaRuta(
-              icon: Iconsax.location,
-              label: 'DESTINO',
-              nombre: nombreDestino,
-              subtitulo: subtituloDestino,
-              color: AppColors.green,
+              headline: destinoHeadline,
+              detalle: subtituloDestino,
               activa: true,
               isDark: isDark,
             ),
@@ -358,95 +578,65 @@ class _RutaUnificada extends StatelessWidget {
   }
 }
 
-class _ParadaRuta extends StatelessWidget {
-  const _ParadaRuta({
+class _ParadaViaje extends StatelessWidget {
+  const _ParadaViaje({
     required this.icon,
-    required this.label,
-    required this.nombre,
-    required this.subtitulo,
     required this.color,
+    required this.headline,
+    required this.detalle,
     required this.activa,
     required this.isDark,
-    this.resaltada = false,
   });
 
   final IconData icon;
-  final String label;
-  final String nombre;
-  final String subtitulo;
   final Color color;
+  final String headline;
+  final String detalle;
   final bool activa;
   final bool isDark;
-  final bool resaltada;
 
   @override
   Widget build(BuildContext context) {
-    final mostrarGrande = activa;
-    final bordeVisible = activa || resaltada;
-
-    return Container(
-      padding: EdgeInsets.all(bordeVisible ? 12 : 0),
-      decoration: bordeVisible
-          ? BoxDecoration(
-              color: color.withValues(alpha: isDark ? 0.14 : 0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: color.withValues(alpha: activa ? 0.55 : 0.35),
-                width: activa ? 2 : 1.2,
-              ),
-            )
-          : null,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: mostrarGrande ? 22 : 18, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: color,
-                    letterSpacing: 0.5,
-                  ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                headline,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: activa ? 16 : 15,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
+              ),
+              if (detalle.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
-                  nombre,
+                  detalle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: mostrarGrande ? 28 : 16,
-                    fontWeight: mostrarGrande ? FontWeight.w900 : FontWeight.w700,
-                    height: 1.12,
-                    color: activa
-                        ? (isDark ? Colors.white : Colors.black87)
-                        : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1.2,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.72)
+                        : Colors.black54,
                   ),
                 ),
-                if (subtitulo.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitulo,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: mostrarGrande ? 14 : 12,
-                      fontWeight: FontWeight.w500,
-                      height: 1.25,
-                      color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                    ),
-                  ),
-                ],
               ],
-            ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

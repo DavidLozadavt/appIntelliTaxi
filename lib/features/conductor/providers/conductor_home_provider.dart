@@ -741,8 +741,12 @@ class ConductorHomeProvider extends ChangeNotifier {
         }
       }
 
-      // La cola "llegando" solo se alimenta por Pusher; el listado en espera
-      // vive en SolicitudesPendientesProvider (GET solicitudes-pendientes).
+      // Fallback: si se perdió realtime pero el backend aún reporta pendientes,
+      // sembramos la cola "llegando" desde sync (sin sonido ni heads-up).
+      for (final m in list) {
+        _procesarNuevaSolicitud(m, fromSync: true);
+      }
+
       if (!_isDisposed) notifyListeners();
     } catch (e) {
       AppLogger.d('⚠️ Sync solicitudes publicadas: $e');

@@ -116,9 +116,9 @@ class ConductorMapServiciosTabs {
       pantallaCompacta(context) ? 3 : 4;
 
   static double compactCardItemExtent(BuildContext context) =>
-      pantallaCompacta(context) ? 100.0 : 104.0;
+      pantallaCompacta(context) ? 164.0 : 172.0;
 
-  static const double _listGap = 6.0;
+  static const double _listGap = 8.0;
   static const double _listPadding = 12.0;
   static const double _refreshBarHeight = 34.0;
 
@@ -135,10 +135,10 @@ class ConductorMapServiciosTabs {
     final screenH = MediaQuery.sizeOf(context).height;
     final topPad = MediaQuery.paddingOf(context).top;
     // Espacio para chip+tabs, dock inferior y FABs.
-    const reservedInferior = 220.0;
+    const reservedInferior = 188.0;
     const reservedSuperior = 118.0;
     final maxH = (screenH - topPad - reservedSuperior - reservedInferior)
-        .clamp(cardH * 2 + _listGap + _listPadding + refreshH, screenH * 0.58);
+        .clamp(cardH * 2 + _listGap + _listPadding + refreshH, screenH * 0.62);
 
     return desired.clamp(
       cardH * 2 + _listGap + _listPadding + refreshH,
