@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/main.dart';
 
@@ -14,6 +15,7 @@ class AppForegroundService {
   /// Solo abre la Activity (válido desde el isolate del overlay).
   Future<void> launchNativeApp() async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      AppDiagnostics.record('native', 'bringToForeground');
       try {
         await _channel.invokeMethod<void>('bringToForeground');
       } catch (e, st) {

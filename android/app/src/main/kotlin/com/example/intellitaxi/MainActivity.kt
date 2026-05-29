@@ -1,13 +1,14 @@
 package com.virtualt.intellitaxi
 
-import android.app.KeyguardManager
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.os.Process
 import android.provider.Settings
-import android.view.WindowManager
+import android.util.Log
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -21,10 +22,92 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val APP_CHANNEL = "com.virtualt.intellitaxi/app"
         private const val UPDATE_CHANNEL = "com.virtualt.intellitaxi/app_update"
+        private const val DIAG_TAG = "IntelliTaxiDiag"
         /** Tag del motor overlay (`flutter_overlay_window`). */
         private const val OVERLAY_ENGINE_TAG = "myCachedEngine"
 
         private val registeredMessengers = mutableSetOf<Int>()
+        private var activityInstanceCounter = 0
+        private var activityInstanceId = 0
+        private val nativeLifecycleLog = ArrayDeque<String>(40)
+
+        private fun logNativeLifecycle(event: String) {
+            val line = "${System.currentTimeMillis()} inst=$activityInstanceId $event"
+            synchronized(nativeLifecycleLog) {
+                if (nativeLifecycleLog.size >= 40) {
+                    nativeLifecycleLog.removeFirst()
+                }
+                nativeLifecycleLog.addLast(line)
+            }
+            Log.i(DIAG_TAG, line)
+        }
+
+        private fun importanceLabel(importance: Int): String = when (importance) {
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND -> "FOREGROUND"
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE ->
+                "FOREGROUND_SERVICE"
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE -> "VISIBLE"
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_PERCEPTIBLE -> "PERCEPTIBLE"
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_CANT_SAVE_STATE ->
+                "CANT_SAVE_STATE"
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_SERVICE -> "SERVICE"
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_TOP_SLEEPING ->
+                "TOP_SLEEPING"
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_BACKGROUND -> "BACKGROUND"
+            ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE -> "GONE"
+            else -> "UNKNOWN($importance)"
+        }
+
+        private fun buildDiagnosticsSnapshot(context: Context): Map<String, Any> {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val mem = ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mem)
+
+            var processImportance = "n/a"
+            val processes = am.runningAppProcesses
+            if (processes != null) {
+                val pid = Process.myPid()
+                processes.firstOrNull { it.pid == pid }?.let {
+                    processImportance = importanceLabel(it.importance)
+                }
+            }
+
+            val lifecycleLines = synchronized(nativeLifecycleLog) {
+                nativeLifecycleLog.toList()
+            }
+
+            val ignoringBattery =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    pm.isIgnoringBatteryOptimizations(context.packageName)
+                } else {
+                    true
+                }
+
+            return mapOf(
+                "pid" to Process.myPid(),
+                "activityInstanceId" to activityInstanceId,
+                "activityInstancesCreated" to activityInstanceCounter,
+                "overlayEnginePresent" to (
+                    FlutterEngineCache.getInstance().get(OVERLAY_ENGINE_TAG) != null
+                    ),
+                "isScreenOn" to pm.isInteractive,
+                "ignoringBatteryOptimizations" to ignoringBattery,
+                "processImportance" to processImportance,
+                "lowMemory" to mem.lowMemory,
+                "availMemMb" to (mem.availMem / (1024 * 1024)),
+                "nativeLifecycle" to lifecycleLines.joinToString("\n"),
+            )
+        }
+
+        private fun openBatteryOptimizationSettings(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }
 
         fun registerAppChannel(context: Context, messenger: BinaryMessenger) {
             val key = System.identityHashCode(messenger)
@@ -33,7 +116,15 @@ class MainActivity : FlutterActivity() {
             MethodChannel(messenger, APP_CHANNEL).setMethodCallHandler { call, result ->
                 when (call.method) {
                     "bringToForeground" -> {
+                        logNativeLifecycle("bringToForeground")
                         launchMainActivity(context.applicationContext)
+                        result.success(true)
+                    }
+                    "getDiagnosticsSnapshot" -> {
+                        result.success(buildDiagnosticsSnapshot(context.applicationContext))
+                    }
+                    "openBatteryOptimizationSettings" -> {
+                        openBatteryOptimizationSettings(context.applicationContext)
                         result.success(true)
                     }
                     "ensureOverlayChannel" -> {
@@ -51,6 +142,7 @@ class MainActivity : FlutterActivity() {
                         result.success(pm.isInteractive)
                     }
                     "wakeForIncomingService" -> {
+                        logNativeLifecycle("wakeForIncomingService")
                         wakeForIncomingService(context)
                         result.success(true)
                     }
@@ -64,40 +156,61 @@ class MainActivity : FlutterActivity() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             context.startActivity(intent)
         }
 
+        /// Solo enciende pantalla. NO reinicia la Activity (evita que la app «se cierre sola»).
         private fun wakeForIncomingService(context: Context) {
             val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            @Suppress("DEPRECATION")
-            val wakeLock = pm.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
-                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                    PowerManager.ON_AFTER_RELEASE,
-                "intellitaxi:incoming_service",
-            )
             try {
-                wakeLock.acquire(15_000L)
-            } catch (_: Exception) {
-            } finally {
+                @Suppress("DEPRECATION")
+                val wakeLock = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                        PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    "intellitaxi:incoming_wake",
+                )
+                wakeLock.acquire(8_000L)
                 if (wakeLock.isHeld) {
                     wakeLock.release()
                 }
+            } catch (_: Exception) {
             }
-            launchMainActivity(context)
         }
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        activityInstanceId = ++activityInstanceCounter
+        logNativeLifecycle(
+            "onCreate recreated=${savedInstanceState != null}",
+        )
         super.onCreate(savedInstanceState)
-        applyShowWhenLockedFlags()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        logNativeLifecycle("onStart")
     }
 
     override fun onResume() {
         super.onResume()
+        logNativeLifecycle("onResume")
         registerOverlayEngineChannelIfPresent()
+    }
+
+    override fun onPause() {
+        logNativeLifecycle("onPause")
+        super.onPause()
+    }
+
+    override fun onStop() {
+        logNativeLifecycle("onStop")
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        logNativeLifecycle("onDestroy isFinishing=$isFinishing")
+        super.onDestroy()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -160,21 +273,6 @@ class MainActivity : FlutterActivity() {
             ?.let { messenger ->
                 registerAppChannel(applicationContext, messenger)
             }
-    }
-
-    private fun applyShowWhenLockedFlags() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-            keyguardManager.requestDismissKeyguard(this, null)
-        }
-        @Suppress("DEPRECATION")
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-        )
     }
 
     private fun openUnknownSourcesSettings() {

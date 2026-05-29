@@ -5,9 +5,11 @@ import 'package:intellitaxi/core/theme/theme_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
 import 'package:intellitaxi/core/bootstrap/app_bootstrap.dart';
+import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
+import 'package:intellitaxi/core/diagnostics/app_diagnostics_scope.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/performance_monitor_service.dart';
-import 'package:intellitaxi/core/services/background_location_service.dart';
+import 'package:intellitaxi/core/bootstrap/runtime_bootstrap.dart';
 
 import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/features/chat/providers/chat_badge_provider.dart';
@@ -27,18 +29,15 @@ import 'package:intellitaxi/features/sanciones/presentation/sanciones_screen.dar
 import 'package:intellitaxi/features/conductor/providers/servicio_activo_provider.dart';
 import 'package:intellitaxi/features/pasajero/presentation/historial_servicios_pasajero_screen.dart';
 import 'package:intellitaxi/features/rides/presentation/historial_calificaciones_screen.dart';
-import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 // import 'package:intellitaxi/features/pasajero/providers/pasajero_home_provider.dart';
+import 'package:intellitaxi/features/home/presentation/app_diagnostics_screen.dart';
 import 'package:intellitaxi/features/home/presentation/no_connection_screen.dart';
 import 'package:intellitaxi/features/legal/privacy_policy_screen.dart';
 
 import 'package:intellitaxi/features/notifications/providers/notification_provider.dart';
 import 'package:intellitaxi/features/notifications/presentation/notification_screen.dart';
 
-import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
-import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/widgets/driver_overlay_bubble.dart';
-import 'package:intellitaxi/firebase_msg.dart' show FirebaseMsg;
 import 'package:intellitaxi/firebase_options.dart' show DefaultFirebaseOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -46,7 +45,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
 import 'features/auth/providers/auth_provider.dart';
@@ -54,33 +52,36 @@ import 'features/auth/presentation/login_screen.dart';
 import 'features/auth/presentation/register_screen.dart';
 import 'features/home/presentation/navigation_screen.dart';
 import 'features/onboarding/presentation/initial_screen.dart';
-import 'config/pusher_config.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
+  AppDiagnostics.markLaunch();
   await runZonedGuarded(
     () async {
+      AppDiagnostics.phase('binding');
       WidgetsFlutterBinding.ensureInitialized();
 
+      AppDiagnostics.phase('dotenv');
       await dotenv.load(fileName: ".env");
       AppBootstrap.logConfigWarnings();
 
+      AppDiagnostics.phase('firebase_init');
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
       await AppBootstrap.initCrashlytics();
+      AppDiagnostics.enableCrashlyticsLogs();
       AppBootstrap.installErrorHandlers();
 
-      // Optimizaciones de rendimiento
       _setupPerformanceOptimizations();
       PerformanceMonitorService.initialize();
 
-      runApp(const MyApp());
+      AppDiagnostics.phase('runApp');
+      runApp(const AppDiagnosticsScope(child: MyApp()));
 
-      // Tareas no críticas: ejecutar después del primer frame para evitar jank de arranque.
       unawaited(OptimizedTextStyles.precacheAllFonts());
-      unawaited(_bootstrapRuntimeServices());
+      unawaited(RuntimeBootstrap.run());
     },
     (error, stackTrace) {
       AppBootstrap.recordError(error, stackTrace, fatal: true);
@@ -102,80 +103,6 @@ Future<void> main() async {
   );
 }
 
-Future<void> _bootstrapRuntimeServices() async {
-  try {
-    await BackgroundLocationService.initialize().timeout(
-      const Duration(seconds: 30),
-    );
-  } catch (e, st) {
-    AppLogger.e(
-      'No se pudo inicializar BackgroundLocationService',
-      tag: 'Bootstrap',
-      error: e,
-      stackTrace: st,
-    );
-  }
-
-  try {
-    await ServicioNotificacionForeground().inicializar().timeout(
-      const Duration(seconds: 30),
-    );
-  } catch (e, st) {
-    AppLogger.e(
-      'No se pudo inicializar ServicioNotificacionForeground',
-      tag: 'Bootstrap',
-      error: e,
-      stackTrace: st,
-    );
-  }
-
-  try {
-    DriverOverlayService.instance.ensureReturnListener();
-  } catch (e, st) {
-    AppLogger.e(
-      'No se pudo registrar listener del overlay',
-      tag: 'Bootstrap',
-      error: e,
-      stackTrace: st,
-    );
-  }
-
-  try {
-    await IncomingServiceNotificationService.instance
-        .ensureInitialized()
-        .timeout(const Duration(seconds: 15));
-  } catch (e, st) {
-    AppLogger.e(
-      'No se pudo inicializar IncomingServiceNotificationService',
-      tag: 'Bootstrap',
-      error: e,
-      stackTrace: st,
-    );
-  }
-
-  try {
-    await FirebaseMsg().initFCM().timeout(const Duration(seconds: 60));
-  } catch (e, st) {
-    AppLogger.e(
-      'No se pudo inicializar FCM en segundo plano de arranque',
-      tag: 'Bootstrap',
-      error: e,
-      stackTrace: st,
-    );
-  }
-
-  try {
-    await PusherService.initialize().timeout(const Duration(seconds: 60));
-  } catch (e, st) {
-    AppLogger.e(
-      'No se pudo inicializar Pusher en segundo plano de arranque',
-      tag: 'Bootstrap',
-      error: e,
-      stackTrace: st,
-    );
-  }
-}
-
 /// Entrypoint requerido por `flutter_overlay_window`.
 /// Evita el error "Could not resolve main entrypoint function" en el isolate secundario.
 @pragma('vm:entry-point')
@@ -188,72 +115,10 @@ void _setupPerformanceOptimizations() {
   final imageCache = PaintingBinding.instance.imageCache;
   imageCache.maximumSize = 120;
   imageCache.maximumSizeBytes = 80 << 20; // 80MB
-
-  FlutterError.onError = (FlutterErrorDetails details) {
-    if (kDebugMode) {
-      FlutterError.presentError(details);
-    }
-    AppLogger.e(
-      'FlutterError capturado',
-      tag: 'Flutter',
-      error: details.exception,
-      stackTrace: details.stack,
-    );
-  };
-
-  PlatformDispatcher.instance.onError = (error, stack) {
-    AppLogger.e(
-      'Error no controlado en PlatformDispatcher',
-      tag: 'Flutter',
-      error: error,
-      stackTrace: stack,
-    );
-    return true;
-  };
 }
 
-// ─────────────────────────────────────────────
-// 👇 CAMBIO: StatelessWidget → StatefulWidget
-// ─────────────────────────────────────────────
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    WakelockPlus.enable(); // Pantalla activa al arrancar
-  }
-
-  @override
-  void dispose() {
-    WakelockPlus.disable();
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.resumed:
-        // App vuelve al frente → reactivar pantalla
-        WakelockPlus.enable();
-        break;
-      case AppLifecycleState.paused:
-      case AppLifecycleState.inactive:
-      case AppLifecycleState.detached:
-        // App en segundo plano → liberar wakelock
-        WakelockPlus.disable();
-        break;
-      default:
-        break;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -395,6 +260,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               '/politica-privacidad': (_) => const PrivacyPolicyScreen(),
               // '/vinculaciones-propietario': (_) => TransportePropietario(),
               '/emergencias': (_) => const EmergenciasScreen(),
+              '/app-diagnostics': (_) => const AppDiagnosticsScreen(),
             },
           );
         },

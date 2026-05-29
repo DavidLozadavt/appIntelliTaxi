@@ -18,6 +18,9 @@ class PasajeroNearbyDriversController {
   final ConductoresService _conductoresService;
   PusherConductoresService? _pusher;
 
+  DateTime? _lastApiLoadAt;
+  static const Duration _minApiInterval = Duration(seconds: 10);
+
   final Map<int, Conductor> conductores = {};
   final Map<int, LatLng> displayedPositions = {};
   final Map<int, double> displayedBearings = {};
@@ -53,13 +56,23 @@ class PasajeroNearbyDriversController {
     double radioKm = 15,
     int maxAgeMinutes = 20,
     bool silent = false,
+    bool force = false,
   }) async {
+    final now = DateTime.now();
+    if (!force &&
+        _lastApiLoadAt != null &&
+        now.difference(_lastApiLoadAt!) < _minApiInterval) {
+      return;
+    }
+    _lastApiLoadAt = now;
+
     try {
       final list = await _conductoresService.getConductoresDisponibles(
         lat: lat,
         lng: lng,
         radioKm: radioKm,
         maxAgeMinutes: maxAgeMinutes,
+        quiet: silent,
       );
 
       final receivedIds = list.map((c) => c.conductorId).toSet();

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Pantalla encendida / desbloqueo (Android).
@@ -27,6 +28,7 @@ class DeviceScreenHelper {
   /// Enciende pantalla y prepara la Activity para mostrarse sobre bloqueo.
   static Future<void> wakeForIncomingService() async {
     if (!_isAndroid) return;
+    AppDiagnostics.record('native', 'wakeForIncomingService');
     try {
       await _channel.invokeMethod<void>('wakeForIncomingService');
     } catch (e) {

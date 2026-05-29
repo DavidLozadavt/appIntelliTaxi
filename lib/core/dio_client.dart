@@ -17,9 +17,8 @@ class DioClient {
           sendTimeout: const Duration(seconds: 60),
           followRedirects: false, // No seguir redirecciones automáticamente
           validateStatus: (status) {
-            // Aceptar respuestas 200-299
-            // Temporalmente también aceptar 302 para ver el contenido de la redirección
-            return status != null && status >= 200 && status < 400;
+            // 404 en servicio-activo / latestVersion es respuesta de negocio, no error HTTP.
+            return status != null && status < 500;
           },
           headers: {
             'Accept': 'application/json',

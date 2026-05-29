@@ -15,18 +15,43 @@ class ActiveServiceManager {
   Function()? onServiceCompleted;
 
   static const String _keyActiveServiceId = 'active_service_id';
+  static const Duration _fetchCacheTtl = Duration(seconds: 12);
+  static String? _cachedFetchKey;
+  static DateTime? _cachedFetchAt;
+  static ServicioActivo? _cachedServicio;
+  static bool _cachedWasEmpty = false;
 
-  /// Obtiene el servicio activo del usuario desde el backend
-  Future<ServicioActivo?> getActiveService() async {
+  /// Obtiene el servicio activo del usuario desde el backend.
+  ///
+  /// [soloPasajero] / [soloConductor] limitan endpoints (menos ruido y latencia).
+  Future<ServicioActivo?> getActiveService({
+    bool soloPasajero = false,
+    bool soloConductor = false,
+  }) async {
+    final cacheKey = 'p:$soloPasajero c:$soloConductor';
+    final now = DateTime.now();
+    if (_cachedFetchAt != null &&
+        _cachedFetchKey == cacheKey &&
+        now.difference(_cachedFetchAt!) < _fetchCacheTtl) {
+      return _cachedWasEmpty ? null : _cachedServicio;
+    }
+
     try {
       AppLogger.d('🔍 Consultando servicio activo...');
 
-      // Endpoints válidos actuales (el endpoint legacy /taxi/servicio-activo
-      // ya no se usa y puede responder HTML del panel web).
-      const endpoints = [
-        'taxi/servicio-activo-pasajero',
-        'taxi/servicio-activo-conductor',
-      ];
+      final endpoints = <String>[];
+      if (!soloConductor) {
+        endpoints.add('taxi/servicio-activo-pasajero');
+      }
+      if (!soloPasajero) {
+        endpoints.add('taxi/servicio-activo-conductor');
+      }
+      if (endpoints.isEmpty) {
+        endpoints.addAll([
+          'taxi/servicio-activo-pasajero',
+          'taxi/servicio-activo-conductor',
+        ]);
+      }
 
       for (final endpoint in endpoints) {
         final servicio = await _getActiveServiceFromEndpoint(endpoint);
@@ -39,12 +64,14 @@ class ActiveServiceManager {
           AppLogger.d(
             '📊 Estado: ${servicio.estado.estado} (${servicio.idEstado})',
           );
+          _rememberFetch(cacheKey, servicio);
           return servicio;
         }
       }
 
       AppLogger.d('ℹ️ No hay servicios activos');
       await clearActiveServiceId();
+      _rememberFetch(cacheKey, null);
       return null;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
@@ -56,12 +83,28 @@ class ActiveServiceManager {
     } catch (e) {
       AppLogger.d('⚠️ Error obteniendo servicio activo: $e');
     }
+    _rememberFetch(cacheKey, null);
     return null;
+  }
+
+  static void invalidateFetchCache() {
+    _cachedFetchKey = null;
+    _cachedFetchAt = null;
+    _cachedServicio = null;
+    _cachedWasEmpty = false;
+  }
+
+  void _rememberFetch(String cacheKey, ServicioActivo? servicio) {
+    _cachedFetchKey = cacheKey;
+    _cachedFetchAt = DateTime.now();
+    _cachedServicio = servicio;
+    _cachedWasEmpty = servicio == null;
   }
 
   Future<ServicioActivo?> _getActiveServiceFromEndpoint(String endpoint) async {
     try {
       final response = await _dio.get(endpoint);
+      if (response.statusCode == 404) return null;
       if (response.statusCode != 200 || response.data == null) {
         return null;
       }

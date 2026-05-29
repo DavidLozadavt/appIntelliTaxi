@@ -30,6 +30,7 @@ import 'package:intellitaxi/features/conductor/utils/conductor_session_helper.da
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_distance_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_ranking_helper.dart';
+import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 
@@ -1241,9 +1242,16 @@ class ConductorHomeProvider extends ChangeNotifier {
       final solicitud = _solicitudesPorId[solicitudId];
       if (solicitud == null) return;
 
-      if (await AppLifecycleHelper.shouldShowIncomingServiceAlert()) {
+      final showAlert = await AppLifecycleHelper.shouldShowIncomingServiceAlert();
+      if (showAlert) {
         await IncomingServiceNotificationService.instance.showIncomingService(
           solicitud,
+        );
+      } else {
+        AppDiagnostics.record(
+          'incoming',
+          'tarjeta en app (sin notificación full-screen)',
+          extra: 'id=$solicitudId',
         );
       }
     } catch (e, st) {

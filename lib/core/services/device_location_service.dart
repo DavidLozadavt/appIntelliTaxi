@@ -39,12 +39,27 @@ class DeviceLocationService {
   /// Intenta GPS actual → última conocida → (solo debug) centro de Popayán.
   static Future<DeviceLocationResult?> resolveCurrentPosition({
     Duration timeout = const Duration(seconds: 12),
+    Duration lastKnownMaxAge = const Duration(minutes: 5),
   }) async {
     Position? lastKnown;
     try {
       lastKnown = await Geolocator.getLastKnownPosition();
     } catch (e) {
       AppLogger.d('getLastKnownPosition: $e', tag: 'DeviceLocation');
+    }
+
+    if (lastKnown != null) {
+      final age = DateTime.now().difference(lastKnown.timestamp);
+      if (!age.isNegative && age <= lastKnownMaxAge) {
+        AppLogger.d(
+          '📍 lastKnown (${age.inSeconds}s): ${lastKnown.latitude}, ${lastKnown.longitude}',
+          tag: 'DeviceLocation',
+        );
+        return DeviceLocationResult(
+          position: lastKnown,
+          usedLastKnown: true,
+        );
+      }
     }
 
     final attempts = <LocationSettings>[

@@ -169,11 +169,11 @@ class _HomePasajeroState extends State<HomePasajero>
       if (mounted) _setStateSafe(() {});
     }));
     _createDestinationPointIcon();
-    _initializeLocation();
+    unawaited(_setupPusherConductores());
     _setupPusherOffers();
     _setupPusherRequestConfirmation();
-    _checkActiveService(); // Verificar servicio activo al iniciar
-    _setupPusherConductores(); // Configurar Pusher para conductores
+    _checkActiveService();
+    _initializeLocation();
 
     // Listeners
     _originController.addListener(_onOriginChanged);
@@ -409,12 +409,16 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
-  Future<void> _loadAvailableDrivers({bool silent = false}) async {
+  Future<void> _loadAvailableDrivers({
+    bool silent = false,
+    bool force = false,
+  }) async {
     if (_currentPosition == null) return;
     await _nearbyDrivers.loadFromApi(
       lat: _currentPosition!.latitude,
       lng: _currentPosition!.longitude,
       silent: silent,
+      force: force,
     );
     if (mounted) _syncMarkersOnMap();
   }
@@ -1017,7 +1021,7 @@ class _HomePasajeroState extends State<HomePasajero>
         );
       }
 
-      unawaited(_loadAvailableDrivers());
+      unawaited(_loadAvailableDrivers(force: true));
       _startDriversRefreshTimer();
       unawaited(_requestNotificationPermissionAfterLocation());
       _tryApplyPendingRepeatTrip();

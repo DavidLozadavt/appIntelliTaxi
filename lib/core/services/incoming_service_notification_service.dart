@@ -7,6 +7,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
+import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/utils/device_screen_helper.dart';
 
 /// Notificaciones de alta prioridad para nuevas solicitudes (Android: full-screen intent).
@@ -48,19 +49,41 @@ class IncomingServiceNotificationService {
             AndroidFlutterLocalNotificationsPlugin
           >();
       await androidPlugin?.createNotificationChannel(channel);
-      try {
-        await androidPlugin?.requestNotificationsPermission();
-        await androidPlugin?.requestFullScreenIntentPermission();
-      } catch (e) {
-        AppLogger.d('⚠️ Permisos notificación/FSI: $e');
-      }
     }
 
     _initialized = true;
   }
 
+  /// Diálogos del sistema; llamar con app en primer plano (p. ej. [RuntimeBootstrap]).
+  Future<void> requestAndroidAlertPermissions() async {
+    if (!_isAndroid) return;
+    AppDiagnostics.record(
+      'bootstrap',
+      'solicitando permisos notificación / pantalla completa',
+    );
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    try {
+      await androidPlugin?.requestNotificationsPermission();
+      await androidPlugin?.requestFullScreenIntentPermission();
+      AppDiagnostics.record('bootstrap', 'permisos notificación / FSI listos');
+    } catch (e) {
+      AppLogger.d('⚠️ Permisos notificación/FSI: $e');
+      AppDiagnostics.record('bootstrap', 'permisos notificación/FSI fallaron',
+          extra: e.toString());
+    }
+  }
+
   Future<void> showIncomingService(Map<String, dynamic> solicitud) async {
     try {
+      final id = solicitud['solicitud_id'] ?? solicitud['id'];
+      AppDiagnostics.record(
+        'incoming',
+        'showIncomingService',
+        extra: 'id=$id',
+      );
       await ensureInitialized();
       await DeviceScreenHelper.wakeForIncomingService();
 

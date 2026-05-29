@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/core/services/active_service_check_cache.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
@@ -37,6 +38,12 @@ class ActiveServiceRestorationService {
       );
 
       final response = await _dio.get('taxi/servicio-activo-conductor');
+      if (response.statusCode == 404) {
+        AppLogger.d(
+          'ℹ️ [Restoration] No hay servicio activo del conductor (404)',
+        );
+        return null;
+      }
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -89,6 +96,12 @@ class ActiveServiceRestorationService {
       );
 
       final response = await _dio.get('taxi/servicio-activo-pasajero');
+      if (response.statusCode == 404) {
+        AppLogger.d(
+          'ℹ️ [Restoration] No hay servicio activo del pasajero (404)',
+        );
+        return null;
+      }
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
@@ -137,31 +150,39 @@ class ActiveServiceRestorationService {
   Future<Map<String, dynamic>?> verificarServicioActivoSegunRol(
     AuthProvider authProvider,
   ) async {
-    if (authProvider.user == null) {
+    final user = authProvider.user;
+    if (user == null) {
       AppLogger.d('⚠️ [Restoration] Usuario no autenticado');
       return null;
     }
 
-    AppLogger.d('🔍 [Restoration] Roles del usuario: ${authProvider.roles}');
+    return ActiveServiceCheckCache.dedupe(
+      '${user.id}_${authProvider.activeRole ?? authProvider.roles.join(",")}',
+      () async {
+        AppLogger.d('🔍 [Restoration] Roles del usuario: ${authProvider.roles}');
 
-    // Si es conductor, verificar servicio activo de conductor
-    if (authProvider.hasConductorRole) {
-      final servicioActivoConductor = await verificarServicioActivoConductor();
-      if (servicioActivoConductor != null) {
-        return servicioActivoConductor;
-      }
-    }
+        if (authProvider.hasConductorRole) {
+          final servicioActivoConductor =
+              await verificarServicioActivoConductor();
+          if (servicioActivoConductor != null) {
+            return servicioActivoConductor;
+          }
+        }
 
-    // Si es pasajero, verificar servicio activo de pasajero
-    if (authProvider.hasPasajeroRole) {
-      final servicioActivoPasajero = await verificarServicioActivoPasajero();
-      if (servicioActivoPasajero != null) {
-        return servicioActivoPasajero;
-      }
-    }
+        if (authProvider.hasPasajeroRole) {
+          final servicioActivoPasajero =
+              await verificarServicioActivoPasajero();
+          if (servicioActivoPasajero != null) {
+            return servicioActivoPasajero;
+          }
+        }
 
-    AppLogger.d('ℹ️ [Restoration] No hay servicios activos para este usuario');
-    return null;
+        AppLogger.d(
+          'ℹ️ [Restoration] No hay servicios activos para este usuario',
+        );
+        return null;
+      },
+    );
   }
 
   /// Normaliza los nombres de campos del backend a los que usa Flutter

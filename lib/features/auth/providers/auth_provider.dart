@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/services/active_service_check_cache.dart';
+import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../data/auth_model.dart';
@@ -90,6 +92,8 @@ class AuthProvider with ChangeNotifier {
       await Future.delayed(const Duration(seconds: 2));
 
       await _authService.clearSession();
+      ActiveServiceCheckCache.invalidate();
+      ActiveServiceManager.invalidateFetchCache();
       _authData = null;
       _activeRole = null;
       final prefs = await SharedPreferences.getInstance();

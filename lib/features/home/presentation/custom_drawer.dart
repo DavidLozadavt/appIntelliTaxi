@@ -88,6 +88,12 @@ class CustomDrawer extends StatelessWidget {
         route: '/mis-vehiculos',
         allowedRoles: [AuthProvider.roleConductor],
       ),
+      DrawerItem(
+        title: 'Diagnóstico de la app',
+        icon: Iconsax.health_copy,
+        route: '/app-diagnostics',
+        allowedRoles: const [],
+      ),
       // DrawerItem(
       //   title: 'Kanban',
       //   icon: Iconsax.element_4_copy,

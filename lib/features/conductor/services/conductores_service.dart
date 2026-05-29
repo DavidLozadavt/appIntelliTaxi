@@ -12,11 +12,14 @@ class ConductoresService {
     required double lng,
     double radioKm = 15,
     int maxAgeMinutes = 20,
+    bool quiet = false,
   }) async {
     try {
-      AppLogger.d('🔍 Buscando conductores disponibles...');
-      AppLogger.d('   📍 Ubicación: ($lat, $lng)');
-      AppLogger.d('   📏 Radio: $radioKm km');
+      if (!quiet) {
+        AppLogger.d('🔍 Buscando conductores disponibles...');
+        AppLogger.d('   📍 Ubicación: ($lat, $lng)');
+        AppLogger.d('   📏 Radio: $radioKm km');
+      }
 
       final queryParams = {
         'lat': lat,
@@ -24,10 +27,12 @@ class ConductoresService {
         'radio_km': radioKm,
         'max_age_minutes': maxAgeMinutes,
       };
-      AppLogger.d('   📤 Query Parameters: $queryParams');
-      AppLogger.d(
-        '   🌐 URL: ${_dio.options.baseUrl}taxi/conductores-disponibles',
-      );
+      if (!quiet) {
+        AppLogger.d('   📤 Query Parameters: $queryParams');
+        AppLogger.d(
+          '   🌐 URL: ${_dio.options.baseUrl}taxi/conductores-disponibles',
+        );
+      }
 
       final response = await _dio.get(
         'taxi/conductores-disponibles',
@@ -42,7 +47,9 @@ class ConductoresService {
               .map((c) => Conductor.fromJson(c))
               .toList();
 
-          AppLogger.d('✅ ${conductores.length} conductores encontrados');
+          if (!quiet) {
+            AppLogger.d('✅ ${conductores.length} conductores encontrados');
+          }
           return conductores;
         } else {
           AppLogger.d('⚠️ Respuesta del servidor: success = false');

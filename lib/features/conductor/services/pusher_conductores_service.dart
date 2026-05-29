@@ -40,9 +40,19 @@ class PusherConductoresService {
     }
   }
 
+  static DateTime? _lastVerboseLogAt;
+  static int _updateCount = 0;
+
   void _handleDriverUpdate(dynamic data) {
     try {
-      AppLogger.d('📍 Evento conductor.actualizado recibido');
+      _updateCount++;
+      final now = DateTime.now();
+      final verbose = _lastVerboseLogAt == null ||
+          now.difference(_lastVerboseLogAt!) > const Duration(seconds: 8);
+      if (verbose) {
+        _lastVerboseLogAt = now;
+        AppLogger.d('📍 conductor.actualizado (#$_updateCount)');
+      }
 
       Map<String, dynamic> eventData;
 
@@ -83,10 +93,12 @@ class PusherConductoresService {
 
       final conductor = Conductor.fromJson(driverData);
 
-      AppLogger.d('   🚗 Conductor: ${conductor.nombre}');
-      AppLogger.d('   📍 Ubicación: (${conductor.lat}, ${conductor.lng})');
-      AppLogger.d('   ⭐ Calificación: ${conductor.calificacion}');
-      AppLogger.d('   📊 Estado: ${conductor.estado}');
+      if (verbose) {
+        AppLogger.d(
+          '   🚗 ${conductor.nombre} (${conductor.lat}, ${conductor.lng}) '
+          '${conductor.estado}',
+        );
+      }
 
       // Llamar callback si está definido
       if (onDriverUpdate != null) {

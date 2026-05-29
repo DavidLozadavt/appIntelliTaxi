@@ -42,8 +42,9 @@ class _AppLifecycleWrapperState extends State<AppLifecycleWrapper> {
     _lifecycleManager!.initialize();
     _authProvider!.addListener(_onAuthChanged);
 
-    // Verificar si hay un servicio activo al iniciar
-    _lifecycleManager!.checkActiveService();
+    if (_authProvider!.user != null) {
+      _lifecycleManager!.checkActiveService();
+    }
   }
 
   void _onAuthChanged() {

@@ -1,6 +1,8 @@
 // lib/services/pusher_service.dart
 import 'dart:convert';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pusher_channels_flutter/pusher_channels_flutter.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/dio_client.dart';
@@ -9,26 +11,55 @@ import '../config/app_config.dart';
 class PusherService {
   static PusherChannelsFlutter? _pusherPrimary;
   static PusherChannelsFlutter? _pusherSecondary;
+  static bool _secondaryReady = false;
   static final Map<String, Function(dynamic)> _eventHandlers = {};
   static final Map<String, Function(dynamic)> _eventHandlersSecondary = {};
 
   /// Inicializa ambas conexiones de Pusher
   static Future<void> initialize() async {
+    final primaryKey = AppConfig.pusherAppKey;
+    final secondaryKey = AppConfig.pusherSecondaryAppKey;
+    final sameKey =
+        primaryKey.isNotEmpty &&
+        secondaryKey.isNotEmpty &&
+        primaryKey == secondaryKey;
+
+    if (sameKey) {
+      AppLogger.d(
+        'Pusher: misma API key en primary y secondary — solo conexión secondary',
+        tag: 'Pusher',
+      );
+      if (!_secondaryReady) {
+        await _initializeSecondary();
+      }
+      _pusherPrimary = _pusherSecondary;
+      return;
+    }
+
     await _initializePrimary();
     await _initializeSecondary();
   }
 
   /// Inicializa la conexión principal de Pusher
   static Future<void> _initializePrimary() async {
+    final apiKey = AppConfig.pusherAppKey;
+    if (apiKey.isEmpty) {
+      AppLogger.w('Pusher Primary omitido: sin API key en .env', tag: 'Pusher');
+      return;
+    }
+
     _pusherPrimary = PusherChannelsFlutter.getInstance();
 
     try {
       AppLogger.d('🔧 Inicializando Pusher Primary...');
-      AppLogger.d('   App Key: ${AppConfig.pusherAppKey}');
+      AppLogger.d('   App Key: $apiKey');
+      if (AppConfig.pusherPrimaryUsesSecondaryFallback) {
+        AppLogger.d('   (fallback desde PUSHER_SECONDARY_APP_KEY)');
+      }
       AppLogger.d('   Cluster: ${AppConfig.pusherCluster}');
 
       await _pusherPrimary!.init(
-        apiKey: AppConfig.pusherAppKey,
+        apiKey: apiKey,
         cluster: AppConfig.pusherCluster,
         onEvent: _onEventPrimary,
         onSubscriptionSucceeded: _onSubscriptionSucceededPrimary,
@@ -48,6 +79,10 @@ class PusherService {
 
   /// Inicializa la conexión secundaria de Pusher
   static Future<void> _initializeSecondary() async {
+    if (_secondaryReady && _pusherSecondary != null) {
+      AppLogger.d('Pusher Secondary ya listo, omitiendo re-init', tag: 'Pusher');
+      return;
+    }
     try {
       // Crear segunda instancia de Pusher
       _pusherSecondary = PusherChannelsFlutter.getInstance();
@@ -65,10 +100,13 @@ class PusherService {
       );
 
       await _pusherSecondary!.connect();
+      _secondaryReady = true;
+      _ensureDefaultSecondaryHandlers();
       AppLogger.d(
         '✅ Pusher Secondary conectado (Key: ${AppConfig.pusherSecondaryAppKey})',
       );
     } catch (e) {
+      _secondaryReady = false;
       AppLogger.d('❌ Error inicializando Pusher Secondary: $e');
     }
   }
@@ -188,29 +226,32 @@ class PusherService {
     AppLogger.d('🗑️ Handler eliminado para evento secundario: $eventKey');
   }
 
-  static void _onEventSecondary(PusherEvent event) {
-    AppLogger.d(
-      '🟢 [SECONDARY] Evento recibido: ${event.eventName} en ${event.channelName}',
-    );
-    AppLogger.d('📦 [SECONDARY] Data: ${event.data}');
-
-    // Log de todos los handlers registrados para debug
-    if (!event.eventName.startsWith('pusher:')) {
-      AppLogger.d(
-        '🔍 [SECONDARY] Buscando handler para: ${event.channelName}:${event.eventName}',
-      );
-      AppLogger.d(
-        '📝 [SECONDARY] Handlers registrados: ${_eventHandlersSecondary.keys.toList()}',
-      );
+  /// Handlers vacíos para no perder eventos entre el init de Pusher y el home.
+  static void _ensureDefaultSecondaryHandlers() {
+    const keys = [
+      'conductores-disponibles:conductor.actualizado',
+      'solicitudes-servicio:nueva-solicitud',
+      'solicitudes-servicio:nueva_solicitud',
+    ];
+    for (final key in keys) {
+      _eventHandlersSecondary.putIfAbsent(key, () => (_) {});
     }
+  }
+
+  static void _onEventSecondary(PusherEvent event) {
+    if (event.eventName.startsWith('pusher:')) return;
 
     final key = '${event.channelName}:${event.eventName}';
-    if (_eventHandlersSecondary.containsKey(key)) {
-      AppLogger.d('✅ [SECONDARY] Ejecutando handler para: $key');
-      _eventHandlersSecondary[key]!(event.data);
-    } else if (!event.eventName.startsWith('pusher:')) {
-      AppLogger.d('⚠️ [SECONDARY] No hay handler registrado para: $key');
+    final handler = _eventHandlersSecondary[key];
+    if (handler == null) {
+      if (kDebugMode) {
+        AppLogger.d(
+          '⚠️ [SECONDARY] Sin handler para $key (handlers: ${_eventHandlersSecondary.keys.length})',
+        );
+      }
+      return;
     }
+    handler(event.data);
   }
 
   static void _onSubscriptionSucceededSecondary(
