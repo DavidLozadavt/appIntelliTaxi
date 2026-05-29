@@ -28,11 +28,13 @@ class TurnoActivo {
   factory TurnoActivo.fromJson(Map<String, dynamic> json) {
     return TurnoActivo(
       id: _asInt(json['id']),
-      idConductor: _asInt(json['idConductor']),
-      idVehiculo: _asInt(json['idVehiculo']),
-      fechaTurno: json['fechaTurno']?.toString() ?? '',
-      horaInicio: json['horaInicio']?.toString() ?? '',
-      horaFin: json['horaFin']?.toString(),
+      idConductor: _asInt(json['idConductor'] ?? json['id_conductor']),
+      idVehiculo: _asInt(json['idVehiculo'] ?? json['id_vehiculo']),
+      fechaTurno:
+          json['fechaTurno']?.toString() ?? json['fecha_turno']?.toString() ?? '',
+      horaInicio:
+          json['horaInicio']?.toString() ?? json['hora_inicio']?.toString() ?? '',
+      horaFin: json['horaFin']?.toString() ?? json['hora_fin']?.toString(),
       estado: json['estado']?.toString() ?? '',
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)

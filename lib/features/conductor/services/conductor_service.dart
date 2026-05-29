@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/conductor/data/documento_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
@@ -8,7 +9,6 @@ import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dar
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intellitaxi/core/services/app_logger.dart';
-import 'package:intellitaxi/features/taxi/data/taxi_radio_accion.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 
@@ -289,27 +289,41 @@ class ConductorService {
     double? lng,
   }) async {
     try {
-      // Preparar datos con ubicación si están disponibles
-      final Map<String, dynamic> requestData = {
+      final requestData = <String, dynamic>{
         'idVehiculo': idVehiculo,
-        'lat': ?lat,
-        'lng': ?lng,
+        'id_vehiculo': idVehiculo,
       };
+      if (lat != null) {
+        requestData['lat'] = lat;
+        requestData['latitude'] = lat;
+      }
+      if (lng != null) {
+        requestData['lng'] = lng;
+        requestData['longitude'] = lng;
+      }
 
       AppLogger.d('🚀 Iniciando turno con datos: $requestData');
 
       final response = await _dio.post('turnos', data: requestData);
+      final status = response.statusCode ?? 0;
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        // La respuesta puede venir en response.data directamente o en response.data['data']
-        final turnoData =
-            response.data is Map && response.data.containsKey('data')
-            ? response.data['data']
-            : response.data;
+      if (status == 200 || status == 201) {
+        final turnoData = _unwrapTurnoPayload(response.data);
+        if (turnoData == null) {
+          throw Exception('Respuesta de turno inválida del servidor');
+        }
         return TurnoActivo.fromJson(turnoData);
-      } else {
-        throw Exception('Error al iniciar turno: ${response.statusCode}');
       }
+
+      final message = _messageFromResponseData(
+        response.data,
+        'No se pudo iniciar el turno (código $status)',
+      );
+      AppLogger.d('⚠️ Error iniciando turno: $status → $message');
+      if (kDebugMode) {
+        AppLogger.d('   body: ${response.data}');
+      }
+      throw Exception(message);
     } on DioException catch (e) {
       AppLogger.d('⚠️ Error iniciando turno: $e');
       throw Exception(_extractErrorMessage(e, 'No se pudo iniciar el turno'));
@@ -317,6 +331,34 @@ class ConductorService {
       AppLogger.d('⚠️ Error iniciando turno: $e');
       rethrow;
     }
+  }
+
+  Map<String, dynamic>? _unwrapTurnoPayload(dynamic data) {
+    if (data is! Map) return null;
+    final map = Map<String, dynamic>.from(data);
+    if (map['success'] == false) return null;
+
+    final turno = map['turno'];
+    if (turno is Map) {
+      return Map<String, dynamic>.from(turno);
+    }
+
+    final nested = map['data'];
+    if (nested is Map) {
+      final nestedMap = Map<String, dynamic>.from(nested);
+      final inner = nestedMap['turno'];
+      if (inner is Map) {
+        return Map<String, dynamic>.from(inner);
+      }
+      if (nestedMap.containsKey('id')) {
+        return nestedMap;
+      }
+    }
+
+    if (map.containsKey('id')) {
+      return map;
+    }
+    return null;
   }
 
   /// Finaliza un turno por id (`POST /turnos/{id}/finalizar`).
@@ -450,10 +492,18 @@ class ConductorService {
   Future<TurnoActivo?> getTurnoActivo() async {
     try {
       final response = await _dio.get('turno_actual_conductor');
-
-      if (response.statusCode == 200 && response.data != null) {
-        return TurnoActivo.fromJson(response.data);
+      if (response.statusCode != 200 || response.data == null) {
+        return null;
       }
+
+      final turnoData = _unwrapTurnoPayload(response.data);
+      if (turnoData == null) return null;
+
+      final turno = TurnoActivo.fromJson(turnoData);
+      return turno.estaActivo ? turno : null;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) return null;
+      AppLogger.d('⚠️ Error obteniendo turno activo: $e');
       return null;
     } catch (e) {
       AppLogger.d('⚠️ Error obteniendo turno activo: $e');
@@ -701,55 +751,6 @@ class ConductorService {
     }
   }
 
-  /// Radio de acción (`GET /taxi/conductor/radio-accion`).
-  Future<TaxiRadioAccion> getRadioAccion() async {
-    try {
-      final response = await _dio.get('taxi/conductor/radio-accion');
-      final data = response.data;
-      if (data is Map && data['success'] == true) {
-        return TaxiRadioAccion.fromJson(Map<String, dynamic>.from(data));
-      }
-      return TaxiRadioAccion.sinLimitePorDefecto;
-    } catch (e) {
-      AppLogger.d('⚠️ Error obteniendo radio-accion: $e');
-      rethrow;
-    }
-  }
-
-  /// Guarda radio de acción (`PUT /taxi/conductor/radio-accion`).
-  Future<TaxiRadioAccion> setRadioAccion({
-    required bool activo,
-    double? radioKm,
-  }) async {
-    try {
-      final body = <String, dynamic>{'activo': activo};
-      if (activo && radioKm != null) {
-        body['radio_km'] = radioKm;
-      }
-
-      final response = await _dio.put(
-        'taxi/conductor/radio-accion',
-        data: body,
-      );
-
-      final data = response.data;
-      if (data is Map && data['success'] == true) {
-        return TaxiRadioAccion.fromJson(Map<String, dynamic>.from(data));
-      }
-
-      throw Exception(
-        data is Map
-            ? data['message']?.toString() ??
-                  'No se pudo guardar el radio de acción'
-            : 'No se pudo guardar el radio de acción',
-      );
-    } on DioException catch (e) {
-      throw Exception(
-        _extractErrorMessage(e, 'No se pudo guardar el radio de acción'),
-      );
-    }
-  }
-
   /// Servicios pendientes sin conductor (`GET /taxi/solicitudes-pendientes`).
   Future<TaxiSolicitudesPendientesResult> getSolicitudesPendientes({
     double? lat,
@@ -863,24 +864,33 @@ class ConductorService {
   }
 
   String _extractErrorMessage(DioException e, String fallback) {
-    final data = e.response?.data;
+    return _messageFromResponseData(e.response?.data, fallback);
+  }
 
+  String _messageFromResponseData(dynamic data, String fallback) {
     if (data is Map) {
-      final dynamic message = data['message'] ?? data['error'];
+      final map = Map<String, dynamic>.from(data);
+      final message = map['message'] ?? map['error'] ?? map['mensaje'];
       if (message != null && message.toString().trim().isNotEmpty) {
         return message.toString().trim();
       }
 
-      final errors = data['errors'];
+      final errors = map['errors'];
       if (errors is Map && errors.isNotEmpty) {
-        final firstError = errors.values.first;
-        if (firstError is List && firstError.isNotEmpty) {
-          return firstError.first.toString();
-        }
-        if (firstError != null) {
-          return firstError.toString();
+        for (final entry in errors.entries) {
+          final value = entry.value;
+          if (value is List && value.isNotEmpty) {
+            return value.first.toString();
+          }
+          if (value != null && value.toString().trim().isNotEmpty) {
+            return value.toString();
+          }
         }
       }
+    }
+
+    if (data is String && data.trim().isNotEmpty) {
+      return data.trim();
     }
 
     return fallback;

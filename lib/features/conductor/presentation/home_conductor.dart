@@ -12,7 +12,6 @@ import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.d
 import 'package:intellitaxi/features/conductor/widgets/no_assigned_vehicles_dialog.dart';
 import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_map_servicios_tabs.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_pendientes_dock.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
@@ -78,7 +77,7 @@ class _HomeConductorState extends State<HomeConductor>
   }
 
   bool _mostrarAvisoEsperaEnHeader(ConductorHomeProvider provider) =>
-      _dockVisible(provider) &&
+      _panelServiciosVisible(provider) &&
       _serviciosTabController.index == 0 &&
       provider.totalSolicitudesEnEspera > 0 &&
       !_avisoEsperaDescartado;
@@ -106,7 +105,7 @@ class _HomeConductorState extends State<HomeConductor>
         ),
       );
     }
-    if (!_dockVisible(_provider)) {
+    if (!_panelServiciosVisible(_provider)) {
       final nombre = solicitud['pasajero_nombre']?.toString().trim();
       final origen = solicitud['origen']?.toString().trim();
       final detalle = [
@@ -162,11 +161,17 @@ class _HomeConductorState extends State<HomeConductor>
     _crearDotMarker();
   }
 
+  bool _panelServiciosVisible(ConductorHomeProvider provider) =>
+      provider.isOnline &&
+      !provider.enServicio &&
+      !provider.enDescanso &&
+      provider.tieneTurnoActivo;
+
   EdgeInsets _paddingMapaNavegacion(ConductorHomeProvider provider) {
-    final dockVisible = _dockVisible(provider);
+    final panelVisible = _panelServiciosVisible(provider);
     final compact = ConductorMapServiciosTabs.pantallaCompacta(context);
     final chipH = _chipEstadoAltura(provider, compact: compact);
-    final top = dockVisible
+    final top = panelVisible
         ? ConductorMapServiciosTabs.headerBlockHeight(
               context,
               provider,
@@ -175,32 +180,12 @@ class _HomeConductorState extends State<HomeConductor>
             ) +
             4
         : chipH + 24;
-    final radio = provider.radioAccion;
-    final sliderVisible =
-        radio.activo && !radio.sinLimite && dockVisible;
-    final bottom = dockVisible
-        ? ConductorPendientesDock.alturaEstimada(
-            context,
-            radioSliderVisible: sliderVisible,
-          )
-        : 100.0;
+    const bottom = 100.0;
     return EdgeInsets.only(top: top, bottom: bottom, left: 20, right: 20);
   }
 
-  bool _dockVisible(ConductorHomeProvider provider) =>
-      provider.isOnline &&
-      !provider.enServicio &&
-      !provider.enDescanso &&
-      provider.tieneTurnoActivo;
-
   double _fabBottomOffset(ConductorHomeProvider provider) {
-    if (!_dockVisible(provider)) return 24.0;
-    final radio = provider.radioAccion;
-    final sliderVisible = radio.activo && !radio.sinLimite;
-    return ConductorPendientesDock.alturaEstimada(
-      context,
-      radioSliderVisible: sliderVisible,
-    );
+    return _panelServiciosVisible(provider) ? 100.0 : 24.0;
   }
 
   Future<void> _bootstrapHome() async {
@@ -219,7 +204,6 @@ class _HomeConductorState extends State<HomeConductor>
     if (!mounted) return;
 
     _pendientesProvider.attachHome(_provider);
-    unawaited(_provider.cargarRadioAccion());
     unawaited(_pendientesProvider.refrescar(silencioso: true));
     _pendientesProvider.iniciarRefrescoPeriodico();
 
@@ -970,6 +954,10 @@ class _HomeConductorState extends State<HomeConductor>
     final normalized = message.toLowerCase();
     return normalized.contains('turno activo') ||
         normalized.contains('turno abierto') ||
+        normalized.contains('ya tiene un turno') ||
+        normalized.contains('ya tienes un turno') ||
+        normalized.contains('turno en curso') ||
+        normalized.contains('turno pendiente') ||
         (normalized.contains('vehiculo') && normalized.contains('ocupado')) ||
         (normalized.contains('vehículo') && normalized.contains('ocupado'));
   }
@@ -1448,7 +1436,7 @@ class _HomeConductorState extends State<HomeConductor>
     return Consumer<ConductorHomeProvider>(
       builder: (context, provider, child) {
         _sincronizarCamaraNavegacion(provider);
-        final mostrarTabsServicios = _dockVisible(provider);
+        final mostrarTabsServicios = _panelServiciosVisible(provider);
         final compact = ConductorMapServiciosTabs.pantallaCompacta(context);
         return Stack(
           children: [
@@ -1708,7 +1696,6 @@ class _HomeConductorState extends State<HomeConductor>
                 ),
               ),
 
-            const ConductorPendientesDock(),
           ],
         );
       },

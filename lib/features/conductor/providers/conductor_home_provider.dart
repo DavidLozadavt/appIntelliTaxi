@@ -15,13 +15,10 @@ import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
-import 'package:intellitaxi/features/taxi/data/taxi_radio_accion.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
-import 'package:intellitaxi/features/taxi/utils/taxi_radio_accion_filter.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
-import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
@@ -96,9 +93,6 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _visibleEnMapa = true;
   bool _cambiandoDescanso = false;
   String? _lastDescansoError;
-  TaxiRadioAccion _radioAccion = TaxiRadioAccion.sinLimitePorDefecto;
-  bool _guardandoRadioAccion = false;
-  String? _lastRadioAccionError;
   final List<void Function(String servicioId)> _solicitudTomadaListeners = [];
   final List<void Function(Map<String, dynamic> solicitud)>
       _nuevaSolicitudListeners = [];
@@ -186,9 +180,6 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool get recibeServicios => _recibeServicios && !_enDescanso;
   bool get cambiandoDescanso => _cambiandoDescanso;
   String? get lastDescansoError => _lastDescansoError;
-  TaxiRadioAccion get radioAccion => _radioAccion;
-  bool get guardandoRadioAccion => _guardandoRadioAccion;
-  String? get lastRadioAccionError => _lastRadioAccionError;
   bool get puedeUsarModoDescanso =>
       _isOnline && !_enServicio && _turnoActivo != null;
   /// Pestaña «Llegando»: overlay activo (Pusher / servicio.cercano, TTL no expirado).
@@ -330,7 +321,6 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (_turnoActivo != null) {
       _sincronizarVehiculoSeleccionadoConTurno();
     }
-    unawaited(cargarRadioAccion());
     await bootstrapTaxiConductor();
     await cargarSolicitudesRechazadas();
     if (!_enServicio) {
@@ -803,8 +793,6 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       await _suscribirEmergenciasFlota();
 
-      unawaited(cargarRadioAccion());
-
       _suscritoAPusher = true;
       _iniciarSincronizacionSolicitudes();
       unawaited(sincronizarSolicitudesPublicadasConductor());
@@ -956,85 +944,6 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  static double get _radioAccionMaxUrbanoKm => PopayanUrbanArea.maxRadiusKm;
-
-  TaxiRadioAccion _aplicarLimiteUrbanoPopayan(TaxiRadioAccion config) {
-    final maxUrbano = _radioAccionMaxUrbanoKm;
-    final maxKm = config.maxKm > maxUrbano ? maxUrbano : config.maxKm;
-    final radioKm = config.radioKm;
-    final efectivo = config.radioEfectivoKm > maxUrbano
-        ? maxUrbano
-        : config.radioEfectivoKm;
-    return TaxiRadioAccion(
-      activo: config.activo,
-      radioKm: radioKm != null && radioKm > maxUrbano ? maxUrbano : radioKm,
-      radioEfectivoKm: efectivo,
-      sinLimite: config.sinLimite,
-      minKm: config.minKm,
-      maxKm: maxKm,
-      defaultKm: config.defaultKm > maxUrbano ? maxUrbano : config.defaultKm,
-    );
-  }
-
-  Future<void> cargarRadioAccion() async {
-    try {
-      _radioAccion = _aplicarLimiteUrbanoPopayan(
-        await _conductorService.getRadioAccion(),
-      );
-      _lastRadioAccionError = null;
-    } catch (e) {
-      _lastRadioAccionError = e.toString().replaceAll('Exception: ', '');
-      AppLogger.d('⚠️ Error cargando radio-accion: $e');
-    }
-    if (!_isDisposed) notifyListeners();
-  }
-
-  void aplicarRadioAccion(TaxiRadioAccion config) {
-    _radioAccion = _aplicarLimiteUrbanoPopayan(config);
-    if (!_isDisposed) notifyListeners();
-  }
-
-  Future<String?> guardarRadioAccion({
-    required bool activo,
-    double? radioKm,
-  }) async {
-    _guardandoRadioAccion = true;
-    _lastRadioAccionError = null;
-    if (!_isDisposed) notifyListeners();
-
-    try {
-      double? kmGuardar = radioKm;
-      if (activo && kmGuardar != null) {
-        kmGuardar = kmGuardar.clamp(
-          _radioAccion.minKm,
-          _radioAccionMaxUrbanoKm,
-        );
-      }
-      _radioAccion = await _conductorService.setRadioAccion(
-        activo: activo,
-        radioKm: kmGuardar,
-      );
-      _radioAccion = _aplicarLimiteUrbanoPopayan(_radioAccion);
-      return null;
-    } catch (e) {
-      _lastRadioAccionError = e.toString().replaceAll('Exception: ', '');
-      return _lastRadioAccionError;
-    } finally {
-      _guardandoRadioAccion = false;
-      if (!_isDisposed) notifyListeners();
-    }
-  }
-
-  bool _pasaFiltroRadioAccion(Map<String, dynamic> raw) {
-    return TaxiRadioAccionFilter.matches(
-      raw,
-      _currentPosition?.latitude,
-      _currentPosition?.longitude,
-      _radioAccion,
-      limitarAUrbanoPopayan: true,
-    );
-  }
-
   void _notificarNuevaSolicitudExterna(Map<String, dynamic> solicitud) {
     final copia = Map<String, dynamic>.from(solicitud);
     for (final listener in List.of(_nuevaSolicitudListeners)) {
@@ -1132,13 +1041,6 @@ class ConductorHomeProvider extends ChangeNotifier {
         AppLogger.d('ℹ️ Ignorando solicitud: rechazada por este conductor');
         return;
       }
-      if (!fromSync &&
-          !mostrarEnOverlay &&
-          !_pasaFiltroRadioAccion(raw)) {
-        AppLogger.d('ℹ️ Solicitud fuera del radio de acción');
-        return;
-      }
-
       final solicitud = ConductorSolicitudPayloadHelper.normalizarSolicitud(
         raw,
         isDirectOffer: isDirectOffer,
@@ -1783,6 +1685,17 @@ class ConductorHomeProvider extends ChangeNotifier {
         );
       }
 
+      final turnoExistente = await _conductorService.getTurnoActivo();
+      if (turnoExistente != null) {
+        if (turnoExistente.idVehiculo == idVehiculo) {
+          await _aplicarTurnoActivoLocal(turnoExistente);
+          return true;
+        }
+        throw Exception(
+          'Ya tienes un turno activo con otro vehículo. Finalízalo antes de cambiar.',
+        );
+      }
+
       // Obtener ubicación actual
       Position? position = _currentPosition;
 
@@ -1807,25 +1720,8 @@ class ConductorHomeProvider extends ChangeNotifier {
         lng: position.longitude,
       );
 
-      // Guardar datos del turno
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('turno_activo_id', turno.id);
-      await prefs.setInt('turno_vehiculo_id', turno.idVehiculo);
-      await prefs.setString('turno_fecha', turno.fechaTurno);
-      await prefs.setString('turno_hora_inicio', turno.horaInicio);
-
-      _turnoActivo = turno;
-      _isOnline = true;
-      _enDescanso = false;
-      _recibeServicios = true;
-      _visibleEnMapa = true;
-      _sincronizarVehiculoSeleccionadoConTurno();
+      await _aplicarTurnoActivoLocal(turno);
       unawaited(_sendMapHeartbeat(position, force: true));
-
-      // Conectar a Pusher después de iniciar el turno
-      await conectarPusher();
-
-      if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
       _lastTurnoError = e.toString().replaceAll('Exception: ', '').trim();
@@ -1833,6 +1729,23 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return false;
     }
+  }
+
+  Future<void> _aplicarTurnoActivoLocal(TurnoActivo turno) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('turno_activo_id', turno.id);
+    await prefs.setInt('turno_vehiculo_id', turno.idVehiculo);
+    await prefs.setString('turno_fecha', turno.fechaTurno);
+    await prefs.setString('turno_hora_inicio', turno.horaInicio);
+
+    _turnoActivo = turno;
+    _isOnline = true;
+    _enDescanso = false;
+    _recibeServicios = true;
+    _visibleEnMapa = true;
+    _sincronizarVehiculoSeleccionadoConTurno();
+    await conectarPusher();
+    if (!_isDisposed) notifyListeners();
   }
 
   /// Finaliza el turno actual (por id; si 403, intenta `finalizar-activo`).

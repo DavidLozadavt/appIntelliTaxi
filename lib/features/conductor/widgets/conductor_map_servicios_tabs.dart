@@ -327,9 +327,7 @@ class ConductorMapServiciosTabs {
         ),
       );
     } else if (lista.isEmpty) {
-      final mensaje = home.radioAccion.activo && !home.radioAccion.sinLimite
-          ? 'Sin servicios a ${home.radioAccion.radioEfectivoKm.round()} km (Popayán)'
-          : 'Sin publicados en Popayán';
+      const mensaje = 'Sin publicados en Popayán';
       body = RefreshIndicator(
         color: AppColors.accent,
         onRefresh: onRefresh,
