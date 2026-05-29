@@ -26,25 +26,13 @@ class RuntimeBootstrap {
     );
 
     await _step(
-      'incoming_permissions',
-      () => IncomingServiceNotificationService.instance
-          .requestAndroidAlertPermissions()
-          .timeout(const Duration(seconds: 30)),
-    );
-
-    await AppDiagnostics.waitForForeground(
-      reason: 'tras diálogos de notificación / pantalla completa',
+      'fcm',
+      () => FirebaseMsg().initFCM().timeout(const Duration(seconds: 60)),
     );
 
     await _step(
-      'background_location',
-      () => BackgroundLocationService.initialize().timeout(
-        const Duration(seconds: 30),
-      ),
-    );
-
-    await AppDiagnostics.waitForForeground(
-      reason: 'tras permisos de ubicación',
+      'pusher',
+      () => PusherService.initialize().timeout(const Duration(seconds: 60)),
     );
 
     await _step(
@@ -68,13 +56,25 @@ class RuntimeBootstrap {
     }
 
     await _step(
-      'fcm',
-      () => FirebaseMsg().initFCM().timeout(const Duration(seconds: 60)),
+      'incoming_permissions',
+      () => IncomingServiceNotificationService.instance
+          .requestAndroidAlertPermissions()
+          .timeout(const Duration(seconds: 30)),
+    );
+
+    await AppDiagnostics.waitForForeground(
+      reason: 'tras diálogos de notificación / pantalla completa',
     );
 
     await _step(
-      'pusher',
-      () => PusherService.initialize().timeout(const Duration(seconds: 60)),
+      'background_location',
+      () => BackgroundLocationService.initialize().timeout(
+        const Duration(seconds: 30),
+      ),
+    );
+
+    await AppDiagnostics.waitForForeground(
+      reason: 'tras permisos de ubicación',
     );
 
     AppDiagnostics.phase('bootstrap_services_done');

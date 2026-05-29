@@ -4,8 +4,9 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pusher_channels_flutter/pusher_channels_flutter.dart';
-import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import '../config/app_config.dart';
 
 class PusherService {
@@ -190,7 +191,9 @@ class PusherService {
   static Future<void> subscribeSecondary(String channelName) async {
     try {
       await _pusherSecondary?.subscribe(channelName: channelName);
-      AppLogger.d('📡 Suscrito a canal secundario: $channelName');
+      if (RuntimePerfFlags.verbosePusherLogs) {
+        AppLogger.d('Suscrito secondary: $channelName', tag: 'Pusher');
+      }
     } catch (e) {
       AppLogger.d(
         '❌ Error suscribiéndose al canal secundario $channelName: $e',
@@ -214,11 +217,9 @@ class PusherService {
     Function(dynamic) handler,
   ) {
     _eventHandlersSecondary[eventKey] = handler;
-    AppLogger.d('📝 Handler registrado para evento secundario: $eventKey');
-    AppLogger.d(
-      '📋 Total handlers secundarios registrados: ${_eventHandlersSecondary.length}',
-    );
-    AppLogger.d('📋 Lista completa: ${_eventHandlersSecondary.keys.toList()}');
+    if (RuntimePerfFlags.verbosePusherLogs) {
+      AppLogger.d('Handler secondary: $eventKey', tag: 'Pusher');
+    }
   }
 
   static void unregisterEventHandlerSecondary(String eventKey) {
@@ -258,7 +259,9 @@ class PusherService {
     String channelName,
     dynamic data,
   ) {
-    AppLogger.d('✅ [SECONDARY] Suscripción exitosa a: $channelName');
+    if (RuntimePerfFlags.verbosePusherLogs) {
+      AppLogger.d('OK secondary: $channelName', tag: 'Pusher');
+    }
   }
 
   static void _onErrorSecondary(String message, int? code, dynamic e) {
@@ -273,7 +276,11 @@ class PusherService {
     dynamic currentState,
     dynamic previousState,
   ) {
-    AppLogger.d('🔄 [SECONDARY] Estado: $previousState → $currentState');
+    if (!RuntimePerfFlags.verbosePusherLogs) return;
+    AppLogger.d(
+      '[SECONDARY] $previousState → $currentState',
+      tag: 'Pusher',
+    );
   }
 
   static Future<dynamic> _onAuthorizerSecondary(

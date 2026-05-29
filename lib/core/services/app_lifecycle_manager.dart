@@ -14,6 +14,7 @@ class AppLifecycleManager extends WidgetsBindingObserver {
 
   bool _isCheckingService = false;
   DateTime? _lastCheck;
+  bool _skipNextResumeCheck = true;
 
   AppLifecycleManager({required this.context, required this.authProvider})
     : _restorationService = ActiveServiceRestorationService();
@@ -70,6 +71,14 @@ class AppLifecycleManager extends WidgetsBindingObserver {
 
   /// Maneja el evento cuando la app vuelve al foreground
   Future<void> _onAppResumed() async {
+    if (_skipNextResumeCheck) {
+      _skipNextResumeCheck = false;
+      AppLogger.d(
+        '⏭️ [Lifecycle] Primer resumed (arranque): Home consulta servicio activo',
+      );
+      return;
+    }
+
     AppLogger.d('🔄 [Lifecycle] App resumed - verificando servicio activo...');
 
     // Evitar verificaciones múltiples simultáneas
@@ -105,7 +114,6 @@ class AppLifecycleManager extends WidgetsBindingObserver {
           .verificarServicioActivoSegunRol(authProvider);
 
       if (servicioActivo == null) {
-        AppLogger.d('ℹ️ [Lifecycle] No hay servicio activo para restaurar');
         return;
       }
 
@@ -151,7 +159,6 @@ class AppLifecycleManager extends WidgetsBindingObserver {
   /// Método público para verificar servicio activo manualmente
   /// Útil para llamar al iniciar la app
   Future<void> checkActiveService() async {
-    AppLogger.d('🔍 [Lifecycle] Verificación manual de servicio activo...');
     await _checkAndRestoreActiveService();
   }
 }

@@ -42,9 +42,8 @@ class _AppLifecycleWrapperState extends State<AppLifecycleWrapper> {
     _lifecycleManager!.initialize();
     _authProvider!.addListener(_onAuthChanged);
 
-    if (_authProvider!.user != null) {
-      _lifecycleManager!.checkActiveService();
-    }
+    // Servicio activo al cold start: lo verifica Home (pasajero/conductor).
+    // Lifecycle solo al volver del background (didChangeAppLifecycleState.resumed).
   }
 
   void _onAuthChanged() {
@@ -53,7 +52,7 @@ class _AppLifecycleWrapperState extends State<AppLifecycleWrapper> {
 
     if (_authProvider!.user != null) {
       _didAuthTriggeredCheck = true;
-      _lifecycleManager!.checkActiveService();
+      // Tras login el destino (Home) ya consulta servicio activo.
     }
   }
 

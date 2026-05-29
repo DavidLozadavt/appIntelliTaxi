@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/features/auth/data/tab_item.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/home/presentation/home_screen.dart';
@@ -17,6 +20,27 @@ class NavigationScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<NavigationScreen> {
   int _selectedIndex = 0;
+  bool _deferredUpdateCheckStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _deferredUpdateCheck());
+  }
+
+  void _deferredUpdateCheck() {
+    if (_deferredUpdateCheckStarted) return;
+    _deferredUpdateCheckStarted = true;
+    unawaited(
+      AppUpdateService.instance
+          .checkForUpdate()
+          .timeout(const Duration(seconds: 5))
+          .catchError((_) => const AppUpdateCheckResult(
+                updateAvailable: false,
+                shouldBlock: false,
+              )),
+    );
+  }
 
   final List<TabItem> allTabs = [
     TabItem(

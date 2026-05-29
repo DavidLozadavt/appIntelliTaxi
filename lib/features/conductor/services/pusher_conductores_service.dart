@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:intellitaxi/config/pusher_config.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class PusherConductoresService {
@@ -21,7 +22,9 @@ class PusherConductoresService {
     }
 
     try {
-      AppLogger.d('📡 Conectando al canal: $channelName');
+      if (RuntimePerfFlags.verbosePusherLogs) {
+        AppLogger.d('Conectando canal: $channelName', tag: 'Pusher');
+      }
 
       // Suscribirse al canal usando la conexión secundaria
       await PusherService.subscribeSecondary(channelName);
@@ -33,8 +36,7 @@ class PusherConductoresService {
       );
 
       _isConnected = true;
-      AppLogger.d('✅ Conectado al canal de conductores');
-      AppLogger.d('   Escuchando evento: conductor.actualizado');
+      AppLogger.d('✅ Pusher conductores en $channelName', tag: 'Pusher');
     } catch (e) {
       AppLogger.d('❌ Error conectando a canal de conductores: $e');
     }

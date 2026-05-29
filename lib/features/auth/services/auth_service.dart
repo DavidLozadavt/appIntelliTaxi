@@ -2,10 +2,41 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intellitaxi/core/bootstrap/session_preload.dart';
+import 'package:intellitaxi/core/bootstrap/session_snapshot.dart';
+
 import '../data/auth_model.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class AuthService {
+  static SharedPreferences? _prefsCache;
+
+  static Future<SharedPreferences> sharedPreferences() async {
+    return _prefsCache ??= await SharedPreferences.getInstance();
+  }
+
+  /// Una sola lectura de prefs: token + JSON de usuario + rol activo.
+  static Future<SessionSnapshot> readSessionSnapshot() async {
+    final prefs = await sharedPreferences();
+    final token = prefs.getString('token');
+    final raw = prefs.getString('user_data');
+    AuthResponse? auth;
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        auth = AuthResponse.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>,
+        );
+      } catch (_) {
+        auth = null;
+      }
+    }
+    return SessionSnapshot(
+      token: token,
+      authResponse: auth,
+      storedActiveRole: prefs.getString('active_role'),
+    );
+  }
+
   final Dio _dio = Dio(
     BaseOptions(
       baseUrl: AppConfig.baseUrl,
@@ -166,37 +197,34 @@ class AuthService {
 
   /// 📌 Guardar token
   Future<void> saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await sharedPreferences();
     await prefs.setString('token', token);
+    SessionPreload.invalidate();
   }
 
   /// 📌 Obtener token
   Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await sharedPreferences();
     return prefs.getString('token');
   }
 
   /// 📌 Guardar datos completos del usuario
   Future<void> saveUserData(AuthResponse response) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await sharedPreferences();
     final jsonString = jsonEncode(response.toJson());
     await prefs.setString('user_data', jsonString);
+    SessionPreload.invalidate();
   }
 
   /// 📌 Obtener datos guardados del usuario
   Future<AuthResponse?> getSavedUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('user_data');
-    if (jsonString != null) {
-      final Map<String, dynamic> jsonMap = jsonDecode(jsonString);
-      return AuthResponse.fromJson(jsonMap);
-    }
-    return null;
+    final snap = await readSessionSnapshot();
+    return snap.authResponse;
   }
 
   /// 📌 Cerrar sesión y limpiar todo
   Future<void> clearSession() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await sharedPreferences();
     final token = prefs.getString('token');
 
     try {
@@ -216,11 +244,12 @@ class AuthService {
     // 👈 Después de llamar a la API borras todo
     await prefs.remove('token');
     await prefs.remove('user_data');
+    SessionPreload.invalidate();
   }
 
   /// 📌 Guardar credenciales si el usuario marcó "Recuérdame"
   Future<void> saveCredentials(String email, String password) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await sharedPreferences();
     await prefs.setString('saved_email', email);
     await prefs.setString('saved_password', password);
     await prefs.setBool('remember_me', true);
@@ -228,7 +257,7 @@ class AuthService {
 
   /// 📌 Obtener credenciales guardadas
   Future<Map<String, dynamic>?> getSavedCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await sharedPreferences();
     final remember = prefs.getBool('remember_me') ?? false;
 
     if (remember) {
@@ -242,7 +271,7 @@ class AuthService {
 
   /// 📌 Limpiar credenciales si no quiere recordar
   Future<void> clearCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await sharedPreferences();
     await prefs.remove('saved_email');
     await prefs.remove('saved_password');
     await prefs.remove('remember_me');

@@ -13,13 +13,13 @@ class PasajeroActiveServiceController {
 
   Future<ServicioActivo?> fetchActiveServiceIfAny() async {
     try {
-      AppLogger.d('🔍 Verificando servicio activo al iniciar...');
-      final servicio = await _manager.getActiveService(soloPasajero: true);
+      final servicio = await _manager.getActiveService(
+        soloPasajero: true,
+        quiet: true,
+      );
       if (servicio != null && servicio.isActivo) {
-        AppLogger.d('✅ Servicio activo: ${servicio.id} (${servicio.estado.estado})');
         return servicio;
       }
-      AppLogger.d('ℹ️ No hay servicio activo');
       return null;
     } catch (e, st) {
       AppLogger.e(

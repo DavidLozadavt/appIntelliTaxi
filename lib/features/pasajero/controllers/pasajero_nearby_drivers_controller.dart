@@ -7,6 +7,7 @@ import 'package:intellitaxi/core/geo/map_marker_bearing_helper.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 import 'package:intellitaxi/features/conductor/services/conductores_service.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/features/conductor/services/pusher_conductores_service.dart';
 
 /// Conductores cercanos en el mapa del pasajero (API + Pusher + animación).
@@ -19,7 +20,8 @@ class PasajeroNearbyDriversController {
   PusherConductoresService? _pusher;
 
   DateTime? _lastApiLoadAt;
-  static const Duration _minApiInterval = Duration(seconds: 10);
+  static final Duration _minApiInterval = RuntimePerfFlags.driversApiDebounce;
+  bool _pusherConnected = false;
 
   final Map<int, Conductor> conductores = {};
   final Map<int, LatLng> displayedPositions = {};
@@ -44,6 +46,7 @@ class PasajeroNearbyDriversController {
       _pusher!.onDriverUpdate = onDriverUpdate;
       _pusher!.onDriverOffline = onDriverOffline;
       await _pusher!.connect();
+      _pusherConnected = true;
       AppLogger.d('✅ Pusher conductores configurado');
     } catch (e) {
       AppLogger.d('❌ Error configurando Pusher conductores: $e');
@@ -287,9 +290,12 @@ class PasajeroNearbyDriversController {
     }
   }
 
+  bool get pusherConnected => _pusherConnected;
+
   void dispose() {
     _pusher?.disconnect();
     _pusher = null;
+    _pusherConnected = false;
     conductores.clear();
     displayedPositions.clear();
     displayedBearings.clear();

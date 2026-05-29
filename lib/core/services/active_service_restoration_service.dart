@@ -89,17 +89,23 @@ class ActiveServiceRestorationService {
 
   /// Consulta si el usuario tiene un servicio activo como pasajero
   /// Endpoint: GET /api/servicio-activo-pasajero
-  Future<Map<String, dynamic>?> verificarServicioActivoPasajero() async {
+  Future<Map<String, dynamic>?> verificarServicioActivoPasajero({
+    bool quiet = false,
+  }) async {
     try {
-      AppLogger.d(
-        '🔍 [Restoration] Verificando servicio activo del pasajero...',
-      );
+      if (!quiet) {
+        AppLogger.d(
+          '🔍 [Restoration] Verificando servicio activo del pasajero...',
+        );
+      }
 
       final response = await _dio.get('taxi/servicio-activo-pasajero');
       if (response.statusCode == 404) {
-        AppLogger.d(
-          'ℹ️ [Restoration] No hay servicio activo del pasajero (404)',
-        );
+        if (!quiet) {
+          AppLogger.d(
+            'ℹ️ [Restoration] No hay servicio activo del pasajero (404)',
+          );
+        }
         return null;
       }
 
@@ -171,7 +177,7 @@ class ActiveServiceRestorationService {
 
         if (authProvider.hasPasajeroRole) {
           final servicioActivoPasajero =
-              await verificarServicioActivoPasajero();
+              await verificarServicioActivoPasajero(quiet: true);
           if (servicioActivoPasajero != null) {
             return servicioActivoPasajero;
           }

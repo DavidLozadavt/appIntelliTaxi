@@ -27,6 +27,7 @@ class ActiveServiceManager {
   Future<ServicioActivo?> getActiveService({
     bool soloPasajero = false,
     bool soloConductor = false,
+    bool quiet = false,
   }) async {
     final cacheKey = 'p:$soloPasajero c:$soloConductor';
     final now = DateTime.now();
@@ -37,7 +38,9 @@ class ActiveServiceManager {
     }
 
     try {
-      AppLogger.d('🔍 Consultando servicio activo...');
+      if (!quiet) {
+        AppLogger.d('🔍 Consultando servicio activo...');
+      }
 
       final endpoints = <String>[];
       if (!soloConductor) {
@@ -59,23 +62,25 @@ class ActiveServiceManager {
           await saveActiveServiceId(servicio.id);
           _activeServiceId = servicio.id;
 
-          AppLogger.d('✅ Servicio activo encontrado en $endpoint');
-          AppLogger.d('📋 Servicio ID: ${servicio.id}');
-          AppLogger.d(
-            '📊 Estado: ${servicio.estado.estado} (${servicio.idEstado})',
-          );
+          if (!quiet) {
+            AppLogger.d('✅ Servicio activo encontrado en $endpoint');
+          }
           _rememberFetch(cacheKey, servicio);
           return servicio;
         }
       }
 
-      AppLogger.d('ℹ️ No hay servicios activos');
+      if (!quiet) {
+        AppLogger.d('ℹ️ No hay servicios activos');
+      }
       await clearActiveServiceId();
       _rememberFetch(cacheKey, null);
       return null;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
-        AppLogger.d('ℹ️ No hay servicios activos');
+        if (!quiet) {
+          AppLogger.d('ℹ️ No hay servicios activos');
+        }
         await clearActiveServiceId();
       } else {
         AppLogger.d('⚠️ Error obteniendo servicio activo: ${e.message}');

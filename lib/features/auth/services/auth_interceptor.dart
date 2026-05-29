@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,7 +15,9 @@ class AuthInterceptor extends Interceptor {
 
       if (token != null && token.isNotEmpty) {
         options.headers['Authorization'] = 'Bearer $token';
-        AppLogger.d('Token agregado a la solicitud', tag: 'AuthInterceptor');
+        if (RuntimePerfFlags.logAuthInterceptor) {
+          AppLogger.d('Token agregado a la solicitud', tag: 'AuthInterceptor');
+        }
       } else {
         AppLogger.w(
           'No se encontró token de autenticación',

@@ -37,6 +37,7 @@ import 'package:intellitaxi/features/pasajero/controllers/pasajero_active_servic
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_nearby_drivers_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_pusher_offers_controller.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/device_location_service.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
@@ -130,6 +131,8 @@ class _HomePasajeroState extends State<HomePasajero>
   final bool _showDrivers = true; // Toggle para mostrar/ocultar conductores
   Ticker? _driverMarkersTicker;
   Timer? _driversRefreshTimer;
+  DateTime? _lastMarkerSyncAt;
+  int _idleMarkerTicks = 0;
   bool _isDisposed = false;
   String _currentLocationName = 'Mi ubicación';
   String _currentLocationAddress = 'Mi ubicación actual';
@@ -168,7 +171,9 @@ class _HomePasajeroState extends State<HomePasajero>
     unawaited(_nearbyDrivers.loadDriverMarkerIcon().then((_) {
       if (mounted) _setStateSafe(() {});
     }));
-    _createDestinationPointIcon();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_createDestinationPointIcon());
+    });
     unawaited(_setupPusherConductores());
     _setupPusherOffers();
     _setupPusherRequestConfirmation();
@@ -183,17 +188,35 @@ class _HomePasajeroState extends State<HomePasajero>
     _driverMarkersTicker = createTicker(_onDriverMarkersTick)..start();
   }
 
+  void _ensureMarkerTickerRunning() {
+    if (_isDisposed || !mounted) return;
+    _idleMarkerTicks = 0;
+    final ticker = _driverMarkersTicker;
+    if (ticker != null && !ticker.isActive) {
+      ticker.start();
+    }
+  }
+
   void _onDriverMarkersTick(Duration elapsed) {
     if (!mounted || _isDisposed) return;
     if (_nearbyDrivers.tickMarkerAnimation(showDrivers: _showDrivers)) {
+      _idleMarkerTicks = 0;
       _syncMarkersOnMap();
+    } else {
+      _idleMarkerTicks++;
+      if (_idleMarkerTicks >= 3) {
+        _driverMarkersTicker?.stop();
+      }
     }
   }
 
   void _startDriversRefreshTimer() {
     _driversRefreshTimer?.cancel();
+    final interval = _nearbyDrivers.pusherConnected
+        ? RuntimePerfFlags.driversApiRefreshWithPusher
+        : RuntimePerfFlags.driversApiRefreshWithoutPusher;
     _driversRefreshTimer = Timer.periodic(
-      const Duration(seconds: 12),
+      interval,
       (_) => _loadAvailableDrivers(silent: true),
     );
   }
@@ -391,6 +414,7 @@ class _HomePasajeroState extends State<HomePasajero>
     await _nearbyDrivers.connectPusher(
       onDriverUpdate: (conductor) {
         if (!mounted) return;
+        _ensureMarkerTickerRunning();
         _nearbyDrivers.applyDriverUpdate(
           conductor,
           showDrivers: _showDrivers,
@@ -403,8 +427,9 @@ class _HomePasajeroState extends State<HomePasajero>
       },
       onDriverOffline: (conductorId) {
         if (!mounted) return;
+        _ensureMarkerTickerRunning();
         _nearbyDrivers.removeDriver(conductorId);
-        _syncMarkersOnMap();
+        _syncMarkersOnMap(force: true);
       },
     );
   }
@@ -420,7 +445,7 @@ class _HomePasajeroState extends State<HomePasajero>
       silent: silent,
       force: force,
     );
-    if (mounted) _syncMarkersOnMap();
+    if (mounted) _syncMarkersOnMap(force: true);
   }
 
   /// Recompone marcadores del mapa (conductores animados + ruta + resto).
@@ -447,8 +472,18 @@ class _HomePasajeroState extends State<HomePasajero>
     return _selectedOrigin?.name ?? _originPickupLabel;
   }
 
-  void _syncMarkersOnMap() {
+  void _syncMarkersOnMap({bool force = false}) {
     if (!mounted || _isDisposed) return;
+
+    if (!force) {
+      final now = DateTime.now();
+      final last = _lastMarkerSyncAt;
+      if (last != null &&
+          now.difference(last) < RuntimePerfFlags.markerSyncMinInterval) {
+        return;
+      }
+      _lastMarkerSyncAt = now;
+    }
 
     final newMarkers = <Marker>{
       ..._nearbyDrivers.buildDriverMarkers(
@@ -1009,7 +1044,11 @@ class _HomePasajeroState extends State<HomePasajero>
       }
 
       _applyOriginFromGps(position, markReady: true);
-      unawaited(_refineOriginAddress(position));
+      unawaited(
+        Future.delayed(RuntimePerfFlags.originGeocodeDefer, () {
+          if (mounted) _refineOriginAddress(position);
+        }),
+      );
 
       if (_mapController != null) {
         _mapController!.animateCamera(

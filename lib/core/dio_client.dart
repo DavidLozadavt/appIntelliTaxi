@@ -1,8 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:intellitaxi/features/auth/services/auth_interceptor.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/interceptors/retry_interceptor.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
+import 'package:intellitaxi/features/auth/services/auth_interceptor.dart';
 
 class DioClient {
   static Dio? _dio;
@@ -30,20 +31,29 @@ class DioClient {
       _dio!.interceptors.add(AuthInterceptor());
       _dio!.interceptors.add(RetryInterceptor(dio: _dio!));
 
-      // Log interceptor solo en debug.
-      if (kDebugMode) {
+      if (kDebugMode && RuntimePerfFlags.verboseHttpLogs) {
         _dio!.interceptors.add(
           LogInterceptor(
-            requestBody: true,
-            responseBody: true,
+            requestBody: false,
+            responseBody: false,
             error: true,
-            requestHeader: true,
+            requestHeader: false,
             responseHeader: false,
-            request: false,
+            logPrint: _truncatedDioLog,
           ),
         );
       }
     }
     return _dio!;
+  }
+
+  static void _truncatedDioLog(Object object) {
+    const maxLen = 280;
+    final text = object.toString();
+    if (text.length <= maxLen) {
+      debugPrint(text);
+      return;
+    }
+    debugPrint('${text.substring(0, maxLen)}… [+${text.length - maxLen} chars]');
   }
 }

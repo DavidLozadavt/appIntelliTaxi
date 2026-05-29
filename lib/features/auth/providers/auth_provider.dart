@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/bootstrap/session_preload.dart';
+import 'package:intellitaxi/core/bootstrap/session_snapshot.dart';
 import 'package:intellitaxi/core/services/active_service_check_cache.dart';
 import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -89,9 +91,8 @@ class AuthProvider with ChangeNotifier {
       isLoading = true;
       notifyListeners();
 
-      await Future.delayed(const Duration(seconds: 2));
-
       await _authService.clearSession();
+      SessionPreload.invalidate();
       ActiveServiceCheckCache.invalidate();
       ActiveServiceManager.invalidateFetchCache();
       _authData = null;
@@ -112,10 +113,16 @@ class AuthProvider with ChangeNotifier {
     return await _authService.getToken();
   }
 
-  Future<void> loadUserFromStorage() async {
-    _authData = await _authService.getSavedUserData();
+  /// Aplica sesión ya leída en [SessionPreload] (sin segunda pasada a disco).
+  Future<void> hydrateFromSnapshot(SessionSnapshot snapshot) async {
+    _authData = snapshot.authResponse;
     await _syncActiveRoleFromStorage();
     notifyListeners();
+  }
+
+  Future<void> loadUserFromStorage() async {
+    final snapshot = await SessionPreload.ensureReady();
+    await hydrateFromSnapshot(snapshot);
   }
 
   Future<Map<String, dynamic>?> getSavedCredentials() async {

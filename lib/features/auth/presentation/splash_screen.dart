@@ -1,10 +1,14 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intellitaxi/core/bootstrap/session_preload.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
-import 'dart:async';
 import 'login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -35,7 +39,6 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // Animación principal del logo
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -48,7 +51,6 @@ class _SplashScreenState extends State<SplashScreen>
       end: 1.0,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
 
-    // Animación de brillo pulsante
     _glowController = AnimationController(
       duration: const Duration(milliseconds: 2000),
       vsync: this,
@@ -58,7 +60,6 @@ class _SplashScreenState extends State<SplashScreen>
       CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
     );
 
-    // Animación de texto escribiéndose
     _typewriterController = AnimationController(
       duration: const Duration(milliseconds: 2000),
       vsync: this,
@@ -66,13 +67,11 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // Iniciar animación de texto después del logo
     _typewriterStartTimer = Timer(const Duration(milliseconds: 800), () {
       if (!mounted) return;
       _startTypewriter();
     });
 
-    // Evita quedarse bloqueado en splash si falla cualquier async de inicio.
     _navigationWatchdogTimer = Timer(const Duration(seconds: 8), () {
       _navigateToLogin();
     });
@@ -110,38 +109,68 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _checkLogin() async {
     final sw = Stopwatch()..start();
     try {
-      final updateResult = await AppUpdateService.instance
-          .checkForUpdate()
-          .timeout(const Duration(seconds: 4));
-      if (!mounted) return;
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      final minBrand = Future<void>.delayed(RuntimePerfFlags.splashMinDisplay);
+      final sessionFuture = SessionPreload.ensureReady();
+
+      AppUpdateCheckResult updateResult = const AppUpdateCheckResult(
+        updateAvailable: false,
+        shouldBlock: false,
+      );
+      try {
+        updateResult = await AppUpdateService.instance
+            .checkForUpdate()
+            .timeout(RuntimePerfFlags.splashUpdateCheckTimeout);
+      } on TimeoutException {
+        if (kDebugMode) {
+          debugPrint('⏱️ [Splash] update check timeout → home sin bloquear');
+        }
+      }
+
+      if (!mounted || _hasNavigated) return;
       if (updateResult.shouldBlock) {
         _navigationWatchdogTimer?.cancel();
         return;
       }
 
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final token = await authProvider.getSavedToken().timeout(
-        const Duration(seconds: 3),
-      );
-      debugPrint('⏱️ [Splash] token en ${sw.elapsedMilliseconds}ms');
+      final snapshot = await sessionFuture;
+      await minBrand;
 
-      await Future.delayed(const Duration(seconds: 4));
       if (!mounted || _hasNavigated) return;
 
-      if (token != null) {
+      if (snapshot.canOpenHome) {
+        await authProvider.hydrateFromSnapshot(snapshot);
+        if (kDebugMode) {
+          debugPrint(
+            '🚀 [Splash] home en ${sw.elapsedMilliseconds}ms (sesión precargada)',
+          );
+        }
+        _navigateToHome();
+        return;
+      }
+
+      if (snapshot.hasToken && !snapshot.hasUser) {
         await authProvider.loadUserFromStorage().timeout(
           const Duration(seconds: 3),
         );
-        debugPrint(
-          '✅ [Splash] user cargado en ${sw.elapsedMilliseconds}ms, yendo home',
-        );
-        _navigateToHome();
-      } else {
-        debugPrint('ℹ️ [Splash] sin token en ${sw.elapsedMilliseconds}ms');
-        _navigateToLogin();
+        if (authProvider.user != null) {
+          if (kDebugMode) {
+            debugPrint('🚀 [Splash] home en ${sw.elapsedMilliseconds}ms');
+          }
+          _navigateToHome();
+          return;
+        }
       }
+
+      if (kDebugMode) {
+        debugPrint('ℹ️ [Splash] login en ${sw.elapsedMilliseconds}ms');
+      }
+      _navigateToLogin();
     } catch (_) {
-      debugPrint('⚠️ [Splash] fallback login en ${sw.elapsedMilliseconds}ms');
+      if (kDebugMode) {
+        debugPrint('⚠️ [Splash] fallback login en ${sw.elapsedMilliseconds}ms');
+      }
       _navigateToLogin();
     } finally {
       sw.stop();
@@ -183,7 +212,6 @@ class _SplashScreenState extends State<SplashScreen>
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Logo con efectos épicos
         FadeTransition(
           opacity: _fadeAnimation,
           child: ScaleTransition(
@@ -215,10 +243,7 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
         ),
-
         const SizedBox(height: 40),
-
-        // Texto escribiéndose con efectos
         AnimatedBuilder(
           animation: _typewriterController,
           builder: (context, child) {
@@ -252,7 +277,6 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  // Cursor parpadeante
                   if (_displayedText.length < _fullText.length)
                     AnimatedBuilder(
                       animation: _glowController,
@@ -272,10 +296,7 @@ class _SplashScreenState extends State<SplashScreen>
             );
           },
         ),
-
         const SizedBox(height: 50),
-
-        // Progress bar animado
         FadeTransition(
           opacity: _fadeAnimation,
           child: SizedBox(
@@ -328,10 +349,7 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
         ),
-
         const SizedBox(height: 30),
-
-        // Texto adicional con fade
         FadeTransition(
           opacity: _fadeAnimation,
           child: Text(
