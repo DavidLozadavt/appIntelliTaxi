@@ -114,6 +114,19 @@ class ConductorServicioPasajeroHelper {
     final desdePasajero = _nombreDesdePasajero(servicio);
     if (desdePasajero != null) return desdePasajero;
 
+    final pasajeroId = int.tryParse(
+      (servicio['pasajero_id'] ?? servicio['pasajeroId'] ?? '').toString(),
+    );
+    if (pasajeroId == 0) {
+      final tel = telefonoLlamada(servicio) ?? telefono(servicio);
+      if (tel != null && tel.isNotEmpty) {
+        final origen = _origenServicioUpper(servicio);
+        if (origen == 'LLAMADA' || origen == 'WHATSAPP') {
+          return tel;
+        }
+      }
+    }
+
     if (esServicioSinPasajeroRegistrado(servicio)) {
       final tel = telefono(servicio);
       if (tel != null && tel.isNotEmpty) {

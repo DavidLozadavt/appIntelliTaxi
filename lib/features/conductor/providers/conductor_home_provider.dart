@@ -152,10 +152,7 @@ class ConductorHomeProvider extends ChangeNotifier {
           return id != null && _overlayOcultoPorTtl.contains(id);
         })
         .toList();
-    solicitudes.sort(
-      (a, b) => ConductorSolicitudRankingHelper.calcularScore(b)
-          .compareTo(ConductorSolicitudRankingHelper.calcularScore(a)),
-    );
+    solicitudes.sort(ConductorSolicitudRankingHelper.compararRecientesPrimero);
     return solicitudes;
   }
 
@@ -188,10 +185,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   List<Map<String, dynamic>> _solicitudesOrdenadasTodas() {
     final solicitudes = List<Map<String, dynamic>>.from(_solicitudesPorId.values);
-    solicitudes.sort(
-      (a, b) => ConductorSolicitudRankingHelper.calcularScore(b)
-          .compareTo(ConductorSolicitudRankingHelper.calcularScore(a)),
-    );
+    solicitudes.sort(ConductorSolicitudRankingHelper.compararRecientesPrimero);
     return solicitudes;
   }
 
@@ -202,10 +196,7 @@ class ConductorHomeProvider extends ChangeNotifier {
           return id != null && !_overlayOcultoPorTtl.contains(id);
         })
         .toList();
-    solicitudes.sort(
-      (a, b) => ConductorSolicitudRankingHelper.calcularScore(b)
-          .compareTo(ConductorSolicitudRankingHelper.calcularScore(a)),
-    );
+    solicitudes.sort(ConductorSolicitudRankingHelper.compararRecientesPrimero);
     return solicitudes;
   }
 
@@ -733,8 +724,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         );
       }
 
-      final ids = await ConductorSessionHelper.obtenerIdsConductorSesion();
-      final candidateChannels = ConductorSessionHelper.canalesOfertaDirecta(ids);
+      final idPersona = await ConductorSessionHelper.obtenerIdPersonaConductor();
+      final candidateChannels =
+          ConductorSessionHelper.canalesOfertaDirecta(idPersona);
       if (candidateChannels.isNotEmpty) {
         for (final channel in candidateChannels) {
           await PusherService.subscribeSecondary(channel);
@@ -875,6 +867,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         _procesarNuevaSolicitud(m, fromSync: true);
       }
 
+      _iniciarTickerExpiracionUI();
       if (!_isDisposed) notifyListeners();
     } catch (e) {
       AppLogger.d('⚠️ Sync solicitudes publicadas: $e');
@@ -1879,14 +1872,24 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   int obtenerSegundosRestantes(String solicitudId) {
-    if (_overlayOcultoPorTtl.contains(solicitudId)) return 0;
-    final expiracion = _expiracionPorSolicitud[solicitudId];
-    if (expiracion == null) return 0;
-    final restantes = expiracion.difference(DateTime.now()).inSeconds;
-    return restantes < 0 ? 0 : restantes;
+    if (!_overlayOcultoPorTtl.contains(solicitudId)) {
+      final expiracion = _expiracionPorSolicitud[solicitudId];
+      if (expiracion != null) {
+        final restantes = expiracion.difference(DateTime.now()).inSeconds;
+        if (restantes > 0) return restantes;
+      }
+    }
+
+    final solicitud = _solicitudesPorId[solicitudId];
+    if (solicitud != null) {
+      final cola = ConductorSolicitudPayloadHelper.segundosRestantesCola(solicitud);
+      if (cola != null && cola > 0) return cola;
+    }
+    return 0;
   }
 
   void _iniciarTickerExpiracionUI() {
+    if (!_hayCuentaRegresivaActiva()) return;
     if (_tickerExpiracionUI != null) return;
     _tickerExpiracionUI = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_isDisposed) return;
@@ -1898,8 +1901,17 @@ class ConductorHomeProvider extends ChangeNotifier {
     });
   }
 
+  bool _hayCuentaRegresivaActiva() {
+    if (_expiracionPorSolicitud.isNotEmpty) return true;
+    for (final s in _solicitudesPorId.values) {
+      final cola = ConductorSolicitudPayloadHelper.segundosRestantesCola(s);
+      if (cola != null && cola > 0) return true;
+    }
+    return false;
+  }
+
   void _detenerTickerSiNoHaySolicitudes() {
-    if (_expiracionPorSolicitud.isEmpty && _tickerExpiracionUI != null) {
+    if (!_hayCuentaRegresivaActiva() && _tickerExpiracionUI != null) {
       _tickerExpiracionUI?.cancel();
       _tickerExpiracionUI = null;
     }

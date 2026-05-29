@@ -5,6 +5,7 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_distance_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 
 /// Lista «En espera» delegada al mapa canónico de [ConductorHomeProvider].
 class SolicitudesPendientesProvider extends ChangeNotifier {
@@ -104,6 +105,9 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
     }
     return ConductorSolicitudDistanceHelper.resolveLabel(solicitud) ?? '';
   }
+
+  int? segundosRestantesCola(Map<String, dynamic> solicitud) =>
+      ConductorSolicitudPayloadHelper.segundosRestantesCola(solicitud);
 
   String tiempoPublicado(Map<String, dynamic> solicitud) {
     final seg = int.tryParse(

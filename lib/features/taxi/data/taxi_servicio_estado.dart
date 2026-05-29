@@ -108,6 +108,8 @@ class TaxiSolicitudesPendientesResult {
   final int total;
   final List<Map<String, dynamic>> pendientes;
   final String? actualizadoEn;
+  /// `TAXI_PENDIENTES_MAX_EDAD_MINUTOS` en servidor (solo informativo en UI).
+  final int? pendientesMaxEdadMinutos;
 
   const TaxiSolicitudesPendientesResult({
     required this.enServicio,
@@ -116,6 +118,7 @@ class TaxiSolicitudesPendientesResult {
     required this.total,
     required this.pendientes,
     this.actualizadoEn,
+    this.pendientesMaxEdadMinutos,
   });
 
   factory TaxiSolicitudesPendientesResult.empty({

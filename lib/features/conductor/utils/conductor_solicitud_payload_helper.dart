@@ -37,6 +37,25 @@ class ConductorSolicitudPayloadHelper {
     return DateTime.tryParse(raw.toString());
   }
 
+  /// Cuenta regresiva de cola (`segundos_restantes` / `expira_en` del API), no TTL overlay.
+  static int? segundosRestantesCola(Map<String, dynamic> solicitud) {
+    final fromApi = int.tryParse(
+      (solicitud['segundos_restantes'] ?? solicitud['segundosRestantes'] ?? '')
+          .toString(),
+    );
+    if (fromApi != null && fromApi > 0) return fromApi;
+
+    final expiraRaw = solicitud['expira_en'] ?? solicitud['expiraEn'];
+    if (expiraRaw != null) {
+      final expira = DateTime.tryParse(expiraRaw.toString());
+      if (expira != null) {
+        final restantes = expira.difference(DateTime.now()).inSeconds;
+        return restantes > 0 ? restantes : 0;
+      }
+    }
+    return null;
+  }
+
   static int resolverTtlSegundos(Map<String, dynamic> solicitud) {
     final expiraEn = resolverOverlayExpiraEn(solicitud);
     if (expiraEn != null) {

@@ -75,7 +75,6 @@ class SolicitudDisplayHelper {
     m['telefono_llamada'] ??=
         m['telefonoLlamada'] ?? m['telefono_llamada_servicio'];
     m['overlay_expira_en'] ??= m['overlayExpiraEn'];
-    m['dentro_radio_accion'] ??= m['dentroRadioAccion'];
 
     final barrio = barrioFromPayload(m);
     if (barrio != null) {

@@ -368,11 +368,14 @@ class ConductorMapServiciosTabs {
             final item = lista[index];
             final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
             if (id == null || id.isEmpty) return const SizedBox.shrink();
+            final segCola = pendientes.segundosRestantesCola(item);
             return SolicitudServicioCard(
               solicitud: item,
               marginExterno: false,
               compact: true,
               denseList: true,
+              segundosRestantes:
+                  segCola != null && segCola > 0 ? segCola : null,
               distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
               tiempoPublicado: pendientes.tiempoPublicado(item),
               precioOfertado: pendientes.precioOfertadoDe(item),

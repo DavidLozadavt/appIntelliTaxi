@@ -1,8 +1,37 @@
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 
-/// Priorización de solicitudes en cola del conductor.
+/// Orden de solicitudes en cola del conductor (alineado con API: `servicio_id` desc).
 class ConductorSolicitudRankingHelper {
   ConductorSolicitudRankingHelper._();
+
+  static int? _servicioIdNumerico(Map<String, dynamic> solicitud) {
+    for (final key in const [
+      'servicio_id',
+      'servicioId',
+      'solicitud_id',
+      'solicitudId',
+      'id',
+    ]) {
+      final raw = solicitud[key];
+      if (raw == null) continue;
+      final id = int.tryParse(raw.toString());
+      if (id != null && id > 0) return id;
+    }
+    return null;
+  }
+
+  /// Más reciente primero (`servicio_id` descendente); fallback por score local.
+  static int compararRecientesPrimero(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    final idA = _servicioIdNumerico(a);
+    final idB = _servicioIdNumerico(b);
+    if (idA != null && idB != null) return idB.compareTo(idA);
+    if (idA != null) return -1;
+    if (idB != null) return 1;
+    return calcularScore(b).compareTo(calcularScore(a));
+  }
 
   static double calcularScore(Map<String, dynamic> solicitud) {
     final distanciaMetros =

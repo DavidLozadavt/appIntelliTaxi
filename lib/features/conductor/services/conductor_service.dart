@@ -833,6 +833,12 @@ class ConductorService {
           list.length,
       pendientes: list,
       actualizadoEn: data['actualizado_en']?.toString(),
+      pendientesMaxEdadMinutos: int.tryParse(
+        (data['pendientes_max_edad_minutos'] ??
+                data['pendientesMaxEdadMinutos'] ??
+                '')
+            .toString(),
+      ),
     );
   }
 
