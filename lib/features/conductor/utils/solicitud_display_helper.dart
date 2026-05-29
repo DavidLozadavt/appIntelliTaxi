@@ -454,25 +454,25 @@ class SolicitudDisplayHelper {
     return formatReadablePlaceName(place);
   }
 
-  /// Título legible al volante: «Recogida en Aguas Vivas».
+  /// Título legible al volante (nombre del lugar, sin prefijo).
   static String pickupHeadline(Map<String, dynamic> data) {
     final place = pickupName(data);
     if (isPlaceholderPickup(place)) {
       final barrio = barrioFromPayload(normalizeSolicitudMap(data));
       if (barrio != null && barrio.isNotEmpty) {
-        return 'Recogida en ${formatReadablePlaceName(barrio)}';
+        return formatReadablePlaceName(barrio);
       }
       return 'Nueva recogida';
     }
-    return 'Recogida en ${formatReadablePlaceName(place)}';
+    return formatReadablePlaceName(place);
   }
 
-  /// Título de destino: «Destino en Hospital Susana López».
+  /// Título de destino (nombre del lugar, sin prefijo).
   static String destinationHeadline(Map<String, dynamic> data) {
     if (!hasDestination(data)) return '';
     final place = destinationName(data);
     if (isPlaceholderDestino(place)) return 'Destino en mapa';
-    return 'Destino en ${formatReadablePlaceName(place)}';
+    return formatReadablePlaceName(place);
   }
 
   /// Calle / dirección completa cuando difiere del nombre (subtítulo).

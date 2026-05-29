@@ -633,7 +633,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _recibidaPorRealtimeEn[solicitudId] = DateTime.now();
   }
 
-  /// Tono de alerta: Pusher, FCM y sync API (no solo pestaña «Llegando»).
+  /// Tono de alerta solo para alta en «Llegando» (Pusher/FCM), no en «En espera» ni sync API.
   void _dispararSonidoNuevaSolicitud(String solicitudId) {
     if (_isDisposed || _enServicio || _enDescanso || !_isOnline) return;
 
@@ -1098,7 +1098,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         unawaited(_enriquecerDireccionesSolicitud(solicitudId));
       }
 
-      if (esNueva || overlayEstabaOculto) {
+      final visibleEnLlegando =
+          enOverlay && !_overlayOcultoPorTtl.contains(solicitudId);
+      if (esNueva && visibleEnLlegando && !fromSync) {
         _dispararSonidoNuevaSolicitud(solicitudId);
       }
 

@@ -92,9 +92,9 @@ class _ConductorServicioActivoScreenState
   bool get _canUpdateUi => mounted && !_terminalNavigationInProgress;
 
   // 📏 Control de altura del BottomSheet
-  double _sheetHeight = 0.58;
-  final double _minHeight = 0.42;
-  final double _maxHeight = 0.82;
+  double _sheetHeight = 0.74;
+  final double _minHeight = 0.58;
+  final double _maxHeight = 0.90;
 
   @override
   void initState() {
@@ -1125,13 +1125,13 @@ class _ConductorServicioActivoScreenState
                         onTap: () {
                           if (!_canUpdateUi) return;
                           _safeSetState(() {
-                            _sheetHeight = _sheetHeight < 0.5
-                                ? 0.55
+                            _sheetHeight = _sheetHeight < 0.66
+                                ? 0.74
                                 : _minHeight;
                           });
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Container(
                             width: 50,
                             height: 5,

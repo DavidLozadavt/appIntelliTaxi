@@ -64,6 +64,9 @@ class ConductorServicioBottomPanel extends StatelessWidget {
 
     final telefono = telefonoPasajero?.trim() ?? '';
     final accion = _accionPrincipal(estadoUi);
+    final muestraDestino = SolicitudDisplayHelper.hasDestination(servicio);
+    final tieneContenidoRuta =
+        !soloDestino || (muestraDestino && destinoHeadline.isNotEmpty);
 
     return Column(
       children: [
@@ -82,7 +85,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                   esGestionadoPorIa: esGestionadoPorIa,
                   soloDestino: soloDestino,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _ContactoCard(
                   nombre: nombrePasajero,
                   telefono: telefono,
@@ -94,18 +97,22 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                   onCopiarTelefono: onCopiarTelefono,
                   onChat: onChat,
                   servicioId: servicioId,
+                  compacto: true,
                 ),
-                const SizedBox(height: 12),
-                _RutaCard(
-                  soloDestino: soloDestino,
-                  recogidaActiva: recogidaActiva,
-                  recogidaHeadline: recogidaHeadline,
-                  subtituloRecogida: subtituloRecogida,
-                  destinoHeadline: destinoHeadline,
-                  subtituloDestino: subtituloDestino,
-                  muestraDestino: SolicitudDisplayHelper.hasDestination(servicio),
-                  isDark: isDark,
-                ),
+                if (tieneContenidoRuta) ...[
+                  const SizedBox(height: 10),
+                  _RutaCard(
+                    soloDestino: soloDestino,
+                    recogidaActiva: recogidaActiva,
+                    recogidaHeadline: recogidaHeadline,
+                    subtituloRecogida: subtituloRecogida,
+                    destinoHeadline: destinoHeadline,
+                    subtituloDestino: subtituloDestino,
+                    muestraDestino: muestraDestino,
+                    isDark: isDark,
+                    destacada: recogidaActiva || soloDestino,
+                  ),
+                ],
               ],
             ),
           ),
@@ -305,6 +312,7 @@ class _ContactoCard extends StatelessWidget {
     required this.onCopiarTelefono,
     required this.onChat,
     this.servicioId,
+    this.compacto = false,
   });
 
   final String nombre;
@@ -317,13 +325,14 @@ class _ContactoCard extends StatelessWidget {
   final VoidCallback onCopiarTelefono;
   final VoidCallback onChat;
   final int? servicioId;
+  final bool compacto;
 
   @override
   Widget build(BuildContext context) {
     final tieneTelefono = telefono.isNotEmpty;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(compacto ? 10 : 12),
       decoration: BoxDecoration(
         color: isDark
             ? Colors.white.withValues(alpha: 0.06)
@@ -407,74 +416,89 @@ class _ContactoCard extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
-          Material(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            child: InkWell(
-              onTap: tieneTelefono ? onCopiarTelefono : null,
+          if (tieneTelefono || !compacto) ...[
+            SizedBox(height: compacto ? 8 : 10),
+            Material(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.white,
               borderRadius: BorderRadius.circular(10),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    Icon(
-                      Iconsax.call,
-                      size: 18,
-                      color: tieneTelefono
-                          ? AppColors.green
-                          : Colors.grey.shade500,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Teléfono de contacto',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            tieneTelefono
-                                ? telefono
-                                : 'No disponible',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.3,
-                              color: tieneTelefono
-                                  ? (isDark
-                                      ? Colors.white
-                                      : Colors.black87)
-                                  : Colors.grey.shade500,
-                            ),
-                          ),
-                        ],
+              child: InkWell(
+                onTap: tieneTelefono ? onCopiarTelefono : null,
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compacto ? 10 : 12,
+                    vertical: compacto ? 8 : 10,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Iconsax.call,
+                        size: compacto ? 16 : 18,
+                        color: tieneTelefono
+                            ? AppColors.green
+                            : Colors.grey.shade500,
                       ),
-                    ),
-                    if (tieneTelefono)
-                      IconButton(
-                        onPressed: onCopiarTelefono,
-                        icon: const Icon(Iconsax.copy, size: 20),
-                        tooltip: 'Copiar teléfono',
-                        visualDensity: VisualDensity.compact,
-                        color: AppColors.accent,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (!compacto)
+                              Text(
+                                'Teléfono de contacto',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            if (!compacto) const SizedBox(height: 2),
+                            Text(
+                              tieneTelefono ? telefono : 'No disponible',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: compacto ? 15 : 17,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.3,
+                                color: tieneTelefono
+                                    ? (isDark
+                                        ? Colors.white
+                                        : Colors.black87)
+                                    : Colors.grey.shade500,
+                              ),
+                            ),
+                            if (compacto && tieneTelefono)
+                              Text(
+                                'Toca para copiar',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                  ],
+                      if (tieneTelefono)
+                        IconButton(
+                          onPressed: onCopiarTelefono,
+                          icon: Icon(
+                            Iconsax.copy,
+                            size: compacto ? 18 : 20,
+                          ),
+                          tooltip: 'Copiar teléfono',
+                          visualDensity: VisualDensity.compact,
+                          color: AppColors.accent,
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          if (tieneTelefono) ...[
+          ],
+          if (tieneTelefono && !compacto) ...[
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
@@ -604,6 +628,7 @@ class _RutaCard extends StatelessWidget {
     required this.subtituloDestino,
     required this.muestraDestino,
     required this.isDark,
+    this.destacada = false,
   });
 
   final bool soloDestino;
@@ -614,19 +639,21 @@ class _RutaCard extends StatelessWidget {
   final String subtituloDestino;
   final bool muestraDestino;
   final bool isDark;
+  final bool destacada;
 
   @override
   Widget build(BuildContext context) {
+    final accentColor = soloDestino ? AppColors.green : AppColors.accent;
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      padding: EdgeInsets.fromLTRB(14, destacada ? 14 : 12, 14, destacada ? 14 : 14),
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withValues(alpha: 0.05)
-            : Colors.black.withValues(alpha: 0.03),
+            ? Colors.white.withValues(alpha: destacada ? 0.08 : 0.05)
+            : Colors.black.withValues(alpha: destacada ? 0.05 : 0.03),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: (soloDestino ? AppColors.green : AppColors.accent)
-              .withValues(alpha: 0.3),
+          color: accentColor.withValues(alpha: destacada ? 0.55 : 0.3),
+          width: destacada ? 1.5 : 1,
         ),
       ),
       child: Column(
@@ -706,7 +733,7 @@ class _ParadaViaje extends StatelessWidget {
                 headline,
                 softWrap: true,
                 style: TextStyle(
-                  fontSize: activa ? 16 : 15,
+                  fontSize: activa ? 17 : 15,
                   fontWeight: FontWeight.w800,
                   height: 1.25,
                   color: isDark ? Colors.white : Colors.black87,
