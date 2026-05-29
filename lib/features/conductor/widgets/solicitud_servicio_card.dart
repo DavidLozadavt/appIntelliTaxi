@@ -134,7 +134,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
   }
 
   Widget _buildDenseActionButtons({required bool compact}) {
-    const btnHeight = 38.0;
+    const btnHeight = 34.0;
     final btnStyle = ButtonStyle(
       minimumSize: const WidgetStatePropertyAll(Size(0, btnHeight)),
       maximumSize: const WidgetStatePropertyAll(Size(double.infinity, btnHeight)),
@@ -203,18 +203,6 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     );
   }
 
-  Widget _denseSectionLabel(String text, Color color) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 0.45,
-        color: color,
-      ),
-    );
-  }
-
   Widget _buildDenseListContent({
     required bool isDark,
     required String recogidaHeadline,
@@ -251,29 +239,27 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _denseSectionLabel('RECOGIDA', AppColors.accent),
-                  const SizedBox(height: 2),
                   Text(
                     recogidaHeadline,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w800,
-                      height: 1.18,
+                      height: 1.15,
                       color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                   if (origenSub.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       origenSub,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w500,
-                        height: 1.15,
+                        height: 1.1,
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.78)
                             : Colors.black54,
@@ -281,13 +267,13 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                     ),
                   ],
                   if (distanciaMi.isNotEmpty) ...[
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 2),
                     Text(
                       distanciaMi,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w800,
                         height: 1.1,
                         color: isDark
@@ -303,32 +289,30 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           ],
         ),
         if (muestraDestino && destinoHeadline.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          _denseSectionLabel('DESTINO', Colors.red.shade400),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             destinoHeadline,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
-              height: 1.18,
+              height: 1.12,
               color: isDark
                   ? Colors.white.withValues(alpha: 0.9)
                   : Colors.black87,
             ),
           ),
           if (destinoSub.isNotEmpty) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
             Text(
               destinoSub,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w500,
-                height: 1.15,
+                height: 1.1,
                 color: isDark
                     ? Colors.white.withValues(alpha: 0.75)
                     : Colors.black45,
@@ -353,7 +337,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
             ),
           ),
         ],
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         _buildDenseActionButtons(compact: compact),
       ],
     );
@@ -408,16 +392,18 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: c ? 10 : 11,
-            fontWeight: FontWeight.w700,
-            color: labelColor,
-            letterSpacing: 0.5,
+        if (label.isNotEmpty) ...[
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: c ? 10 : 11,
+              fontWeight: FontWeight.w700,
+              color: labelColor,
+              letterSpacing: 0.5,
+            ),
           ),
-        ),
-        SizedBox(height: c ? 2 : 4),
+          SizedBox(height: c ? 2 : 4),
+        ],
         Text(
           title,
           softWrap: true,
@@ -492,7 +478,9 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           clipBehavior: dense ? Clip.hardEdge : Clip.none,
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-            borderRadius: BorderRadius.circular(compact ? 16 : 20),
+            borderRadius: BorderRadius.circular(
+              dense ? 10 : (compact ? 16 : 20),
+            ),
             border: Border.all(
               color: widget.destacada
                   ? AppColors.accent
@@ -511,7 +499,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           ),
           child: Padding(
             padding: dense
-                ? const EdgeInsets.fromLTRB(12, 8, 12, 8)
+                ? const EdgeInsets.fromLTRB(10, 5, 10, 5)
                 : compact
                 ? const EdgeInsets.fromLTRB(12, 10, 12, 11)
                 : const EdgeInsets.fromLTRB(16, 14, 16, 16),
@@ -603,7 +591,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             SizedBox(height: compact ? 6 : 8),
                           ],
                           _buildLocationBlock(
-                            label: 'RECOGIDA',
+                            label: compact ? '' : 'RECOGIDA',
                             title: origenNombre,
                             subtitle: origenSub,
                             labelColor: AppColors.accent,
@@ -704,7 +692,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                       const SizedBox(width: 6),
                       Expanded(
                         child: _buildLocationBlock(
-                          label: 'DESTINO',
+                          label: compact ? '' : 'DESTINO',
                           title: destinoNombre,
                           subtitle: destinoSub,
                           labelColor: Colors.red.shade400,

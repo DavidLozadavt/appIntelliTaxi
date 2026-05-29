@@ -15,6 +15,7 @@ import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
 import 'package:intellitaxi/core/utils/phone_launcher.dart';
+import 'package:intellitaxi/core/utils/driver_rating_display.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -976,19 +977,9 @@ class _PasajeroEsperandoConductorScreenState
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Iconsax.star_1_copy,
-                      color: AppColors.secondary,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      '${conductor?['conductor_calificacion'] ?? 5.0}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    const SizedBox(width: 8),
+                    DriverRatingChip(
+                      rating: conductor?['conductor_calificacion'],
                     ),
                   ],
                 ),

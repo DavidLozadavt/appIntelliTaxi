@@ -125,12 +125,12 @@ class ConductorMapServiciosTabs {
       home.solicitudesOrdenadas.isEmpty &&
       home.totalSolicitudesEnEspera > 0;
 
-  /// Cuántas tarjetas deben verse sin hacer scroll (3 en pantallas bajas, 4 en el resto).
+  /// Cuántas tarjetas deben verse sin hacer scroll (5 en pantallas bajas, 6 en el resto).
   static int visibleCardsTarget(BuildContext context) =>
-      pantallaCompacta(context) ? 3 : 4;
+      pantallaCompacta(context) ? 5 : 6;
 
   static double compactCardItemExtent(BuildContext context) =>
-      pantallaCompacta(context) ? 198.0 : 206.0;
+      pantallaCompacta(context) ? 118.0 : 124.0;
 
   static const double _listGap = 8.0;
   static const double _listPadding = 12.0;
@@ -429,7 +429,10 @@ class ConductorMapServiciosTabs {
       itemBuilder: (context, index) {
         final card = itemBuilder(context, index);
         if (card == null) return const SizedBox.shrink();
-        return SizedBox(height: extent, child: card);
+        return Align(
+          alignment: Alignment.topCenter,
+          child: card,
+        );
       },
     );
   }
