@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 
-/// Switch de modo descanso (drawer del conductor).
+/// Switch de modo descanso (pantalla Ajustes; oculto temporalmente en drawer).
 class ConductorDescansoSwitch extends StatelessWidget {
   const ConductorDescansoSwitch({super.key});
 

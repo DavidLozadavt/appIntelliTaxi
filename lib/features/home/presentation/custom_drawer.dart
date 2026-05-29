@@ -5,8 +5,6 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/features/auth/data/drawer_item.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_descanso_switch.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_keep_screen_on_switch.dart';
 
 class CustomDrawer extends StatelessWidget {
   const CustomDrawer({super.key});
@@ -37,12 +35,6 @@ class CustomDrawer extends StatelessWidget {
         title: 'Mis Calificaciones',
         icon: Iconsax.star_1_copy,
         route: '/calificaciones-conductor',
-        allowedRoles: [AuthProvider.roleConductor],
-      ),
-      DrawerItem(
-        title: 'Sonido de servicios',
-        icon: Iconsax.music_filter_copy,
-        route: '/conductor-sonido-servicios',
         allowedRoles: [AuthProvider.roleConductor],
       ),
       // Opciones de historial y calificaciones para pasajero
@@ -90,11 +82,17 @@ class CustomDrawer extends StatelessWidget {
         allowedRoles: [AuthProvider.roleConductor],
       ),
       DrawerItem(
-        title: 'Diagnóstico de la app',
-        icon: Iconsax.health_copy,
-        route: '/app-diagnostics',
-        allowedRoles: const [],
+        title: 'Ajustes',
+        icon: Iconsax.setting_2_copy,
+        route: '/conductor-ajustes',
+        allowedRoles: [AuthProvider.roleConductor],
       ),
+      // DrawerItem(
+      //   title: 'Diagnóstico de la app',
+      //   icon: Iconsax.health_copy,
+      //   route: '/app-diagnostics',
+      //   allowedRoles: const [],
+      // ),
       // DrawerItem(
       //   title: 'Kanban',
       //   icon: Iconsax.element_4_copy,
@@ -223,10 +221,7 @@ class CustomDrawer extends StatelessWidget {
 
           const SizedBox(height: 8),
 
-          if (userRoles.contains(AuthProvider.roleConductor)) ...[
-            const ConductorDescansoSwitch(),
-            const ConductorKeepScreenOnSwitch(),
-          ],
+          // Modo descanso y switches movidos a Ajustes (/conductor-ajustes).
 
           // ITEMS mejorados (scrollable)
           Expanded(
