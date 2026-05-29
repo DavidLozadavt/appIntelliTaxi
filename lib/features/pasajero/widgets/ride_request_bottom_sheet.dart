@@ -138,7 +138,7 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
   }
 
   Future<void> _selectOrigin(PlacePrediction prediction) async {
-    final details = await _placesService.getPlaceDetails(prediction.placeId);
+    final details = await _placesService.resolvePrediction(prediction);
 
     if (details != null && mounted) {
       setState(() {
@@ -156,7 +156,7 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
   }
 
   Future<void> _selectDestination(PlacePrediction prediction) async {
-    final details = await _placesService.getPlaceDetails(prediction.placeId);
+    final details = await _placesService.resolvePrediction(prediction);
 
     if (details != null && mounted) {
       setState(() {

@@ -1,23 +1,30 @@
 import 'dart:convert';
+
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/config/maps_config.dart';
+import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
+import 'package:intellitaxi/features/taxi/services/taxi_maps_api_service.dart';
 import 'package:uuid/uuid.dart';
 
 class PlacesService {
-  static const String _baseUrl = 'https://maps.googleapis.com/maps/api';
+  PlacesService({TaxiMapsApiService? taxiMaps})
+      : _taxiMaps = taxiMaps ?? TaxiMapsApiService(DioClient.getInstance());
+
+  static const String _googleBaseUrl = 'https://maps.googleapis.com/maps/api';
   static const Duration _cacheTtl = Duration(minutes: 45);
   static const Duration _sessionTtl = Duration(minutes: 3);
-  static const int _minAutocompleteChars = 2;
   static const Uuid _uuid = Uuid();
+
+  final TaxiMapsApiService _taxiMaps;
 
   final Map<String, _CacheEntry<List<PlaceResult>>> _searchCache = {};
   final Map<String, _CacheEntry<List<PlacePrediction>>> _autocompleteCache = {};
   final Map<String, _CacheEntry<PlaceDetails>> _detailsCache = {};
-  final Map<String, _CacheEntry<PlaceResult?>> _nearbyCache = {};
   final _PlacesMetrics _metrics = _PlacesMetrics();
 
   static const Set<String> _mapPoiTypes = {
@@ -32,74 +39,85 @@ class PlacesService {
   String? _autocompleteSessionToken;
   DateTime? _autocompleteSessionStartedAt;
 
-  /// Busca lugares dentro del perímetro urbano de Popayán.
+  int get _minAutocompleteChars =>
+      MapsConfig.useBackendProxy ? MapsConfig.autocompleteMinChars : 2;
+
+  /// Búsqueda por texto (forward geocode en backend).
   Future<List<PlaceResult>> searchPlaces(String query) async {
     final normalized = query.trim();
     if (normalized.isEmpty) return [];
+
+    if (MapsConfig.useBackendProxy) {
+      return _searchPlacesBackend(normalized);
+    }
+    return _searchPlacesGoogle(normalized);
+  }
+
+  Future<List<PlaceResult>> _searchPlacesBackend(String normalized) async {
     final cacheKey = normalized.toLowerCase();
     final cached = _getCached(_searchCache, cacheKey);
-    if (cached != null) {
-      _metrics.searchCacheHits++;
-      _metrics.logIfNeeded();
-      return cached;
-    }
+    if (cached != null) return cached;
+
+    final results = await _taxiMaps.forwardGeocode(normalized);
+    final places = results
+        .where((r) => PopayanUrbanArea.contains(r.lat, r.lng))
+        .map(
+          (r) => PlaceResult(
+            placeId: r.placeId,
+            name: r.name.isNotEmpty ? r.name : r.address.split(',').first,
+            address: r.address,
+            lat: r.lat,
+            lng: r.lng,
+          ),
+        )
+        .toList();
+
+    _searchCache[cacheKey] = _CacheEntry(
+      value: places,
+      expiresAt: DateTime.now().add(_cacheTtl),
+    );
+    return places;
+  }
+
+  Future<List<PlaceResult>> _searchPlacesGoogle(String normalized) async {
+    final cacheKey = normalized.toLowerCase();
+    final cached = _getCached(_searchCache, cacheKey);
+    if (cached != null) return cached;
 
     try {
-      AppLogger.d('🔍 Buscando lugares (urbano Popayán): "$normalized"');
-
       final url = Uri.parse(
-        '$_baseUrl/place/textsearch/json?'
+        '$_googleBaseUrl/place/textsearch/json?'
         'query=${Uri.encodeComponent('$normalized Popayán')}'
         '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
         '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
         '&key=${AppConfig.googleMapsApiKey}'
         '&language=es',
       );
-
       final response = await http.get(url);
-      _metrics.searchApiCalls++;
-      _metrics.logIfNeeded();
-
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        _metrics.trackStatus(
-          'textsearch',
-          data['status']?.toString(),
-          errorMessage: data['error_message']?.toString(),
-        );
-
         if (data['status'] == 'OK') {
           final results = (data['results'] as List)
               .map((place) => PlaceResult.fromJson(place))
-              .where(
-                (place) => PopayanUrbanArea.contains(place.lat, place.lng),
-              )
+              .where((p) => PopayanUrbanArea.contains(p.lat, p.lng))
               .toList();
           _searchCache[cacheKey] = _CacheEntry(
             value: results,
             expiresAt: DateTime.now().add(_cacheTtl),
           );
-          AppLogger.d('✅ Encontrados ${results.length} lugares en urbano');
           return results;
-        } else if (data['status'] == 'ZERO_RESULTS') {
-          return [];
-        } else {
-          _logGooglePlacesError('textsearch', data);
-          return [];
         }
       }
-
-      return [];
-    } catch (e, stackTrace) {
+    } catch (e) {
       AppLogger.d('❌ Error buscando lugares: $e');
-      AppLogger.d('   Stack trace: $stackTrace');
-      return [];
     }
+    return [];
   }
 
   String? get currentAutocompleteSessionToken => _autocompleteSessionToken;
 
   void startAutocompleteSession() {
+    if (MapsConfig.useBackendProxy) return;
     final now = DateTime.now();
     final isExpired =
         _autocompleteSessionStartedAt == null ||
@@ -115,30 +133,66 @@ class PlacesService {
     _autocompleteSessionStartedAt = null;
   }
 
-  /// Autocomplete restringido al perímetro urbano de Popayán.
   Future<List<PlacePrediction>> getAutocompletePredictions(
     String input, {
     String? sessionToken,
   }) async {
     final normalized = input.trim();
     if (normalized.length < _minAutocompleteChars) return [];
-    startAutocompleteSession();
 
+    if (MapsConfig.useBackendProxy) {
+      return _autocompleteBackend(normalized);
+    }
+    return _autocompleteGoogle(normalized, sessionToken);
+  }
+
+  Future<List<PlacePrediction>> _autocompleteBackend(String normalized) async {
+    final cacheKey = normalized.toLowerCase();
+    final cached = _getCached(_autocompleteCache, cacheKey);
+    if (cached != null) {
+      _metrics.autocompleteCacheHits++;
+      return cached;
+    }
+
+    AppLogger.d('🔍 Autocomplete backend: "$normalized"');
+    final dtos = await _taxiMaps.autocomplete(normalized);
+    _metrics.autocompleteApiCalls++;
+
+    final predictions = dtos
+        .map(
+          (d) => PlacePrediction.fromBackendJson({
+            'place_id': d.placeId,
+            'description': d.description,
+            'address': d.address,
+            'name': d.name,
+            'lat': d.lat,
+            'lng': d.lng,
+          }),
+        )
+        .where((p) => PopayanUrbanArea.isPredictionAllowed(p.description))
+        .toList();
+
+    _autocompleteCache[cacheKey] = _CacheEntry(
+      value: predictions,
+      expiresAt: DateTime.now().add(_cacheTtl),
+    );
+    return predictions;
+  }
+
+  Future<List<PlacePrediction>> _autocompleteGoogle(
+    String normalized,
+    String? sessionToken,
+  ) async {
+    startAutocompleteSession();
     final activeSessionToken = sessionToken ?? _autocompleteSessionToken;
     final cacheKey =
         '${normalized.toLowerCase()}::${activeSessionToken ?? "no-session"}';
     final cached = _getCached(_autocompleteCache, cacheKey);
-    if (cached != null) {
-      _metrics.autocompleteCacheHits++;
-      _metrics.logIfNeeded();
-      return cached;
-    }
+    if (cached != null) return cached;
 
     try {
-      AppLogger.d('🔍 Autocomplete urbano Popayán: "$normalized"');
-
       final url = Uri.parse(
-        '$_baseUrl/place/autocomplete/json?'
+        '$_googleBaseUrl/place/autocomplete/json?'
         'input=${Uri.encodeComponent(normalized)}'
         '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
         '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
@@ -149,22 +203,12 @@ class PlacesService {
         '&key=${AppConfig.googleMapsApiKey}'
         '&language=es',
       );
-
       final response = await http.get(url);
-      _metrics.autocompleteApiCalls++;
-      _metrics.logIfNeeded();
-
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        _metrics.trackStatus(
-          'autocomplete',
-          data['status']?.toString(),
-          errorMessage: data['error_message']?.toString(),
-        );
-
         if (data['status'] == 'OK') {
           final predictions = (data['predictions'] as List)
-              .map((pred) => PlacePrediction.fromJson(pred))
+              .map((pred) => PlacePrediction.fromGoogleJson(pred))
               .where(
                 (pred) => PopayanUrbanArea.isPredictionAllowed(pred.description),
               )
@@ -173,165 +217,116 @@ class PlacesService {
             value: predictions,
             expiresAt: DateTime.now().add(_cacheTtl),
           );
-          AppLogger.d('✅ ${predictions.length} sugerencias en urbano');
           return predictions;
-        } else if (data['status'] == 'ZERO_RESULTS') {
-          return [];
-        } else {
-          _logGooglePlacesError('autocomplete', data);
-          return [];
         }
       }
-
-      return [];
-    } catch (e, stackTrace) {
-      AppLogger.d('❌ Error en autocomplete: $e');
-      AppLogger.d('   Stack trace: $stackTrace');
-      return [];
+    } catch (e) {
+      AppLogger.d('❌ Error en autocomplete Google: $e');
     }
+    return [];
   }
 
-  /// Comercio o POI más cercano al punto tocado en el mapa (pasajero).
+  /// Sin Places nearby en modo proxy (evita Google).
   Future<PlaceResult?> findNearestPlaceAt(
     double lat,
     double lng, {
     double maxDistanceMeters = 130,
   }) async {
+    if (MapsConfig.useBackendProxy) return null;
     if (!PopayanUrbanArea.contains(lat, lng)) return null;
-
-    final cacheKey =
-        'nearby|${lat.toStringAsFixed(4)}|${lng.toStringAsFixed(4)}';
-    final cached = _getCached(_nearbyCache, cacheKey);
-    if (cached != null) {
-      _metrics.nearbyCacheHits++;
-      _metrics.logIfNeeded();
-      return cached;
-    }
 
     try {
       final url = Uri.parse(
-        '$_baseUrl/place/nearbysearch/json?'
+        '$_googleBaseUrl/place/nearbysearch/json?'
         'location=$lat,$lng'
         '&radius=${maxDistanceMeters.round()}'
         '&key=${AppConfig.googleMapsApiKey}'
         '&language=es',
       );
-
       final response = await http.get(url);
-      _metrics.nearbyApiCalls++;
-      _metrics.logIfNeeded();
-
-      if (response.statusCode != 200) {
-        _nearbyCache[cacheKey] = _CacheEntry(
-          value: null,
-          expiresAt: DateTime.now().add(_cacheTtl),
-        );
-        return null;
-      }
+      if (response.statusCode != 200) return null;
 
       final data = json.decode(response.body) as Map<String, dynamic>;
-      _metrics.trackStatus(
-        'nearbysearch',
-        data['status']?.toString(),
-        errorMessage: data['error_message']?.toString(),
-      );
-      if (data['status'] != 'OK' && data['status'] != 'ZERO_RESULTS') {
-        _logGooglePlacesError('nearbysearch', data);
-      }
+      if (data['status'] != 'OK') return null;
 
       PlaceResult? best;
       var bestScore = double.negativeInfinity;
-
-      if (data['status'] == 'OK') {
-        for (final raw in data['results'] as List<dynamic>? ?? []) {
-          if (raw is! Map) continue;
-          final place = PlaceResult.fromJson(Map<String, dynamic>.from(raw));
-          if (!PopayanUrbanArea.contains(place.lat, place.lng)) continue;
-
-          final distance = Geolocator.distanceBetween(
-            lat,
-            lng,
-            place.lat,
-            place.lng,
-          );
-          if (distance > maxDistanceMeters) continue;
-
-          final types = (raw['types'] as List<dynamic>? ?? [])
-              .map((e) => e.toString())
-              .toSet();
-          final poiBoost = types.any(_mapPoiTypes.contains) ? 40.0 : 0.0;
-          final score = poiBoost - distance;
-          if (score > bestScore) {
-            bestScore = score;
-            best = place;
-          }
+      for (final raw in data['results'] as List<dynamic>? ?? []) {
+        if (raw is! Map) continue;
+        final place = PlaceResult.fromJson(Map<String, dynamic>.from(raw));
+        if (!PopayanUrbanArea.contains(place.lat, place.lng)) continue;
+        final distance = Geolocator.distanceBetween(
+          lat,
+          lng,
+          place.lat,
+          place.lng,
+        );
+        if (distance > maxDistanceMeters) continue;
+        final types = (raw['types'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toSet();
+        final poiBoost = types.any(_mapPoiTypes.contains) ? 40.0 : 0.0;
+        final score = poiBoost - distance;
+        if (score > bestScore) {
+          bestScore = score;
+          best = place;
         }
       }
-
-      _nearbyCache[cacheKey] = _CacheEntry(
-        value: best,
-        expiresAt: DateTime.now().add(_cacheTtl),
-      );
       return best;
-    } catch (e, stackTrace) {
-      AppLogger.d('❌ Error nearby en mapa: $e');
-      AppLogger.d('   Stack trace: $stackTrace');
+    } catch (e) {
+      AppLogger.d('❌ Error nearby: $e');
       return null;
     }
   }
 
-  /// Detalles del lugar; `null` si queda fuera del perímetro urbano.
+  /// Predicción del backend ya trae lat/lng — sin place details extra.
+  Future<PlaceDetails?> resolvePrediction(PlacePrediction prediction) async {
+    if (MapsConfig.useBackendProxy && prediction.hasCoordinates) {
+      if (!PopayanUrbanArea.contains(prediction.lat!, prediction.lng!)) {
+        return null;
+      }
+      return PlaceDetails(
+        name: prediction.mainText.isNotEmpty
+            ? prediction.mainText
+            : prediction.description,
+        address: prediction.description,
+        lat: prediction.lat!,
+        lng: prediction.lng!,
+      );
+    }
+    return getPlaceDetails(prediction.placeId);
+  }
+
   Future<PlaceDetails?> getPlaceDetails(
     String placeId, {
     String? sessionToken,
   }) async {
     final normalizedPlaceId = placeId.trim();
     if (normalizedPlaceId.isEmpty) return null;
-    final cached = _getCached(_detailsCache, normalizedPlaceId);
-    if (cached != null) {
-      _metrics.detailsCacheHits++;
-      _metrics.logIfNeeded();
-      return cached;
+
+    if (MapsConfig.useBackendProxy) {
+      return _placeDetailsFromNominatimIdAsync(normalizedPlaceId);
     }
+
+    final cached = _getCached(_detailsCache, normalizedPlaceId);
+    if (cached != null) return cached;
 
     try {
       final activeSessionToken = sessionToken ?? _autocompleteSessionToken;
-
       final url = Uri.parse(
-        '$_baseUrl/place/details/json?'
+        '$_googleBaseUrl/place/details/json?'
         'place_id=$normalizedPlaceId'
         '&fields=name,formatted_address,geometry'
         '${activeSessionToken == null ? '' : '&sessiontoken=$activeSessionToken'}'
         '&key=${AppConfig.googleMapsApiKey}'
         '&language=es',
       );
-
       final response = await http.get(url);
-      _metrics.detailsApiCalls++;
-      _metrics.logIfNeeded();
-
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        _metrics.trackStatus('details', data['status']?.toString());
-
         if (data['status'] == 'OK') {
           var placeDetails = PlaceDetails.fromJson(data['result']);
-          final refined = await _refineCoordinatesViaGeocodePlaceId(
-            normalizedPlaceId,
-          );
-          if (refined != null) {
-            placeDetails = PlaceDetails(
-              name: placeDetails.name,
-              address: placeDetails.address,
-              lat: refined.$1,
-              lng: refined.$2,
-            );
-          }
           if (!PopayanUrbanArea.contains(placeDetails.lat, placeDetails.lng)) {
-            AppLogger.w(
-              'Lugar fuera del urbano de Popayán: ${placeDetails.address}',
-              tag: 'PlacesService',
-            );
             return null;
           }
           _detailsCache[normalizedPlaceId] = _CacheEntry(
@@ -342,66 +337,31 @@ class PlacesService {
           return placeDetails;
         }
       }
-
-      return null;
-    } catch (e, stackTrace) {
-      AppLogger.d('❌ Error obteniendo detalles: $e');
-      AppLogger.d('   Stack trace: $stackTrace');
-      return null;
-    }
-  }
-
-  /// Geocode por `place_id` priorizando ROOFTOP / RANGE_INTERPOLATED (más preciso que autocomplete).
-  Future<(double, double)?> _refineCoordinatesViaGeocodePlaceId(
-    String placeId,
-  ) async {
-    try {
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/geocode/json?'
-        'place_id=${Uri.encodeComponent(placeId)}'
-        '&key=${AppConfig.googleMapsApiKey}&language=es',
-      );
-      final response = await http.get(url);
-      if (response.statusCode != 200) return null;
-      final data = json.decode(response.body) as Map<String, dynamic>;
-      if (data['status'] != 'OK') return null;
-      final results = data['results'] as List<dynamic>? ?? [];
-      if (results.isEmpty) return null;
-
-      Map<String, dynamic>? best;
-      for (final item in results) {
-        if (item is! Map) continue;
-        final m = Map<String, dynamic>.from(item);
-        final locType =
-            (m['geometry'] as Map?)?['location_type']?.toString() ?? '';
-        if (locType == 'ROOFTOP' || locType == 'RANGE_INTERPOLATED') {
-          best = m;
-          break;
-        }
-        best ??= m;
-      }
-      final geometry = best?['geometry'] as Map<String, dynamic>?;
-      final loc = geometry?['location'] as Map<String, dynamic>?;
-      final lat = (loc?['lat'] as num?)?.toDouble();
-      final lng = (loc?['lng'] as num?)?.toDouble();
-      if (lat == null || lng == null) return null;
-      return (lat, lng);
     } catch (e) {
-      AppLogger.d('⚠️ Geocode place_id refine: $e');
-      return null;
+      AppLogger.d('❌ Error place details: $e');
     }
+    return null;
   }
 
-  static void _logGooglePlacesError(
-    String operation,
-    Map<String, dynamic> data,
-  ) {
-    final status = data['status']?.toString() ?? 'UNKNOWN';
-    final message = data['error_message']?.toString();
-    AppLogger.w(
-      'Places API $operation: $status'
-      '${message != null && message.isNotEmpty ? ' — $message' : ''}',
-      tag: 'MapsMetrics',
+  Future<PlaceDetails?> _placeDetailsFromNominatimIdAsync(String placeId) async {
+    if (!placeId.startsWith('nominatim:')) return null;
+    final parts = placeId.split(':');
+    if (parts.length < 3) return null;
+    final lat = double.tryParse(parts[1]);
+    final lng = double.tryParse(parts[2]);
+    if (lat == null || lng == null) return null;
+    if (!PopayanUrbanArea.contains(lat, lng)) return null;
+
+    final r = await _taxiMaps.reverseGeocode(lat, lng);
+    final addr = r?.address?.trim() ?? '';
+    final name = addr.isNotEmpty
+        ? addr.split(',').first.trim()
+        : (r?.barrio?.trim().isNotEmpty == true ? r!.barrio! : 'Destino');
+    return PlaceDetails(
+      name: name,
+      address: addr.isNotEmpty ? addr : name,
+      lat: lat,
+      lng: lng,
     );
   }
 
@@ -424,57 +384,6 @@ class _CacheEntry<T> {
 }
 
 class _PlacesMetrics {
-  int searchApiCalls = 0;
-  int searchCacheHits = 0;
   int autocompleteApiCalls = 0;
   int autocompleteCacheHits = 0;
-  int detailsApiCalls = 0;
-  int detailsCacheHits = 0;
-  int nearbyApiCalls = 0;
-  int nearbyCacheHits = 0;
-  int _lastLoggedTotal = 0;
-  final Map<String, int> statusCounters = {};
-
-  void logIfNeeded() {
-    final total = totalApiCalls + totalCacheHits;
-    if (total - _lastLoggedTotal < 15) return;
-    _lastLoggedTotal = total;
-    AppLogger.i(
-      '📊 MAPS Places ahorro | api=$totalApiCalls cache_hits=$totalCacheHits ahorro=${cacheHitRate.toStringAsFixed(1)}%',
-      tag: 'MapsMetrics',
-    );
-  }
-
-  int get totalApiCalls =>
-      searchApiCalls + autocompleteApiCalls + detailsApiCalls + nearbyApiCalls;
-  int get totalCacheHits =>
-      searchCacheHits +
-      autocompleteCacheHits +
-      detailsCacheHits +
-      nearbyCacheHits;
-
-  void trackStatus(
-    String operation,
-    String? status, {
-    String? errorMessage,
-  }) {
-    final normalized = (status == null || status.isEmpty) ? 'UNKNOWN' : status;
-    final key = '$operation:$normalized';
-    statusCounters[key] = (statusCounters[key] ?? 0) + 1;
-
-    if (normalized != 'OK' && normalized != 'ZERO_RESULTS') {
-      AppLogger.w(
-        'Places API status no exitoso | op=$operation status=$normalized'
-        '${errorMessage != null && errorMessage.isNotEmpty ? ' — $errorMessage' : ''}'
-        ' counters=$statusCounters',
-        tag: 'MapsMetrics',
-      );
-    }
-  }
-
-  double get cacheHitRate {
-    final denominator = totalApiCalls + totalCacheHits;
-    if (denominator == 0) return 0;
-    return (totalCacheHits / denominator) * 100;
-  }
 }

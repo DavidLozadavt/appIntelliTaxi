@@ -4,8 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/config/maps_config.dart';
+import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/geocode_memory_cache.dart';
+import 'package:intellitaxi/features/taxi/services/taxi_maps_api_service.dart';
 
 class ReverseGeocodingService {
   ReverseGeocodingService._();
@@ -19,6 +22,10 @@ class ReverseGeocodingService {
   static const Duration _labelCacheTtl = Duration(hours: 6);
 
   final GeocodeMemoryCache _cache = GeocodeMemoryCache.instance;
+  TaxiMapsApiService? _taxiMapsProxy;
+  TaxiMapsApiService get _taxiMaps =>
+      _taxiMapsProxy ??= TaxiMapsApiService(DioClient.getInstance());
+
   static final RegExp _plusCodeRegex = RegExp(
     r'^[23456789CFGHJMPQRVWX]{4,}\+[23456789CFGHJMPQRVWX]{2,}$',
     caseSensitive: false,
@@ -28,6 +35,20 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
+    if (MapsConfig.useBackendProxy) {
+      final labelKey =
+          'area|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+      final cached = _cache.get<String>(labelKey);
+      if (cached != null) return cached;
+      final r = await _taxiMaps.reverseGeocode(lat, lng);
+      final barrio = r?.barrio?.trim();
+      if (barrio != null && barrio.isNotEmpty) {
+        _cache.put(labelKey, barrio, _zonaLabelCacheTtl);
+        return barrio;
+      }
+      return null;
+    }
+
     final labelKey =
         'area|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
     final cachedLabel = _cache.get<String>(labelKey);
@@ -68,6 +89,44 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
+    if (MapsConfig.useBackendProxy) {
+      final zonaKey =
+          'zona|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
+      final cachedZona = _cache.get<String>(zonaKey);
+      if (cachedZona != null) return cachedZona;
+
+      final r = await _taxiMaps.reverseGeocode(lat, lng);
+      if (r == null) return null;
+
+      String? label = r.zona?.trim();
+      if (label != null && label.isNotEmpty) {
+        label = compactStreetLabelForZona(label);
+      } else {
+        label = null;
+      }
+
+      final addr = r.address?.trim() ?? '';
+      if (label == null || label.isEmpty) {
+        if (addr.isNotEmpty) {
+          final first = addr.split(',').first.trim();
+          if (_looksLikeStreetName(first)) {
+            label = compactStreetLabelForZona(first);
+          }
+        }
+        label ??= r.barrio?.trim();
+      }
+      if (label == null || label.isEmpty) {
+        if (addr.isNotEmpty) {
+          label = compactStreetLabelForZona(
+            addr.split(',').take(2).join(', '),
+          );
+        }
+      }
+      if (label == null || label.isEmpty) return null;
+      _cache.put(zonaKey, label, _zonaLabelCacheTtl);
+      return label;
+    }
+
     // Cuadrícula fina (~11 m) para calles distintas; caché evita repetir la API.
     final zonaKey = 'zona|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
     final cachedZona = _cache.get<String>(zonaKey);
@@ -450,6 +509,22 @@ class ReverseGeocodingService {
       address: 'Ubicación seleccionada',
     );
 
+    if (MapsConfig.useBackendProxy) {
+      final r = await _taxiMaps.reverseGeocode(lat, lng);
+      if (r == null) return fallback;
+      final addr = r.address?.trim() ?? '';
+      final barrio = r.barrio?.trim();
+      final street = addr.isNotEmpty ? addr.split(',').first.trim() : '';
+      final name = street.isNotEmpty
+          ? street
+          : (barrio?.isNotEmpty == true ? barrio! : fallback.name);
+      return MapDestinationLabel(
+        name: name,
+        address: addr.isNotEmpty ? addr : name,
+        area: barrio,
+      );
+    }
+
     final results = await _fetchGeocodeResults(lat: lat, lng: lng);
     if (results == null || results.isEmpty) return fallback;
 
@@ -516,6 +591,11 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
+    if (MapsConfig.useBackendProxy) {
+      final r = await _taxiMaps.reverseGeocode(lat, lng);
+      return r?.address?.trim();
+    }
+
     final key = AppConfig.googleMapsApiKey.trim();
     if (key.isEmpty) return null;
 
@@ -549,6 +629,21 @@ class ReverseGeocodingService {
       name: 'Punto de recogida',
       address: 'Ubicación en mapa',
     );
+
+    if (MapsConfig.useBackendProxy) {
+      final cacheKey =
+          'driver|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+      final cached = _getCachedLocationData(cacheKey);
+      if (cached != null) return cached;
+      final data = await _locationDataFromBackend(
+        lat,
+        lng,
+        fallback: fallback,
+        preferStreet: true,
+      );
+      _putCachedLocationData(cacheKey, data);
+      return data;
+    }
 
     final cacheKey =
         'driver|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
@@ -610,6 +705,16 @@ class ReverseGeocodingService {
       address: 'Ubicación actual',
     );
 
+    if (MapsConfig.useBackendProxy) {
+      final cacheKey =
+          'label|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+      final cached = _getCachedLocationData(cacheKey);
+      if (cached != null) return cached;
+      final data = await _locationDataFromBackend(lat, lng, fallback: fallback);
+      _putCachedLocationData(cacheKey, data);
+      return data;
+    }
+
     final cacheKey =
         'label|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
     final cached = _getCachedLocationData(cacheKey);
@@ -663,6 +768,43 @@ class ReverseGeocodingService {
     );
     _putCachedLocationData(cacheKey, data);
     return data;
+  }
+
+  Future<CurrentLocationData> _locationDataFromBackend(
+    double lat,
+    double lng, {
+    required CurrentLocationData fallback,
+    bool preferStreet = false,
+  }) async {
+    final r = await _taxiMaps.reverseGeocode(lat, lng);
+    if (r == null) return fallback;
+
+    final addr = r.address?.trim() ?? '';
+    final barrio = r.barrio?.trim();
+    final zona = r.zona?.trim();
+    final street = addr.isNotEmpty ? addr.split(',').first.trim() : '';
+
+    String name;
+    if (zona != null && zona.isNotEmpty) {
+      name = zona;
+    } else if (preferStreet && street.isNotEmpty && _looksLikeStreetName(street)) {
+      name = street;
+    } else if (barrio != null && barrio.isNotEmpty && !preferStreet) {
+      name = barrio;
+    } else if (street.isNotEmpty) {
+      name = street;
+    } else if (addr.isNotEmpty) {
+      name = placeNameFromAddressForDriver(addr);
+    } else {
+      name = fallback.name;
+    }
+
+    return CurrentLocationData(
+      name: name,
+      address: addr.isNotEmpty ? addr : name,
+      area: barrio,
+      streetLine: street.isNotEmpty ? street : null,
+    );
   }
 
   String? _areaFromCachedFetch(double lat, double lng) {

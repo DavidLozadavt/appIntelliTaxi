@@ -5,6 +5,7 @@ import 'package:intellitaxi/features/conductor/data/documento_conductor_model.da
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/propietario_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
+import 'package:intellitaxi/features/conductor/data/conductor_ubicacion_mapa_result.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -396,7 +397,8 @@ class ConductorService {
   }
 
   /// Mantiene actualizada la ubicación usada por el mapa del pasajero.
-  Future<void> actualizarUbicacionMapa({
+  /// Si el backend incluye `zona` / `barrio` en la respuesta, la app la muestra sin geocode en el móvil.
+  Future<ConductorUbicacionMapaResult?> actualizarUbicacionMapa({
     required double lat,
     required double lng,
     double? velocidad,
@@ -429,7 +431,7 @@ class ConductorService {
               : 'Error actualizando ubicación de mapa: ${response.statusCode}',
         );
       }
-      return;
+      return ConductorUbicacionMapaResult.tryFromResponse(response.data);
     } on DioException catch (e) {
       primaryError = e;
       AppLogger.d(
@@ -463,6 +465,7 @@ class ConductorService {
               : 'Error actualizando ubicación anterior: ${response.statusCode}',
         );
       }
+      return ConductorUbicacionMapaResult.tryFromResponse(response.data);
     } catch (fallbackError) {
       AppLogger.d('⚠️ Error actualizando ubicación de mapa: $fallbackError');
       throw primaryError;

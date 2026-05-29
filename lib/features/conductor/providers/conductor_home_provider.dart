@@ -9,6 +9,7 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_notification_sound_service.dart';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
+import 'package:intellitaxi/config/maps_config.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/services/voice_alert_service.dart';
@@ -1443,7 +1444,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _locationMessage = 'Ubicación obtenida';
       if (!_isDisposed) notifyListeners();
       _iniciarSeguimientoUbicacion();
-      await _actualizarZonaActual(position, force: true);
+      await _sendMapHeartbeat(position, force: true);
       await _requestNotificationPermissionAfterLocation();
 
       AppLogger.d(
@@ -1485,7 +1486,6 @@ class ConductorHomeProvider extends ChangeNotifier {
   void _onPositionUpdate(Position position) {
     if (_isDisposed) return;
     _currentPosition = position;
-    unawaited(_actualizarZonaActual(position));
     unawaited(_sendMapHeartbeat(position));
     notifyListeners();
   }
@@ -1507,7 +1507,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     _isSendingMapHeartbeat = true;
     try {
-      await _conductorService.actualizarUbicacionMapa(
+      final ubicacion = await _conductorService.actualizarUbicacionMapa(
         lat: position.latitude,
         lng: position.longitude,
         velocidad: position.speed.isFinite && position.speed >= 0
@@ -1519,11 +1519,28 @@ class ConductorHomeProvider extends ChangeNotifier {
         estado: _enDescanso ? 'descanso' : 'disponible',
       );
       _lastMapHeartbeatAt = DateTime.now();
+
+      if (ubicacion != null && ubicacion.hasZona) {
+        _aplicarZonaDesdeServidor(ubicacion.displayZona, position: position);
+      } else {
+        await _actualizarZonaActual(position, force: force);
+      }
     } catch (e) {
       AppLogger.d('⚠️ No se pudo enviar heartbeat de mapa: $e');
+      await _actualizarZonaActual(position, force: force);
     } finally {
       _isSendingMapHeartbeat = false;
     }
+  }
+
+  void _aplicarZonaDesdeServidor(String label, {required Position position}) {
+    final trimmed = label.trim();
+    if (trimmed.isEmpty) return;
+    _lastAreaResolvedPosition = position;
+    _lastAreaResolvedAt = DateTime.now();
+    if (_zonaActual == trimmed) return;
+    _zonaActual = trimmed;
+    if (!_isDisposed) notifyListeners();
   }
 
   /// Chip «Tu zona: Cra. 20b» (primordial para el conductor). Nunca se desactiva;
@@ -1542,8 +1559,13 @@ class ConductorHomeProvider extends ChangeNotifier {
         position.longitude,
       );
       final elapsed = DateTime.now().difference(lastAt);
-      if (movedMeters < RuntimePerfFlags.conductorZonaMinMoveMeters &&
-          elapsed < RuntimePerfFlags.conductorZonaMinInterval) {
+      final minMove = MapsConfig.useBackendProxy
+          ? MapsConfig.reverseGeocodeMinMoveMeters
+          : RuntimePerfFlags.conductorZonaMinMoveMeters;
+      final minInterval = MapsConfig.useBackendProxy
+          ? MapsConfig.reverseGeocodeMinInterval
+          : RuntimePerfFlags.conductorZonaMinInterval;
+      if (movedMeters < minMove && elapsed < minInterval) {
         return;
       }
     }
@@ -1698,10 +1720,6 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       await _sendMapHeartbeat(position, force: true);
 
-      if (_zonaActual?.trim().isEmpty ?? true) {
-        await _actualizarZonaActual(position, force: true);
-      }
-
       if (!_isDisposed) notifyListeners();
 
       AppLogger.d(
@@ -1765,8 +1783,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
 
       await _aplicarTurnoActivoLocal(turno);
-      unawaited(_sendMapHeartbeat(position, force: true));
-      await _actualizarZonaActual(position, force: true);
+      await _sendMapHeartbeat(position, force: true);
       return true;
     } catch (e) {
       _lastTurnoError = e.toString().replaceAll('Exception: ', '').trim();
@@ -1792,7 +1809,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     await conectarPusher();
     final pos = _currentPosition;
     if (pos != null) {
-      unawaited(_actualizarZonaActual(pos, force: true));
+      unawaited(_sendMapHeartbeat(pos, force: true));
     }
     if (!_isDisposed) notifyListeners();
   }

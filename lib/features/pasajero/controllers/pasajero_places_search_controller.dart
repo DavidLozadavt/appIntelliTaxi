@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:intellitaxi/config/maps_config.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 
@@ -15,7 +16,7 @@ class PasajeroPlacesSearchController {
   int _originRequestId = 0;
   int _destinationRequestId = 0;
 
-  static const Duration debounceDuration = Duration(milliseconds: 350);
+  static Duration get debounceDuration => MapsConfig.autocompleteDebounce;
 
   void dispose() {
     _originDebounce?.cancel();
@@ -72,9 +73,6 @@ class PasajeroPlacesSearchController {
   }
 
   Future<PlaceDetails?> resolvePlace(PlacePrediction prediction) {
-    return _placesService.getPlaceDetails(
-      prediction.placeId,
-      sessionToken: _placesService.currentAutocompleteSessionToken,
-    );
+    return _placesService.resolvePrediction(prediction);
   }
 }

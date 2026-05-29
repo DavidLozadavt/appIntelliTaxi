@@ -224,10 +224,7 @@ class TravelAssistantController extends ChangeNotifier {
   }
 
   Future<void> pickOriginFromPrediction(PlacePrediction p) async {
-    final details = await _places.getPlaceDetails(
-      p.placeId,
-      sessionToken: _places.currentAutocompleteSessionToken,
-    );
+    final details = await _places.resolvePrediction(p);
     if (details == null) {
       lastError =
           'Esa dirección está fuera del perímetro urbano de Popayán.';
@@ -334,10 +331,7 @@ class TravelAssistantController extends ChangeNotifier {
   }
 
   Future<void> pickDestinationFromPrediction(PlacePrediction p) async {
-    final details = await _places.getPlaceDetails(
-      p.placeId,
-      sessionToken: _places.currentAutocompleteSessionToken,
-    );
+    final details = await _places.resolvePrediction(p);
     if (details == null) {
       lastError =
           'Esa dirección está fuera del perímetro urbano de Popayán.';

@@ -1,17 +1,19 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
-import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/config/maps_config.dart';
+import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/features/taxi/services/taxi_maps_api_service.dart';
 
 class RoutesService {
-  final PolylinePoints _polylinePoints = PolylinePoints();
+  RoutesService({TaxiMapsApiService? taxiMaps})
+      : _taxiMaps = taxiMaps ?? TaxiMapsApiService(DioClient.getInstance());
+
+  final TaxiMapsApiService _taxiMaps;
   static const Duration _routeCacheTtl = Duration(minutes: 30);
   final Map<String, _RouteCacheEntry> _routeCache = {};
   final _RoutesMetrics _metrics = _RoutesMetrics();
 
-  /// Obtiene la ruta entre dos puntos
+  /// Obtiene la ruta entre dos puntos (OSRM vía backend o legacy Google).
   Future<RouteInfo?> getRoute({
     required LatLng origin,
     required LatLng destination,
@@ -24,67 +26,58 @@ class RoutesService {
       return cached.routeInfo;
     }
 
-    try {
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json?'
-        'origin=${origin.latitude},${origin.longitude}'
-        '&destination=${destination.latitude},${destination.longitude}'
-        '&mode=driving'
-        '&key=${AppConfig.googleMapsApiKey}'
-        '&language=es',
-      );
+    if (MapsConfig.useBackendProxy) {
+      return _getRouteViaBackend(origin, destination, routeKey);
+    }
 
-      final response = await http
-          .get(url)
-          .timeout(const Duration(seconds: 4));
+    AppLogger.w(
+      'RoutesService: Google Directions deshabilitado; active useBackendProxy.',
+      tag: 'TaxiMapsProxy',
+    );
+    return null;
+  }
+
+  Future<RouteInfo?> _getRouteViaBackend(
+    LatLng origin,
+    LatLng destination,
+    String routeKey,
+  ) async {
+    try {
+      final result = await _taxiMaps.calcularRuta(
+        fromLat: origin.latitude,
+        fromLng: origin.longitude,
+        toLat: destination.latitude,
+        toLng: destination.longitude,
+      );
       _metrics.apiCalls++;
       _metrics.logIfNeeded();
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+      if (result == null) return null;
 
-        if (data['status'] == 'OK' && data['routes'].isNotEmpty) {
-          final route = data['routes'][0];
-          final leg = route['legs'][0];
+      final polylinePoints = result.polylinePoints
+          .map((p) => LatLng(p.lat, p.lng))
+          .toList();
 
-          // Decodificar la polilínea
-          final polylineString = route['overview_polyline']['points'];
-          final polylineCoordinates = _decodePolyline(polylineString);
+      final routeInfo = RouteInfo(
+        polylinePoints: polylinePoints,
+        distance: result.distanceText,
+        distanceValue: result.distanceMeters,
+        duration: result.durationText,
+        durationValue: result.durationSeconds,
+        startAddress: '',
+        endAddress: '',
+      );
 
-          final routeInfo = RouteInfo(
-            polylinePoints: polylineCoordinates,
-            distance: leg['distance']['text'],
-            distanceValue: leg['distance']['value'], // en metros
-            duration: leg['duration']['text'],
-            durationValue: leg['duration']['value'], // en segundos
-            startAddress: leg['start_address'],
-            endAddress: leg['end_address'],
-          );
-
-          _routeCache[routeKey] = _RouteCacheEntry(
-            routeInfo: routeInfo,
-            expiresAt: DateTime.now().add(_routeCacheTtl),
-          );
-          return routeInfo;
-        }
-      }
-
-      return null;
+      _routeCache[routeKey] = _RouteCacheEntry(
+        routeInfo: routeInfo,
+        expiresAt: DateTime.now().add(_routeCacheTtl),
+      );
+      return routeInfo;
     } catch (e) {
-      AppLogger.d('Error obteniendo ruta: $e');
+      AppLogger.d('Error ruta OSRM: $e', tag: 'TaxiMapsProxy');
       return null;
     }
   }
-
-  /// Decodifica una polilínea de Google Maps
-  List<LatLng> _decodePolyline(String encoded) {
-    final List<PointLatLng> points = _polylinePoints.decodePolyline(encoded);
-    return points
-        .map((point) => LatLng(point.latitude, point.longitude))
-        .toList();
-  }
-
-  // Nota: El precio no se calcula aquí porque funciona con taxímetro
 
   String _buildRouteKey(LatLng origin, LatLng destination) {
     String normalize(double value) => value.toStringAsFixed(4);
@@ -110,15 +103,9 @@ class _RoutesMetrics {
     if (total - _lastLoggedTotal < 8) return;
     _lastLoggedTotal = total;
     AppLogger.i(
-      '📊 MAPS Routes ahorro | api=$apiCalls cache_hits=$cacheHits ahorro=${cacheHitRate.toStringAsFixed(1)}%',
+      '📊 Rutas | api=$apiCalls cache_hits=$cacheHits',
       tag: 'MapsMetrics',
     );
-  }
-
-  double get cacheHitRate {
-    final denominator = apiCalls + cacheHits;
-    if (denominator == 0) return 0;
-    return (cacheHits / denominator) * 100;
   }
 }
 
@@ -141,6 +128,4 @@ class RouteInfo {
     required this.startAddress,
     required this.endAddress,
   });
-
-  // Nota: El precio no se muestra porque funciona con taxímetro
 }
