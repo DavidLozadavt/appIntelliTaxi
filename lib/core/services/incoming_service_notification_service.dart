@@ -7,6 +7,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
+import 'package:intellitaxi/core/utils/device_screen_helper.dart';
 
 /// Notificaciones de alta prioridad para nuevas solicitudes (Android: full-screen intent).
 class IncomingServiceNotificationService {
@@ -39,12 +40,20 @@ class IncomingServiceNotificationService {
         importance: Importance.max,
         playSound: true,
         enableVibration: true,
+        enableLights: true,
+        bypassDnd: true,
       );
-      await _plugin
+      final androidPlugin = _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
-          >()
-          ?.createNotificationChannel(channel);
+          >();
+      await androidPlugin?.createNotificationChannel(channel);
+      try {
+        await androidPlugin?.requestNotificationsPermission();
+        await androidPlugin?.requestFullScreenIntentPermission();
+      } catch (e) {
+        AppLogger.d('⚠️ Permisos notificación/FSI: $e');
+      }
     }
 
     _initialized = true;
@@ -53,6 +62,7 @@ class IncomingServiceNotificationService {
   Future<void> showIncomingService(Map<String, dynamic> solicitud) async {
     try {
       await ensureInitialized();
+      await DeviceScreenHelper.wakeForIncomingService();
 
       final normalizada = SolicitudDisplayHelper.normalizeSolicitudMap(
         ConductorSolicitudPayloadHelper.normalizarSolicitud(solicitud),
@@ -73,9 +83,13 @@ class IncomingServiceNotificationService {
         priority: Priority.max,
         category: AndroidNotificationCategory.call,
         visibility: NotificationVisibility.public,
-        fullScreenIntent: _isAndroid,
+        fullScreenIntent: true,
         ongoing: false,
         autoCancel: true,
+        playSound: true,
+        enableVibration: true,
+        enableLights: true,
+        ticker: 'Nuevo servicio disponible',
         color: AppColors.accent,
         styleInformation: BigTextStyleInformation(
           body,
@@ -85,7 +99,6 @@ class IncomingServiceNotificationService {
               ? SolicitudDisplayHelper.pickupDetailForDriver(normalizada)
               : SolicitudDisplayHelper.pickupTitleForDriver(normalizada),
         ),
-        ticker: 'Nuevo servicio',
       );
 
       await _plugin.show(

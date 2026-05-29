@@ -1241,8 +1241,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       final solicitud = _solicitudesPorId[solicitudId];
       if (solicitud == null) return;
 
-      // Full-screen / heads-up solo si la app no está visible (otra app encima).
-      if (!_isAppInForeground()) {
+      if (await AppLifecycleHelper.shouldShowIncomingServiceAlert()) {
         await IncomingServiceNotificationService.instance.showIncomingService(
           solicitud,
         );
@@ -1256,8 +1255,6 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
     }
   }
-
-  bool _isAppInForeground() => AppLifecycleHelper.isInForeground();
 
   /// POI/nombres extra sin bloquear la tarjeta «Llegando» (antes esperaba Places y no pintaba UI).
   Future<void> _enriquecerPoiTrasMostrar(

@@ -1,10 +1,13 @@
 package com.virtualt.intellitaxi
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
+import android.view.WindowManager
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -43,6 +46,14 @@ class MainActivity : FlutterActivity() {
                             }
                         result.success(true)
                     }
+                    "isScreenOn" -> {
+                        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                        result.success(pm.isInteractive)
+                    }
+                    "wakeForIncomingService" -> {
+                        wakeForIncomingService(context)
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -57,6 +68,31 @@ class MainActivity : FlutterActivity() {
             }
             context.startActivity(intent)
         }
+
+        private fun wakeForIncomingService(context: Context) {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            @Suppress("DEPRECATION")
+            val wakeLock = pm.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                    PowerManager.ON_AFTER_RELEASE,
+                "intellitaxi:incoming_service",
+            )
+            try {
+                wakeLock.acquire(15_000L)
+            } catch (_: Exception) {
+            } finally {
+                if (wakeLock.isHeld) {
+                    wakeLock.release()
+                }
+            }
+            launchMainActivity(context)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        applyShowWhenLockedFlags()
     }
 
     override fun onResume() {
@@ -124,6 +160,21 @@ class MainActivity : FlutterActivity() {
             ?.let { messenger ->
                 registerAppChannel(applicationContext, messenger)
             }
+    }
+
+    private fun applyShowWhenLockedFlags() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            keyguardManager.requestDismissKeyguard(this, null)
+        }
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+        )
     }
 
     private fun openUnknownSourcesSettings() {

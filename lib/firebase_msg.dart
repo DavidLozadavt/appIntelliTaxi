@@ -393,7 +393,7 @@ class FirebaseMsg {
     if (await _shouldShowConductorIncomingAlert(data)) {
       unawaited(_triggerConductorIncomingSync(data));
       // En primer plano: panel «Llegando» en el mapa; notificación solo si no está visible.
-      if (!AppLifecycleHelper.isInForeground()) {
+      if (await AppLifecycleHelper.shouldShowIncomingServiceAlert()) {
         final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
           ConductorSolicitudPayloadHelper.normalizarSolicitud(
             ConductorSolicitudPayloadHelper.parsePayload(data),
