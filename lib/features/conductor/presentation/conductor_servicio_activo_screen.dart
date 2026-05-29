@@ -34,6 +34,7 @@ import 'package:intellitaxi/core/services/active_service_restoration_service.dar
 import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/geo/map_marker_bearing_helper.dart';
+import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 
 class ConductorServicioActivoScreen extends StatefulWidget {
   final Map<String, dynamic> servicio;
@@ -100,6 +101,7 @@ class _ConductorServicioActivoScreenState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(KeepScreenOnService.acquire('conductor_servicio_activo'));
     _requestOverlayPermissionSafely();
     _estadoActual = _resolverEstadoInicial(widget.servicio);
     ActiveServiceScreenRegistry.markVisible(
@@ -133,6 +135,7 @@ class _ConductorServicioActivoScreenState
       serviceId: _safeServiceId(),
     );
     _trackingService.detenerSeguimiento();
+    unawaited(KeepScreenOnService.release('conductor_servicio_activo'));
     super.dispose();
   }
 

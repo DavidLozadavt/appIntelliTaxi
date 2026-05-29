@@ -35,4 +35,14 @@ class DeviceScreenHelper {
       AppLogger.d('⚠️ wakeForIncomingService: $e');
     }
   }
+
+  /// `FLAG_KEEP_SCREEN_ON` en la Activity (refuerzo junto a wakelock_plus).
+  static Future<void> setKeepScreenOn(bool enable) async {
+    if (!_isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('setKeepScreenOn', {'enable': enable});
+    } catch (e) {
+      AppLogger.d('⚠️ setKeepScreenOn: $e');
+    }
+  }
 }

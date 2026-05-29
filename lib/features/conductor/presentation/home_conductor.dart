@@ -26,6 +26,7 @@ import 'package:intellitaxi/core/services/driver_overlay_permission_flow.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_servicios_espera_hint.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
+import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -139,6 +140,10 @@ class _HomeConductorState extends State<HomeConductor>
     _provider = context.read<ConductorHomeProvider>();
     _validandoTurno = !_provider.tieneTurnoActivo;
     _provider.addNuevaSolicitudListener(_onNuevaSolicitudRecibida);
+    _provider.addListener(_syncKeepScreenOn);
+    unawaited(KeepScreenOnService.loadPreference().then((_) {
+      if (mounted) _syncKeepScreenOn();
+    }));
     _pendientesProvider = SolicitudesPendientesProvider();
     _emergencyPulseController = AnimationController(
       vsync: this,
@@ -300,8 +305,22 @@ class _HomeConductorState extends State<HomeConductor>
     return (puntos / 10).clamp(0.0, 1.0);
   }
 
+  void _syncKeepScreenOn() {
+    if (!KeepScreenOnService.userEnabled) {
+      unawaited(KeepScreenOnService.release('conductor_turno'));
+      return;
+    }
+    if (_provider.isOnline && _provider.tieneTurnoActivo) {
+      unawaited(KeepScreenOnService.acquire('conductor_turno'));
+    } else {
+      unawaited(KeepScreenOnService.release('conductor_turno'));
+    }
+  }
+
   @override
   void dispose() {
+    _provider.removeListener(_syncKeepScreenOn);
+    unawaited(KeepScreenOnService.release('conductor_turno'));
     _provider.removeNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     WidgetsBinding.instance.removeObserver(this);
     _bannerTimer?.cancel();
