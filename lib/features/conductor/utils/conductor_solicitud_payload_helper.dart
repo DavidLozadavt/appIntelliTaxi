@@ -37,23 +37,68 @@ class ConductorSolicitudPayloadHelper {
     return DateTime.tryParse(raw.toString());
   }
 
-  /// Cuenta regresiva de cola (`segundos_restantes` / `expira_en` del API), no TTL overlay.
-  static int? segundosRestantesCola(Map<String, dynamic> solicitud) {
-    final fromApi = int.tryParse(
+  static DateTime? _expiraDesdePayloadApi(Map<String, dynamic> solicitud) {
+    for (final key in const ['expira_en', 'expiraEn']) {
+      final raw = solicitud[key];
+      if (raw == null) continue;
+      final parsed = DateTime.tryParse(raw.toString());
+      if (parsed != null) return parsed;
+    }
+
+    final seg = int.tryParse(
       (solicitud['segundos_restantes'] ?? solicitud['segundosRestantes'] ?? '')
           .toString(),
     );
-    if (fromApi != null && fromApi > 0) return fromApi;
-
-    final expiraRaw = solicitud['expira_en'] ?? solicitud['expiraEn'];
-    if (expiraRaw != null) {
-      final expira = DateTime.tryParse(expiraRaw.toString());
-      if (expira != null) {
-        final restantes = expira.difference(DateTime.now()).inSeconds;
-        return restantes > 0 ? restantes : 0;
-      }
+    if (seg != null && seg > 0) {
+      return DateTime.now().add(Duration(seconds: seg));
     }
     return null;
+  }
+
+  /// Instante de expiración de cola (`expira_en` del API o ancla local).
+  static DateTime? resolverExpiraEnCola(Map<String, dynamic> solicitud) {
+    final anclado = solicitud['_cola_expira_en'];
+    if (anclado != null) {
+      final dt = DateTime.tryParse(anclado.toString());
+      if (dt != null) return dt;
+    }
+    return _expiraDesdePayloadApi(solicitud);
+  }
+
+  /// Fija `_cola_expira_en` para cuenta regresiva fluida (no saltos en cada sync).
+  static void anclarExpiracionCola(
+    Map<String, dynamic> destino, {
+    Map<String, dynamic>? anterior,
+  }) {
+    for (final raw in [
+      destino['_cola_expira_en'],
+      anterior?['_cola_expira_en'],
+    ]) {
+      if (raw == null) continue;
+      final prev = DateTime.tryParse(raw.toString());
+      if (prev != null && prev.isAfter(DateTime.now())) {
+        destino['_cola_expira_en'] = prev.toIso8601String();
+        return;
+      }
+    }
+
+    final expira = _expiraDesdePayloadApi(destino);
+    if (expira != null) {
+      destino['_cola_expira_en'] = expira.toIso8601String();
+    }
+  }
+
+  /// Cuenta regresiva de cola anclada a `expira_en` (segundo a segundo en UI).
+  static int? segundosRestantesCola(Map<String, dynamic> solicitud) {
+    final expira = resolverExpiraEnCola(solicitud);
+    if (expira == null) return null;
+    final restantes = expira.difference(DateTime.now()).inSeconds;
+    return restantes > 0 ? restantes : 0;
+  }
+
+  static bool tieneExpiracionColaActiva(Map<String, dynamic> solicitud) {
+    final seg = segundosRestantesCola(solicitud);
+    return seg != null && seg > 0;
   }
 
   static int resolverTtlSegundos(Map<String, dynamic> solicitud) {

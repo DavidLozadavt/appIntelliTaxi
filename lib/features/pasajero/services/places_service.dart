@@ -62,7 +62,11 @@ class PlacesService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        _metrics.trackStatus('textsearch', data['status']?.toString());
+        _metrics.trackStatus(
+          'textsearch',
+          data['status']?.toString(),
+          errorMessage: data['error_message']?.toString(),
+        );
 
         if (data['status'] == 'OK') {
           final results = (data['results'] as List)
@@ -80,7 +84,7 @@ class PlacesService {
         } else if (data['status'] == 'ZERO_RESULTS') {
           return [];
         } else {
-          AppLogger.d('❌ Error de Google API: ${data['status']}');
+          _logGooglePlacesError('textsearch', data);
           return [];
         }
       }
@@ -152,7 +156,11 @@ class PlacesService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        _metrics.trackStatus('autocomplete', data['status']?.toString());
+        _metrics.trackStatus(
+          'autocomplete',
+          data['status']?.toString(),
+          errorMessage: data['error_message']?.toString(),
+        );
 
         if (data['status'] == 'OK') {
           final predictions = (data['predictions'] as List)
@@ -170,7 +178,7 @@ class PlacesService {
         } else if (data['status'] == 'ZERO_RESULTS') {
           return [];
         } else {
-          AppLogger.d('❌ Error de Google API: ${data['status']}');
+          _logGooglePlacesError('autocomplete', data);
           return [];
         }
       }
@@ -222,7 +230,14 @@ class PlacesService {
       }
 
       final data = json.decode(response.body) as Map<String, dynamic>;
-      _metrics.trackStatus('nearbysearch', data['status']?.toString());
+      _metrics.trackStatus(
+        'nearbysearch',
+        data['status']?.toString(),
+        errorMessage: data['error_message']?.toString(),
+      );
+      if (data['status'] != 'OK' && data['status'] != 'ZERO_RESULTS') {
+        _logGooglePlacesError('nearbysearch', data);
+      }
 
       PlaceResult? best;
       var bestScore = double.negativeInfinity;
@@ -377,6 +392,19 @@ class PlacesService {
     }
   }
 
+  static void _logGooglePlacesError(
+    String operation,
+    Map<String, dynamic> data,
+  ) {
+    final status = data['status']?.toString() ?? 'UNKNOWN';
+    final message = data['error_message']?.toString();
+    AppLogger.w(
+      'Places API $operation: $status'
+      '${message != null && message.isNotEmpty ? ' — $message' : ''}',
+      tag: 'MapsMetrics',
+    );
+  }
+
   T? _getCached<T>(Map<String, _CacheEntry<T>> cache, String key) {
     final entry = cache[key];
     if (entry == null) return null;
@@ -425,14 +453,20 @@ class _PlacesMetrics {
       detailsCacheHits +
       nearbyCacheHits;
 
-  void trackStatus(String operation, String? status) {
+  void trackStatus(
+    String operation,
+    String? status, {
+    String? errorMessage,
+  }) {
     final normalized = (status == null || status.isEmpty) ? 'UNKNOWN' : status;
     final key = '$operation:$normalized';
     statusCounters[key] = (statusCounters[key] ?? 0) + 1;
 
     if (normalized != 'OK' && normalized != 'ZERO_RESULTS') {
       AppLogger.w(
-        'Places API status no exitoso | op=$operation status=$normalized counters=$statusCounters',
+        'Places API status no exitoso | op=$operation status=$normalized'
+        '${errorMessage != null && errorMessage.isNotEmpty ? ' — $errorMessage' : ''}'
+        ' counters=$statusCounters',
         tag: 'MapsMetrics',
       );
     }

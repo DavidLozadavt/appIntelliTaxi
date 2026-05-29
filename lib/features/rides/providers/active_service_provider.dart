@@ -5,10 +5,23 @@ import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/features/pasajero/services/ride_request_service.dart';
+import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
 
 class ActiveServiceProvider extends ChangeNotifier {
-  final ServicioActivo servicio;
+  ActiveServiceProvider({
+    required ServicioActivo servicio,
+    this.onServiceCompleted,
+    ActiveServiceManager? activeServiceManager,
+  })  : _servicio = servicio,
+        _activeServiceManager = activeServiceManager ?? ActiveServiceManager() {
+    _initialize();
+  }
+
+  ServicioActivo _servicio;
   final VoidCallback? onServiceCompleted;
+  final ActiveServiceManager _activeServiceManager;
+
+  ServicioActivo get servicio => _servicio;
 
   final ServicioPersistenciaService _persistencia =
       ServicioPersistenciaService();
@@ -28,17 +41,14 @@ class ActiveServiceProvider extends ChangeNotifier {
   BitmapDescriptor? _destinoDot;
   BitmapDescriptor? _conductorDot;
 
-  ActiveServiceProvider({required this.servicio, this.onServiceCompleted}) {
-    _initialize();
-  }
-
   // Getters
   GoogleMapController? get mapController => _mapController;
   Set<Marker> get markers => _markers;
   Set<Polyline> get polylines => _polylines;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  bool get isServiceActive => !servicio.isFinalizado && !servicio.isCancelado;
+  bool get isServiceActive =>
+      !_servicio.isFinalizado && !_servicio.isCancelado;
 
   // Inicialización
   Future<void> _initialize() async {
@@ -50,6 +60,22 @@ class ActiveServiceProvider extends ChangeNotifier {
     // Inicializar mapa con dots ya listos
     _actualizarMarkers();
     await _inicializarPersistencia();
+    _iniciarSeguimientoRemoto();
+  }
+
+  void _iniciarSeguimientoRemoto() {
+    _activeServiceManager.onServiceUpdated = (actualizado) {
+      if (actualizado.id != _servicio.id) return;
+      _servicio = actualizado;
+      _actualizarMarkers();
+      _mostrarNotificacionPersistente();
+      notifyListeners();
+    };
+    _activeServiceManager.onServiceCompleted = () {
+      onServiceCompleted?.call();
+    };
+    _activeServiceManager.startPolling();
+    _activeServiceManager.subscribeToServiceEvents(_servicio.id);
   }
 
   static Future<BitmapDescriptor> _createDotMarker(
@@ -88,35 +114,38 @@ class ActiveServiceProvider extends ChangeNotifier {
     _markers = {
       Marker(
         markerId: const MarkerId('origen'),
-        position: LatLng(servicio.origenLat, servicio.origenLng),
+        position: LatLng(_servicio.origenLat, _servicio.origenLng),
         infoWindow: InfoWindow(
           title: 'Origen',
-          snippet: servicio.origenAddress,
+          snippet: _servicio.origenAddress,
         ),
         icon: _origenDot ?? BitmapDescriptor.defaultMarker,
         anchor: const Offset(0.5, 0.5),
       ),
       Marker(
         markerId: const MarkerId('destino'),
-        position: LatLng(servicio.destinoLat, servicio.destinoLng),
+        position: LatLng(_servicio.destinoLat, _servicio.destinoLng),
         infoWindow: InfoWindow(
           title: 'Destino',
-          snippet: servicio.destinoAddress,
+          snippet: _servicio.destinoAddress,
         ),
         icon: _destinoDot ?? BitmapDescriptor.defaultMarker,
         anchor: const Offset(0.5, 0.5),
       ),
     };
 
-    if (servicio.conductor != null &&
-        servicio.conductor!.lat != null &&
-        servicio.conductor!.lng != null) {
+    if (_servicio.conductor != null &&
+        _servicio.conductor!.lat != null &&
+        _servicio.conductor!.lng != null) {
       _markers.add(
         Marker(
           markerId: const MarkerId('conductor'),
-          position: LatLng(servicio.conductor!.lat!, servicio.conductor!.lng!),
+          position: LatLng(
+            _servicio.conductor!.lat!,
+            _servicio.conductor!.lng!,
+          ),
           infoWindow: InfoWindow(
-            title: servicio.conductor!.nombre,
+            title: _servicio.conductor!.nombre,
             snippet: 'Conductor',
           ),
           icon: _conductorDot ?? BitmapDescriptor.defaultMarker,
@@ -145,21 +174,21 @@ class ActiveServiceProvider extends ChangeNotifier {
 
   Future<void> _guardarServicioActivo() async {
     await _persistencia.guardarServicioActivo(
-      servicioId: servicio.id,
+      servicioId: _servicio.id,
       tipo: 'pasajero',
-      datosServicio: servicio.toJson(),
+      datosServicio: _servicio.toJson(),
     );
   }
 
   Future<void> _mostrarNotificacionPersistente() async {
     await _notificacionService.mostrarNotificacionPasajero(
-      servicioId: servicio.id,
-      estado: servicio.estado.estado,
-      conductorNombre: servicio.conductor?.nombre,
-      vehiculoInfo: servicio.vehiculo != null
-          ? '${servicio.vehiculo!.marca} ${servicio.vehiculo!.modelo}'
+      servicioId: _servicio.id,
+      estado: _servicio.estado.estado,
+      conductorNombre: _servicio.conductor?.nombre,
+      vehiculoInfo: _servicio.vehiculo != null
+          ? '${_servicio.vehiculo!.marca} ${_servicio.vehiculo!.modelo}'
           : null,
-      destino: servicio.destinoAddress,
+      destino: _servicio.destinoAddress,
     );
   }
 
@@ -167,7 +196,7 @@ class ActiveServiceProvider extends ChangeNotifier {
     try {
       // Cancelar notificación
       await _notificacionService.cancelarNotificacion(
-        servicio.id,
+        _servicio.id,
         tipo: 'pasajero',
       );
 
@@ -192,7 +221,7 @@ class ActiveServiceProvider extends ChangeNotifier {
 
       // Llamar al servicio de cancelación
       await _rideService.cancelarServicio(
-        servicioId: servicio.id,
+        servicioId: _servicio.id,
         motivo: motivo,
       );
 
@@ -215,7 +244,10 @@ class ActiveServiceProvider extends ChangeNotifier {
   }
 
   Color getStateColor() {
-    switch (servicio.idEstado) {
+    if (_servicio.tieneConductorAsignado && _servicio.idEstado == 1) {
+      return Colors.blue;
+    }
+    switch (_servicio.idEstado) {
       case 1:
         return const Color(0xFFFF6B35); // AppColors.accent - Pendiente
       case 2:
@@ -237,7 +269,10 @@ class ActiveServiceProvider extends ChangeNotifier {
 
   IconData getStateIcon() {
     // Nota: Los valores de Iconsax se mantienen en el widget
-    switch (servicio.idEstado) {
+    if (_servicio.tieneConductorAsignado && _servicio.idEstado == 1) {
+      return Icons.check_circle;
+    }
+    switch (_servicio.idEstado) {
       case 1:
         return Icons.access_time;
       case 2:
@@ -257,31 +292,15 @@ class ActiveServiceProvider extends ChangeNotifier {
     }
   }
 
-  String getStateMessage() {
-    switch (servicio.idEstado) {
-      case 1:
-        return 'Buscando conductor disponible...';
-      case 2:
-        return 'Conductor asignado';
-      case 3:
-        return 'El conductor va hacia ti';
-      case 4:
-        return 'El conductor ha llegado';
-      case 5:
-        return 'Viaje en progreso';
-      case 6:
-        return 'Viaje completado';
-      case 7:
-        return 'Viaje cancelado';
-      default:
-        return '';
-    }
-  }
+  String getStateMessage() => _servicio.mensajeEstadoPasajero;
 
   @override
   void dispose() {
+    _activeServiceManager.onServiceUpdated = null;
+    _activeServiceManager.onServiceCompleted = null;
+    _activeServiceManager.cleanup();
     // Si el servicio está finalizado, limpiar
-    if (servicio.isFinalizado || servicio.isCancelado) {
+    if (_servicio.isFinalizado || _servicio.isCancelado) {
       limpiarServicio();
     }
     _mapController?.dispose();

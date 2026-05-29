@@ -126,7 +126,7 @@ class PasajeroServicioMapper {
       case 20:
         return hasConductor ? 'aceptado' : 'buscando';
       case 4:
-        return 'pendiente';
+        return hasConductor ? 'aceptado' : 'pendiente';
       case 3:
         return 'llegue';
       case 21:
@@ -141,5 +141,17 @@ class PasajeroServicioMapper {
       default:
         return hasConductor ? 'aceptado' : 'buscando';
     }
+  }
+
+  /// Estado UI coherente con conductor ya asignado (evita «buscando» + tarjeta de conductor).
+  static String resolverEstadoUi(Map<String, dynamic> data) {
+    final estado = estadoInicial(data);
+    final tieneConductor =
+        hasConductorAsignado(data) || data['conductor'] is Map;
+    if (tieneConductor &&
+        (estado == 'buscando' || estado == 'pendiente')) {
+      return 'aceptado';
+    }
+    return estado;
   }
 }

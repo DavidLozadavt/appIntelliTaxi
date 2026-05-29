@@ -126,6 +126,47 @@ class ServicioActivo {
   bool get isCancelado => idEstado == 7;
   bool get isActivo => !isFinalizado && !isCancelado;
 
+  bool get tieneConductorAsignado =>
+      conductor != null || (conductorId != null && conductorId! > 0);
+
+  /// Mensaje para el pasajero; no muestra «buscando» si ya hay conductor en el payload.
+  String get mensajeEstadoPasajero {
+    if (!tieneConductorAsignado) {
+      if (isCancelado) return 'Viaje cancelado';
+      if (isFinalizado) return 'Viaje completado';
+      return 'Buscando conductor disponible...';
+    }
+
+    final nombre = estado.estado.trim().toLowerCase();
+    if (nombre.contains('camino')) return 'El conductor va hacia ti';
+    if (nombre.contains('lleg')) return 'El conductor ha llegado';
+    if (nombre.contains('curso')) return 'Viaje en progreso';
+    if (nombre.contains('activ') ||
+        nombre.contains('acept') ||
+        nombre.contains('asign')) {
+      return 'Conductor asignado — en camino a tu punto';
+    }
+
+    switch (idEstado) {
+      case 19:
+        return 'El conductor va hacia ti';
+      case 3:
+      case 20:
+        return 'El conductor ha llegado';
+      case 21:
+        return 'Viaje en progreso';
+      case 6:
+        return 'Viaje cancelado';
+      case 5:
+      case 7:
+      case 22:
+      case 23:
+        return 'Viaje completado';
+      default:
+        return 'Conductor asignado';
+    }
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,

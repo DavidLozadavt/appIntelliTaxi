@@ -32,7 +32,10 @@ class ConductorNotificationSoundService {
     }
   }
 
-  static Future<void> stopPreview() async {
+  static Future<void> stopPreview() async => stopNewServiceSound();
+
+  /// Corta el tono de nueva solicitud (p. ej. al aceptar o rechazar).
+  static Future<void> stopNewServiceSound() async {
     try {
       await _player?.stop();
     } catch (_) {}

@@ -1048,7 +1048,6 @@ class ConductorHomeProvider extends ChangeNotifier {
         AppLogger.d('ℹ️ Solicitud sin id, asignando temporal: $solicitudId');
       }
       solicitud['_local_id'] = solicitudId;
-      AppLogger.d('📩 Solicitud decodificada: $solicitudId');
 
       if (esServicioRechazado(solicitudId)) {
         AppLogger.d('ℹ️ Ignorando solicitud rechazada: $solicitudId');
@@ -1057,11 +1056,23 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       final existente = _solicitudesPorId[solicitudId];
       final esNueva = existente == null;
+      if (esNueva) {
+        AppLogger.d('📩 Nueva solicitud: $solicitudId');
+      }
       final overlayEstabaOculto =
           !esNueva && _overlayOcultoPorTtl.contains(solicitudId);
       _solicitudesPorId[solicitudId] = existente != null
           ? {...existente, ...solicitud}
           : solicitud;
+      ConductorSolicitudPayloadHelper.anclarExpiracionCola(
+        _solicitudesPorId[solicitudId]!,
+        anterior: existente,
+      );
+      if (ConductorSolicitudPayloadHelper.tieneExpiracionColaActiva(
+        _solicitudesPorId[solicitudId]!,
+      )) {
+        _iniciarTickerExpiracionUI();
+      }
 
       // Sync API también debe mostrar tarjeta en «Llegando» (no solo sonido + «En espera»).
       final enOverlay = mostrarEnOverlay || !fromSync || esNueva;
@@ -1226,10 +1237,20 @@ class ConductorHomeProvider extends ChangeNotifier {
     await ConductorNotificationSoundService.playNewServiceSound();
   }
 
+  /// Corta tono, voz y notificación full-screen de solicitud entrante.
+  Future<void> detenerAlertasSolicitudEntrante() async {
+    await Future.wait([
+      ConductorNotificationSoundService.stopNewServiceSound(),
+      VoiceAlertService.stop(),
+      IncomingServiceNotificationService.instance.dismiss(),
+    ]);
+  }
+
   // ==================== MANEJO DE SOLICITUDES ====================
 
   /// Quita una solicitud del mapa local (tomada por otro, cancelada, rechazo, etc.).
   void rechazarSolicitud(String solicitudId) {
+    unawaited(detenerAlertasSolicitudEntrante());
     AppLogger.d('❌ Quitando solicitud del mapa local: $solicitudId');
 
     final idsAEliminar = <String>{solicitudId};
@@ -1256,6 +1277,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     int idVehiculo, {
     double? precioOfertado,
   }) async {
+    unawaited(detenerAlertasSolicitudEntrante());
     try {
       _lastAcceptError = null;
       AppLogger.d('✅ Aceptando solicitud: $solicitudId');
@@ -1904,8 +1926,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _hayCuentaRegresivaActiva() {
     if (_expiracionPorSolicitud.isNotEmpty) return true;
     for (final s in _solicitudesPorId.values) {
-      final cola = ConductorSolicitudPayloadHelper.segundosRestantesCola(s);
-      if (cola != null && cola > 0) return true;
+      if (ConductorSolicitudPayloadHelper.tieneExpiracionColaActiva(s)) {
+        return true;
+      }
     }
     return false;
   }

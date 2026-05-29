@@ -545,6 +545,8 @@ class _HomeConductorState extends State<HomeConductor>
 
     AppLogger.d('👉 Intentando aceptar solicitud ID: $solicitudId');
 
+    unawaited(_provider.detenerAlertasSolicitudEntrante());
+
     // Obtener datos necesarios
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final conductorId = authProvider.user?.id;

@@ -35,6 +35,7 @@ class ActiveServiceScreen extends StatelessWidget {
         builder: (context, provider, _) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
           final isServiceActive = provider.isServiceActive;
+          final servicio = provider.servicio;
 
           return PopScope(
             canPop: !isServiceActive,
@@ -108,15 +109,15 @@ class ActiveServiceScreen extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  _buildEstadoCompacto(provider),
+                                  _buildEstadoCompacto(provider, servicio),
                                   if (servicio.conductor != null) ...[
                                     const SizedBox(height: 12),
-                                    _buildBarraConductor(context),
+                                    _buildBarraConductor(context, servicio),
                                   ],
                                   const SizedBox(height: 12),
-                                  _buildRutaUnificada(isDark, provider),
+                                  _buildRutaUnificada(isDark, servicio),
                                   const SizedBox(height: 10),
-                                  _buildViajeChips(isDark),
+                                  _buildViajeChips(isDark, servicio),
                                 ],
                               ),
                             ),
@@ -151,7 +152,10 @@ class ActiveServiceScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildEstadoCompacto(ActiveServiceProvider provider) {
+  Widget _buildEstadoCompacto(
+    ActiveServiceProvider provider,
+    ServicioActivo servicio,
+  ) {
     final color = provider.getStateColor();
 
     return Container(
@@ -192,7 +196,7 @@ class ActiveServiceScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBarraConductor(BuildContext context) {
+  Widget _buildBarraConductor(BuildContext context, ServicioActivo servicio) {
     final conductor = servicio.conductor!;
     final vehiculo = servicio.vehiculo;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -345,7 +349,7 @@ class ActiveServiceScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRutaUnificada(bool isDark, ActiveServiceProvider provider) {
+  Widget _buildRutaUnificada(bool isDark, ServicioActivo servicio) {
     final enCurso = servicio.idEstado == 5;
     final recogidaActiva = !enCurso;
 
@@ -500,7 +504,7 @@ class ActiveServiceScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildViajeChips(bool isDark) {
+  Widget _buildViajeChips(bool isDark, ServicioActivo servicio) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(

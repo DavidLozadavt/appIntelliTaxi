@@ -20,7 +20,6 @@ import 'package:intellitaxi/features/pasajero/services/repeat_trip_service.dart'
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/pasajero/widgets/driver_offer_card.dart';
-import 'package:intellitaxi/features/rides/presentation/active_service_screen.dart';
 import 'package:intellitaxi/features/pasajero/presentation/pasajero_esperando_conductor_screen.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 // import 'package:intellitaxi/features/pasajero/travel_assistant/travel_assistant_screen.dart';
@@ -30,6 +29,7 @@ import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/service_navigation_helper.dart';
+import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
@@ -371,40 +371,38 @@ class _HomePasajeroState extends State<HomePasajero>
     final servicio = await _activeServiceController.fetchActiveServiceIfAny();
     if (servicio == null || !mounted) return;
 
+    final raw = Map<String, dynamic>.from(servicio.toJson());
+    final datos = ServicioPayloadAdapter.normalize(
+      servicio: raw,
+      conductor: servicio.conductor != null
+          ? {
+              'id': servicio.conductor!.id,
+              'nombre': servicio.conductor!.nombre,
+              'telefono': servicio.conductor!.telefono,
+              'foto': servicio.conductor!.foto,
+              'calificacion': servicio.conductor!.calificacion,
+              'lat': servicio.conductor!.lat,
+              'lng': servicio.conductor!.lng,
+            }
+          : null,
+      vehiculo: servicio.vehiculo != null
+          ? {
+              'marca': servicio.vehiculo!.marca,
+              'modelo': servicio.vehiculo!.modelo,
+              'placa': servicio.vehiculo!.placa,
+              'color': servicio.vehiculo!.color,
+            }
+          : null,
+    );
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ActiveServiceScreen(
-          servicio: servicio,
-          onServiceCompleted: () async {
-            if (!mounted) return;
-            Navigator.of(context).pop();
-            await Future.delayed(const Duration(seconds: 2));
-            if (mounted) await _loadAvailableDrivers();
-          },
+        builder: (context) => PasajeroEsperandoConductorScreen(
+          servicioId: servicio.id,
+          datosServicio: datos,
         ),
       ),
-    );
-
-    _startServiceTracking(servicio.id);
-  }
-
-  void _startServiceTracking(int servicioId) {
-    _activeServiceController.startTracking(
-      servicioId: servicioId,
-      onUpdated: (servicio) {
-        if (!mounted) return;
-        AppLogger.d('🔄 Servicio actualizado: ${servicio.estado.estado}');
-      },
-      onCompleted: () {
-        if (!mounted) return;
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (!mounted) return;
-          Navigator.of(context).popUntil((route) => route.isFirst);
-          await Future.delayed(const Duration(seconds: 2));
-          if (mounted) await _loadAvailableDrivers();
-        });
-      },
     );
   }
 
@@ -450,16 +448,44 @@ class _HomePasajeroState extends State<HomePasajero>
 
   /// Recompone marcadores del mapa (conductores animados + ruta + resto).
   InfoWindow _userLocationInfoWindow() {
-    final title = _currentLocationArea ?? _currentLocationName;
-    final snippet = _currentLocationStreet ??
-        (_currentLocationAddress != title ? _currentLocationAddress : '');
-    return InfoWindow(title: title, snippet: snippet);
+    return InfoWindow(
+      title: _currentLocationName,
+      snippet: _currentLocationAddress != _currentLocationName
+          ? _currentLocationAddress
+          : '',
+    );
   }
 
-  String get _originPickupLabel {
+  String get _originPickupLabel => _currentLocationName;
+
+  /// Barrio como detalle secundario cuando la etiqueta principal es la calle.
+  String? get _pickupOriginDetail {
     final barrio = _currentLocationArea?.trim();
-    if (barrio != null && barrio.isNotEmpty) return 'Barrio: $barrio';
-    return _currentLocationStreet ?? _currentLocationName;
+    if (barrio == null || barrio.isEmpty) return null;
+    if (_currentLocationName.toLowerCase().contains(barrio.toLowerCase())) {
+      return null;
+    }
+    return barrio;
+  }
+
+  String _passengerOriginLabelFrom(CurrentLocationData data) {
+    final street = data.streetLine?.trim();
+    if (street != null && street.isNotEmpty) {
+      final line = SolicitudDisplayHelper.streetLineSinCiudad(street);
+      if (line.isNotEmpty) return line;
+    }
+    final addr = data.address.trim();
+    if (addr.isNotEmpty &&
+        addr != 'Ubicación actual' &&
+        addr != 'Mi ubicación actual') {
+      final compact = SolicitudDisplayHelper.routeAddressSubtitle(addr);
+      if (compact.isNotEmpty) return compact;
+      final first = addr.split(',').first.trim();
+      if (first.length >= 3) return first;
+    }
+    final name = data.name.trim();
+    if (name.isNotEmpty && name != 'Mi ubicación') return name;
+    return 'Mi ubicación';
   }
 
   String get _pickupDisplayLabel {
@@ -696,7 +722,7 @@ class _HomePasajeroState extends State<HomePasajero>
                   selectedDestinationArea: _selectedDestinationArea,
                   routeInfo: _routeInfo,
                   pickupDisplayLabel: _pickupDisplayLabel,
-                  pickupStreetDetail: _currentLocationStreet,
+                  pickupStreetDetail: _pickupOriginDetail,
                   originController: _originController,
                   destinationController: _destinationController,
                   destinationFocusNode: _destinationFocusNode,
@@ -795,7 +821,10 @@ class _HomePasajeroState extends State<HomePasajero>
       } else if (_hasDestination) {
         subtitle = 'Destino confirmado · Taxímetro';
       } else {
-        subtitle = 'Recogida en tu ubicación · Taxímetro';
+        final pickup = _currentLocationName;
+        subtitle = pickup != 'Mi ubicación'
+            ? 'Recogida en $pickup · Taxímetro'
+            : 'Recogida en tu ubicación · Taxímetro';
       }
       onPressed = isLoading ? null : _requestRide;
       color = _serviceType == 'taxi'
@@ -1043,12 +1072,16 @@ class _HomePasajeroState extends State<HomePasajero>
         );
       }
 
+      _setStateSafe(() {
+        _currentPosition = position;
+        _locationMessage = 'Obteniendo dirección...';
+      });
+
+      await _refineOriginAddress(position);
+
+      if (!mounted) return;
+
       _applyOriginFromGps(position, markReady: true);
-      unawaited(
-        Future.delayed(RuntimePerfFlags.originGeocodeDefer, () {
-          if (mounted) _refineOriginAddress(position);
-        }),
-      );
 
       if (_mapController != null) {
         _mapController!.animateCamera(
@@ -1095,7 +1128,8 @@ class _HomePasajeroState extends State<HomePasajero>
         address: _currentLocationAddress,
       );
 
-      if (_originController.text.trim().isEmpty) {
+      if (_originController.text.trim().isEmpty ||
+          _selectedOrigin?.isCurrentLocation == true) {
         _originController.removeListener(_onOriginChanged);
         _originController.text = _currentLocationName;
         _originController.addListener(_onOriginChanged);
@@ -1133,26 +1167,26 @@ class _HomePasajeroState extends State<HomePasajero>
         !SolicitudDisplayHelper.looksLikeStreetAddress(poiName);
 
     _setStateSafe(() {
-      _currentLocationName = usePoiName ? poiName : locationData.pickupLabel;
+      _currentLocationName = usePoiName
+          ? poiName
+          : _passengerOriginLabelFrom(locationData);
       _currentLocationArea = locationData.area;
       _currentLocationStreet = locationData.streetLine;
       _currentLocationAddress = nearby?.address.trim().isNotEmpty == true
           ? nearby!.address
           : locationData.address;
 
-      if (_selectedOrigin != null) {
-        _selectedOrigin = TripLocation(
-          placeId: nearby?.placeId,
-          name: _currentLocationName,
-          address: _currentLocationAddress,
-          lat: position.latitude,
-          lng: position.longitude,
-          isCurrentLocation: true,
-        );
-        _originController.removeListener(_onOriginChanged);
-        _originController.text = _originPickupLabel;
-        _originController.addListener(_onOriginChanged);
-      }
+      _selectedOrigin = TripLocation(
+        placeId: nearby?.placeId,
+        name: _currentLocationName,
+        address: _currentLocationAddress,
+        lat: position.latitude,
+        lng: position.longitude,
+        isCurrentLocation: true,
+      );
+      _originController.removeListener(_onOriginChanged);
+      _originController.text = _currentLocationName;
+      _originController.addListener(_onOriginChanged);
 
       _syncMarkersOnMap();
     });

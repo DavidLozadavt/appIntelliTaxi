@@ -218,6 +218,66 @@ class SolicitudDisplayHelper {
     return commas >= 2 || value.length > 55;
   }
 
+  /// Quita sufijo geográfico redundante (Popayán, Cauca, Colombia) y bloques `(…)`.
+  static String streetLineSinCiudad(String address) {
+    var s = address.trim();
+    if (s.isEmpty) return s;
+
+    s = s.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+
+    final parts = s
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (parts.length <= 1) return s;
+
+    final kept = <String>[];
+    for (var i = 0; i < parts.length; i++) {
+      if (i > 0 && _esSufijoGeografico(parts[i])) break;
+      kept.add(parts[i]);
+    }
+    return kept.isEmpty ? parts.first : kept.join(', ');
+  }
+
+  static bool _esSufijoGeografico(String part) {
+    final p = _normalizarGeoToken(part);
+    if (p.isEmpty) return false;
+    if (RegExp(r'^colo\b').hasMatch(p)) return true;
+    if (p.contains('popayan')) return true;
+    if (p == 'cauca' || p.endsWith(' cauca')) return true;
+    if (p.contains('colombia')) return true;
+    return false;
+  }
+
+  static String _normalizarGeoToken(String value) {
+    return value
+        .toLowerCase()
+        .trim()
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u');
+  }
+
+  static bool _esSoloGeografico(String line) {
+    final parts = line
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return true;
+    return parts.every(_esSufijoGeografico);
+  }
+
+  /// Subtítulo de calle en tarjetas / panel de viaje (sin Popayán, Cauca, Colombia).
+  static String routeAddressSubtitle(String address) {
+    final line = streetLineSinCiudad(address);
+    if (line.isEmpty || _esSoloGeografico(line)) return '';
+    return line;
+  }
+
   /// Calle/número (Carrera 38, Cl. 16 #17-11) — no usar como título si hay barrio.
   static bool looksLikeStreetAddress(String value) {
     final v = value.trim().toLowerCase();
@@ -399,7 +459,7 @@ class SolicitudDisplayHelper {
         !isPlaceholderPickup(addr) &&
         _normalizeCompare(addr) != _normalizeCompare(title) &&
         !_normalizeCompare(addr).startsWith(_normalizeCompare(title))) {
-      parts.add(addr.trim());
+      parts.add(routeAddressSubtitle(addr.trim()));
     }
     return parts.join(' · ');
   }
@@ -481,7 +541,7 @@ class SolicitudDisplayHelper {
     final addr = _pickupAddressRaw(n);
     if (addr == null || isPlaceholderPickup(addr)) return '';
     if (_normalizeCompare(addr) == _normalizeCompare(name)) return '';
-    return addr;
+    return routeAddressSubtitle(addr);
   }
 
   /// Nombre principal del destino (ej. "Casa Rosada - E.S.E. Popayán").
@@ -503,7 +563,7 @@ class SolicitudDisplayHelper {
     final addr = _destinationAddressRaw(n);
     if (addr == null || isPlaceholderDestino(addr)) return '';
     if (_normalizeCompare(addr) == _normalizeCompare(name)) return '';
-    return addr;
+    return routeAddressSubtitle(addr);
   }
 
   static String _normalizeCompare(String value) {

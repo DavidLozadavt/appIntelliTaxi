@@ -33,6 +33,12 @@ class VoiceAlertService {
     }
   }
 
+  static Future<void> stop() async {
+    try {
+      await _tts?.stop();
+    } catch (_) {}
+  }
+
   static Future<void> dispose() async {
     try {
       await _tts?.stop();

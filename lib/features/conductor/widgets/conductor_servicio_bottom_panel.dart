@@ -51,14 +51,18 @@ class ConductorServicioBottomPanel extends StatelessWidget {
 
     final etiquetaEstado = enCurso
         ? 'VIAJE EN CURSO'
-        : (llegue ? 'ESPERANDO PASAJERO' : 'IR A RECOGIDA');
+        : (llegue ? 'ESPERANDO PASAJERO' : null);
 
     final recogidaHeadline =
         SolicitudDisplayHelper.pickupHeadline(servicio);
     final destinoHeadline = SolicitudDisplayHelper.hasDestination(servicio)
         ? SolicitudDisplayHelper.destinationHeadline(servicio)
         : '';
-    final subtituloRecogida = SolicitudDisplayHelper.pickupSubtitle(servicio);
+    final detalleRecogida =
+        SolicitudDisplayHelper.pickupDetailForDriver(servicio);
+    final subtituloRecogida = detalleRecogida.trim().isNotEmpty
+        ? detalleRecogida
+        : SolicitudDisplayHelper.pickupSubtitle(servicio);
     final subtituloDestino =
         SolicitudDisplayHelper.destinationSubtitle(servicio);
 
@@ -217,41 +221,50 @@ class _AccionPrincipal {
 
 class _EstadoYOrigenBar extends StatelessWidget {
   const _EstadoYOrigenBar({
-    required this.etiquetaEstado,
+    this.etiquetaEstado,
     this.etiquetaOrigen,
     required this.esGestionadoPorIa,
     required this.soloDestino,
   });
 
-  final String etiquetaEstado;
+  final String? etiquetaEstado;
   final String? etiquetaOrigen;
   final bool esGestionadoPorIa;
   final bool soloDestino;
 
   @override
   Widget build(BuildContext context) {
+    final tieneEstado =
+        etiquetaEstado != null && etiquetaEstado!.trim().isNotEmpty;
+    final tieneOrigen =
+        etiquetaOrigen != null && etiquetaOrigen!.trim().isNotEmpty;
+    if (!tieneEstado && !tieneOrigen) {
+      return const SizedBox.shrink();
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: soloDestino ? AppColors.green : AppColors.accent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            etiquetaEstado,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
+        if (tieneEstado)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: soloDestino ? AppColors.green : AppColors.accent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              etiquetaEstado!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
-        ),
-        if (etiquetaOrigen != null && etiquetaOrigen!.isNotEmpty) ...[
-          const SizedBox(height: 6),
+        if (tieneOrigen) ...[
+          SizedBox(height: tieneEstado ? 6 : 0),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
@@ -278,7 +291,7 @@ class _EstadoYOrigenBar extends StatelessWidget {
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
-                    etiquetaOrigen!,
+                    etiquetaOrigen ?? '',
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -498,8 +511,8 @@ class _ContactoCard extends StatelessWidget {
               ),
             ),
           ],
-          if (tieneTelefono && !compacto) ...[
-            const SizedBox(height: 10),
+          if (tieneTelefono) ...[
+            SizedBox(height: compacto ? 8 : 10),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -507,30 +520,33 @@ class _ContactoCard extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: WhatsAppBrandIcon.brandGreen,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  minimumSize: Size(double.infinity, compacto ? 50 : 52),
+                  padding: EdgeInsets.symmetric(vertical: compacto ? 11 : 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                icon: const WhatsAppBrandIcon(size: 18, solid: false),
-                label: const Text(
+                icon: WhatsAppBrandIcon(size: compacto ? 20 : 18, solid: false),
+                label: Text(
                   'Escribir por WhatsApp',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    fontSize: 15,
+                    fontSize: compacto ? 16 : 15,
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Toca el número arriba para copiarlo',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey.shade600,
+            if (!compacto) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Toca el número arriba para copiarlo',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade600,
+                ),
               ),
-            ),
+            ],
           ],
         ],
       ),

@@ -90,7 +90,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     required this.servicioId,
     required this.datosServicio,
   }) {
-    _estadoServicio = PasajeroServicioMapper.estadoInicial(datosServicio);
+    _estadoServicio = PasajeroServicioMapper.resolverEstadoUi(datosServicio);
     _inicializar();
   }
 
@@ -481,7 +481,18 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
           estadoNormalizado = 'finalizado';
         }
         final eraBusqueda = isBuscando;
-        _estadoServicio = estadoNormalizado;
+        _estadoServicio = PasajeroServicioMapper.resolverEstadoUi({
+          ...datosServicio,
+          ...servicio,
+          if (conductorData != null) 'conductor': conductorData,
+          if (conductorId != null) 'conductor_id': conductorId,
+          'idEstado': idEstado,
+          'estado': estadoObj ?? estadoRaw,
+        });
+        if (estadoNormalizado == 'cancelado' ||
+            estadoNormalizado == 'finalizado') {
+          _estadoServicio = estadoNormalizado;
+        }
         if (eraBusqueda && !isBuscando) {
           _alSalirDeBusqueda();
         }
