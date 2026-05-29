@@ -477,6 +477,12 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
     }
 
+    final pos = _currentPosition;
+    if (pos != null) {
+      // Un heartbeat al entrar en viaje: backend marca ocupado y oculta en mapa flota.
+      unawaited(_sendMapHeartbeat(pos, force: true));
+    }
+
     if (!_isDisposed) notifyListeners();
   }
 
@@ -502,6 +508,12 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     if (_isOnline && !_enDescanso && !_suscritoAPusher) {
       await conectarPusher();
+    }
+
+    final pos = _currentPosition;
+    if (pos != null) {
+      // Re-sincroniza disponible en mapa flota; el viaje usó servicios/actualizar-ubicacion.
+      unawaited(_sendMapHeartbeat(pos, force: true));
     }
 
     if (!_isDisposed) notifyListeners();
@@ -1495,6 +1507,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     bool force = false,
   }) async {
     if (_isDisposed || !_isOnline || _turnoActivo == null) return;
+    // Durante servicio activo el tracking va por servicios/actualizar-ubicacion.
+    if (_enServicio && !force) return;
     if (_isSendingMapHeartbeat) return;
 
     final now = DateTime.now();
