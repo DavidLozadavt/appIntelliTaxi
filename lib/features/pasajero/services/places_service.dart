@@ -9,7 +9,7 @@ import 'package:uuid/uuid.dart';
 
 class PlacesService {
   static const String _baseUrl = 'https://maps.googleapis.com/maps/api';
-  static const Duration _cacheTtl = Duration(minutes: 10);
+  static const Duration _cacheTtl = Duration(minutes: 45);
   static const Duration _sessionTtl = Duration(minutes: 3);
   static const int _minAutocompleteChars = 2;
   static const Uuid _uuid = Uuid();

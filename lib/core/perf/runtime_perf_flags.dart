@@ -24,6 +24,13 @@ abstract final class RuntimePerfFlags {
   /// Retraso del reverse geocode tras el primer GPS (mapa primero).
   static const Duration originGeocodeDefer = Duration(seconds: 2);
 
+  /// «Tu zona» del conductor (calle/barrio en el chip) sigue siempre activo.
+  /// Solo limita cuántas veces se llama a Google por GPS; la etiqueta no se oculta.
+  static const double conductorZonaMinMoveMeters = 50;
+
+  /// Mismo orden de magnitud que antes (~50 s): al moverse o cada minuto.
+  static const Duration conductorZonaMinInterval = Duration(seconds: 55);
+
   /// Tiempo mínimo de marca en Splash (sin bloquear si la sesión tarda más).
   static const Duration splashMinDisplay = Duration(milliseconds: 550);
 

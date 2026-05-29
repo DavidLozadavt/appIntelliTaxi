@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/conductor/services/turno_service.dart';
@@ -8,6 +9,7 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_notification_sound_service.dart';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/services/voice_alert_service.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
@@ -1441,7 +1443,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _locationMessage = 'Ubicación obtenida';
       if (!_isDisposed) notifyListeners();
       _iniciarSeguimientoUbicacion();
-      _actualizarZonaActual(position, force: true);
+      await _actualizarZonaActual(position, force: true);
       await _requestNotificationPermissionAfterLocation();
 
       AppLogger.d(
@@ -1524,6 +1526,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
+  /// Chip «Tu zona: Cra. 20b» (primordial para el conductor). Nunca se desactiva;
+  /// el ahorro es caché + no repetir Geocoding en cada tick de GPS.
   Future<void> _actualizarZonaActual(
     Position position, {
     bool force = false,
@@ -1538,21 +1542,40 @@ class ConductorHomeProvider extends ChangeNotifier {
         position.longitude,
       );
       final elapsed = DateTime.now().difference(lastAt);
-      if (movedMeters < 45 && elapsed < const Duration(seconds: 50)) {
+      if (movedMeters < RuntimePerfFlags.conductorZonaMinMoveMeters &&
+          elapsed < RuntimePerfFlags.conductorZonaMinInterval) {
         return;
       }
+    }
+
+    var area = await _reverseGeocodingService.resolveZonaConductor(
+      lat: position.latitude,
+      lng: position.longitude,
+    );
+    if (area == null || area.trim().isEmpty) {
+      area = await _reverseGeocodingService.resolveAreaName(
+        lat: position.latitude,
+        lng: position.longitude,
+      );
+    }
+
+    if (area == null || area.trim().isEmpty) {
+      // Sin bloquear reintentos: si Google falló, el próximo GPS vuelve a intentar.
+      if (kDebugMode) {
+        AppLogger.w(
+          'Zona conductor vacía (revisar Geocoding API / facturación)',
+          tag: 'ZonaConductor',
+        );
+      }
+      return;
     }
 
     _lastAreaResolvedPosition = position;
     _lastAreaResolvedAt = DateTime.now();
 
-    final area = await _reverseGeocodingService.resolveZonaConductor(
-      lat: position.latitude,
-      lng: position.longitude,
-    );
-    if (area == null || area.isEmpty) return;
-    if (_zonaActual == area) return;
-    _zonaActual = area;
+    final label = area.trim();
+    if (_zonaActual == label) return;
+    _zonaActual = label;
     if (!_isDisposed) notifyListeners();
   }
 
@@ -1675,6 +1698,10 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       await _sendMapHeartbeat(position, force: true);
 
+      if (_zonaActual?.trim().isEmpty ?? true) {
+        await _actualizarZonaActual(position, force: true);
+      }
+
       if (!_isDisposed) notifyListeners();
 
       AppLogger.d(
@@ -1739,6 +1766,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       await _aplicarTurnoActivoLocal(turno);
       unawaited(_sendMapHeartbeat(position, force: true));
+      await _actualizarZonaActual(position, force: true);
       return true;
     } catch (e) {
       _lastTurnoError = e.toString().replaceAll('Exception: ', '').trim();
@@ -1762,6 +1790,10 @@ class ConductorHomeProvider extends ChangeNotifier {
     _visibleEnMapa = true;
     _sincronizarVehiculoSeleccionadoConTurno();
     await conectarPusher();
+    final pos = _currentPosition;
+    if (pos != null) {
+      unawaited(_actualizarZonaActual(pos, force: true));
+    }
     if (!_isDisposed) notifyListeners();
   }
 

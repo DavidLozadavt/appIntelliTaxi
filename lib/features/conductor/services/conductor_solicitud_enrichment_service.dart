@@ -148,10 +148,12 @@ class ConductorSolicitudEnrichmentService {
         final sinBarrio =
             solicitud['origen_barrio']?.toString().trim().isEmpty ?? true;
         if (forzarBarrio || sinBarrio) {
-          final barrio = await _reverseGeocoding.resolveAreaName(
-            lat: lat,
-            lng: lng,
-          );
+          final barrio = label.area?.trim().isNotEmpty == true
+              ? label.area!.trim()
+              : await _reverseGeocoding.resolveAreaName(
+                  lat: lat,
+                  lng: lng,
+                );
           if (barrio != null && barrio.isNotEmpty) {
             final compacto = SolicitudDisplayHelper.compactBarrio(barrio);
             if (forzarBarrio ||

@@ -298,7 +298,11 @@ class SolicitudDisplayHelper {
         v == _pickupPlaceholder.toLowerCase() ||
         v == 'origen no especificado' ||
         v == 'origen' ||
-        v == 'sin origen';
+        v == 'sin origen' ||
+        v == 'mi ubicación' ||
+        v == 'mi ubicacion' ||
+        v == 'ubicación actual' ||
+        v == 'ubicacion actual';
   }
 
   static bool isPlaceholderDestino(String value) {

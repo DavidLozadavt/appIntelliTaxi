@@ -14,8 +14,9 @@ class ReverseGeocodingService {
 
   static const String _baseUrl =
       'https://maps.googleapis.com/maps/api/geocode/json';
-  static const Duration _fetchCacheTtl = Duration(minutes: 20);
-  static const Duration _zonaLabelCacheTtl = Duration(minutes: 30);
+  static const Duration _fetchCacheTtl = Duration(hours: 6);
+  static const Duration _zonaLabelCacheTtl = Duration(hours: 4);
+  static const Duration _labelCacheTtl = Duration(hours: 6);
 
   final GeocodeMemoryCache _cache = GeocodeMemoryCache.instance;
   static final RegExp _plusCodeRegex = RegExp(
@@ -28,9 +29,15 @@ class ReverseGeocodingService {
     required double lng,
   }) async {
     final labelKey =
-        'area|${GeocodeMemoryCache.gridKey(lat, lng)}';
+        'area|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
     final cachedLabel = _cache.get<String>(labelKey);
     if (cachedLabel != null) return cachedLabel;
+
+    final fromCachedFetch = _areaFromCachedFetch(lat, lng);
+    if (fromCachedFetch != null) {
+      _cache.put(labelKey, fromCachedFetch, _zonaLabelCacheTtl);
+      return fromCachedFetch;
+    }
 
     final results = await _fetchGeocodeResults(lat: lat, lng: lng);
     if (results == null) return null;
@@ -61,7 +68,7 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
-    // Cuadrícula fina (~11 m): evita reutilizar «Cra. 20c» al estar en la 20b.
+    // Cuadrícula fina (~11 m) para calles distintas; caché evita repetir la API.
     final zonaKey = 'zona|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
     final cachedZona = _cache.get<String>(zonaKey);
     if (cachedZona != null) return cachedZona;
@@ -91,32 +98,12 @@ class ReverseGeocodingService {
       }
     }
 
-    final candidates = <String>{};
-
     final results = await _fetchGeocodeResults(
       lat: lat,
       lng: lng,
       logLabel: 'zona',
     );
-    if (results != null) {
-      if (kDebugMode) {
-        _logGeocodeRawResponse(lat: lat, lng: lng, results: results);
-      }
-      _collectZonaConductorBarrioCandidates(results, candidates);
-    }
-
-    final neighborhoodResults = await _fetchGeocodeResults(
-      lat: lat,
-      lng: lng,
-      resultType:
-          'neighborhood|sublocality|sublocality_level_1|sublocality_level_2|sublocality_level_3|administrative_area_level_3',
-      logLabel: 'neighborhood',
-    );
-    if (neighborhoodResults != null) {
-      _collectZonaConductorBarrioCandidates(neighborhoodResults, candidates);
-    }
-
-    if (candidates.isEmpty) {
+    if (results == null || results.isEmpty) {
       if (kDebugMode) {
         AppLogger.w(
           'Zona conductor: sin candidatos lat=$lat lng=$lng',
@@ -126,17 +113,68 @@ class ReverseGeocodingService {
       return null;
     }
 
-    final picked = _pickBestZonaConductorLabel(candidates);
     if (kDebugMode) {
-      _logZonaConductorPick(
+      _logGeocodeRawResponse(lat: lat, lng: lng, results: results);
+    }
+
+    final streetLine = _extractStreetLineFromResults(results);
+    if (streetLine != null && streetLine.trim().isNotEmpty) {
+      final compact = compactStreetLabelForZona(streetLine);
+      _cache.put(zonaKey, compact, _zonaLabelCacheTtl);
+      return compact;
+    }
+
+    final candidates = <String>{};
+    _collectZonaConductorBarrioCandidates(results, candidates);
+
+    if (candidates.isEmpty) {
+      final neighborhoodResults = await _fetchGeocodeResults(
         lat: lat,
         lng: lng,
-        candidates: candidates,
-        picked: picked,
+        resultType:
+            'neighborhood|sublocality|sublocality_level_1|sublocality_level_2|sublocality_level_3|administrative_area_level_3',
+        logLabel: 'neighborhood',
       );
+      if (neighborhoodResults != null) {
+        _collectZonaConductorBarrioCandidates(neighborhoodResults, candidates);
+      }
     }
-    if (picked != null) _cache.put(zonaKey, picked, _zonaLabelCacheTtl);
-    return picked;
+
+    if (candidates.isNotEmpty) {
+      final picked = _pickBestZonaConductorLabel(candidates);
+      if (kDebugMode) {
+        _logZonaConductorPick(
+          lat: lat,
+          lng: lng,
+          candidates: candidates,
+          picked: picked,
+        );
+      }
+      if (picked != null) {
+        _cache.put(zonaKey, picked, _zonaLabelCacheTtl);
+        return picked;
+      }
+    }
+
+    final formatted = _extractFormattedAddress(results);
+    if (formatted != null && formatted.trim().isNotEmpty) {
+      final first = formatted.split(',').first.trim();
+      if (first.length >= 3 && !_plusCodeRegex.hasMatch(first)) {
+        final label = _looksLikeStreetName(first)
+            ? compactStreetLabelForZona(first)
+            : first;
+        _cache.put(zonaKey, label, _zonaLabelCacheTtl);
+        return label;
+      }
+    }
+
+    final area = await resolveAreaName(lat: lat, lng: lng);
+    if (area != null && area.trim().isNotEmpty) {
+      _cache.put(zonaKey, area.trim(), _zonaLabelCacheTtl);
+      return area.trim();
+    }
+
+    return null;
   }
 
   /// Etiqueta corta para chip «Zona:» (ej. Carrera 20b → Cra. 20b).
@@ -512,6 +550,11 @@ class ReverseGeocodingService {
       address: 'Ubicación en mapa',
     );
 
+    final cacheKey =
+        'driver|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+    final cached = _getCachedLocationData(cacheKey);
+    if (cached != null) return cached;
+
     var results = await _fetchGeocodeResults(
       lat: lat,
       lng: lng,
@@ -525,7 +568,7 @@ class ReverseGeocodingService {
     final fullAddress = _extractFormattedAddress(results) ??
         results.first['formatted_address']?.toString();
     var area = _extractAreaFromResults(results);
-    area ??= await resolveAreaName(lat: lat, lng: lng);
+    area ??= _areaFromCachedFetch(lat, lng);
 
     final name = (streetLine != null && streetLine.trim().isNotEmpty)
         ? streetLine.trim()
@@ -533,7 +576,7 @@ class ReverseGeocodingService {
             ? placeNameFromAddressForDriver(fullAddress)
             : (area ?? fallback.name));
 
-    return CurrentLocationData(
+    final data = CurrentLocationData(
       name: name,
       address: fullAddress?.trim().isNotEmpty == true
           ? fullAddress!.trim()
@@ -541,6 +584,8 @@ class ReverseGeocodingService {
       area: area,
       streetLine: streetLine,
     );
+    _putCachedLocationData(cacheKey, data);
+    return data;
   }
 
   static String placeNameFromAddressForDriver(String value) {
@@ -564,6 +609,11 @@ class ReverseGeocodingService {
       name: 'Mi ubicación',
       address: 'Ubicación actual',
     );
+
+    final cacheKey =
+        'label|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+    final cached = _getCachedLocationData(cacheKey);
+    if (cached != null) return cached;
 
     final results = await _fetchGeocodeResults(lat: lat, lng: lng);
     if (results == null || results.isEmpty) return fallback;
@@ -605,11 +655,45 @@ class ReverseGeocodingService {
       displayName = 'Mi ubicación';
     }
 
-    return CurrentLocationData(
+    final data = CurrentLocationData(
       name: displayName,
       address: fullAddress ?? displayName,
       area: area,
       streetLine: streetLine,
+    );
+    _putCachedLocationData(cacheKey, data);
+    return data;
+  }
+
+  String? _areaFromCachedFetch(double lat, double lng) {
+    final fetchKey =
+        'fetch|${GeocodeMemoryCache.gridKey(lat, lng)}||default';
+    final cached = _cache.get<List<Map<String, dynamic>>>(fetchKey);
+    if (cached == null) return null;
+    return _extractAreaFromResults(cached);
+  }
+
+  CurrentLocationData? _getCachedLocationData(String key) {
+    final raw = _cache.get<Map<String, dynamic>>(key);
+    if (raw == null) return null;
+    return CurrentLocationData(
+      name: raw['name']?.toString() ?? '',
+      address: raw['address']?.toString() ?? '',
+      area: raw['area']?.toString(),
+      streetLine: raw['streetLine']?.toString(),
+    );
+  }
+
+  void _putCachedLocationData(String key, CurrentLocationData data) {
+    _cache.put<Map<String, dynamic>>(
+      key,
+      {
+        'name': data.name,
+        'address': data.address,
+        'area': data.area,
+        'streetLine': data.streetLine,
+      },
+      _labelCacheTtl,
     );
   }
 

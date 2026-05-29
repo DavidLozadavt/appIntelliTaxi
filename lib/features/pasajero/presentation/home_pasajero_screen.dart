@@ -32,6 +32,7 @@ import 'package:intellitaxi/core/services/service_navigation_helper.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
+import 'package:intellitaxi/core/services/geocode_memory_cache.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_active_service_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_nearby_drivers_controller.dart';
@@ -138,6 +139,7 @@ class _HomePasajeroState extends State<HomePasajero>
   String _currentLocationAddress = 'Mi ubicación actual';
   String? _currentLocationArea;
   String? _currentLocationStreet;
+  String? _lastOriginGeocodeGridKey;
   bool _prefsLoaded = false;
   List<TripLocation> _recentDestinations = [];
   bool _notificationPermissionRequestedInSession = false;
@@ -1149,11 +1151,16 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _refineOriginAddress(Position position) async {
-    final nearby = await _placesService.findNearestPlaceAt(
+    final gridKey = GeocodeMemoryCache.gridKey(
       position.latitude,
       position.longitude,
-      maxDistanceMeters: 100,
+      decimals: 3,
     );
+    if (_lastOriginGeocodeGridKey == gridKey &&
+        _currentLocationName != 'Mi ubicación' &&
+        _currentLocationAddress != 'Mi ubicación actual') {
+      return;
+    }
 
     final locationData = await _getAddressFromCoordinates(
       position.latitude,
@@ -1161,11 +1168,27 @@ class _HomePasajeroState extends State<HomePasajero>
     );
     if (!mounted) return;
 
+    final resolvedLabel = _passengerOriginLabelFrom(locationData);
+    final needsPoiLookup = resolvedLabel == 'Mi ubicación' ||
+        !SolicitudDisplayHelper.looksLikeStreetAddress(resolvedLabel);
+
+    PlaceResult? nearby;
+    if (needsPoiLookup) {
+      nearby = await _placesService.findNearestPlaceAt(
+        position.latitude,
+        position.longitude,
+        maxDistanceMeters: 100,
+      );
+    }
+
+    if (!mounted) return;
+
     final poiName = nearby?.name.trim();
     final usePoiName = poiName != null &&
         poiName.isNotEmpty &&
         !SolicitudDisplayHelper.looksLikeStreetAddress(poiName);
 
+    _lastOriginGeocodeGridKey = gridKey;
     _setStateSafe(() {
       _currentLocationName = usePoiName
           ? poiName

@@ -7,7 +7,7 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 
 class RoutesService {
   final PolylinePoints _polylinePoints = PolylinePoints();
-  static const Duration _routeCacheTtl = Duration(minutes: 5);
+  static const Duration _routeCacheTtl = Duration(minutes: 30);
   final Map<String, _RouteCacheEntry> _routeCache = {};
   final _RoutesMetrics _metrics = _RoutesMetrics();
 
