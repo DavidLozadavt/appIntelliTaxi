@@ -6,9 +6,42 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 /// Uso: En lugar de llamar GoogleFonts.poppinsTextTheme() cada vez,
 /// usa estos estilos pre-cacheados
 class OptimizedTextStyles {
+  static const String poppinsFamily = 'Poppins';
+
   // Cache estática de textTheme para evitar recrear
   static TextTheme? _cachedLightTextTheme;
   static TextTheme? _cachedDarkTextTheme;
+
+  /// Estilo Poppins desde assets (sin HTTP). Usar en splash y pantallas sueltas.
+  static TextStyle poppins({
+    Color? color,
+    double? fontSize,
+    FontWeight? fontWeight,
+    FontStyle? fontStyle,
+    double? letterSpacing,
+    List<Shadow>? shadows,
+  }) {
+    try {
+      return GoogleFonts.poppins(
+        color: color,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        fontStyle: fontStyle,
+        letterSpacing: letterSpacing,
+        shadows: shadows,
+      );
+    } catch (_) {
+      return TextStyle(
+        fontFamily: poppinsFamily,
+        color: color,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        fontStyle: fontStyle,
+        letterSpacing: letterSpacing,
+        shadows: shadows,
+      );
+    }
+  }
 
   static TextTheme _poppinsTextThemeOrFallback(TextTheme base) {
     try {
@@ -29,7 +62,11 @@ class OptimizedTextStyles {
     try {
       return GoogleFonts.poppins(fontSize: fontSize, fontWeight: fontWeight);
     } catch (_) {
-      return TextStyle(fontSize: fontSize, fontWeight: fontWeight);
+      return TextStyle(
+        fontFamily: poppinsFamily,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+      );
     }
   }
 

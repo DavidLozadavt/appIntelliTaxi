@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/main.dart';
@@ -269,7 +269,7 @@ class _SplashScreenState extends State<SplashScreen>
                 children: [
                   Text(
                     _displayedText,
-                    style: GoogleFonts.poppins(
+                    style: OptimizedTextStyles.poppins(
                       color: Colors.white,
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -361,7 +361,7 @@ class _SplashScreenState extends State<SplashScreen>
           opacity: _fadeAnimation,
           child: Text(
             "Cargando experiencia...",
-            style: GoogleFonts.poppins(
+            style: OptimizedTextStyles.poppins(
               color: Colors.grey,
               fontSize: 14,
               fontStyle: FontStyle.italic,

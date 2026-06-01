@@ -36,7 +36,8 @@ class ConductorSolicitudEnrichmentService {
             maxDistanceMeters: 110,
           )
           .timeout(const Duration(seconds: 4));
-    } on TimeoutException {
+    } catch (_) {
+      // Timeout/red: opcional; no debe llegar a Crashlytics.
       return false;
     }
     if (nearby == null || nearby.name.trim().isEmpty) return false;
