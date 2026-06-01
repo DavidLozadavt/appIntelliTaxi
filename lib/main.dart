@@ -45,7 +45,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:intellitaxi/core/config/app_performance_config.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
@@ -63,8 +63,7 @@ Future<void> main() async {
     () async {
       AppDiagnostics.phase('binding');
       WidgetsFlutterBinding.ensureInitialized();
-      // Poppins en assets/fonts: sin descarga HTTP (evita crash en splash sin red).
-      GoogleFonts.config.allowRuntimeFetching = false;
+      OptimizedTextStyles.warmUp();
 
       AppDiagnostics.phase('dotenv');
       await dotenv.load(fileName: ".env");
@@ -85,7 +84,6 @@ Future<void> main() async {
       AppDiagnostics.phase('runApp');
       runApp(const AppDiagnosticsScope(child: MyApp()));
 
-      unawaited(OptimizedTextStyles.precacheAllFonts());
       unawaited(RuntimeBootstrap.run());
     },
     (error, stackTrace) {
@@ -118,8 +116,8 @@ void overlayMain() {
 
 void _setupPerformanceOptimizations() {
   final imageCache = PaintingBinding.instance.imageCache;
-  imageCache.maximumSize = 120;
-  imageCache.maximumSizeBytes = 80 << 20; // 80MB
+  imageCache.maximumSize = AppPerformanceConfig.imageCacheMaxCount;
+  imageCache.maximumSizeBytes = AppPerformanceConfig.imageCacheMaxBytes;
 }
 
 class MyApp extends StatelessWidget {

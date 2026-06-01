@@ -31,6 +31,14 @@ abstract final class RuntimePerfFlags {
   /// Mismo orden de magnitud que antes (~50 s): al moverse o cada minuto.
   static const Duration conductorZonaMinInterval = Duration(seconds: 55);
 
+  /// Home conductor en línea (sin viaje): menos ticks GPS y menos rebuilds.
+  static const int conductorGpsDistanceFilterIdle = 12;
+  static const int conductorGpsDistanceFilterActive = 4;
+  static const Duration conductorGpsUiMinIntervalIdle = Duration(seconds: 2);
+  static const Duration conductorGpsUiMinIntervalNav = Duration(milliseconds: 450);
+  static const double conductorGpsUiMinMoveMetersIdle = 14;
+  static const double conductorGpsUiMinMoveMetersNav = 6;
+
   /// Tiempo mínimo de marca en Splash (sin bloquear si la sesión tarda más).
   static const Duration splashMinDisplay = Duration(milliseconds: 550);
 

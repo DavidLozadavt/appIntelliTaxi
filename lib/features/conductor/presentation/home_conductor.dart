@@ -28,6 +28,7 @@ import 'package:intellitaxi/features/conductor/widgets/conductor_servicios_esper
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -142,6 +143,7 @@ class _HomeConductorState extends State<HomeConductor>
     _validandoTurno = !_provider.tieneTurnoActivo;
     _provider.addNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     _provider.addListener(_syncKeepScreenOn);
+    _provider.addListener(_onProviderForNavigation);
     unawaited(KeepScreenOnService.loadPreference().then((_) {
       if (mounted) _syncKeepScreenOn();
     }));
@@ -308,6 +310,11 @@ class _HomeConductorState extends State<HomeConductor>
     return (puntos / 10).clamp(0.0, 1.0);
   }
 
+  void _onProviderForNavigation() {
+    if (!_modoNavegacionActivo) return;
+    _sincronizarCamaraNavegacion(_provider);
+  }
+
   void _syncKeepScreenOn() {
     if (!KeepScreenOnService.userEnabled) {
       unawaited(KeepScreenOnService.release('conductor_turno'));
@@ -323,6 +330,7 @@ class _HomeConductorState extends State<HomeConductor>
   @override
   void dispose() {
     _provider.removeListener(_syncKeepScreenOn);
+    _provider.removeListener(_onProviderForNavigation);
     unawaited(KeepScreenOnService.release('conductor_turno'));
     _provider.removeNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     WidgetsBinding.instance.removeObserver(this);
@@ -1452,70 +1460,79 @@ class _HomeConductorState extends State<HomeConductor>
     );
   }
 
+  Widget _buildMapLayer() {
+    return Selector<ConductorHomeProvider, _ConductorMapViewData>(
+      selector: (_, provider) => _ConductorMapViewData(
+        position: provider.currentPosition,
+        isLoadingLocation: provider.isLoadingLocation,
+        locationMessage: provider.locationMessage,
+        zonaActual: provider.zonaActual,
+      ),
+      shouldRebuild: (prev, next) => prev.shouldRebuildMap(next),
+      builder: (context, mapData, _) {
+        if (mapData.position == null) {
+          final provider = context.read<ConductorHomeProvider>();
+          return LocationStatusView(
+            isLoading: mapData.isLoadingLocation,
+            message: mapData.locationMessage,
+            onRetry: provider.handleLocationRecoveryAction,
+            actionLabel: provider.locationActionLabel,
+            actionIcon: provider.locationActionIcon,
+          );
+        }
+
+        final pos = mapData.position!;
+        final provider = context.read<ConductorHomeProvider>();
+        return RepaintBoundary(
+          child: StandardMap(
+            initialPosition: LatLng(pos.latitude, pos.longitude),
+            zoom: _zoomDetenido,
+            tilt: _tiltNavegacion,
+            bearing: _resolverBearing(pos, null),
+            myLocationEnabled: false,
+            myLocationButtonEnabled: false,
+            compassEnabled: false,
+            zoomControlsEnabled: false,
+            mapPadding: _paddingMapaNavegacion(provider),
+            markers: {
+              Marker(
+                markerId: const MarkerId('current_location'),
+                position: LatLng(pos.latitude, pos.longitude),
+                infoWindow: InfoWindow(
+                  title: 'Tu ubicación',
+                  snippet: mapData.zonaActual?.isNotEmpty == true
+                      ? mapData.zonaActual
+                      : 'Estás aquí',
+                ),
+                icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
+                anchor: const Offset(0.5, 0.5),
+                rotation: 0,
+              ),
+            },
+            onMapCreated: (controller) {
+              _mapController = controller;
+              unawaited(_reanudarNavegacionAhora(provider));
+            },
+            onCameraMoveStarted: () {
+              if (_moviendoCamaraProgramaticamente) return;
+              _pausarNavegacionTemporalmente();
+            },
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ConductorHomeProvider>(
       builder: (context, provider, child) {
-        _sincronizarCamaraNavegacion(provider);
         final mostrarTabsServicios = _panelServiciosVisible(provider);
         final compact = ConductorMapServiciosTabs.pantallaCompacta(context);
         return Stack(
+          fit: StackFit.expand,
           children: [
-            // Mapa de Google Maps
-            provider.currentPosition == null
-                ? LocationStatusView(
-                    isLoading: provider.isLoadingLocation,
-                    message: provider.locationMessage,
-                    onRetry: provider.handleLocationRecoveryAction,
-                    actionLabel: provider.locationActionLabel,
-                    actionIcon: provider.locationActionIcon,
-                  )
-                : RepaintBoundary(
-                    child: StandardMap(
-                      initialPosition: LatLng(
-                        provider.currentPosition!.latitude,
-                        provider.currentPosition!.longitude,
-                      ),
-                      zoom: _zoomDetenido,
-                      tilt: _tiltNavegacion,
-                      bearing: _resolverBearing(
-                        provider.currentPosition!,
-                        null,
-                      ),
-                      myLocationEnabled: false,
-                      myLocationButtonEnabled: false,
-                      compassEnabled: false,
-                      zoomControlsEnabled: false,
-                      mapPadding: _paddingMapaNavegacion(provider),
-                      markers: {
-                        Marker(
-                          markerId: const MarkerId('current_location'),
-                          position: LatLng(
-                            provider.currentPosition!.latitude,
-                            provider.currentPosition!.longitude,
-                          ),
-                          infoWindow: InfoWindow(
-                            title: 'Tu ubicación',
-                            snippet: provider.zonaActual?.isNotEmpty == true
-                                ? provider.zonaActual
-                                : 'Estás aquí',
-                          ),
-                          icon: _dotMarker ?? BitmapDescriptor.defaultMarker,
-                          anchor: const Offset(0.5, 0.5),
-                          rotation: 0,
-                        ),
-                      },
-                      onMapCreated: (controller) {
-                        _mapController = controller;
-                        unawaited(_reanudarNavegacionAhora(provider));
-                      },
-                      onCameraMoveStarted: () {
-                        if (_moviendoCamaraProgramaticamente) return;
-                        _pausarNavegacionTemporalmente();
-                      },
-                    ),
-                  ),
-
+            _buildMapLayer(),
             // Chip + TabBar compactos (no ocupan toda la pantalla)
             if (provider.currentPosition != null && mostrarTabsServicios)
               Positioned(
@@ -1716,10 +1733,40 @@ class _HomeConductorState extends State<HomeConductor>
                   ),
                 ),
               ),
-
           ],
         );
       },
     );
+  }
+}
+
+/// Datos mínimos para el mapa; evita rebuild por ticker de solicitudes / chip.
+class _ConductorMapViewData {
+  const _ConductorMapViewData({
+    required this.position,
+    required this.isLoadingLocation,
+    required this.locationMessage,
+    required this.zonaActual,
+  });
+
+  final Position? position;
+  final bool isLoadingLocation;
+  final String locationMessage;
+  final String? zonaActual;
+
+  bool shouldRebuildMap(_ConductorMapViewData other) {
+    if (isLoadingLocation != other.isLoadingLocation) return true;
+    if (locationMessage != other.locationMessage) return true;
+    if (zonaActual != other.zonaActual) return true;
+    final a = position;
+    final b = other.position;
+    if (a == null || b == null) return a != b;
+    final moved = Geolocator.distanceBetween(
+      a.latitude,
+      a.longitude,
+      b.latitude,
+      b.longitude,
+    );
+    return moved >= RuntimePerfFlags.conductorGpsUiMinMoveMetersNav;
   }
 }

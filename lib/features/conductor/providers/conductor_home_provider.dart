@@ -56,6 +56,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   StreamSubscription<Position>? _locationSubscription;
   Position? _lastAreaResolvedPosition;
   DateTime? _lastAreaResolvedAt;
+  DateTime? _lastLocationUiNotifyAt;
+  Position? _lastLocationUiNotifyPosition;
   DateTime? _lastMapHeartbeatAt;
   bool _isSendingMapHeartbeat = false;
   final ReverseGeocodingService _reverseGeocodingService =
@@ -504,6 +506,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       unawaited(_sendMapHeartbeat(pos, force: true));
     }
 
+    _reconfigurarSeguimientoUbicacion();
     if (!_isDisposed) notifyListeners();
   }
 
@@ -537,6 +540,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       unawaited(_sendMapHeartbeat(pos, force: true));
     }
 
+    _reconfigurarSeguimientoUbicacion();
     if (!_isDisposed) notifyListeners();
   }
 
@@ -1869,21 +1873,35 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
+  LocationSettings _locationStreamSettings() {
+    if (_enServicio) {
+      return const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: RuntimePerfFlags.conductorGpsDistanceFilterActive,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: RuntimePerfFlags.conductorGpsDistanceFilterIdle,
+    );
+  }
+
   void _iniciarSeguimientoUbicacion() {
     _detenerSeguimientoUbicacion();
 
-    _locationSubscription =
-        Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.bestForNavigation,
-            distanceFilter: 3,
-          ),
-        ).listen(
-          _onPositionUpdate,
-          onError: (Object e) {
-            AppLogger.d('⚠️ Error en stream de ubicación (home): $e');
-          },
-        );
+    _locationSubscription = Geolocator.getPositionStream(
+      locationSettings: _locationStreamSettings(),
+    ).listen(
+      _onPositionUpdate,
+      onError: (Object e) {
+        AppLogger.d('⚠️ Error en stream de ubicación (home): $e');
+      },
+    );
+  }
+
+  void _reconfigurarSeguimientoUbicacion() {
+    if (_locationSubscription == null) return;
+    _iniciarSeguimientoUbicacion();
   }
 
   void _detenerSeguimientoUbicacion() {
@@ -1895,7 +1913,41 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (_isDisposed) return;
     _currentPosition = position;
     unawaited(_sendMapHeartbeat(position));
-    notifyListeners();
+    _notifyLocationUiIfNeeded(position);
+  }
+
+  /// Evita rebuild del home en cada tick GPS; el mapa sigue fluido con intervalo corto.
+  void _notifyLocationUiIfNeeded(Position position) {
+    final now = DateTime.now();
+    final lastAt = _lastLocationUiNotifyAt;
+    final lastPos = _lastLocationUiNotifyPosition;
+
+    final minInterval = _enServicio
+        ? RuntimePerfFlags.conductorGpsUiMinIntervalNav
+        : RuntimePerfFlags.conductorGpsUiMinIntervalIdle;
+    final minMoveMeters = _enServicio
+        ? RuntimePerfFlags.conductorGpsUiMinMoveMetersNav
+        : RuntimePerfFlags.conductorGpsUiMinMoveMetersIdle;
+
+    var shouldNotify = lastAt == null || lastPos == null;
+    if (!shouldNotify) {
+      if (now.difference(lastAt) >= minInterval) {
+        shouldNotify = true;
+      } else {
+        final moved = Geolocator.distanceBetween(
+          lastPos.latitude,
+          lastPos.longitude,
+          position.latitude,
+          position.longitude,
+        );
+        shouldNotify = moved >= minMoveMeters;
+      }
+    }
+
+    if (!shouldNotify) return;
+    _lastLocationUiNotifyAt = now;
+    _lastLocationUiNotifyPosition = position;
+    if (!_isDisposed) notifyListeners();
   }
 
   Future<void> _sendMapHeartbeat(

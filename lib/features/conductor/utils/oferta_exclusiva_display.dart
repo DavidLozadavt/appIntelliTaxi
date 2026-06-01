@@ -22,6 +22,13 @@ class OfertaUbicacionVista {
     return titulo.trim().isNotEmpty &&
         !OfertaExclusivaDisplay._tituloVacio(titulo);
   }
+
+  /// Línea gris inferior sin repetir barrio ni título ya mostrados arriba.
+  String get direccionVisible => OfertaExclusivaDisplay.direccionSinDuplicar(
+        barrio: barrio,
+        titulo: titulo,
+        direccion: direccion,
+      );
 }
 
 abstract final class OfertaExclusivaDisplay {
@@ -75,7 +82,11 @@ abstract final class OfertaExclusivaDisplay {
     return OfertaUbicacionVista(
       barrio: barrio,
       titulo: titulo,
-      direccion: direccion,
+      direccion: direccionSinDuplicar(
+        barrio: barrio,
+        titulo: titulo,
+        direccion: direccion,
+      ),
     );
   }
 
@@ -125,8 +136,85 @@ abstract final class OfertaExclusivaDisplay {
     return OfertaUbicacionVista(
       barrio: barrio,
       titulo: titulo,
-      direccion: direccion,
+      direccion: direccionSinDuplicar(
+        barrio: barrio,
+        titulo: titulo,
+        direccion: direccion,
+      ),
     );
+  }
+
+  /// Quita barrio/título ya visibles en la tarjeta (evita «Comuna 7» dos veces).
+  static String direccionSinDuplicar({
+    String? barrio,
+    required String titulo,
+    required String direccion,
+  }) {
+    var d = direccion.trim();
+    if (d.isEmpty) return '';
+
+    final b = barrio?.trim() ?? '';
+    final t = titulo.trim();
+
+    if (_igualLugar(d, b) || _igualLugar(d, t)) return '';
+
+    if (t.isNotEmpty) d = _quitarSegmentos(d, t);
+    if (b.isNotEmpty) d = _quitarSegmentos(d, b);
+
+    d = d.replaceAll(RegExp(r'^[·,\s]+|[·,\s]+$'), '').trim();
+    if (d.isEmpty) return '';
+    if (_igualLugar(d, b) || _igualLugar(d, t)) return '';
+    if (b.isNotEmpty &&
+        t.isNotEmpty &&
+        (_igualLugar(d, '$t, $b') || _igualLugar(d, '$t · $b'))) {
+      return '';
+    }
+    if (b.isNotEmpty && t.isNotEmpty && _contieneLugar(d, b) && _contieneLugar(d, t)) {
+      return '';
+    }
+    return d;
+  }
+
+  static String _norm(String value) =>
+      value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  static bool _igualLugar(String a, String b) {
+    if (a.isEmpty || b.isEmpty) return false;
+    return _norm(a) == _norm(b);
+  }
+
+  static bool _contieneLugar(String haystack, String needle) {
+    final h = _norm(haystack);
+    final n = _norm(needle);
+    if (n.isEmpty) return false;
+    return h == n || h.contains(n);
+  }
+
+  static String _quitarSegmentos(String texto, String segmento) {
+    if (segmento.isEmpty) return texto;
+    final seg = segmento.trim();
+    var t = texto.trim();
+    if (_igualLugar(t, seg)) return '';
+
+    final partes = t
+        .split(RegExp(r'\s*[·,]\s*'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (partes.length > 1) {
+      final restantes = partes.where((p) => !_igualLugar(p, seg)).toList();
+      if (restantes.isEmpty) return '';
+      return restantes.join(' · ');
+    }
+
+    final lower = t.toLowerCase();
+    final segLower = seg.toLowerCase();
+    if (lower.startsWith('$segLower,')) {
+      t = t.substring(seg.length + 1).trim();
+    } else if (lower.endsWith(', $segLower')) {
+      t = t.substring(0, t.length - seg.length - 2).trim();
+    }
+    return _igualLugar(t, seg) ? '' : t;
   }
 
   /// Texto natural para TTS (oferta exclusiva conductor).

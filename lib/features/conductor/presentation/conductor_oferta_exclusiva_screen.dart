@@ -659,7 +659,7 @@ class _VistaOfertaIa extends StatelessWidget {
   Widget build(BuildContext context) {
     final barrio = recogida.barrio?.trim() ?? '';
     final calle = recogida.titulo.trim();
-    final direccion = recogida.direccion.trim();
+    final direccion = recogida.direccionVisible;
     final tituloPrincipal = cargandoDireccion
         ? '…'
         : barrio.isNotEmpty
@@ -905,7 +905,7 @@ class _BloqueDestinoIa extends StatelessWidget {
   Widget build(BuildContext context) {
     final barrio = destino.barrio?.trim() ?? '';
     final titulo = destino.titulo.trim();
-    final dir = destino.direccion.trim();
+    final dir = destino.direccionVisible;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1467,7 +1467,7 @@ class _ParadaRuta extends StatelessWidget {
   Widget build(BuildContext context) {
     final titulo = vista.titulo.trim();
     final barrio = vista.barrio?.trim() ?? '';
-    final direccion = vista.direccion.trim();
+    final direccion = vista.direccionVisible;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
