@@ -136,6 +136,14 @@ class ConductorMapServiciosTabs {
   static const double _listPadding = 12.0;
   static const double _refreshBarHeight = 34.0;
 
+  /// Evita `ArgumentError` de [num.clamp] cuando min > max (pantallas bajas).
+  static double _safeClamp(double value, double lower, double upper) {
+    if (lower > upper) return lower;
+    if (value < lower) return lower;
+    if (value > upper) return upper;
+    return value;
+  }
+
   static double _listPanelHeight(
     BuildContext context, {
     required bool conBarraRefresh,
@@ -143,6 +151,7 @@ class ConductorMapServiciosTabs {
     final n = visibleCardsTarget(context);
     final cardH = compactCardItemExtent(context);
     final refreshH = conBarraRefresh ? _refreshBarHeight : 0.0;
+    final minH = cardH * 2 + _listGap + _listPadding + refreshH;
     final desired =
         cardH * n + _listGap * (n - 1) + _listPadding + refreshH;
 
@@ -151,13 +160,10 @@ class ConductorMapServiciosTabs {
     // Espacio para chip+tabs, dock inferior y FABs.
     const reservedInferior = 188.0;
     const reservedSuperior = 118.0;
-    final maxH = (screenH - topPad - reservedSuperior - reservedInferior)
-        .clamp(cardH * 2 + _listGap + _listPadding + refreshH, screenH * 0.62);
+    final available = screenH - topPad - reservedSuperior - reservedInferior;
+    final maxH = _safeClamp(available, minH, screenH * 0.62);
 
-    return desired.clamp(
-      cardH * 2 + _listGap + _listPadding + refreshH,
-      maxH,
-    );
+    return _safeClamp(desired, minH, maxH);
   }
 
   static Widget _panelShell({

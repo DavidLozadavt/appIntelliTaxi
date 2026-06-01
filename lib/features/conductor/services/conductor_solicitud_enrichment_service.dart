@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 
 /// Completa nombre/dirección/barrio solo cuando faltan datos (evita Geocoding redundante).
@@ -26,13 +27,18 @@ class ConductorSolicitudEnrichmentService {
     final lng = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lng']);
     if (lat == null || lng == null) return false;
 
-    final nearby = await _placesService
-        .findNearestPlaceAt(
-          lat,
-          lng,
-          maxDistanceMeters: 110,
-        )
-        .timeout(const Duration(seconds: 4));
+    final PlaceResult? nearby;
+    try {
+      nearby = await _placesService
+          .findNearestPlaceAt(
+            lat,
+            lng,
+            maxDistanceMeters: 110,
+          )
+          .timeout(const Duration(seconds: 4));
+    } on TimeoutException {
+      return false;
+    }
     if (nearby == null || nearby.name.trim().isEmpty) return false;
 
     var changed = false;

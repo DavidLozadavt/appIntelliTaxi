@@ -61,15 +61,15 @@ class DriverOverlayService {
       return;
     }
 
-    if (state != AppLifecycleState.paused &&
-        state != AppLifecycleState.hidden) {
+    // Solo en `paused`: en `hidden` Android 12+ suele rechazar startForeground().
+    if (state != AppLifecycleState.paused) {
       return;
     }
 
     if (_isRequestingPermission) return;
 
     _showDebounce?.cancel();
-    _showDebounce = Timer(const Duration(milliseconds: 350), () {
+    _showDebounce = Timer(const Duration(milliseconds: 600), () {
       unawaited(_showForBackgroundIfNeeded(context));
     });
   }

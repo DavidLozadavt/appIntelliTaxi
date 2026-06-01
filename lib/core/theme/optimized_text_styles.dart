@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Configuración optimizada de Google Fonts
 /// Uso: En lugar de llamar GoogleFonts.poppinsTextTheme() cada vez,
@@ -9,9 +10,32 @@ class OptimizedTextStyles {
   static TextTheme? _cachedLightTextTheme;
   static TextTheme? _cachedDarkTextTheme;
 
+  static TextTheme _poppinsTextThemeOrFallback(TextTheme base) {
+    try {
+      return GoogleFonts.poppinsTextTheme(base);
+    } catch (e) {
+      AppLogger.d(
+        'Poppins no disponible (red/caché), usando tema del sistema: $e',
+        tag: 'Fonts',
+      );
+      return base;
+    }
+  }
+
+  static TextStyle _poppinsOrFallback({
+    required double fontSize,
+    required FontWeight fontWeight,
+  }) {
+    try {
+      return GoogleFonts.poppins(fontSize: fontSize, fontWeight: fontWeight);
+    } catch (_) {
+      return TextStyle(fontSize: fontSize, fontWeight: fontWeight);
+    }
+  }
+
   /// TextTheme para modo claro (cacheado)
   static TextTheme get lightTextTheme {
-    _cachedLightTextTheme ??= GoogleFonts.poppinsTextTheme(
+    _cachedLightTextTheme ??= _poppinsTextThemeOrFallback(
       ThemeData.light().textTheme,
     );
     return _cachedLightTextTheme!;
@@ -19,7 +43,7 @@ class OptimizedTextStyles {
 
   /// TextTheme para modo oscuro (cacheado)
   static TextTheme get darkTextTheme {
-    _cachedDarkTextTheme ??= GoogleFonts.poppinsTextTheme(
+    _cachedDarkTextTheme ??= _poppinsTextThemeOrFallback(
       ThemeData.dark().textTheme,
     );
     return _cachedDarkTextTheme!;
@@ -33,7 +57,7 @@ class OptimizedTextStyles {
   static TextStyle? _labelLarge;
 
   static TextStyle get headlineLarge {
-    _headlineLarge ??= GoogleFonts.poppins(
+    _headlineLarge ??= _poppinsOrFallback(
       fontSize: 32,
       fontWeight: FontWeight.bold,
     );
@@ -41,7 +65,7 @@ class OptimizedTextStyles {
   }
 
   static TextStyle get headlineMedium {
-    _headlineMedium ??= GoogleFonts.poppins(
+    _headlineMedium ??= _poppinsOrFallback(
       fontSize: 24,
       fontWeight: FontWeight.w600,
     );
@@ -49,7 +73,7 @@ class OptimizedTextStyles {
   }
 
   static TextStyle get bodyLarge {
-    _bodyLarge ??= GoogleFonts.poppins(
+    _bodyLarge ??= _poppinsOrFallback(
       fontSize: 16,
       fontWeight: FontWeight.normal,
     );
@@ -57,7 +81,7 @@ class OptimizedTextStyles {
   }
 
   static TextStyle get bodyMedium {
-    _bodyMedium ??= GoogleFonts.poppins(
+    _bodyMedium ??= _poppinsOrFallback(
       fontSize: 14,
       fontWeight: FontWeight.normal,
     );
@@ -65,7 +89,7 @@ class OptimizedTextStyles {
   }
 
   static TextStyle get labelLarge {
-    _labelLarge ??= GoogleFonts.poppins(
+    _labelLarge ??= _poppinsOrFallback(
       fontSize: 14,
       fontWeight: FontWeight.w500,
     );
@@ -85,13 +109,19 @@ class OptimizedTextStyles {
 
   /// Pre-cachea todos los estilos (llamar en main.dart)
   static Future<void> precacheAllFonts() async {
-    // Forzar la carga de los estilos
-    lightTextTheme;
-    darkTextTheme;
-    headlineLarge;
-    headlineMedium;
-    bodyLarge;
-    bodyMedium;
-    labelLarge;
+    try {
+      lightTextTheme;
+      darkTextTheme;
+      headlineLarge;
+      headlineMedium;
+      bodyLarge;
+      bodyMedium;
+      labelLarge;
+    } catch (e) {
+      AppLogger.d(
+        'precacheAllFonts omitido (sin red o fuente no disponible): $e',
+        tag: 'Fonts',
+      );
+    }
   }
 }

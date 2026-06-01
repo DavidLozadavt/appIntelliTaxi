@@ -45,7 +45,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
@@ -199,7 +198,7 @@ class MyApp extends StatelessWidget {
             theme: ThemeData(
               brightness: Brightness.light,
               useMaterial3: true,
-              textTheme: GoogleFonts.poppinsTextTheme(),
+              textTheme: OptimizedTextStyles.lightTextTheme,
               colorScheme: ColorScheme.fromSeed(
                 seedColor: AppColors.primary,
                 primary: AppColors.primary,
@@ -211,9 +210,7 @@ class MyApp extends StatelessWidget {
             darkTheme: ThemeData(
               brightness: Brightness.dark,
               useMaterial3: true,
-              textTheme: GoogleFonts.poppinsTextTheme(
-                ThemeData(brightness: Brightness.dark).textTheme,
-              ),
+              textTheme: OptimizedTextStyles.darkTextTheme,
               colorScheme: const ColorScheme.dark(
                 primary: AppColors.primaryDark,
                 secondary: AppColors.accent,

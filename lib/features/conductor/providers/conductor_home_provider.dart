@@ -1580,17 +1580,21 @@ class ConductorHomeProvider extends ChangeNotifier {
     required bool esNueva,
   }) async {
     try {
-      await _enriquecerPoiAntesDeAlerta(solicitudId)
-          .timeout(const Duration(seconds: 5));
+      try {
+        await _enriquecerPoiAntesDeAlerta(solicitudId)
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {
+        // Timeout o red: la tarjeta ya está visible con datos del API.
+      }
+      if (_isDisposed) return;
+      if (esNueva) {
+        await _enriquecerDireccionesSolicitud(solicitudId)
+            .timeout(const Duration(seconds: 8));
+      }
+      if (!_isDisposed) notifyListeners();
     } catch (_) {
-      // Timeout o red: la tarjeta ya está visible con datos del API.
+      // Timeout/red: no propagar a Crashlytics; la UI ya tiene datos del API.
     }
-    if (_isDisposed) return;
-    if (esNueva) {
-      await _enriquecerDireccionesSolicitud(solicitudId)
-          .timeout(const Duration(seconds: 8));
-    }
-    if (!_isDisposed) notifyListeners();
   }
 
   Future<void> _enriquecerPoiAntesDeAlerta(String solicitudId) async {
