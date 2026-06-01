@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
+import 'package:intellitaxi/main.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
@@ -181,7 +183,12 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted || _hasNavigated) return;
     _hasNavigated = true;
     _navigationWatchdogTimer?.cancel();
-    Navigator.pushReplacementNamed(context, '/home');
+    Navigator.pushReplacementNamed(context, '/home').then((_) {
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        unawaited(ConductorPendingFcm.flush(ctx));
+      }
+    });
   }
 
   void _navigateToLogin() {

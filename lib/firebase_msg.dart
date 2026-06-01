@@ -13,6 +13,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
+import 'package:intellitaxi/core/services/app_foreground_service.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:provider/provider.dart';
@@ -23,6 +25,7 @@ const _activeRoleKey = 'active_role';
 /// Solo alertas de cola para conductores — no cambios de estado del viaje.
 bool _isConductorIncomingServiceNotification(Map<String, dynamic> data) {
   final tipo = data['tipo']?.toString().toLowerCase() ?? '';
+  if (tipo.contains('oferta_servicio_exclusiva')) return true;
   if (tipo.contains('nueva_solicitud_servicio')) return true;
   if (tipo.contains('servicio_asignado')) return true;
   if (tipo.contains('nueva_solicitud') || tipo.contains('nueva-solicitud')) {
@@ -76,8 +79,9 @@ Future<void> _triggerConductorIncomingSync(Map<String, dynamic> data) async {
   try {
     final context = navigatorKey.currentContext;
     if (context == null || !context.mounted) return;
-    final home = context.read<ConductorHomeProvider>();
-    await home.procesarAlertaSolicitudEntrante(data);
+    await context.read<ConductorHomeProvider>().procesarAlertaSolicitudEntrante(
+      data,
+    );
   } catch (e) {
     AppLogger.d('⚠️ FCM sync conductor fallback: $e');
   }
@@ -129,8 +133,9 @@ Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
   }
   if (await _shouldShowConductorIncomingAlert(data)) {
     AppLogger.d('🚕 FCM → solicitud entrante (conductor)');
+    ConductorPendingFcm.enqueue(data);
+    unawaited(AppForegroundService.instance.launchNativeApp());
     unawaited(_triggerConductorIncomingSync(data));
-    IncomingServiceNotificationService.instance.bringAppToForeground();
     return;
   }
   if (_isServicioTripUpdateNotification(data)) {

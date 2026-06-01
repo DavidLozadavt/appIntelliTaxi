@@ -16,6 +16,8 @@ class TaxiPusherEvents {
 
   static const nuevaSolicitud = 'nueva-solicitud';
   static const servicioCercano = 'servicio.cercano';
+  static const ofertaServicioExclusiva = 'oferta.servicio.exclusiva';
+  static const ofertaServicioCerrada = 'oferta.servicio.cerrada';
   static const solicitudTomada = 'solicitud.tomada';
   static const servicioAceptado = 'servicio.aceptado';
   static const servicioEstadoCambiado = 'servicio.estado.cambiado';

@@ -17,20 +17,47 @@ class VoiceAlertService {
     _ready = true;
   }
 
-  static Future<void> announceNewService() async {
+  static String? _lastSpokenText;
+
+  static Future<void> speak(
+    String text, {
+    Duration minInterval = const Duration(seconds: 2),
+    bool force = false,
+  }) async {
+    final mensaje = text.trim();
+    if (mensaje.isEmpty) return;
+
     final now = DateTime.now();
-    if (_lastSpeakAt != null &&
-        now.difference(_lastSpeakAt!) < const Duration(seconds: 5)) {
+    if (!force &&
+        _lastSpokenText == mensaje &&
+        _lastSpeakAt != null &&
+        now.difference(_lastSpeakAt!) < minInterval) {
       return;
     }
 
     try {
       await _ensureReady();
+      await _tts!.stop();
       _lastSpeakAt = now;
-      await _tts!.speak('Nuevo servicio disponible');
+      _lastSpokenText = mensaje;
+      await _tts!.speak(mensaje);
     } catch (e) {
-      AppLogger.d('⚠️ No se pudo reproducir alerta de voz: $e');
+      AppLogger.d('⚠️ No se pudo reproducir TTS: $e');
     }
+  }
+
+  static Future<void> announceNewService() async {
+    await speak('Nuevo servicio disponible', minInterval: const Duration(seconds: 5));
+  }
+
+  /// Solo la dirección (barrio, calle…), sin frases extra. Una vez por oferta.
+  static Future<void> speakSoloDireccion(String texto) async {
+    final mensaje = texto.trim();
+    if (mensaje.isEmpty) return;
+    await speak(
+      mensaje,
+      minInterval: const Duration(seconds: 45),
+    );
   }
 
   static Future<void> stop() async {
@@ -45,6 +72,7 @@ class VoiceAlertService {
       _tts = null;
       _ready = false;
       _lastSpeakAt = null;
+      _lastSpokenText = null;
     } catch (_) {}
   }
 }

@@ -27,6 +27,7 @@ import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_servicios_espera_hint.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -208,6 +209,8 @@ class _HomeConductorState extends State<HomeConductor>
     await _provider.initialize();
     if (!mounted) return;
 
+    unawaited(ConductorPendingFcm.flush(context));
+
     _pendientesProvider.attachHome(_provider);
     unawaited(_pendientesProvider.refrescar(silencioso: true));
     _pendientesProvider.iniciarRefrescoPeriodico();
@@ -336,16 +339,13 @@ class _HomeConductorState extends State<HomeConductor>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_overlayService.hide());
-      if (_provider.currentPosition == null) {
-        unawaited(_provider.initializeLocation());
-      }
+      unawaited(_provider.refrescarUbicacionEnResume());
       if (!_provider.enServicio) {
         unawaited(_provider.sincronizarSolicitudesPublicadasConductor());
         unawaited(_pendientesProvider.refrescar(silencioso: true));
       }
-      // Al volver del background, recargar turno desde backend y forzar
-      // un heartbeat inmediato para evitar “parpadeo” a inactivo.
       unawaited(_provider.refrescarTurnoYHeartbeatEnResume());
+      unawaited(_provider.sincronizarOfertaActiva());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       if (!_overlayService.isRequestingPermission) {

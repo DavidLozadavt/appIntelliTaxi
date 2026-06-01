@@ -30,6 +30,10 @@ import 'package:intellitaxi/features/conductor/utils/conductor_session_helper.da
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_distance_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_ranking_helper.dart';
+import 'package:intellitaxi/features/conductor/data/conductor_oferta_exclusiva.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_oferta_indriver_helper.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_oferta_navigation.dart';
+import 'package:intellitaxi/main.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
@@ -101,6 +105,18 @@ class ConductorHomeProvider extends ChangeNotifier {
       _nuevaSolicitudListeners = [];
   final Set<int> _serviciosRechazados = {};
 
+  /// Oferta inDrive exclusiva (solo este conductor).
+  ConductorOfertaExclusiva? _ofertaExclusiva;
+  int _ofertaExclusivaSegundos = 0;
+  int _ofertaExclusivaTtlInicial = 45;
+  DateTime? _ofertaExclusivaExpiraEn;
+  Timer? _ofertaExclusivaPollTimer;
+  Timer? _ofertaExclusivaTickTimer;
+
+  /// Evita snackbar «otro conductor» cuando Pusher llega tras nuestra propia aceptación.
+  String? _servicioIdAceptacionPropia;
+  DateTime? _aceptacionPropiaEn;
+
   // Control de dispose
   bool _isDisposed = false;
 
@@ -135,6 +151,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   int? get servicioActivoId => _servicioActivoId;
   Map<String, dynamic>? get servicioActivoPendienteNavegacion =>
       _servicioActivoPendienteNavegacion;
+
+  ConductorOfertaExclusiva? get ofertaExclusiva => _ofertaExclusiva;
+  bool get tieneOfertaExclusivaActiva => _ofertaExclusiva != null;
+  int get ofertaExclusivaSegundosRestantes => _ofertaExclusivaSegundos;
+  int get ofertaExclusivaTtlInicial => _ofertaExclusivaTtlInicial;
 
   /// Datos listos para navegar a pantalla de viaje tras bootstrap/aceptar.
   void clearServicioActivoPendienteNavegacion() {
@@ -640,7 +661,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Tono de alerta solo para alta en «Llegando» (Pusher/FCM), no en «En espera» ni sync API.
-  void _dispararSonidoNuevaSolicitud(String solicitudId) {
+  void _dispararSonidoNuevaSolicitud(
+    String solicitudId, {
+    bool decirNuevoServicioEnVoz = true,
+  }) {
     if (_isDisposed || _enServicio || _enDescanso || !_isOnline) return;
 
     final prev = _sonidoEmitidoPorSolicitudId[solicitudId];
@@ -652,7 +676,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     _sonidoEmitidoPorSolicitudId[solicitudId] = DateTime.now();
 
     unawaited(_reproducirSonidoNotificacion());
-    unawaited(VoiceAlertService.announceNewService());
+    if (decirNuevoServicioEnVoz) {
+      unawaited(VoiceAlertService.announceNewService());
+    }
   }
 
   /// No borrar en sync si acaba de llegar por Pusher/FCM o sigue en «Llegando».
@@ -678,6 +704,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     _tickerExpiracionUI = null;
     _detenerSincronizacionSolicitudes();
     _detenerSeguimientoUbicacion();
+    _detenerPollOfertaActiva();
+    _detenerTickOfertaExclusiva();
     VoiceAlertService.dispose();
     desconectarPusher();
     super.dispose();
@@ -774,6 +802,32 @@ class ConductorHomeProvider extends ChangeNotifier {
             });
           }
 
+          for (final eventName in const [
+            TaxiPusherEvents.ofertaServicioExclusiva,
+            'oferta.servicio.exclusiva',
+          ]) {
+            final key = '$channel:$eventName';
+            _offerHandlerKeys.add(key);
+            PusherService.registerEventHandlerSecondary(key, (data) {
+              AppLogger.d('🔔 Oferta exclusiva inDrive: $eventName');
+              if (data != null) {
+                unawaited(_aplicarOfertaExclusivaDesdePayload(data));
+              }
+            });
+          }
+
+          for (final eventName in const [
+            TaxiPusherEvents.ofertaServicioCerrada,
+            'oferta.servicio.cerrada',
+          ]) {
+            final key = '$channel:$eventName';
+            _offerHandlerKeys.add(key);
+            PusherService.registerEventHandlerSecondary(key, (data) {
+              AppLogger.d('🔔 Oferta cerrada inDrive: $eventName');
+              if (data != null) _procesarOfertaCerrada(data);
+            });
+          }
+
           // Mismo merge que `solicitudes-servicio` (modo broadcast / backend legacy).
           for (final eventName in const [
             TaxiPusherEvents.nuevaSolicitud,
@@ -802,7 +856,9 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       _suscritoAPusher = true;
       _iniciarSincronizacionSolicitudes();
+      _iniciarPollOfertaActiva();
       unawaited(sincronizarSolicitudesPublicadasConductor());
+      unawaited(sincronizarOfertaActiva());
       AppLogger.d('✅ Suscrito correctamente al canal de solicitudes');
     } catch (e) {
       AppLogger.d('❌ Error al conectarse a Pusher: $e');
@@ -875,11 +931,19 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       for (final m in list) {
-        final sid = m['servicio_id'] ?? m['solicitud_id'] ?? m['id'];
+        final map = m is Map<String, dynamic>
+            ? m
+            : Map<String, dynamic>.from(m as Map);
+        final sid = map['servicio_id'] ?? map['solicitud_id'] ?? map['id'];
         if (sid != null) {
-          _recibidaPorRealtimeEn.remove(sid.toString());
+          final sidStr = sid.toString();
+          if (ConductorOfertaIndriverHelper.esFaseExclusiva(map) &&
+              _ofertaExclusiva?.solicitudId != sidStr) {
+            continue;
+          }
+          _recibidaPorRealtimeEn.remove(sidStr);
         }
-        _procesarNuevaSolicitud(m, fromSync: true);
+        _procesarNuevaSolicitud(map, fromSync: true);
       }
 
       _iniciarTickerExpiracionUI();
@@ -902,6 +966,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   Future<void> _desuscribirRecepcionServicios() async {
     _detenerSincronizacionSolicitudes();
+    _detenerPollOfertaActiva();
     for (final eventName in const [
       TaxiPusherEvents.nuevaSolicitud,
       'nueva_solicitud',
@@ -937,19 +1002,310 @@ class ConductorHomeProvider extends ChangeNotifier {
     await _desuscribirRecepcionServicios();
   }
 
+  void _marcarAceptacionPropiaEnCurso(String servicioId) {
+    _servicioIdAceptacionPropia = servicioId;
+    _aceptacionPropiaEn = DateTime.now();
+  }
+
+  void _limpiarMarcaAceptacionPropia() {
+    _servicioIdAceptacionPropia = null;
+    _aceptacionPropiaEn = null;
+  }
+
+  bool _esAceptacionPropiaReciente(String servicioId) {
+    if (_servicioIdAceptacionPropia != servicioId) return false;
+    final t = _aceptacionPropiaEn;
+    if (t == null) return false;
+    return DateTime.now().difference(t) < const Duration(seconds: 25);
+  }
+
+  Future<bool> _yoTomeServicioSegunPayload(
+    String servicioId,
+    Map<String, dynamic> raw,
+  ) async {
+    if (_esAceptacionPropiaReciente(servicioId)) return true;
+    final cid =
+        ConductorSolicitudPayloadHelper.conductorIdFromTomadaPayload(raw);
+    if (cid == null) return false;
+    final miId = await ConductorSessionHelper.obtenerIdPersonaConductor();
+    return miId != null && miId == cid;
+  }
+
   void _procesarSolicitudTomada(dynamic data) {
     try {
       final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
       final servicioId =
           ConductorSolicitudPayloadHelper.servicioIdFromTomadaPayload(raw);
       if (servicioId == null) return;
-      rechazarSolicitud(servicioId);
-      for (final listener in List.of(_solicitudTomadaListeners)) {
-        listener(servicioId);
-      }
+
+      unawaited(() async {
+        final yoLoTome = await _yoTomeServicioSegunPayload(servicioId, raw);
+        if (_isDisposed) return;
+
+        if (yoLoTome) {
+          if (_ofertaExclusiva?.solicitudId == servicioId) {
+            _limpiarOfertaExclusivaLocal(
+              cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
+            );
+          }
+          _limpiarMarcaAceptacionPropia();
+          return;
+        }
+
+        if (_ofertaExclusiva?.solicitudId == servicioId) {
+          _limpiarOfertaExclusivaLocal(
+            cerrarPantalla: true,
+            mensaje: 'Otro conductor tomó este servicio',
+          );
+        }
+        rechazarSolicitud(servicioId);
+        for (final listener in List.of(_solicitudTomadaListeners)) {
+          listener(servicioId);
+        }
+      }());
     } catch (e) {
       AppLogger.d('⚠️ Error procesando solicitud.tomada: $e');
     }
+  }
+
+  // ==================== OFERTA INDIRVE (EXCLUSIVA) ====================
+
+  void _iniciarPollOfertaActiva() {
+    _detenerPollOfertaActiva();
+    _ofertaExclusivaPollTimer = Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => unawaited(sincronizarOfertaActiva()),
+    );
+  }
+
+  void _detenerPollOfertaActiva() {
+    _ofertaExclusivaPollTimer?.cancel();
+    _ofertaExclusivaPollTimer = null;
+  }
+
+  void _detenerTickOfertaExclusiva() {
+    _ofertaExclusivaTickTimer?.cancel();
+    _ofertaExclusivaTickTimer = null;
+  }
+
+  void _iniciarTickOfertaExclusiva() {
+    if (_ofertaExclusivaTickTimer != null) return;
+    _ofertaExclusivaTickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_isDisposed || _ofertaExclusiva == null) {
+        _detenerTickOfertaExclusiva();
+        return;
+      }
+      final expira = _ofertaExclusivaExpiraEn;
+      if (expira == null) return;
+      _actualizarSegundosOfertaDesdeExpira(expira);
+      if (_ofertaExclusivaSegundos <= 0) {
+        _limpiarOfertaExclusivaLocal(
+          cerrarPantalla: true,
+          mensaje: 'El tiempo para responder terminó',
+        );
+        return;
+      }
+      if (!_isDisposed) notifyListeners();
+    });
+  }
+
+  void _actualizarSegundosOfertaDesdeExpira(DateTime expira) {
+    final rest = expira.difference(DateTime.now()).inSeconds;
+    _ofertaExclusivaSegundos = rest > 0 ? rest : 0;
+  }
+
+  DateTime? _parseExpiraOfertaExclusiva(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final parsed = DateTime.tryParse(raw.trim());
+    if (parsed == null) return null;
+    return parsed.isUtc ? parsed.toLocal() : parsed;
+  }
+
+  /// Fija [expiraEn] solo en oferta nueva o si el servidor acorta el plazo (nunca sube el contador).
+  void _fijarExpiraOfertaExclusiva({
+    required String solicitudId,
+    required ConductorOfertaExclusiva oferta,
+  }) {
+    final ttl = oferta.segundosRestantes ?? oferta.ttlSegundos ?? 45;
+    final expiraServidor = _parseExpiraOfertaExclusiva(oferta.expiraEn);
+    final candidataDesdePayload = expiraServidor ??
+        DateTime.now().add(Duration(seconds: ttl > 0 ? ttl : 45));
+
+    final esMismaOferta = _ofertaExclusivaExpiraEn != null &&
+        _ofertaExclusiva?.solicitudId == solicitudId;
+
+    if (esMismaOferta) {
+      if (expiraServidor != null &&
+          expiraServidor.isBefore(_ofertaExclusivaExpiraEn!)) {
+        _ofertaExclusivaExpiraEn = expiraServidor;
+      }
+    } else {
+      _ofertaExclusivaExpiraEn = candidataDesdePayload;
+      final rest =
+          _ofertaExclusivaExpiraEn!.difference(DateTime.now()).inSeconds;
+      _ofertaExclusivaTtlInicial = rest > 0 ? rest : (ttl > 0 ? ttl : 45);
+    }
+
+    if (_ofertaExclusivaExpiraEn != null) {
+      _actualizarSegundosOfertaDesdeExpira(_ofertaExclusivaExpiraEn!);
+    }
+  }
+
+  Future<void> sincronizarOfertaActiva() async {
+    if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
+    try {
+      final result = await _conductorService.getOfertaActiva();
+      if (result.tieneOferta && result.oferta != null) {
+        await _aplicarOfertaExclusivaDesdePayload(
+          result.oferta!,
+          abrirPantalla: !ConductorOfertaNavigation.pantallaVisible,
+        );
+      } else if (_ofertaExclusiva != null &&
+          !ConductorOfertaNavigation.pantallaVisible) {
+        _limpiarOfertaExclusivaLocal(cerrarPantalla: false);
+      }
+    } catch (e) {
+      AppLogger.d('⚠️ sincronizarOfertaActiva: $e');
+    }
+  }
+
+  Future<void> _aplicarOfertaExclusivaDesdePayload(
+    dynamic data, {
+    bool abrirPantalla = true,
+  }) async {
+    if (_isDisposed || _enServicio || _enDescanso) return;
+
+    final oferta = ConductorOfertaExclusiva.tryFromDynamic(data);
+    if (oferta == null) return;
+
+    final sid = oferta.solicitudId;
+    if (esServicioRechazado(sid)) return;
+
+    final esMismaOferta =
+        _ofertaExclusiva?.solicitudId == sid && _ofertaExclusivaExpiraEn != null;
+
+    _ofertaExclusiva = oferta;
+    _fijarExpiraOfertaExclusiva(solicitudId: sid, oferta: oferta);
+    _iniciarTickOfertaExclusiva();
+
+    final solicitud = ConductorSolicitudPayloadHelper.normalizarSolicitud(
+      oferta.toSolicitudMap(),
+      isDirectOffer: true,
+    );
+    solicitud['_local_id'] = sid;
+    solicitud['fase_oferta'] = 'exclusiva';
+    solicitud['oferta_exclusiva'] = true;
+    _solicitudesPorId[sid] = solicitud;
+    _overlayOcultoPorTtl.add(sid);
+
+    _marcarRecibidaPorRealtime(sid);
+    if (!esMismaOferta) {
+      // Oferta exclusiva: solo sonido; la dirección la dice TTS en la pantalla.
+      _dispararSonidoNuevaSolicitud(sid, decirNuevoServicioEnVoz: false);
+    }
+
+    final showAlert = await AppLifecycleHelper.shouldShowIncomingServiceAlert();
+    if (showAlert) {
+      await IncomingServiceNotificationService.instance.showIncomingService(
+        solicitud,
+      );
+    }
+
+    if (!_isDisposed) notifyListeners();
+
+    if (abrirPantalla && !ConductorOfertaNavigation.pantallaVisible) {
+      unawaited(ConductorOfertaNavigation.abrirOfertaExclusiva(oferta));
+    }
+
+    unawaited(_enriquecerDireccionesSolicitud(sid));
+  }
+
+  void _procesarOfertaCerrada(dynamic data) {
+    try {
+      final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+      final sid = raw['servicio_id']?.toString() ??
+          raw['solicitud_id']?.toString();
+      if (sid == null || sid.isEmpty) return;
+
+      final motivo = raw['motivo']?.toString().toLowerCase() ?? '';
+
+      unawaited(() async {
+        final yoLoTome = await _yoTomeServicioSegunPayload(sid, raw);
+        if (_isDisposed) return;
+
+        if (_ofertaExclusiva?.solicitudId == sid) {
+          if (yoLoTome) {
+            _limpiarOfertaExclusivaLocal(
+              cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
+            );
+          } else {
+            final mensaje = motivo == 'tomada_por_otro'
+                ? 'Otro conductor tomó este servicio'
+                : motivo == 'expirada'
+                    ? 'La oferta expiró'
+                    : 'La oferta ya no está disponible';
+            _limpiarOfertaExclusivaLocal(
+              cerrarPantalla: true,
+              mensaje: mensaje,
+            );
+          }
+        }
+
+        if (!yoLoTome &&
+            (motivo == 'tomada_por_otro' || motivo == 'expirada')) {
+          rechazarSolicitud(sid);
+        }
+        if (yoLoTome) {
+          _limpiarMarcaAceptacionPropia();
+        }
+      }());
+    } catch (e) {
+      AppLogger.d('⚠️ Error procesando oferta.cerrada: $e');
+    }
+  }
+
+  void _limpiarOfertaExclusivaLocal({
+    required bool cerrarPantalla,
+    String? mensaje,
+  }) {
+    _ofertaExclusiva = null;
+    _ofertaExclusivaSegundos = 0;
+    _ofertaExclusivaTtlInicial = 45;
+    _ofertaExclusivaExpiraEn = null;
+    _detenerTickOfertaExclusiva();
+    if (cerrarPantalla) {
+      ConductorOfertaNavigation.cerrarSiVisible(mensaje: mensaje);
+    } else if (mensaje != null && mensaje.trim().isNotEmpty) {
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text(mensaje), duration: const Duration(seconds: 3)),
+        );
+      }
+    }
+    if (!_isDisposed) notifyListeners();
+  }
+
+  Future<bool> rechazarOfertaExclusiva() async {
+    final oferta = _ofertaExclusiva;
+    if (oferta == null) return false;
+    final ok = await rechazarSolicitudParaConductor(oferta.solicitudId);
+    _limpiarOfertaExclusivaLocal(cerrarPantalla: false);
+    return ok;
+  }
+
+  Future<Map<String, dynamic>?> aceptarOfertaExclusiva({
+    required int vehiculoId,
+  }) async {
+    final oferta = _ofertaExclusiva;
+    if (oferta == null) return null;
+    final response = await aceptarSolicitud(
+      oferta.solicitudId,
+      vehiculoId,
+      precioOfertado: oferta.precioEstimado,
+    );
+    _limpiarOfertaExclusivaLocal(cerrarPantalla: false);
+    return response;
   }
 
   void _notificarNuevaSolicitudExterna(Map<String, dynamic> solicitud) {
@@ -1008,6 +1364,15 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (_isDisposed || _enServicio || _enDescanso) return;
 
     final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+    final tipo = raw['tipo']?.toString().toLowerCase() ?? '';
+    if (tipo.contains('oferta_servicio_exclusiva') ||
+        raw['fullscreen'] == true ||
+        raw['fullscreen'] == 1 ||
+        raw['fullscreen'] == '1') {
+      await _aplicarOfertaExclusivaDesdePayload(raw);
+      return;
+    }
+
     final servicioId =
         ConductorSolicitudPayloadHelper.servicioIdFromAlertaPayload(raw);
 
@@ -1045,6 +1410,28 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     try {
       final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+
+      if (ConductorOfertaExclusiva.tryFromDynamic(raw) != null && !fromSync) {
+        unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
+        return;
+      }
+
+      if (!isDirectOffer &&
+          ConductorOfertaIndriverHelper.ignorarNuevaSolicitudPublica(
+            raw,
+            tengoOfertaExclusivaActiva: _ofertaExclusiva != null,
+            miOfertaExclusivaServicioId: _ofertaExclusiva?.servicioId,
+          )) {
+        AppLogger.d(
+          'ℹ️ Ignorando nueva-solicitud (fase exclusiva / oferta activa para otro)',
+        );
+        return;
+      }
+
+      if (ConductorOfertaIndriverHelper.esFaseExclusiva(raw) && !isDirectOffer) {
+        AppLogger.d('ℹ️ Ignorando solicitud en fase exclusiva (canal público)');
+        return;
+      }
       if (_esServicioRechazadoEnPayload(raw)) {
         AppLogger.d('ℹ️ Ignorando solicitud: rechazada por este conductor');
         return;
@@ -1293,6 +1680,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     double? precioOfertado,
   }) async {
     unawaited(detenerAlertasSolicitudEntrante());
+    _marcarAceptacionPropiaEnCurso(solicitudId);
     try {
       _lastAcceptError = null;
       AppLogger.d('✅ Aceptando solicitud: $solicitudId');
@@ -1343,12 +1731,14 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return response;
     } on TaxiEnServicioException catch (e) {
+      _limpiarMarcaAceptacionPropia();
       _lastAcceptError = e.message;
       if (e.servicioActivoId != null) {
         await marcarEnServicio(servicioId: e.servicioActivoId!);
       }
       return null;
     } catch (e) {
+      _limpiarMarcaAceptacionPropia();
       _lastAcceptError = e.toString().replaceAll('Exception: ', '');
       AppLogger.d('❌ Error aceptando solicitud: $e');
       // Si hubo conflicto (otro conductor aceptó), retirar de la cola local.
@@ -1439,8 +1829,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Obtiene la ubicación actual del conductor
   Future<void> _getCurrentLocation() async {
     try {
-      _locationMessage = 'Obteniendo ubicación GPS...';
-      if (!_isDisposed) notifyListeners();
+      if (_currentPosition == null) {
+        _locationMessage = 'Obteniendo ubicación GPS...';
+        if (!_isDisposed) notifyListeners();
+      }
 
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -1661,6 +2053,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Carga el turno actual del conductor
   Future<void> cargarTurnoActual() async {
+    final teniaTurnoLocal = _turnoActivo != null;
     try {
       final turno = await _conductorService.getTurnoActivo();
 
@@ -1668,41 +2061,61 @@ class ConductorHomeProvider extends ChangeNotifier {
         '🔄 cargarTurnoActual: encontrado=${turno?.id ?? 'null'}',
       );
       if (turno != null) {
-        _turnoActivo = turno;
-        _isOnline = true;
-        _sincronizarVehiculoSeleccionadoConTurno();
-
-        // Guardar datos del turno en SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setInt('turno_activo_id', turno.id);
-        await prefs.setInt('turno_vehiculo_id', turno.idVehiculo);
-        await prefs.setString('turno_fecha', turno.fechaTurno);
-        await prefs.setString('turno_hora_inicio', turno.horaInicio);
-
-        await _sincronizarModoDescansoDesdeBackend();
-        if (_enDescanso) {
-          await _desuscribirRecepcionServicios();
-          await _suscribirEmergenciasFlota();
-          _limpiarColaSolicitudesLocal();
-        } else {
-          await conectarPusher();
-        }
-
+        await _aplicarTurnoActivoLocal(turno);
         if (!_isDisposed) notifyListeners();
-      } else if (_turnoActivo != null || _isOnline) {
+      } else if (teniaTurnoLocal || _isOnline) {
         AppLogger.d(
           'ℹ️ Sin turno en servidor; limpiando cache local (id=${_turnoActivo?.id})',
         );
         await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
       }
     } catch (e) {
-      AppLogger.d('❌ Error cargando turno: $e');
+      AppLogger.d('⚠️ cargarTurnoActual falló (red/servidor), se conserva turno local: $e');
+      await _restaurarTurnoTrasFalloDeRed();
     }
   }
 
-  /// Re-sincroniza estado de turno y manda un heartbeat inmediato al volver
-  /// al foreground. Esto ayuda a detectar si el backend cierra el turno
-  /// mientras la app estuvo en background.
+  Future<void> _restaurarTurnoTrasFalloDeRed() async {
+    if (_turnoActivo != null) {
+      _isOnline = true;
+      if (!_enDescanso && !_suscritoAPusher) {
+        unawaited(conectarPusher());
+      }
+      if (!_isDisposed) notifyListeners();
+      return;
+    }
+    final ok = await restaurarTurnoDesdeCache();
+    if (ok && !_enDescanso) {
+      unawaited(conectarPusher());
+    }
+  }
+
+  /// Al volver a la app: restaura GPS con última posición conocida para no vaciar el mapa.
+  Future<void> refrescarUbicacionEnResume() async {
+    if (_isDisposed) return;
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) {
+        _currentPosition = last;
+        _isLoadingLocation = false;
+        _locationMessage = 'Ubicación obtenida';
+        if (_locationSubscription == null) {
+          _iniciarSeguimientoUbicacion();
+        }
+        if (!_isDisposed) notifyListeners();
+        unawaited(_sendMapHeartbeat(last, force: true));
+        return;
+      }
+    } catch (e) {
+      AppLogger.d('⚠️ getLastKnownPosition en resume: $e');
+    }
+
+    if (_currentPosition == null) {
+      await initializeLocation();
+    }
+  }
+
+  /// Re-sincroniza turno y heartbeat al volver al foreground (sin borrar turno si falla la red).
   Future<void> refrescarTurnoYHeartbeatEnResume() async {
     if (_isDisposed) return;
     if (_enServicio) return;
@@ -1712,27 +2125,38 @@ class ConductorHomeProvider extends ChangeNotifier {
         '🔄 [Resume] estado antes: isOnline=$_isOnline turno=${_turnoActivo?.id} enDescanso=$_enDescanso',
       );
 
+      if (_turnoActivo == null) {
+        await restaurarTurnoDesdeCache();
+      }
+
       await cargarTurnoActual();
 
       if (_turnoActivo == null || !_isOnline) {
-        // No hay turno activo; nada que hacer.
         return;
       }
 
-      // En caso de que el stream de ubicación haya pausado, pedimos una
-      // posición puntual para enviar el heartbeat.
       Position? position = _currentPosition;
       if (position == null) {
-        position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 6),
-          ),
-        );
-        _currentPosition = position;
+        try {
+          position = await Geolocator.getLastKnownPosition();
+        } catch (_) {}
       }
-
-      await _sendMapHeartbeat(position, force: true);
+      if (position == null) {
+        try {
+          position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 6),
+            ),
+          );
+        } catch (e) {
+          AppLogger.d('⚠️ [Resume] sin GPS puntual: $e');
+        }
+      }
+      if (position != null) {
+        _currentPosition = position;
+        await _sendMapHeartbeat(position, force: true);
+      }
 
       if (!_isDisposed) notifyListeners();
 
@@ -1741,6 +2165,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
     } catch (e) {
       AppLogger.d('⚠️ [Resume] Error refrescando turno/heartbeat: $e');
+      await _restaurarTurnoTrasFalloDeRed();
     }
   }
 

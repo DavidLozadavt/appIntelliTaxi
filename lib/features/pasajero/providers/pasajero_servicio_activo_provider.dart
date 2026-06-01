@@ -47,6 +47,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   Timer? _refreshTimer;
   Timer? _nearbyDriversTimer;
   bool _isFetchingService = false;
+  bool _disposed = false;
   static final Map<int, LatLng> _lastConductorLocationCache = {};
 
   // ===== GETTERS =====
@@ -92,6 +93,11 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   }) {
     _estadoServicio = PasajeroServicioMapper.resolverEstadoUi(datosServicio);
     _inicializar();
+  }
+
+  void _notifyListenersSafe() {
+    if (_disposed) return;
+    notifyListeners();
   }
 
   /// 🚀 Inicializa el provider
@@ -238,7 +244,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     AppLogger.d(
       '✅ PROVIDER: Marcadores creados: ${_markers.length} marcadores',
     );
-    notifyListeners();
+    _notifyListenersSafe();
   }
 
   /// ⏱️ Inicia el temporizador de timeout
@@ -246,22 +252,27 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _elapsedSeconds = 0;
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_disposed) {
+        timer.cancel();
+        return;
+      }
       if (isBuscando) {
         _elapsedSeconds++;
-        notifyListeners();
+        _notifyListenersSafe();
       } else {
         timer.cancel();
       }
     });
 
     _timeoutTimer = Timer(Duration(seconds: _maxWaitingSeconds), () {
+      if (_disposed) return;
       if (isBuscando) {
         AppLogger.d(
           '⏰ TIMEOUT: No se encontró conductor en $_maxWaitingSeconds segundos',
         );
         // La UI escuchará este cambio y mostrará el diálogo
         _estadoServicio = 'timeout';
-        notifyListeners();
+        _notifyListenersSafe();
       }
     });
 
@@ -280,6 +291,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   void _iniciarRefreshUbicacion() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (_disposed) return;
       if (_estadoServicio == 'finalizado' || _estadoServicio == 'cancelado') {
         return;
       }
@@ -292,7 +304,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     unawaited(_actualizarConductoresCercanos());
     _nearbyDriversTimer = Timer.periodic(
       const Duration(seconds: 12),
-      (_) => _actualizarConductoresCercanos(),
+      (_) {
+        if (_disposed) return;
+        _actualizarConductoresCercanos();
+      },
     );
   }
 
@@ -304,12 +319,12 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   }
 
   Future<void> _actualizarConductoresCercanos() async {
-    if (!isBuscando || _isFetchingService) return;
+    if (_disposed || !isBuscando || _isFetchingService) return;
     final origen = PasajeroServicioMapper.origen(datosServicio);
     if (origen.latitude == 0.0 && origen.longitude == 0.0) return;
 
     _cargandoConductoresCercanos = true;
-    notifyListeners();
+    _notifyListenersSafe();
 
     try {
       final list = await _conductoresService.getConductoresDisponibles(
@@ -348,13 +363,13 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       AppLogger.d('⚠️ Error cargando conductores cercanos: $e');
     } finally {
       _cargandoConductoresCercanos = false;
-      notifyListeners();
+      _notifyListenersSafe();
     }
   }
 
   void _alSalirDeBusqueda() {
     _detenerRefreshConductoresCercanos();
-    notifyListeners();
+    _notifyListenersSafe();
   }
 
   /// 🔌 Suscribe a eventos de Pusher
@@ -364,6 +379,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _pusherService.suscribirServicio(
       servicioId: servicioId,
       onServicioAceptado: (data) {
+        if (_disposed) return;
         AppLogger.d('🎉 Servicio aceptado - Data: ${data.keys}');
         _cancelarTimeout();
         _alSalirDeBusqueda();
@@ -380,9 +396,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         }
         _estadoServicio = 'aceptado';
         _actualizarMarcadores();
-        notifyListeners();
+        _notifyListenersSafe();
       },
       onUbicacionActualizada: (data) {
+        if (_disposed) return;
         AppLogger.d('📍 Ubicación actualizada: $data');
         final lat = data['conductor_lat'] ?? data['lat'];
         final lng = data['conductor_lng'] ?? data['lng'];
@@ -399,10 +416,11 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             _obtenerInfoServicio();
           }
           _actualizarMarcadores();
-          notifyListeners();
+          _notifyListenersSafe();
         }
       },
       onEstadoCambiado: (data) {
+        if (_disposed) return;
         AppLogger.d('🔄 Estado cambiado: ${data['estado']}');
         final eraBusqueda = isBuscando;
         _estadoServicio = PasajeroServicioMapper.normalizeEstado(
@@ -412,7 +430,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
           _alSalirDeBusqueda();
         }
         _dibujarRuta();
-        notifyListeners();
+        _notifyListenersSafe();
       },
     );
   }
@@ -427,7 +445,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// 📡 Obtiene información del servicio desde la API
   Future<void> _obtenerInfoServicio() async {
-    if (_isFetchingService) return;
+    if (_disposed || _isFetchingService) return;
     _isFetchingService = true;
     try {
       final dio = DioClient.getInstance();
@@ -525,10 +543,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             await _restaurarUbicacionConductorPersistida();
           }
 
-          notifyListeners();
+          _notifyListenersSafe();
         } else {
           // Sin conductor pero el estado pudo pasar a cancelado/finalizado (p. ej. tras cancelar en otro cliente).
-          notifyListeners();
+          _notifyListenersSafe();
         }
       }
     } catch (e) {
@@ -562,11 +580,12 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     );
 
     _dibujarRuta();
-    notifyListeners();
+    _notifyListenersSafe();
   }
 
   /// 🛣️ Dibuja la ruta en el mapa
   Future<void> _dibujarRuta() async {
+    if (_disposed) return;
     final origen = PasajeroServicioMapper.origen(datosServicio);
     final destino = PasajeroServicioMapper.destino(datosServicio);
     if (destino == null) return;
@@ -614,7 +633,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         );
       }
 
-      notifyListeners();
+      _notifyListenersSafe();
       AppLogger.d('✅ PROVIDER: Polylines dibujadas');
     } catch (e) {
       AppLogger.d('❌ Error dibujando rutas: $e');
@@ -664,7 +683,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _iniciarTimeout();
     _iniciarRefreshConductoresCercanos();
     unawaited(PasajeroServicioNotificationHelper.clearForServicio(servicioId));
-    notifyListeners();
+    _notifyListenersSafe();
   }
 
   /// 🚫 Cancela el servicio. Devuelve `true` si el servidor confirmó; si falla la red o el API (p. ej. 500), devuelve `false` sin lanzar para que la UI pueda volver al inicio de forma segura.
@@ -683,7 +702,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       _refreshTimer = null;
       _estadoServicio = 'cancelado';
       unawaited(PasajeroServicioNotificationHelper.clearForServicio(servicioId));
-      notifyListeners();
+      _notifyListenersSafe();
       return true;
     } catch (e) {
       AppLogger.d('❌ Error cancelando servicio: $e');
@@ -694,9 +713,11 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   /// 🧹 Limpieza de recursos
   @override
   void dispose() {
+    _disposed = true;
     _cancelarTimeout();
     _detenerRefreshConductoresCercanos();
     _refreshTimer?.cancel();
+    _refreshTimer = null;
     unawaited(PasajeroServicioNotificationHelper.clearForServicio(servicioId));
     if (_estadoServicio == 'finalizado' || _estadoServicio == 'cancelado') {
       _locationCacheService.clear(servicioId);

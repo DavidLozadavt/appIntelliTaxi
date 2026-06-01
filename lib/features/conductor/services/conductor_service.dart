@@ -506,11 +506,11 @@ class ConductorService {
       return turno.estaActivo ? turno : null;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) return null;
-      AppLogger.d('⚠️ Error obteniendo turno activo: $e');
-      return null;
+      AppLogger.d('⚠️ Error de red/servidor obteniendo turno activo: $e');
+      rethrow;
     } catch (e) {
       AppLogger.d('⚠️ Error obteniendo turno activo: $e');
-      return null;
+      rethrow;
     }
   }
 
@@ -711,6 +711,31 @@ class ConductorService {
       throw Exception(
         _extractErrorMessage(e, 'No se pudo rechazar el servicio'),
       );
+    }
+  }
+
+  /// Oferta exclusiva inDrive activa para este conductor (`GET /taxi/oferta-activa`).
+  Future<({bool tieneOferta, Map<String, dynamic>? oferta})> getOfertaActiva() async {
+    try {
+      final response = await _dio.get('taxi/oferta-activa');
+      final data = response.data;
+      if (data is! Map || data['success'] != true) {
+        return (tieneOferta: false, oferta: null);
+      }
+      if (data['tiene_oferta'] != true) {
+        return (tieneOferta: false, oferta: null);
+      }
+      final oferta = data['oferta'];
+      if (oferta is! Map) {
+        return (tieneOferta: false, oferta: null);
+      }
+      return (
+        tieneOferta: true,
+        oferta: Map<String, dynamic>.from(oferta),
+      );
+    } on DioException catch (e) {
+      AppLogger.d('⚠️ GET oferta-activa: ${e.message}');
+      return (tieneOferta: false, oferta: null);
     }
   }
 

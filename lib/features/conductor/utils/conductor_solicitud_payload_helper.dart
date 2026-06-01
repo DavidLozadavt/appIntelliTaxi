@@ -207,6 +207,30 @@ class ConductorSolicitudPayloadHelper {
     return servicioId?.toString();
   }
 
+  /// Conductor que tomó el servicio (evento `solicitud.tomada` / `oferta.cerrada`).
+  static int? conductorIdFromTomadaPayload(Map<String, dynamic> raw) {
+    for (final key in const [
+      'conductor_id',
+      'conductorId',
+      'id_conductor',
+      'idConductor',
+      'persona_id',
+      'personaId',
+    ]) {
+      final v = raw[key];
+      if (v == null) continue;
+      final n = int.tryParse(v.toString());
+      if (n != null && n > 0) return n;
+    }
+    final conductor = raw['conductor'];
+    if (conductor is Map) {
+      final id = conductor['id'] ?? conductor['persona_id'];
+      final n = int.tryParse(id?.toString() ?? '');
+      if (n != null && n > 0) return n;
+    }
+    return null;
+  }
+
   static String? servicioIdFromAlertaPayload(Map<String, dynamic> raw) =>
       servicioIdFromTomadaPayload(raw) ?? obtenerSolicitudId(raw);
 }

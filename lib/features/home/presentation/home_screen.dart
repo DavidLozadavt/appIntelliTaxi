@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:intellitaxi/features/home/presentation/custom_drawer.dart';
 import 'package:intellitaxi/features/conductor/presentation/home_conductor.dart';
 import 'package:intellitaxi/features/pasajero/presentation/home_pasajero_screen.dart';
@@ -5,6 +7,8 @@ import 'package:intellitaxi/features/profile/presentation/profile_screen.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intellitaxi/core/bootstrap/session_preload.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
@@ -18,11 +22,45 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _roleDialogShown = false;
   bool _welcomeShown = false;
+  bool _sessionHydrateStarted = false;
 
   @override
   void initState() {
     super.initState();
-    // Inicialización si es necesaria
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_ensureSessionIfNeeded());
+    });
+  }
+
+  /// Si FCM abrió `/home` antes del Splash, recupera token/perfil desde disco.
+  Future<void> _ensureSessionIfNeeded() async {
+    if (_sessionHydrateStarted || !mounted) return;
+    final auth = context.read<AuthProvider>();
+    if (auth.user != null) {
+      unawaited(ConductorPendingFcm.flush(context));
+      return;
+    }
+    _sessionHydrateStarted = true;
+    try {
+      final snapshot = await SessionPreload.ensureReady();
+      if (!mounted) return;
+      if (snapshot.canOpenHome) {
+        await auth.hydrateFromSnapshot(snapshot);
+      } else if (snapshot.hasToken) {
+        await auth.loadUserFromStorage();
+      }
+      if (!mounted) return;
+      if (auth.user == null) {
+        Navigator.of(context).pushReplacementNamed('/login');
+        return;
+      }
+      unawaited(ConductorPendingFcm.flush(context));
+    } catch (e) {
+      AppLogger.d('⚠️ HomeScreen hidratación sesión: $e');
+      if (mounted && auth.user == null) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      }
+    }
   }
 
   @override
