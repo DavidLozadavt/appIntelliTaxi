@@ -1,4 +1,5 @@
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/core/widgets/app_version_label.dart';
 import 'package:intellitaxi/features/auth/data/auth_model.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/profile/presentation/edit_profile_screen.dart';
@@ -275,6 +276,9 @@ class ProfileBodyScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
+
+          const AppVersionLabel(),
+          const SizedBox(height: 8),
         ],
       ),
     );

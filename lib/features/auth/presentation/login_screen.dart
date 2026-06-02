@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
+import 'package:intellitaxi/core/widgets/app_version_label.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
@@ -273,6 +274,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  const AppVersionLabel(),
                 ],
               ),
             ),

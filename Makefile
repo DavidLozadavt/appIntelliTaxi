@@ -2,6 +2,7 @@
 
 deps:
 	flutter pub get
+	dart run tool/sync_app_version.dart
 
 format:
 	dart format lib test
