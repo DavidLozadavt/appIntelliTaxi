@@ -37,6 +37,7 @@ import 'package:intellitaxi/main.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
+import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 
 export 'package:intellitaxi/features/conductor/conductor_constants.dart';
 
@@ -110,7 +111,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Oferta inDrive exclusiva (solo este conductor).
   ConductorOfertaExclusiva? _ofertaExclusiva;
   int _ofertaExclusivaSegundos = 0;
-  int _ofertaExclusivaTtlInicial = 45;
+  int _ofertaExclusivaTtlInicial = 0;
   DateTime? _ofertaExclusivaExpiraEn;
   Timer? _ofertaExclusivaPollTimer;
   Timer? _ofertaExclusivaTickTimer;
@@ -860,7 +861,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       _suscritoAPusher = true;
       _iniciarSincronizacionSolicitudes();
-      _iniciarPollOfertaActiva();
+      _reprogramarPollOfertaActiva();
       unawaited(sincronizarSolicitudesPublicadasConductor());
       unawaited(sincronizarOfertaActiva());
       AppLogger.d('✅ Suscrito correctamente al canal de solicitudes');
@@ -1072,13 +1073,28 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   // ==================== OFERTA INDIRVE (EXCLUSIVA) ====================
 
-  void _iniciarPollOfertaActiva() {
+  /// Poll adaptativo: 12 s con pantalla grande abierta; 45 s si hay oferta en segundo plano.
+  void _reprogramarPollOfertaActiva() {
     _detenerPollOfertaActiva();
+    if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
+
+    final pantalla = ConductorOfertaNavigation.pantallaVisible;
+    if (!pantalla && _ofertaExclusiva == null) return;
+
+    final segundos = pantalla
+        ? kPollOfertaActivaPantallaSegundos
+        : kPollOfertaActivaFondoSegundos;
     _ofertaExclusivaPollTimer = Timer.periodic(
-      const Duration(seconds: 12),
+      Duration(seconds: segundos),
       (_) => unawaited(sincronizarOfertaActiva()),
     );
   }
+
+  void notificarPantallaOfertaExclusivaAbierta() =>
+      _reprogramarPollOfertaActiva();
+
+  void notificarPantallaOfertaExclusivaCerrada() =>
+      _reprogramarPollOfertaActiva();
 
   void _detenerPollOfertaActiva() {
     _ofertaExclusivaPollTimer?.cancel();
@@ -1101,10 +1117,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (expira == null) return;
       _actualizarSegundosOfertaDesdeExpira(expira);
       if (_ofertaExclusivaSegundos <= 0) {
-        _limpiarOfertaExclusivaLocal(
-          cerrarPantalla: true,
-          mensaje: 'El tiempo para responder terminó',
-        );
+        unawaited(_manejarOfertaExclusivaExpiradaLocal());
         return;
       }
       if (!_isDisposed) notifyListeners();
@@ -1116,22 +1129,30 @@ class ConductorHomeProvider extends ChangeNotifier {
     _ofertaExclusivaSegundos = rest > 0 ? rest : 0;
   }
 
-  DateTime? _parseExpiraOfertaExclusiva(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return null;
-    final parsed = DateTime.tryParse(raw.trim());
-    if (parsed == null) return null;
-    return parsed.isUtc ? parsed.toLocal() : parsed;
-  }
+  DateTime? _parseExpiraOfertaExclusiva(String? raw) =>
+      ServicioEsperaTimer.parseExpiraEn(raw);
 
   /// Fija [expiraEn] solo en oferta nueva o si el servidor acorta el plazo (nunca sube el contador).
   void _fijarExpiraOfertaExclusiva({
     required String solicitudId,
     required ConductorOfertaExclusiva oferta,
   }) {
-    final ttl = oferta.segundosRestantes ?? oferta.ttlSegundos ?? 45;
-    final expiraServidor = _parseExpiraOfertaExclusiva(oferta.expiraEn);
+    final expiraServidor = _parseExpiraOfertaExclusiva(
+          oferta.expiraEn ??
+              oferta.raw['oferta_expira_en']?.toString() ??
+              oferta.raw['expira_en']?.toString() ??
+              oferta.raw['overlay_expira_en']?.toString(),
+        ) ??
+        ServicioEsperaTimer.parseExpiraEn(
+          oferta.raw['oferta_expira_en'] ??
+              oferta.raw['expira_en'] ??
+              oferta.raw['overlay_expira_en'],
+        );
+    final seg = ServicioEsperaTimer.segundosOferta(oferta.raw);
     final candidataDesdePayload = expiraServidor ??
-        DateTime.now().add(Duration(seconds: ttl > 0 ? ttl : 45));
+        (seg > 0 ? DateTime.now().add(Duration(seconds: seg)) : null);
+
+    if (candidataDesdePayload == null) return;
 
     final esMismaOferta = _ofertaExclusivaExpiraEn != null &&
         _ofertaExclusiva?.solicitudId == solicitudId;
@@ -1145,12 +1166,23 @@ class ConductorHomeProvider extends ChangeNotifier {
       _ofertaExclusivaExpiraEn = candidataDesdePayload;
       final rest =
           _ofertaExclusivaExpiraEn!.difference(DateTime.now()).inSeconds;
-      _ofertaExclusivaTtlInicial = rest > 0 ? rest : (ttl > 0 ? ttl : 45);
+      _ofertaExclusivaTtlInicial = rest > 0 ? rest : (seg > 0 ? seg : 0);
     }
 
     if (_ofertaExclusivaExpiraEn != null) {
       _actualizarSegundosOfertaDesdeExpira(_ofertaExclusivaExpiraEn!);
     }
+  }
+
+  /// Cierra la UI al llegar a 0 s y confirma con el API (rotación sin depender de Pusher).
+  Future<void> _manejarOfertaExclusivaExpiradaLocal() async {
+    if (_isDisposed) return;
+    _detenerTickOfertaExclusiva();
+    ConductorOfertaNavigation.cerrarSiVisible(
+      mensaje: 'El tiempo para responder terminó',
+    );
+    if (!_isDisposed) notifyListeners();
+    await sincronizarOfertaActiva();
   }
 
   Future<void> sincronizarOfertaActiva() async {
@@ -1162,12 +1194,15 @@ class ConductorHomeProvider extends ChangeNotifier {
           result.oferta!,
           abrirPantalla: !ConductorOfertaNavigation.pantallaVisible,
         );
-      } else if (_ofertaExclusiva != null &&
-          !ConductorOfertaNavigation.pantallaVisible) {
-        _limpiarOfertaExclusivaLocal(cerrarPantalla: false);
+      } else if (_ofertaExclusiva != null) {
+        _limpiarOfertaExclusivaLocal(
+          cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
+        );
       }
     } catch (e) {
       AppLogger.d('⚠️ sincronizarOfertaActiva: $e');
+    } finally {
+      _reprogramarPollOfertaActiva();
     }
   }
 
@@ -1179,6 +1214,13 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     final oferta = ConductorOfertaExclusiva.tryFromDynamic(data);
     if (oferta == null) return;
+
+    if (ServicioEsperaTimer.ofertaExpirada(oferta.raw)) {
+      _limpiarOfertaExclusivaLocal(
+        cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
+      );
+      return;
+    }
 
     final sid = oferta.solicitudId;
     if (esServicioRechazado(sid)) return;
@@ -1220,6 +1262,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     unawaited(_enriquecerDireccionesSolicitud(sid));
+    _reprogramarPollOfertaActiva();
   }
 
   void _procesarOfertaCerrada(dynamic data) {
@@ -1272,7 +1315,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   }) {
     _ofertaExclusiva = null;
     _ofertaExclusivaSegundos = 0;
-    _ofertaExclusivaTtlInicial = 45;
+    _ofertaExclusivaTtlInicial = 0;
     _ofertaExclusivaExpiraEn = null;
     _detenerTickOfertaExclusiva();
     if (cerrarPantalla) {
@@ -1286,6 +1329,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
     }
     if (!_isDisposed) notifyListeners();
+    _reprogramarPollOfertaActiva();
   }
 
   Future<bool> rechazarOfertaExclusiva() async {
@@ -1371,7 +1415,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         raw['fullscreen'] == true ||
         raw['fullscreen'] == 1 ||
         raw['fullscreen'] == '1') {
-      await _aplicarOfertaExclusivaDesdePayload(raw);
+      await sincronizarOfertaActiva();
       return;
     }
 
@@ -2549,15 +2593,28 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   void _purgarSolicitudesExpiradas() {
-    if (_expiracionPorSolicitud.isEmpty) return;
-    final now = DateTime.now();
-    final expiradas = _expiracionPorSolicitud.entries
-        .where((entry) => !entry.value.isAfter(now))
-        .map((entry) => entry.key)
-        .toList();
+    if (_expiracionPorSolicitud.isNotEmpty) {
+      final now = DateTime.now();
+      final expiradas = _expiracionPorSolicitud.entries
+          .where((entry) => !entry.value.isAfter(now))
+          .map((entry) => entry.key)
+          .toList();
 
-    for (final solicitudId in expiradas) {
-      _expirarSolicitud(solicitudId);
+      for (final solicitudId in expiradas) {
+        _expirarSolicitud(solicitudId);
+      }
+    }
+
+    final colaExpiradas = <String>[];
+    for (final solicitud in _solicitudesPorId.values) {
+      if (!ServicioEsperaTimer.tieneDatosCola(solicitud)) continue;
+      if (!ServicioEsperaTimer.colaExpirada(solicitud)) continue;
+      final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
+      if (id != null) colaExpiradas.add(id);
+    }
+    for (final solicitudId in colaExpiradas) {
+      AppLogger.d('⏱️ Cola expirada (~10 min): $solicitudId');
+      _removerSolicitudDelMapa(solicitudId);
     }
   }
 

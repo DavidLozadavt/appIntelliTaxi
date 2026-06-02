@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
+import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
 
@@ -93,7 +94,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
-          '${segundosRestantes}s',
+          ServicioEsperaTimer.formatearCuentaRegresiva(segundosRestantes),
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w800,
@@ -655,7 +656,9 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                           borderRadius: BorderRadius.circular(compact ? 8 : 12),
                         ),
                         child: Text(
-                          '${segundosRestantes}s',
+                          ServicioEsperaTimer.formatearCuentaRegresiva(
+                            segundosRestantes,
+                          ),
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w800,

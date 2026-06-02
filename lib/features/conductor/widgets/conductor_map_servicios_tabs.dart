@@ -374,7 +374,7 @@ class ConductorMapServiciosTabs {
             final item = lista[index];
             final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
             if (id == null || id.isEmpty) return const SizedBox.shrink();
-            final segCola = home.obtenerSegundosRestantes(id);
+            final segCola = pendientes.segundosRestantesCola(item) ?? 0;
             return SolicitudServicioCard(
               solicitud: item,
               marginExterno: false,

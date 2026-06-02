@@ -17,6 +17,7 @@ import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:provider/provider.dart';
 
@@ -56,14 +57,20 @@ class _ConductorOfertaExclusivaScreenState
   int _ttlTotal(ConductorHomeProvider home) {
     final delProvider = home.ofertaExclusivaTtlInicial;
     if (delProvider > 0) return delProvider;
-    return widget.oferta.ttlSegundos ??
-        widget.oferta.segundosRestantes ??
-        45;
+    final seg = ServicioEsperaTimer.segundosOferta(widget.oferta.raw);
+    if (seg > 0) return seg;
+    return widget.oferta.ttlSegundos ?? widget.oferta.segundosRestantes ?? 0;
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final home = context.read<ConductorHomeProvider>();
+      home.notificarPantallaOfertaExclusivaAbierta();
+      unawaited(home.sincronizarOfertaActiva());
+    });
     _timeoutCargandoDireccion = Timer(const Duration(seconds: 8), () {
       if (!mounted) return;
       setState(() => _finCargandoDireccionForzado = true);
@@ -79,6 +86,11 @@ class _ConductorOfertaExclusivaScreenState
   void dispose() {
     _timeoutCargandoDireccion?.cancel();
     unawaited(VoiceAlertService.stop());
+    try {
+      context
+          .read<ConductorHomeProvider>()
+          .notificarPantallaOfertaExclusivaCerrada();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -919,7 +931,7 @@ class _VistaOfertaIa extends StatelessWidget {
                     ],
                     const SizedBox(height: 8),
                     Text(
-                      '$segundos s para aceptar o rechazar',
+                      '${ServicioEsperaTimer.formatearCuentaRegresiva(segundos)} para aceptar o rechazar',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 13,
@@ -1238,7 +1250,9 @@ class _TimerFlotante extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '$segundos',
+                segundos >= 60
+                    ? ServicioEsperaTimer.formatearCuentaRegresiva(segundos)
+                    : '$segundos',
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w900,
@@ -1247,7 +1261,7 @@ class _TimerFlotante extends StatelessWidget {
                 ),
               ),
               Text(
-                'seg',
+                segundos >= 60 ? 'min' : 'seg',
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
@@ -1336,7 +1350,7 @@ class _PanelInferior extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '$segundos s para aceptar o rechazar',
+                          '${ServicioEsperaTimer.formatearCuentaRegresiva(segundos)} para aceptar o rechazar',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,

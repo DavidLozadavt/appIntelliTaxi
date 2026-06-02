@@ -1,4 +1,5 @@
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
+import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 
 /// Oferta exclusiva inDrive (`oferta.servicio.exclusiva` / GET oferta-activa).
 class ConductorOfertaExclusiva {
@@ -154,16 +155,17 @@ class ConductorOfertaExclusiva {
       return null;
     }
 
-    final ttl = _parseInt(map['ttl_segundos'] ?? map['segundos_restantes']);
-    final seg = _parseInt(map['segundos_restantes']) ?? ttl;
+    final ttl = _parseInt(map['ttl_segundos'] ?? map['oferta_segundos']);
+    final seg = ServicioEsperaTimer.segundosOferta(map);
+    final segRestantes = seg > 0 ? seg : ttl;
 
     return ConductorOfertaExclusiva(
       servicioId: sid,
       solicitudId: sid.toString(),
       raw: map,
       faseOferta: fase,
-      segundosRestantes: seg,
-      ttlSegundos: ttl ?? seg,
+      segundosRestantes: segRestantes,
+      ttlSegundos: ttl ?? segRestantes,
       intento: _parseInt(map['intento']),
       maxIntentos: _parseInt(map['max_intentos']),
       distanciaDesdeMiKm: JsonPayloadHelper.parseDouble(
@@ -176,7 +178,9 @@ class ConductorOfertaExclusiva {
       ),
       origenLat: JsonPayloadHelper.parseDouble(map['origen_lat']),
       origenLng: JsonPayloadHelper.parseDouble(map['origen_lng']),
-      expiraEn: map['expira_en']?.toString() ?? map['overlay_expira_en']?.toString(),
+      expiraEn: map['oferta_expira_en']?.toString() ??
+          map['expira_en']?.toString() ??
+          map['overlay_expira_en']?.toString(),
     );
   }
 

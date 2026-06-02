@@ -3,6 +3,7 @@ import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 
 /// Normalización de solicitudes recibidas por Pusher / sync API.
 class ConductorSolicitudPayloadHelper {
@@ -27,42 +28,44 @@ class ConductorSolicitudPayloadHelper {
   static String generarSolicitudTemporalId() =>
       'temp_${DateTime.now().microsecondsSinceEpoch}';
 
-  static const int _maxTtlSegundos = 180;
-
-  /// `overlay_expira_en` del API (ISO) o derivado de `ttl_segundos`.
+  /// `overlay_expira_en` del API (tarjeta overlay en mapa).
   static DateTime? resolverOverlayExpiraEn(Map<String, dynamic> solicitud) {
-    final raw =
-        solicitud['overlay_expira_en'] ?? solicitud['overlayExpiraEn'];
-    if (raw == null) return null;
-    return DateTime.tryParse(raw.toString());
+    for (final key in const [
+      'overlay_expira_en',
+      'overlayExpiraEn',
+    ]) {
+      final parsed = ServicioEsperaTimer.parseExpiraEn(solicitud[key]);
+      if (parsed != null) return parsed;
+    }
+    return null;
   }
 
-  static DateTime? _expiraDesdePayloadApi(Map<String, dynamic> solicitud) {
-    for (final key in const ['expira_en', 'expiraEn']) {
-      final raw = solicitud[key];
-      if (raw == null) continue;
-      final parsed = DateTime.tryParse(raw.toString());
+  static DateTime? _expiraColaDesdePayloadApi(Map<String, dynamic> solicitud) {
+    for (final key in const [
+      'cola_expira_en',
+      'colaExpiraEn',
+      'servicio_expira_en',
+      'servicioExpiraEn',
+    ]) {
+      final parsed = ServicioEsperaTimer.parseExpiraEn(solicitud[key]);
       if (parsed != null) return parsed;
     }
 
-    final seg = int.tryParse(
-      (solicitud['segundos_restantes'] ?? solicitud['segundosRestantes'] ?? '')
-          .toString(),
-    );
-    if (seg != null && seg > 0) {
+    final seg = ServicioEsperaTimer.segundosCola(solicitud);
+    if (seg > 0) {
       return DateTime.now().add(Duration(seconds: seg));
     }
     return null;
   }
 
-  /// Instante de expiración de cola (`expira_en` del API o ancla local).
+  /// Instante de expiración de cola (`cola_expira_en` del API o ancla local).
   static DateTime? resolverExpiraEnCola(Map<String, dynamic> solicitud) {
     final anclado = solicitud['_cola_expira_en'];
     if (anclado != null) {
       final dt = DateTime.tryParse(anclado.toString());
       if (dt != null) return dt;
     }
-    return _expiraDesdePayloadApi(solicitud);
+    return _expiraColaDesdePayloadApi(solicitud);
   }
 
   /// Fija `_cola_expira_en` para cuenta regresiva fluida (no saltos en cada sync).
@@ -82,18 +85,21 @@ class ConductorSolicitudPayloadHelper {
       }
     }
 
-    final expira = _expiraDesdePayloadApi(destino);
+    final expira = _expiraColaDesdePayloadApi(destino);
     if (expira != null) {
       destino['_cola_expira_en'] = expira.toIso8601String();
     }
   }
 
-  /// Cuenta regresiva de cola anclada a `expira_en` (segundo a segundo en UI).
+  /// Cuenta regresiva de cola (~10 min) anclada a `cola_expira_en`.
   static int? segundosRestantesCola(Map<String, dynamic> solicitud) {
     final expira = resolverExpiraEnCola(solicitud);
-    if (expira == null) return null;
-    final restantes = expira.difference(DateTime.now()).inSeconds;
-    return restantes > 0 ? restantes : 0;
+    if (expira != null) {
+      final restantes = expira.difference(DateTime.now()).inSeconds;
+      return restantes > 0 ? restantes : 0;
+    }
+    final seg = ServicioEsperaTimer.segundosCola(solicitud);
+    return seg > 0 ? seg : 0;
   }
 
   static bool tieneExpiracionColaActiva(Map<String, dynamic> solicitud) {
@@ -101,21 +107,17 @@ class ConductorSolicitudPayloadHelper {
     return seg != null && seg > 0;
   }
 
+  /// TTL del overlay «Llegando» en mapa (no confundir con oferta exclusiva ni cola).
   static int resolverTtlSegundos(Map<String, dynamic> solicitud) {
     final expiraEn = resolverOverlayExpiraEn(solicitud);
     if (expiraEn != null) {
-      final restantes = expiraEn.difference(DateTime.now()).inSeconds;
-      if (restantes > 0) {
-        return restantes > _maxTtlSegundos ? _maxTtlSegundos : restantes;
-      }
+      final rest = expiraEn.difference(DateTime.now()).inSeconds;
+      if (rest > 0) return rest;
     }
-
-    final ttlRaw = solicitud['ttl_segundos'] ??
-        solicitud['ttl'] ??
-        solicitud['tiempo_restante'];
+    final ttlRaw = solicitud['ttl_segundos'] ?? solicitud['ttl'];
     final ttl = int.tryParse(ttlRaw?.toString() ?? '');
-    if (ttl == null || ttl <= 0) return kOportunidadConductorSegundos;
-    return ttl > _maxTtlSegundos ? _maxTtlSegundos : ttl;
+    if (ttl != null && ttl > 0) return ttl;
+    return kOportunidadConductorSegundos;
   }
 
   static String? resolverFotoPasajero(String? value) {
