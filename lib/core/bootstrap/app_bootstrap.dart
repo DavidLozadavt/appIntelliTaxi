@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/benign_async_errors.dart';
 import 'package:intellitaxi/core/utils/image_load_errors.dart';
 
 /// Arranque seguro: validación de `.env` y captura de errores en release.
@@ -27,18 +28,27 @@ class AppBootstrap {
       error: error,
       stack: stack,
     );
+    final benignAsync = shouldSuppressBenignAsyncCrashReport(
+      error: error,
+      stack: stack,
+    );
+    final benign = benignImage || benignAsync;
     AppDiagnostics.recordError(
-      benignImage ? 'image_load' : (fatal ? 'fatal_error' : 'error'),
+      benignImage
+          ? 'image_load'
+          : benignAsync
+          ? 'network_async'
+          : (fatal ? 'fatal_error' : 'error'),
       error: error,
       stackTrace: stack,
     );
     if (!_crashlyticsReady) return;
-    if (benignImage) {
+    if (benign) {
       FirebaseCrashlytics.instance.recordError(
         error,
         stack,
         fatal: false,
-        reason: 'benign_image_decode',
+        reason: benignImage ? 'benign_image_decode' : 'benign_network_async',
       );
       return;
     }
@@ -51,20 +61,29 @@ class AppBootstrap {
         error: details.exception,
         stack: details.stack,
       );
+      final benignAsync = shouldSuppressBenignAsyncCrashReport(
+        error: details.exception,
+        stack: details.stack,
+      );
+      final benign = benignImage || benignAsync;
 
       AppDiagnostics.recordError(
-        benignImage ? 'image_load' : 'FlutterError',
+        benignImage
+            ? 'image_load'
+            : benignAsync
+            ? 'network_async'
+            : 'FlutterError',
         error: details.exception,
         stackTrace: details.stack,
       );
 
       if (_crashlyticsReady) {
-        if (benignImage) {
+        if (benign) {
           FirebaseCrashlytics.instance.recordError(
             details.exception,
             details.stack,
             fatal: false,
-            reason: 'benign_image_decode',
+            reason: benignImage ? 'benign_image_decode' : 'benign_network_async',
           );
         } else {
           FirebaseCrashlytics.instance.recordFlutterFatalError(details);
@@ -75,6 +94,13 @@ class AppBootstrap {
         AppLogger.d(
           'Imagen no decodificada (placeholder): ${details.exception}',
           tag: 'ImageLoad',
+        );
+        return;
+      }
+      if (benignAsync) {
+        AppLogger.d(
+          'Error de red/async benigno: ${details.exception}',
+          tag: 'NetworkAsync',
         );
         return;
       }
@@ -91,7 +117,8 @@ class AppBootstrap {
     };
 
     PlatformDispatcher.instance.onError = (error, stack) {
-      if (shouldSuppressImageCrashReport(error: error, stack: stack)) {
+      if (shouldSuppressImageCrashReport(error: error, stack: stack) ||
+          shouldSuppressBenignAsyncCrashReport(error: error, stack: stack)) {
         recordError(error, stack, fatal: false);
         return true;
       }

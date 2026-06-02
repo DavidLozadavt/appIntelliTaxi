@@ -18,6 +18,9 @@ class DriverOverlayService {
 
   bool _isRequestingPermission = false;
   bool _listenerRegistered = false;
+  bool _overlayDisabledForSession = false;
+  bool _backgroundTransitionPending = false;
+  AppLifecycleState? _previousLifecycleState;
   StreamSubscription<dynamic>? _overlayTapSubscription;
   String? _activeMode;
   Timer? _showDebounce;
@@ -54,18 +57,55 @@ class DriverOverlayService {
   }) {
     if (!_isSupported || !isConductorSession) return;
 
+    final previous = _previousLifecycleState;
+    _previousLifecycleState = state;
+
     if (state == AppLifecycleState.resumed) {
+      _backgroundTransitionPending = false;
+      _overlayDisabledForSession = false;
       _showDebounce?.cancel();
       _showDebounce = null;
       unawaited(hide());
       return;
     }
 
-    // Solo en `paused`: en `hidden` Android 12+ suele rechazar startForeground().
+    if (state == AppLifecycleState.inactive &&
+        (previous == AppLifecycleState.resumed || previous == null)) {
+      _backgroundTransitionPending = true;
+      return;
+    }
+
+    if (state == AppLifecycleState.detached) {
+      _backgroundTransitionPending = false;
+      _showDebounce?.cancel();
+      _showDebounce = null;
+      unawaited(hide());
+      return;
+    }
+
+    // `hidden` es paso intermedio al background en Android reciente; no ocultar aquí
+    // (compite con showOverlay en home_conductor y en el debounce de `paused`).
+    if (state == AppLifecycleState.hidden) {
+      return;
+    }
+
     if (state != AppLifecycleState.paused) {
       return;
     }
 
+    final naturalBackground =
+        _backgroundTransitionPending ||
+        previous == AppLifecycleState.inactive ||
+        previous == AppLifecycleState.hidden ||
+        previous == AppLifecycleState.resumed;
+    if (!naturalBackground) {
+      AppLogger.d('🔵 Overlay: paused sin transición natural, omitiendo');
+      return;
+    }
+
+    _backgroundTransitionPending = false;
+
+    if (_overlayDisabledForSession) return;
     if (_isRequestingPermission) return;
 
     _showDebounce?.cancel();
@@ -241,6 +281,11 @@ class DriverOverlayService {
         await FlutterOverlayWindow.shareData(shareData);
       }
     } catch (e, st) {
+      final message = e.toString().toLowerCase();
+      if (message.contains('foregroundservicestartnotallowed') ||
+          message.contains('not allowed due to app idle')) {
+        _overlayDisabledForSession = true;
+      }
       AppLogger.e(
         'showOverlay falló',
         tag: 'DriverOverlay',

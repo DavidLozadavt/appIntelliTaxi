@@ -15,6 +15,7 @@ bool isBenignImageLoadStack(StackTrace? stack) {
   final trace = stack.toString();
   return trace.contains('NetworkImage._loadAsync') ||
       trace.contains('instantiateImageCodec') ||
+      trace.contains('instantiateImageCodecWithSize') ||
       trace.contains('PaintingBinding.instantiateImageCodec');
 }
 
