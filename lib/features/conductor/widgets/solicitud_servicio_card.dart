@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
 
 class SolicitudServicioCard extends StatefulWidget {
   final Map<String, dynamic> solicitud;
@@ -465,6 +467,10 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         SolicitudDisplayHelper.etiquetaOrigenServicio(widget.solicitud);
     final telefonoLlamada =
         SolicitudDisplayHelper.telefonoLlamadaVisible(widget.solicitud);
+    final mostrarNotaIaSinGps =
+        OfertaExclusivaDisplay.mostrarNotaRecogidaSinCoordenadas(
+      widget.solicitud,
+    );
     final titleLarge = widget.destacada && !compact;
 
     return SlideTransition(
@@ -591,13 +597,17 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             SizedBox(height: compact ? 6 : 8),
                           ],
                           _buildLocationBlock(
-                            label: compact ? '' : 'RECOGIDA',
+                            label: compact ? '' : 'UBICACIÓN',
                             title: origenNombre,
                             subtitle: origenSub,
                             labelColor: AppColors.accent,
                             isDark: isDark,
                             titleLarge: titleLarge,
                           ),
+                          if (mostrarNotaIaSinGps)
+                            const ConductorNotaRecogidaIaSinGps(
+                              margin: EdgeInsets.only(top: 10),
+                            ),
                           if (coordsHint != null) ...[
                             const SizedBox(height: 4),
                             Text(

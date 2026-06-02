@@ -1,3 +1,4 @@
+import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 
 /// Textos de recogida/destino para pantalla oferta exclusiva.
@@ -32,6 +33,20 @@ class OfertaUbicacionVista {
 }
 
 abstract final class OfertaExclusivaDisplay {
+  static const String notaRecogidaSinCoordenadas =
+      'Sin GPS: la IA pudo equivocarse. Acepta y confirma con el cliente por teléfono.';
+
+  /// Aviso en oferta/tarjeta: servicio IA sin GPS de recogida (tras dejar de cargar).
+  static bool mostrarNotaRecogidaSinCoordenadas(
+    Map<String, dynamic> data, {
+    bool cargandoDireccion = false,
+  }) {
+    if (cargandoDireccion) return false;
+    final n = SolicitudDisplayHelper.normalizeSolicitudMap(data);
+    if (!ConductorServicioPasajeroHelper.esGestionadoPorIa(n)) return false;
+    return !SolicitudDisplayHelper.tieneCoordenadasRecogidaValidas(n);
+  }
+
   /// Mientras llega geocoding o el payload aún no trae barrio/calle.
   static bool mostrarCargandoDireccion(Map<String, dynamic> data) {
     final v = recogida(data);
@@ -42,11 +57,25 @@ abstract final class OfertaExclusivaDisplay {
     final tieneCoords = lat != null &&
         lng != null &&
         (lat.abs() > 0.0001 || lng.abs() > 0.0001);
-    if (!tieneCoords &&
-        !SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(n)) {
-      return false;
+    // Sin GPS no hay reverse geocode: evitar spinner infinito.
+    if (!tieneCoords) return false;
+    return SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(n);
+  }
+
+  /// Texto cuando no hay barrio/calle tras geocode (o el API no trae coords).
+  static String tituloRecogidaFallback(Map<String, dynamic> data) {
+    final n = SolicitudDisplayHelper.normalizeSolicitudMap(data);
+    final hint = SolicitudDisplayHelper.pickupCoordinatesHint(n);
+    if (hint != null) return hint;
+    final addr = n['origen_address']?.toString().trim() ??
+        n['origen']?.toString().trim();
+    if (addr != null && addr.isNotEmpty) {
+      return SolicitudDisplayHelper.formatReadablePlaceName(addr);
     }
-    return true;
+    if (!SolicitudDisplayHelper.hasDestination(n)) {
+      return 'Servicio sin destino fijo';
+    }
+    return 'Dirección no disponible';
   }
 
   static OfertaUbicacionVista recogida(Map<String, dynamic> data) {

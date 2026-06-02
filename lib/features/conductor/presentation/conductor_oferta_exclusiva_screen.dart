@@ -15,6 +15,7 @@ import 'package:intellitaxi/features/conductor/providers/conductor_home_provider
 import 'package:intellitaxi/features/conductor/services/conductor_servicio_map_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:provider/provider.dart';
@@ -49,6 +50,8 @@ class _ConductorOfertaExclusivaScreenState
   bool _mapaInicializado = false;
   String? _ultimaSyncMapaKey;
   String? _ultimaRutaKey;
+  Timer? _timeoutCargandoDireccion;
+  bool _finCargandoDireccionForzado = false;
 
   int _ttlTotal(ConductorHomeProvider home) {
     final delProvider = home.ofertaExclusivaTtlInicial;
@@ -61,6 +64,10 @@ class _ConductorOfertaExclusivaScreenState
   @override
   void initState() {
     super.initState();
+    _timeoutCargandoDireccion = Timer(const Duration(seconds: 8), () {
+      if (!mounted) return;
+      setState(() => _finCargandoDireccionForzado = true);
+    });
     final inicial = widget.oferta.toSolicitudMap();
     if (!ConductorServicioPasajeroHelper.esGestionadoPorIa(inicial)) {
       unawaited(_prepararMapa());
@@ -69,8 +76,14 @@ class _ConductorOfertaExclusivaScreenState
 
   @override
   void dispose() {
+    _timeoutCargandoDireccion?.cancel();
     unawaited(VoiceAlertService.stop());
     super.dispose();
+  }
+
+  bool _estaCargandoDireccion(Map<String, dynamic> solicitud) {
+    if (_finCargandoDireccionForzado) return false;
+    return OfertaExclusivaDisplay.mostrarCargandoDireccion(solicitud);
   }
 
   /// Una sola vez al llegar la oferta, cuando ya hay dirección (sin “nuevo servicio” ni extras).
@@ -369,8 +382,9 @@ class _ConductorOfertaExclusivaScreenState
         final segundos = home.ofertaExclusivaSegundosRestantes;
         final ttlTotal = _ttlTotal(home);
         final urgente = segundos <= 10;
-        final cargandoDireccion =
-            OfertaExclusivaDisplay.mostrarCargandoDireccion(solicitud);
+        final cargandoDireccion = _estaCargandoDireccion(solicitud);
+        final tituloRecogidaFallback =
+            OfertaExclusivaDisplay.tituloRecogidaFallback(solicitud);
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -379,11 +393,21 @@ class _ConductorOfertaExclusivaScreenState
         });
 
         if (!home.tieneOfertaExclusivaActiva) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          });
           return const PopScope(
+            canPop: true,
             child: Scaffold(
               backgroundColor: Color(0xFF121212),
               body: Center(
-                child: CircularProgressIndicator(color: Colors.white),
+                child: Text(
+                  'La oferta ya no está disponible',
+                  style: TextStyle(color: Colors.white70, fontSize: 16),
+                ),
               ),
             ),
           );
@@ -395,6 +419,11 @@ class _ConductorOfertaExclusivaScreenState
             ConductorServicioPasajeroHelper.telefonoFormateadoVisible(solicitud);
         final etiquetaIa =
             ConductorServicioPasajeroHelper.etiquetaOrigenServicio(solicitud);
+        final mostrarNotaSinGps =
+            OfertaExclusivaDisplay.mostrarNotaRecogidaSinCoordenadas(
+          solicitud,
+          cargandoDireccion: cargandoDireccion,
+        );
 
         if (esIa) {
           return PopScope(
@@ -414,6 +443,8 @@ class _ConductorOfertaExclusivaScreenState
                 intento: intento,
                 maxIntentos: max,
                 cargandoDireccion: cargandoDireccion,
+                mostrarNotaSinGps: mostrarNotaSinGps,
+                tituloRecogidaFallback: tituloRecogidaFallback,
                 onRechazar: _rechazar,
                 onAceptar: _aceptar,
               ),
@@ -607,6 +638,7 @@ class _ConductorOfertaExclusivaScreenState
                     urgente: urgente,
                     procesando: _procesando,
                     cargandoDireccion: cargandoDireccion,
+                    tituloRecogidaFallback: tituloRecogidaFallback,
                     onRechazar: _rechazar,
                     onAceptar: _aceptar,
                   ),
@@ -636,6 +668,8 @@ class _VistaOfertaIa extends StatelessWidget {
     this.intento,
     this.maxIntentos,
     this.cargandoDireccion = false,
+    this.mostrarNotaSinGps = false,
+    required this.tituloRecogidaFallback,
     required this.onRechazar,
     required this.onAceptar,
   });
@@ -652,6 +686,8 @@ class _VistaOfertaIa extends StatelessWidget {
   final int? intento;
   final int? maxIntentos;
   final bool cargandoDireccion;
+  final bool mostrarNotaSinGps;
+  final String tituloRecogidaFallback;
   final VoidCallback onRechazar;
   final VoidCallback onAceptar;
 
@@ -664,7 +700,7 @@ class _VistaOfertaIa extends StatelessWidget {
         ? '…'
         : barrio.isNotEmpty
             ? barrio
-            : (calle.isNotEmpty ? calle : 'Zona de recogida');
+            : (calle.isNotEmpty ? calle : tituloRecogidaFallback);
     final subtituloCalle = barrio.isNotEmpty &&
             calle.isNotEmpty &&
             calle.toLowerCase() != barrio.toLowerCase()
@@ -727,7 +763,7 @@ class _VistaOfertaIa extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      urgente ? '¡Responde ya!' : 'Recogida en',
+                      urgente ? '¡Responde ya!' : 'Ubicación',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
@@ -786,6 +822,11 @@ class _VistaOfertaIa extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (mostrarNotaSinGps)
+                      const ConductorNotaRecogidaIaSinGps(
+                        onDarkBackground: true,
+                        margin: EdgeInsets.only(top: 16),
+                      ),
                     if (telefono.isNotEmpty) ...[
                       const SizedBox(height: 20),
                       Container(
@@ -1222,6 +1263,7 @@ class _PanelInferior extends StatelessWidget {
     required this.urgente,
     required this.procesando,
     this.cargandoDireccion = false,
+    required this.tituloRecogidaFallback,
     required this.onRechazar,
     required this.onAceptar,
   });
@@ -1233,6 +1275,7 @@ class _PanelInferior extends StatelessWidget {
   final bool urgente;
   final bool procesando;
   final bool cargandoDireccion;
+  final String tituloRecogidaFallback;
   final VoidCallback onRechazar;
   final VoidCallback onAceptar;
 
@@ -1325,6 +1368,7 @@ class _PanelInferior extends StatelessWidget {
                   recogida: recogida,
                   destino: destino,
                   cargandoDireccion: cargandoDireccion,
+                  tituloRecogidaFallback: tituloRecogidaFallback,
                 ),
               ),
             ),
@@ -1398,11 +1442,13 @@ class _TarjetaRuta extends StatelessWidget {
     required this.recogida,
     this.destino,
     this.cargandoDireccion = false,
+    required this.tituloRecogidaFallback,
   });
 
   final OfertaUbicacionVista recogida;
   final OfertaUbicacionVista? destino;
   final bool cargandoDireccion;
+  final String tituloRecogidaFallback;
 
   @override
   Widget build(BuildContext context) {
@@ -1427,6 +1473,7 @@ class _TarjetaRuta extends StatelessWidget {
                   color: AppColors.green,
                   icon: Iconsax.location,
                   vista: recogida,
+                  tituloFallback: tituloRecogidaFallback,
                 ),
               if (destino != null && destino!.tieneContenido) ...[
                 Padding(
@@ -1457,15 +1504,20 @@ class _ParadaRuta extends StatelessWidget {
     required this.color,
     required this.icon,
     required this.vista,
+    this.tituloFallback = '',
   });
 
   final Color color;
   final IconData icon;
   final OfertaUbicacionVista vista;
+  final String tituloFallback;
 
   @override
   Widget build(BuildContext context) {
-    final titulo = vista.titulo.trim();
+    var titulo = vista.titulo.trim();
+    if (titulo.isEmpty && tituloFallback.isNotEmpty) {
+      titulo = tituloFallback;
+    }
     final barrio = vista.barrio?.trim() ?? '';
     final direccion = vista.direccionVisible;
 

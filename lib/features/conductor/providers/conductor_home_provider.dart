@@ -1555,10 +1555,8 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   Future<void> _notificarYEnriquecerSolicitud(String solicitudId) async {
     try {
-      await _enriquecerDireccionesSolicitud(solicitudId);
-      if (_isDisposed) return;
       final solicitud = _solicitudesPorId[solicitudId];
-      if (solicitud == null) return;
+      if (solicitud == null || _isDisposed) return;
 
       final showAlert = await AppLifecycleHelper.shouldShowIncomingServiceAlert();
       if (showAlert) {
@@ -1572,6 +1570,12 @@ class ConductorHomeProvider extends ChangeNotifier {
           extra: 'id=$solicitudId',
         );
       }
+
+      await _enriquecerDireccionesSolicitud(solicitudId).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {},
+      );
+      if (!_isDisposed) notifyListeners();
     } catch (e, st) {
       AppLogger.e(
         'Error enriqueciendo/notificando solicitud',

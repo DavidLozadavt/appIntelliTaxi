@@ -468,11 +468,19 @@ class SolicitudDisplayHelper {
     return parts.join(' · ');
   }
 
-  static String? pickupCoordinatesHint(Map<String, dynamic> data) {
+  /// GPS de recogida usable en mapa / geocoding inverso.
+  static bool tieneCoordenadasRecogidaValidas(Map<String, dynamic> data) {
     final lat = parseCoordinate(data['origen_lat']);
     final lng = parseCoordinate(data['origen_lng']);
-    if (lat == null || lng == null) return null;
-    if (lat.abs() < 0.0001 && lng.abs() < 0.0001) return null;
+    if (lat == null || lng == null) return false;
+    if (lat.abs() < 0.0001 && lng.abs() < 0.0001) return false;
+    return true;
+  }
+
+  static String? pickupCoordinatesHint(Map<String, dynamic> data) {
+    if (!tieneCoordenadasRecogidaValidas(data)) return null;
+    final lat = parseCoordinate(data['origen_lat'])!;
+    final lng = parseCoordinate(data['origen_lng'])!;
     return '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
   }
 
