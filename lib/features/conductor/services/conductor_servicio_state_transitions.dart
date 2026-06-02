@@ -1,4 +1,4 @@
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_estado_helper.dart';
 
 /// Actualiza el payload local del servicio tras un cambio de estado UI.

@@ -1,4 +1,4 @@
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 import 'package:intellitaxi/config/maps_config.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';

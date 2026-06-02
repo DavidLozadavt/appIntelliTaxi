@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_estado_helper.dart';

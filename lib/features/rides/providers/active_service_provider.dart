@@ -1,6 +1,6 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
@@ -107,7 +107,7 @@ class ActiveServiceProvider extends ChangeNotifier {
     final image = await picture.toImage(s.toInt(), s.toInt());
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
 
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
   }
 
   void _actualizarMarkers() {

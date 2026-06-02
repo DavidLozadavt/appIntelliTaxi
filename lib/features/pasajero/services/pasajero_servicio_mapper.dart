@@ -1,4 +1,4 @@
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 
 class PasajeroServicioMapper {
   static dynamic pick(Map<String, dynamic> data, List<String> keys) {

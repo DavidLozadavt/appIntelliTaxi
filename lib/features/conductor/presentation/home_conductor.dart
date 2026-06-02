@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 import 'package:provider/provider.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -263,7 +263,7 @@ class _HomeConductorState extends State<HomeConductor>
 
     if (mounted) {
       setState(() {
-        _dotMarker = BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+        _dotMarker = BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
       });
     }
   }

@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -641,7 +641,7 @@ class _HomePasajeroState extends State<HomePasajero>
       final Uint8List? png = bytes?.buffer.asUint8List();
       if (png == null) return;
 
-      _setStateSafe(() => _destinationPointIcon = BitmapDescriptor.bytes(png));
+      _setStateSafe(() => _destinationPointIcon = BitmapDescriptor.fromBytes(png));
     } catch (e) {
       AppLogger.w('No se pudo crear icono punto de destino: $e');
     }
@@ -985,7 +985,7 @@ class _HomePasajeroState extends State<HomePasajero>
       final Uint8List? pngBytes = byteData?.buffer.asUint8List();
 
       if (pngBytes != null) {
-        return BitmapDescriptor.bytes(pngBytes);
+        return BitmapDescriptor.fromBytes(pngBytes);
       }
     } catch (e) {
       AppLogger.d('Error creando marcador personalizado: $e');

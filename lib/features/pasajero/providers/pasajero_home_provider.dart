@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';

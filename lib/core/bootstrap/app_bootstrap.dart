@@ -71,9 +71,6 @@ class AppBootstrap {
     if (AppConfig.baseUrl.contains('tu-servidor.com')) {
       missing.add('BASE_URL (valor por defecto / placeholder)');
     }
-    if (AppConfig.googleMapsApiKey.trim().isEmpty) {
-      missing.add('GOOGLE_MAPS_API_KEY');
-    }
     if (AppConfig.pusherAppKey.isEmpty) {
       missing.add('PUSHER_APP_KEY o PUSHER_SECONDARY_APP_KEY');
     }

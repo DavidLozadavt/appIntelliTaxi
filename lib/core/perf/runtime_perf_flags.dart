@@ -9,7 +9,7 @@ abstract final class RuntimePerfFlags {
   /// Log en cada request con token (muy ruidoso).
   static const bool logAuthInterceptor = false;
 
-  /// Intervalo mínimo entre [GoogleMap] setState por marcadores (~15 fps).
+  /// Intervalo mínimo entre setState del mapa por marcadores (~15 fps).
   static const Duration markerSyncMinInterval = Duration(milliseconds: 66);
 
   /// Refresco API de conductores cuando Pusher está activo.

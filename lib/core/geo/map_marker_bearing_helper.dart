@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:geolocator/geolocator.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 
 /// Utilidades para orientar marcadores de vehículos en el mapa.
 class MapMarkerBearingHelper {

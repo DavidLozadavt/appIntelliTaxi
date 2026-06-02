@@ -1,9 +1,9 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/map/intellitaxi_maps.dart';
 
-/// Genera iconos circulares (punto con borde blanco) para Google Maps.
+/// Genera iconos circulares (punto con borde blanco) para marcadores del mapa.
 class MapDotMarkerFactory {
   MapDotMarkerFactory._();
 
@@ -35,6 +35,6 @@ class MapDotMarkerFactory {
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List(), width: size);
   }
 }
