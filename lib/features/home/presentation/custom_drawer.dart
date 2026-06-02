@@ -12,10 +12,14 @@ class CustomDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final user = auth.user;
+    final persona = user?.persona;
     // final company = auth.company;
     final userRoles = auth.activeRole != null ? [auth.activeRole!] : auth.roles;
 
     final themeProvider = context.watch<ThemeProvider>();
+    final fotoUrl = persona?.rutaFotoUrl?.trim();
+    final tieneFoto = fotoUrl != null && fotoUrl.isNotEmpty;
 
     final allDrawerItems = [
       // Opciones de historial y calificaciones para conductor
@@ -154,11 +158,13 @@ class CustomDrawer extends StatelessWidget {
                         backgroundColor: Colors.white,
                         child: CircleAvatar(
                           radius: 27,
-                          backgroundImage: NetworkImage(
-                            auth.user!.persona.rutaFotoUrl!,
-                          ),
-                          onBackgroundImageError: (_, _) =>
-                              const Icon(Icons.person, size: 35),
+                          backgroundColor: Colors.grey.shade200,
+                          backgroundImage:
+                              tieneFoto ? NetworkImage(fotoUrl) : null,
+                          onBackgroundImageError: (_, _) {},
+                          child: tieneFoto
+                              ? null
+                              : const Icon(Icons.person, size: 35),
                         ),
                       ),
                     ),
@@ -171,7 +177,10 @@ class CustomDrawer extends StatelessWidget {
                         children: [
                           // Nombre
                           Text(
-                            "${auth.user!.persona.nombre1} ${auth.user!.persona.apellido1}",
+                            persona != null
+                                ? '${persona.nombre1} ${persona.apellido1}'
+                                    .trim()
+                                : 'Usuario',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
