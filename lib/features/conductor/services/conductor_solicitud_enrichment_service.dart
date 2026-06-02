@@ -64,6 +64,23 @@ class ConductorSolicitudEnrichmentService {
     Map<String, dynamic> solicitud, {
     bool forzarBarrio = false,
   }) async {
+    try {
+      return await _enrichImpl(
+        solicitud,
+        forzarBarrio: forzarBarrio,
+      ).timeout(
+        const Duration(seconds: 7),
+        onTimeout: () => false,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _enrichImpl(
+    Map<String, dynamic> solicitud, {
+    bool forzarBarrio = false,
+  }) async {
     if (!SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(
       solicitud,
       forzarBarrio: forzarBarrio,
@@ -78,6 +95,7 @@ class ConductorSolicitudEnrichmentService {
       required double lat,
       required double lng,
     }) async {
+      try {
       if (isDestino) {
         if (SolicitudDisplayHelper.tieneDestinoCompletoParaMapa(solicitud)) {
           return;
@@ -171,6 +189,9 @@ class ConductorSolicitudEnrichmentService {
             }
           }
         }
+      }
+      } catch (_) {
+        // Geocoding/Places opcional; no fatal.
       }
     }
 

@@ -1490,10 +1490,12 @@ class ConductorHomeProvider extends ChangeNotifier {
             solicitud: solicitudMap,
             esNueva: esNueva || overlayEstabaOculto,
           );
-          unawaited(_enriquecerPoiTrasMostrar(
-            solicitudId,
-            esNueva: esNueva || overlayEstabaOculto,
-          ));
+          unawaited(
+            _enriquecerPoiTrasMostrar(
+              solicitudId,
+              esNueva: esNueva || overlayEstabaOculto,
+            ).catchError((_) {}),
+          );
         } else {
           _aplicarOverlayLlegando(
             solicitudId,
@@ -1505,7 +1507,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         if (esNueva) {
           _overlayOcultoPorTtl.add(solicitudId);
         }
-        unawaited(_enriquecerDireccionesSolicitud(solicitudId));
+        unawaited(
+          _enriquecerDireccionesSolicitud(solicitudId).catchError((_) {}),
+        );
       }
 
       final visibleEnLlegando =
@@ -1583,40 +1587,47 @@ class ConductorHomeProvider extends ChangeNotifier {
     String solicitudId, {
     required bool esNueva,
   }) async {
-    try {
-      try {
-        await _enriquecerPoiAntesDeAlerta(solicitudId)
-            .timeout(const Duration(seconds: 5));
-      } catch (_) {
-        // Timeout o red: la tarjeta ya está visible con datos del API.
-      }
-      if (_isDisposed) return;
-      if (esNueva) {
-        await _enriquecerDireccionesSolicitud(solicitudId)
-            .timeout(const Duration(seconds: 8));
-      }
-      if (!_isDisposed) notifyListeners();
-    } catch (_) {
-      // Timeout/red: no propagar a Crashlytics; la UI ya tiene datos del API.
+    if (_isDisposed) return;
+
+    await _enriquecerPoiAntesDeAlerta(solicitudId).timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {},
+    );
+
+    if (_isDisposed) return;
+    if (esNueva) {
+      await _enriquecerDireccionesSolicitud(solicitudId).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {},
+      );
     }
+    if (!_isDisposed) notifyListeners();
   }
 
   Future<void> _enriquecerPoiAntesDeAlerta(String solicitudId) async {
-    final solicitud = _solicitudesPorId[solicitudId];
-    if (solicitud == null || _isDisposed) return;
-    await _solicitudEnrichment.enrichPickupPoiIfNeeded(solicitud);
+    try {
+      final solicitud = _solicitudesPorId[solicitudId];
+      if (solicitud == null || _isDisposed) return;
+      await _solicitudEnrichment.enrichPickupPoiIfNeeded(solicitud);
+    } catch (_) {
+      // Red/timeout: opcional.
+    }
   }
 
   Future<void> _enriquecerDireccionesSolicitud(String solicitudId) async {
-    final solicitud = _solicitudesPorId[solicitudId];
-    if (solicitud == null || _isDisposed) return;
+    try {
+      final solicitud = _solicitudesPorId[solicitudId];
+      if (solicitud == null || _isDisposed) return;
 
-    if (!SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(solicitud)) {
-      return;
+      if (!SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(solicitud)) {
+        return;
+      }
+
+      final changed = await _solicitudEnrichment.enrich(solicitud);
+      if (changed && !_isDisposed) notifyListeners();
+    } catch (_) {
+      // Red/timeout: la tarjeta ya tiene datos del API.
     }
-
-    final changed = await _solicitudEnrichment.enrich(solicitud);
-    if (changed && !_isDisposed) notifyListeners();
   }
 
   /// Configurar timer de expiración para una solicitud
