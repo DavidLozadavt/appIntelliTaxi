@@ -31,6 +31,5 @@ final List<OnboardingPageModel> onboardingPages = [
     description:
         'Pide tu transporte en segundos. Rapidez y simplicidad redefinidas para tu comodidad.',
     imagePath: 'assets/images/logoTaxbel.webp',
-    imageAlignment: Alignment.topCenter,
   ),
 ];

@@ -5,12 +5,27 @@ import 'package:intellitaxi/features/onboarding/data/onboarding_page_model.dart'
 class OnboardingPageWidget extends StatelessWidget {
   final OnboardingPageModel page;
   final bool isLastPage;
+  final double bottomControlsHeight;
 
   const OnboardingPageWidget({
     super.key,
     required this.page,
     this.isLastPage = false,
+    this.bottomControlsHeight = 150,
   });
+
+  static const _titleStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w800,
+    fontSize: 24,
+    height: 1.15,
+  );
+
+  static const _descriptionStyle = TextStyle(
+    color: Color(0xFFA3ADBF),
+    fontSize: 13,
+    height: 1.35,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -20,31 +35,26 @@ class OnboardingPageWidget extends StatelessWidget {
 
     return Container(
       color: const Color(0xFF17130D),
-      child: Column(
-        children: [
-          Expanded(
-            flex: 47,
-            child: Padding(
-              padding: EdgeInsets.only(top: topInset + 20),
-              child: Stack(
-                fit: StackFit.expand,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          topInset + 12,
+          24,
+          bottomControlsHeight,
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const ColoredBox(color: Color(0xFF17130D)),
-                  Align(
-                    alignment: const Alignment(0, 0.34),
-                    child: FractionallySizedBox(
-                      widthFactor: 0.99,
-                      heightFactor: 0.95,
-                      child: ColorFiltered(
-                        colorFilter: (!isDark && isBrandLogo)
-                            ? const ColorFilter.mode(
-                                AppColors.brandWine,
-                                BlendMode.modulate,
-                              )
-                            : const ColorFilter.mode(
-                                Colors.transparent,
-                                BlendMode.srcOver,
-                              ),
+                  if (isBrandLogo)
+                    _BrandLogoImage(isDark: isDark)
+                  else
+                    Expanded(
+                      flex: 3,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
                         child: Image.asset(
                           page.imagePath,
                           fit: BoxFit.contain,
@@ -52,76 +62,70 @@ class OnboardingPageWidget extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.18),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 56,
-            child: Container(
-              width: double.infinity,
-              color: const Color(0xFF17130D),
-              padding: const EdgeInsets.fromLTRB(28, 52, 28, 0),
-              child: Column(
-                children: [
-                  if (page.highlightedText != null)
-                    RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 28,
-                          height: 1.18,
-                        ),
-                        children: [
-                          TextSpan(text: '${page.title}\n'),
-                          TextSpan(
-                            text: page.highlightedText!,
-                            style: const TextStyle(color: AppColors.accent),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    Text(
-                      page.title,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 28,
-                        height: 1.18,
-                      ),
-                    ),
-                  const SizedBox(height: 20),
+                  if (isBrandLogo) const SizedBox(height: 28),
+                  _TitleSection(page: page),
+                  const SizedBox(height: 10),
                   Text(
                     page.description,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: const Color(0xFFA3ADBF),
-                      fontSize: 14,
-                      height: 1.45,
-                    ),
+                    style: _descriptionStyle,
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TitleSection extends StatelessWidget {
+  const _TitleSection({required this.page});
+
+  final OnboardingPageModel page;
+
+  @override
+  Widget build(BuildContext context) {
+    if (page.highlightedText != null) {
+      return RichText(
+        textAlign: TextAlign.center,
+        text: TextSpan(
+          style: OnboardingPageWidget._titleStyle,
+          children: [
+            TextSpan(text: '${page.title}\n'),
+            TextSpan(
+              text: page.highlightedText!,
+              style: const TextStyle(color: AppColors.accent),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Text(
+      page.title,
+      textAlign: TextAlign.center,
+      style: OnboardingPageWidget._titleStyle,
+    );
+  }
+}
+
+class _BrandLogoImage extends StatelessWidget {
+  const _BrandLogoImage({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColorFiltered(
+      colorFilter: !isDark
+          ? const ColorFilter.mode(AppColors.brandWine, BlendMode.modulate)
+          : const ColorFilter.mode(Colors.transparent, BlendMode.srcOver),
+      child: Image.asset(
+        'assets/images/logoTaxbel.webp',
+        height: 88,
+        fit: BoxFit.contain,
       ),
     );
   }
