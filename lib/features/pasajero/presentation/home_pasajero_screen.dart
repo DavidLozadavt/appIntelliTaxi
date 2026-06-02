@@ -41,6 +41,7 @@ import 'package:intellitaxi/features/pasajero/controllers/pasajero_pusher_offers
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/device_location_service.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
+import 'package:intellitaxi/core/utils/safe_image_decode.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/pasajero/widgets/pasajero_home_ride_sheet.dart';
 
@@ -891,18 +892,18 @@ class _HomePasajeroState extends State<HomePasajero>
       const double imageInset = 4.0;
       const double borderWidth = 2.5;
 
-      // Descargar la imagen
       final response = await http.get(Uri.parse(imageUrl));
       if (response.statusCode != 200) return null;
 
-      // Convertir a ui.Image
-      final Uint8List imageData = response.bodyBytes;
-      final ui.Codec codec = await ui.instantiateImageCodec(
+      final imageData = response.bodyBytes;
+      if (imageData.isEmpty) return null;
+
+      final decoded = await decodeImageFromBytes(
         imageData,
         targetWidth: markerSize.toInt(),
         targetHeight: markerSize.toInt(),
       );
-      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+      if (decoded == null) return null;
 
       // Crear un canvas para dibujar el marcador circular
       final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
@@ -944,12 +945,12 @@ class _HomePasajeroState extends State<HomePasajero>
 
       // Dibujar la imagen
       canvas.drawImageRect(
-        frameInfo.image,
+        decoded,
         Rect.fromLTWH(
           0,
           0,
-          frameInfo.image.width.toDouble(),
-          frameInfo.image.height.toDouble(),
+          decoded.width.toDouble(),
+          decoded.height.toDouble(),
         ),
         Rect.fromLTWH(
           imageInset,

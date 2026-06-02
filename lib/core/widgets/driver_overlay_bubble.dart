@@ -120,6 +120,7 @@ class _BubbleFace extends StatelessWidget {
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
                 filterQuality: FilterQuality.medium,
+                errorBuilder: (_, _, _) => _BrandFallback(size: size),
               )
             : _BrandFallback(size: size),
       ),
