@@ -467,10 +467,10 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         SolicitudDisplayHelper.etiquetaOrigenServicio(widget.solicitud);
     final telefonoLlamada =
         SolicitudDisplayHelper.telefonoLlamadaVisible(widget.solicitud);
-    final mostrarNotaIaSinGps =
-        OfertaExclusivaDisplay.mostrarNotaRecogidaSinCoordenadas(
-      widget.solicitud,
-    );
+    final mostrarAvisoSinMapa =
+        OfertaExclusivaDisplay.mostrarAvisoSinMapa(widget.solicitud);
+    final textoAvisoSinMapa =
+        OfertaExclusivaDisplay.avisoSinMapaTexto(widget.solicitud);
     final titleLarge = widget.destacada && !compact;
 
     return SlideTransition(
@@ -604,9 +604,10 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             isDark: isDark,
                             titleLarge: titleLarge,
                           ),
-                          if (mostrarNotaIaSinGps)
-                            const ConductorNotaRecogidaIaSinGps(
-                              margin: EdgeInsets.only(top: 10),
+                          if (mostrarAvisoSinMapa && textoAvisoSinMapa.isNotEmpty)
+                            ConductorAvisoSinMapa(
+                              mensaje: textoAvisoSinMapa,
+                              margin: const EdgeInsets.only(top: 10),
                             ),
                           if (coordsHint != null) ...[
                             const SizedBox(height: 4),

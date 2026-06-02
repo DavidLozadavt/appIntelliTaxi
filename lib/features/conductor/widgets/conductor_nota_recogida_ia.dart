@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 
-/// Aviso cuando un servicio gestionado por IA no trae GPS de recogida.
-class ConductorNotaRecogidaIaSinGps extends StatelessWidget {
-  const ConductorNotaRecogidaIaSinGps({
+/// Banner informativo: servicio sin punto de origen en el mapa (no bloquea Aceptar).
+class ConductorAvisoSinMapa extends StatelessWidget {
+  const ConductorAvisoSinMapa({
     super.key,
+    required this.mensaje,
     this.onDarkBackground = false,
     this.margin = const EdgeInsets.only(top: 12),
   });
 
+  final String mensaje;
   final bool onDarkBackground;
   final EdgeInsetsGeometry margin;
 
@@ -41,7 +42,7 @@ class ConductorNotaRecogidaIaSinGps extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              OfertaExclusivaDisplay.notaRecogidaSinCoordenadas,
+              mensaje,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,

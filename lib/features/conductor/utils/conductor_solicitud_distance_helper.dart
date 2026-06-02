@@ -14,7 +14,7 @@ class ConductorSolicitudDistanceHelper {
     final lat = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lat']);
     final lng = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lng']);
     if (lat == null || lng == null) return null;
-    if (lat.abs() < 0.0001 && lng.abs() < 0.0001) return null;
+    if (!SolicitudDisplayHelper.origenTieneMapa(solicitud)) return null;
 
     final meters = Geolocator.distanceBetween(driverLat, driverLng, lat, lng);
     if (!meters.isFinite || meters < 0) return null;

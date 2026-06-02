@@ -23,6 +23,7 @@ class ConductorSolicitudEnrichmentService {
       return false;
     }
 
+    if (!SolicitudDisplayHelper.origenTieneMapa(solicitud)) return false;
     final lat = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lat']);
     final lng = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lng']);
     if (lat == null || lng == null) return false;
@@ -197,7 +198,9 @@ class ConductorSolicitudEnrichmentService {
 
     final oLat = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lat']);
     final oLng = SolicitudDisplayHelper.parseCoordinate(solicitud['origen_lng']);
-    if (oLat != null && oLng != null) {
+    if (oLat != null &&
+        oLng != null &&
+        SolicitudDisplayHelper.origenTieneMapa(solicitud)) {
       await enrichPickupPoiIfNeeded(solicitud);
       await enrichPoint(isDestino: false, lat: oLat, lng: oLng);
     }

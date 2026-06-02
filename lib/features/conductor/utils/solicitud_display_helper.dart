@@ -76,6 +76,10 @@ class SolicitudDisplayHelper {
         m['telefonoLlamada'] ?? m['telefono_llamada_servicio'];
     m['overlay_expira_en'] ??= m['overlayExpiraEn'];
 
+    m['origen_coordenadas_validas'] ??= m['origenCoordenadasValidas'];
+    m['aviso_sin_mapa'] ??= m['avisoSinMapa'];
+    m['codigo_origen'] ??= m['codigoOrigen'];
+
     final barrio = barrioFromPayload(m);
     if (barrio != null) {
       m['origen_barrio'] = compactBarrio(barrio);
@@ -468,14 +472,35 @@ class SolicitudDisplayHelper {
     return parts.join(' · ');
   }
 
-  /// GPS de recogida usable en mapa / geocoding inverso.
-  static bool tieneCoordenadasRecogidaValidas(Map<String, dynamic> data) {
-    final lat = parseCoordinate(data['origen_lat']);
-    final lng = parseCoordinate(data['origen_lng']);
+  static const double _epsilonCoord = 1e-6;
+
+  static const String avisoSinMapaPorDefecto =
+      'No hay punto en el mapa. Confirma la dirección con el pasajero o el operador.';
+
+  /// Origen con pin / navegación GPS (`origen_coordenadas_validas` o lat/lng).
+  static bool origenTieneMapa(Map<String, dynamic> data) {
+    final n = normalizeSolicitudMap(data);
+    if (n.containsKey('origen_coordenadas_validas')) {
+      return n['origen_coordenadas_validas'] == true;
+    }
+    final lat = parseCoordinate(n['origen_lat']);
+    final lng = parseCoordinate(n['origen_lng']);
     if (lat == null || lng == null) return false;
-    if (lat.abs() < 0.0001 && lng.abs() < 0.0001) return false;
-    return true;
+    return lat.abs() > _epsilonCoord || lng.abs() > _epsilonCoord;
   }
+
+  /// Mensaje informativo cuando el backend marca origen sin mapa.
+  static String? avisoSinMapa(Map<String, dynamic> data) {
+    final n = normalizeSolicitudMap(data);
+    if (origenTieneMapa(n)) return null;
+    final raw = n['aviso_sin_mapa']?.toString().trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    return avisoSinMapaPorDefecto;
+  }
+
+  /// GPS de recogida usable en mapa / geocoding inverso.
+  static bool tieneCoordenadasRecogidaValidas(Map<String, dynamic> data) =>
+      origenTieneMapa(data);
 
   static String? pickupCoordinatesHint(Map<String, dynamic> data) {
     if (!tieneCoordenadasRecogidaValidas(data)) return null;

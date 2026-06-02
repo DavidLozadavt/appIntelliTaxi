@@ -1,4 +1,3 @@
-import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 
 /// Textos de recogida/destino para pantalla oferta exclusiva.
@@ -33,18 +32,18 @@ class OfertaUbicacionVista {
 }
 
 abstract final class OfertaExclusivaDisplay {
-  static const String notaRecogidaSinCoordenadas =
-      'Sin GPS: la IA pudo equivocarse. Acepta y confirma con el cliente por teléfono.';
+  /// Texto del banner (API `aviso_sin_mapa` o fallback local).
+  static String avisoSinMapaTexto(Map<String, dynamic> data) =>
+      SolicitudDisplayHelper.avisoSinMapa(data) ??
+      SolicitudDisplayHelper.avisoSinMapaPorDefecto;
 
-  /// Aviso en oferta/tarjeta: servicio IA sin GPS de recogida (tras dejar de cargar).
-  static bool mostrarNotaRecogidaSinCoordenadas(
+  /// Banner informativo: origen sin punto en mapa (no bloquea Aceptar).
+  static bool mostrarAvisoSinMapa(
     Map<String, dynamic> data, {
     bool cargandoDireccion = false,
   }) {
     if (cargandoDireccion) return false;
-    final n = SolicitudDisplayHelper.normalizeSolicitudMap(data);
-    if (!ConductorServicioPasajeroHelper.esGestionadoPorIa(n)) return false;
-    return !SolicitudDisplayHelper.tieneCoordenadasRecogidaValidas(n);
+    return !SolicitudDisplayHelper.origenTieneMapa(data);
   }
 
   /// Mientras llega geocoding o el payload aún no trae barrio/calle.
@@ -52,13 +51,8 @@ abstract final class OfertaExclusivaDisplay {
     final v = recogida(data);
     if (v.tieneDireccionLegible) return false;
     final n = SolicitudDisplayHelper.normalizeSolicitudMap(data);
-    final lat = SolicitudDisplayHelper.parseCoordinate(n['origen_lat']);
-    final lng = SolicitudDisplayHelper.parseCoordinate(n['origen_lng']);
-    final tieneCoords = lat != null &&
-        lng != null &&
-        (lat.abs() > 0.0001 || lng.abs() > 0.0001);
     // Sin GPS no hay reverse geocode: evitar spinner infinito.
-    if (!tieneCoords) return false;
+    if (!SolicitudDisplayHelper.origenTieneMapa(n)) return false;
     return SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(n);
   }
 

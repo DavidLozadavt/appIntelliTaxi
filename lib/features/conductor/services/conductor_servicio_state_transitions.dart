@@ -1,5 +1,6 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_estado_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 
 /// Actualiza el payload local del servicio tras un cambio de estado UI.
 class ConductorServicioStateTransitions {
@@ -58,12 +59,12 @@ class ConductorServicioStateTransitions {
       );
     }
 
-    if (estadoUi == 'en_camino' || estadoUi == 'aceptado') {
-      final oLa =
-          ConductorServicioEstadoHelper.parseDouble(servicio['origen_lat']);
-      final oLng =
-          ConductorServicioEstadoHelper.parseDouble(servicio['origen_lng']);
-      if (oLa != 0 && oLng != 0) return LatLng(oLa, oLng);
+    if ((estadoUi == 'en_camino' || estadoUi == 'aceptado') &&
+        SolicitudDisplayHelper.origenTieneMapa(servicio)) {
+      return LatLng(
+        ConductorServicioEstadoHelper.parseDouble(servicio['origen_lat']),
+        ConductorServicioEstadoHelper.parseDouble(servicio['origen_lng']),
+      );
     }
 
     return null;

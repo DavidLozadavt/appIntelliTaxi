@@ -170,6 +170,10 @@ class ConductorSolicitudPayloadHelper {
       'origen_barrio': merged['origen_barrio'] ?? merged['barrio'],
       'origen_lat': merged['origen_lat'],
       'origen_lng': merged['origen_lng'],
+      'origen_coordenadas_validas': merged['origen_coordenadas_validas'],
+      'aviso_sin_mapa': merged['aviso_sin_mapa'],
+      'codigo_origen': merged['codigo_origen'],
+      'aceptable': merged['aceptable'],
       'destino_lat': merged['destino_lat'],
       'destino_lng': merged['destino_lng'],
       'precio_ofertado':

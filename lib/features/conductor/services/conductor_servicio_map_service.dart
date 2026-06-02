@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_estado_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 
 /// Mapa del viaje activo del conductor: marcadores y ruta.
@@ -32,6 +33,7 @@ class ConductorServicioMapService {
     required BitmapDescriptor? carIcon,
     double? miBearing,
   }) {
+    final origenEnMapa = SolicitudDisplayHelper.origenTieneMapa(servicio);
     final origenLat =
         ConductorServicioEstadoHelper.parseDouble(servicio['origen_lat']);
     final origenLng =
@@ -43,18 +45,21 @@ class ConductorServicioMapService {
     final tieneDestino =
         ConductorServicioEstadoHelper.tieneDestinoDefinido(servicio);
 
-    final markers = <Marker>{
-      Marker(
-        markerId: const MarkerId('recogida'),
-        position: LatLng(origenLat, origenLng),
-        icon: recogidaDot ?? BitmapDescriptor.defaultMarker,
-        infoWindow: InfoWindow(
-          title: 'Punto de Recogida',
-          snippet: servicio['origen_address']?.toString(),
+    final markers = <Marker>{};
+    if (origenEnMapa) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('recogida'),
+          position: LatLng(origenLat, origenLng),
+          icon: recogidaDot ?? BitmapDescriptor.defaultMarker,
+          infoWindow: InfoWindow(
+            title: 'Punto de Recogida',
+            snippet: servicio['origen_address']?.toString(),
+          ),
+          anchor: const Offset(0.5, 0.5),
         ),
-        anchor: const Offset(0.5, 0.5),
-      ),
-    };
+      );
+    }
 
     if (tieneDestino) {
       markers.add(

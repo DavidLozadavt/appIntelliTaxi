@@ -75,6 +75,13 @@ class ConductorOfertaExclusiva {
       'assignmentMethod',
       'pasajero_id',
       'pasajeroId',
+      'origen_coordenadas_validas',
+      'origenCoordenadasValidas',
+      'aviso_sin_mapa',
+      'avisoSinMapa',
+      'codigo_origen',
+      'codigoOrigen',
+      'aceptable',
     ]) {
       final v = raw[key];
       if (v != null && v.toString().trim().isNotEmpty) {

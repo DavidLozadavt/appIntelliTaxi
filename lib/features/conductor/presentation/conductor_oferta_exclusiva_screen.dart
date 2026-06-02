@@ -69,7 +69,8 @@ class _ConductorOfertaExclusivaScreenState
       setState(() => _finCargandoDireccionForzado = true);
     });
     final inicial = widget.oferta.toSolicitudMap();
-    if (!ConductorServicioPasajeroHelper.esGestionadoPorIa(inicial)) {
+    if (!ConductorServicioPasajeroHelper.esGestionadoPorIa(inicial) &&
+        SolicitudDisplayHelper.origenTieneMapa(inicial)) {
       unawaited(_prepararMapa());
     }
   }
@@ -133,6 +134,7 @@ class _ConductorOfertaExclusivaScreenState
   }
 
   LatLng? _latLngOrigen(Map<String, dynamic> solicitud) {
+    if (!SolicitudDisplayHelper.origenTieneMapa(solicitud)) return null;
     final lat = SolicitudDisplayHelper.parseCoordinate(
           solicitud['origen_lat'] ?? widget.oferta.origenLat,
         ) ??
@@ -142,7 +144,6 @@ class _ConductorOfertaExclusivaScreenState
         ) ??
         widget.oferta.origenLng;
     if (lat == null || lng == null) return null;
-    if (lat.abs() < 0.0001 && lng.abs() < 0.0001) return null;
     return LatLng(lat, lng);
   }
 
@@ -419,11 +420,12 @@ class _ConductorOfertaExclusivaScreenState
             ConductorServicioPasajeroHelper.telefonoFormateadoVisible(solicitud);
         final etiquetaIa =
             ConductorServicioPasajeroHelper.etiquetaOrigenServicio(solicitud);
-        final mostrarNotaSinGps =
-            OfertaExclusivaDisplay.mostrarNotaRecogidaSinCoordenadas(
+        final mostrarAvisoSinMapa = OfertaExclusivaDisplay.mostrarAvisoSinMapa(
           solicitud,
           cargandoDireccion: cargandoDireccion,
         );
+        final textoAvisoSinMapa =
+            OfertaExclusivaDisplay.avisoSinMapaTexto(solicitud);
 
         if (esIa) {
           return PopScope(
@@ -443,7 +445,8 @@ class _ConductorOfertaExclusivaScreenState
                 intento: intento,
                 maxIntentos: max,
                 cargandoDireccion: cargandoDireccion,
-                mostrarNotaSinGps: mostrarNotaSinGps,
+                mostrarAvisoSinMapa: mostrarAvisoSinMapa,
+                textoAvisoSinMapa: textoAvisoSinMapa,
                 tituloRecogidaFallback: tituloRecogidaFallback,
                 onRechazar: _rechazar,
                 onAceptar: _aceptar,
@@ -638,6 +641,8 @@ class _ConductorOfertaExclusivaScreenState
                     urgente: urgente,
                     procesando: _procesando,
                     cargandoDireccion: cargandoDireccion,
+                    mostrarAvisoSinMapa: mostrarAvisoSinMapa,
+                    textoAvisoSinMapa: textoAvisoSinMapa,
                     tituloRecogidaFallback: tituloRecogidaFallback,
                     onRechazar: _rechazar,
                     onAceptar: _aceptar,
@@ -668,7 +673,8 @@ class _VistaOfertaIa extends StatelessWidget {
     this.intento,
     this.maxIntentos,
     this.cargandoDireccion = false,
-    this.mostrarNotaSinGps = false,
+    this.mostrarAvisoSinMapa = false,
+    this.textoAvisoSinMapa = '',
     required this.tituloRecogidaFallback,
     required this.onRechazar,
     required this.onAceptar,
@@ -686,7 +692,8 @@ class _VistaOfertaIa extends StatelessWidget {
   final int? intento;
   final int? maxIntentos;
   final bool cargandoDireccion;
-  final bool mostrarNotaSinGps;
+  final bool mostrarAvisoSinMapa;
+  final String textoAvisoSinMapa;
   final String tituloRecogidaFallback;
   final VoidCallback onRechazar;
   final VoidCallback onAceptar;
@@ -822,10 +829,11 @@ class _VistaOfertaIa extends StatelessWidget {
                         ],
                       ),
                     ],
-                    if (mostrarNotaSinGps)
-                      const ConductorNotaRecogidaIaSinGps(
+                    if (mostrarAvisoSinMapa && textoAvisoSinMapa.isNotEmpty)
+                      ConductorAvisoSinMapa(
+                        mensaje: textoAvisoSinMapa,
                         onDarkBackground: true,
-                        margin: EdgeInsets.only(top: 16),
+                        margin: const EdgeInsets.only(top: 16),
                       ),
                     if (telefono.isNotEmpty) ...[
                       const SizedBox(height: 20),
@@ -1263,6 +1271,8 @@ class _PanelInferior extends StatelessWidget {
     required this.urgente,
     required this.procesando,
     this.cargandoDireccion = false,
+    this.mostrarAvisoSinMapa = false,
+    this.textoAvisoSinMapa = '',
     required this.tituloRecogidaFallback,
     required this.onRechazar,
     required this.onAceptar,
@@ -1275,6 +1285,8 @@ class _PanelInferior extends StatelessWidget {
   final bool urgente;
   final bool procesando;
   final bool cargandoDireccion;
+  final bool mostrarAvisoSinMapa;
+  final String textoAvisoSinMapa;
   final String tituloRecogidaFallback;
   final VoidCallback onRechazar;
   final VoidCallback onAceptar;
@@ -1364,11 +1376,22 @@ class _PanelInferior extends StatelessWidget {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-                child: _TarjetaRuta(
-                  recogida: recogida,
-                  destino: destino,
-                  cargandoDireccion: cargandoDireccion,
-                  tituloRecogidaFallback: tituloRecogidaFallback,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _TarjetaRuta(
+                      recogida: recogida,
+                      destino: destino,
+                      cargandoDireccion: cargandoDireccion,
+                      tituloRecogidaFallback: tituloRecogidaFallback,
+                    ),
+                    if (mostrarAvisoSinMapa && textoAvisoSinMapa.isNotEmpty)
+                      ConductorAvisoSinMapa(
+                        mensaje: textoAvisoSinMapa,
+                        onDarkBackground: true,
+                        margin: const EdgeInsets.only(top: 12),
+                      ),
+                  ],
                 ),
               ),
             ),
