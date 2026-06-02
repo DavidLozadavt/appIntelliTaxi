@@ -2118,6 +2118,20 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   // ==================== TURNOS ====================
 
+  /// Turno abierto en BD con [fechaTurno] distinta a hoy (el API suele filtrar solo hoy).
+  bool _turnoEsDeOtroDia(TurnoActivo? turno) {
+    if (turno == null) return false;
+    final raw = turno.fechaTurno.trim();
+    if (raw.isEmpty) return false;
+    final parsed = DateTime.tryParse(raw) ??
+        DateTime.tryParse('${raw.split(' ').first}T00:00:00');
+    if (parsed == null) return false;
+    final hoy = DateTime.now();
+    return parsed.year != hoy.year ||
+        parsed.month != hoy.month ||
+        parsed.day != hoy.day;
+  }
+
   /// Carga el turno actual del conductor
   Future<void> cargarTurnoActual() async {
     final teniaTurnoLocal = _turnoActivo != null;
@@ -2131,6 +2145,21 @@ class ConductorHomeProvider extends ChangeNotifier {
         await _aplicarTurnoActivoLocal(turno);
         if (!_isDisposed) notifyListeners();
       } else if (teniaTurnoLocal || _isOnline) {
+        if (_turnoActivo != null &&
+            _turnoActivo!.estaActivo &&
+            _turnoEsDeOtroDia(_turnoActivo)) {
+          AppLogger.w(
+            'Turno ACTIVO del ${_turnoActivo!.fechaTurno} no devuelto por API '
+            '(turno_actual_conductor filtra solo hoy). Se mantiene en línea.',
+            tag: 'Turno',
+          );
+          _isOnline = true;
+          if (!_enDescanso && !_suscritoAPusher) {
+            unawaited(conectarPusher());
+          }
+          if (!_isDisposed) notifyListeners();
+          return;
+        }
         AppLogger.d(
           'ℹ️ Sin turno en servidor; limpiando cache local (id=${_turnoActivo?.id})',
         );
