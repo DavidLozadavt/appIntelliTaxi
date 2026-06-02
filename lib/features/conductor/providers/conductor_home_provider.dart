@@ -170,13 +170,18 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   String? get ultimaSyncSolicitudesEn => _ultimaSyncSolicitudesEn;
 
+  bool _esOfertaExclusivaActiva(String? solicitudId) =>
+      solicitudId != null && _ofertaExclusiva?.solicitudId == solicitudId;
+
   /// Pestaña «En espera»: publicados en API cuyo overlay TTL ya expiró (o solo llegaron por sync).
   List<Map<String, dynamic>> get solicitudesEnEsperaOrdenadas {
     if (_enServicio || _enDescanso) return const [];
     final solicitudes = _solicitudesPorId.values
         .where((s) {
           final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-          return id != null && _overlayOcultoPorTtl.contains(id);
+          return id != null &&
+              _overlayOcultoPorTtl.contains(id) &&
+              !_esOfertaExclusivaActiva(id);
         })
         .toList();
     solicitudes.sort(ConductorSolicitudRankingHelper.compararRecientesPrimero);
@@ -220,7 +225,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     final solicitudes = _solicitudesPorId.values
         .where((s) {
           final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-          return id != null && !_overlayOcultoPorTtl.contains(id);
+          return id != null &&
+              !_overlayOcultoPorTtl.contains(id) &&
+              !_esOfertaExclusivaActiva(id);
         })
         .toList();
     solicitudes.sort(ConductorSolicitudRankingHelper.compararRecientesPrimero);
@@ -1243,7 +1250,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     solicitud['fase_oferta'] = 'exclusiva';
     solicitud['oferta_exclusiva'] = true;
     _solicitudesPorId[sid] = solicitud;
-    _overlayOcultoPorTtl.add(sid);
+    _overlayOcultoPorTtl.remove(sid);
 
     _marcarRecibidaPorRealtime(sid);
     if (!esMismaOferta) {

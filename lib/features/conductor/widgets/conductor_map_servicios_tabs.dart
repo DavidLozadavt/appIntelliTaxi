@@ -279,8 +279,8 @@ class ConductorMapServiciosTabs {
         itemCount: lista.length,
         itemBuilder: (context, index) {
           final solicitud = lista[index];
-          final id = getSolicitudId(solicitud);
-          if (id.isEmpty) return const SizedBox.shrink();
+          final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
+          if (id == null || id.isEmpty) return const SizedBox.shrink();
           final seg = segundosRestantes(id);
           return SolicitudServicioCard(
             solicitud: solicitud,
@@ -483,19 +483,26 @@ class ConductorMapServiciosTabs {
     );
   }
 
-  /// Lista con altura fija por ítem para que entren 3–4 tarjetas en el panel.
+  /// Lista con separación fija; sin [itemExtent] rígido (evita overflow con destino/botones).
   static Widget _serviciosListView({
     required BuildContext context,
     required int itemCount,
     required Widget? Function(BuildContext, int) itemBuilder,
     EdgeInsets padding = const EdgeInsets.fromLTRB(8, 8, 8, 10),
   }) {
-    final extent = compactCardItemExtent(context);
-    return ListView.builder(
+    if (itemCount <= 0) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: padding,
+        children: const [SizedBox(height: 1)],
+      );
+    }
+
+    return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: padding,
       itemCount: itemCount,
-      itemExtent: extent + _listGap,
+      separatorBuilder: (_, _) => const SizedBox(height: _listGap),
       itemBuilder: (context, index) {
         final card = itemBuilder(context, index);
         if (card == null) return const SizedBox.shrink();

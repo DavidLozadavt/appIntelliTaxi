@@ -473,68 +473,48 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     final textoAvisoSinMapa =
         OfertaExclusivaDisplay.avisoSinMapaTexto(widget.solicitud);
     final titleLarge = widget.destacada && !compact;
+    final cardFill = dense
+        ? (isDark ? const Color(0xFF262626) : Colors.white)
+        : (isDark ? const Color(0xFF1A1A1A) : Colors.white);
+    final cardBorder = dense
+        ? (isDark
+            ? Colors.white.withValues(alpha: 0.14)
+            : Colors.black.withValues(alpha: 0.08))
+        : (widget.destacada
+            ? AppColors.accent
+            : Colors.black.withValues(alpha: 0.08));
 
-    return SlideTransition(
-      position: _slideAnimation,
-      child: ScaleTransition(
-        scale: _scaleAnimation,
-        child: Container(
-          margin: widget.marginExterno
-              ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
-              : EdgeInsets.zero,
-          clipBehavior: dense ? Clip.hardEdge : Clip.none,
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-            borderRadius: BorderRadius.circular(
-              dense ? 10 : (compact ? 16 : 20),
-            ),
-            border: Border.all(
-              color: widget.destacada
-                  ? AppColors.accent
-                  : Colors.black.withValues(alpha: 0.08),
-              width: widget.destacada ? (compact ? 2 : 2.5) : 1,
-            ),
-            boxShadow: compact
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.14),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-          ),
-          child: Padding(
-            padding: dense
-                ? const EdgeInsets.fromLTRB(10, 5, 10, 5)
-                : compact
-                ? const EdgeInsets.fromLTRB(12, 10, 12, 11)
-                : const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: dense
-                ? _buildDenseListContent(
-                    isDark: isDark,
-                    recogidaHeadline: origenNombre,
-                    origenSub: origenSub,
-                    destinoHeadline: muestraDestino
-                        ? SolicitudDisplayHelper.destinationPlaceLabel(
-                            widget.solicitud,
-                          )
-                        : '',
-                    destinoSub: destinoSub,
-                    muestraDestino: muestraDestino,
-                    viajeDist: viajeDist,
-                    viajeDur: viajeDur,
-                    segundosRestantes: segundosRestantes,
-                    enRiesgo: enRiesgo,
-                    tiempoPub: tiempoPub,
-                    distanciaMi: distanciaMi,
-                    precio: precio,
-                    compact: compact,
-                  )
-                : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
+    final cardBody = Padding(
+          padding: dense
+              ? const EdgeInsets.fromLTRB(10, 5, 10, 5)
+              : compact
+              ? const EdgeInsets.fromLTRB(12, 10, 12, 11)
+              : const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: dense
+              ? _buildDenseListContent(
+                  isDark: isDark,
+                  recogidaHeadline: origenNombre,
+                  origenSub: origenSub,
+                  destinoHeadline: muestraDestino
+                      ? SolicitudDisplayHelper.destinationPlaceLabel(
+                          widget.solicitud,
+                        )
+                      : '',
+                  destinoSub: destinoSub,
+                  muestraDestino: muestraDestino,
+                  viajeDist: viajeDist,
+                  viajeDur: viajeDur,
+                  segundosRestantes: segundosRestantes,
+                  enRiesgo: enRiesgo,
+                  tiempoPub: tiempoPub,
+                  distanciaMi: distanciaMi,
+                  precio: precio,
+                  compact: compact,
+                )
+              : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -852,8 +832,42 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                 ),
               ],
             ),
-          ),
+    );
+
+    final card = Container(
+      margin: widget.marginExterno
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
+          : EdgeInsets.zero,
+      clipBehavior: dense ? Clip.hardEdge : Clip.none,
+      decoration: BoxDecoration(
+        color: cardFill,
+        borderRadius: BorderRadius.circular(
+          dense ? 10 : (compact ? 16 : 20),
         ),
+        border: Border.all(
+          color: cardBorder,
+          width: widget.destacada && !dense ? (compact ? 2 : 2.5) : 1,
+        ),
+        boxShadow: compact
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.14),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+      ),
+      child: cardBody,
+    );
+
+    if (dense) return card;
+
+    return SlideTransition(
+      position: _slideAnimation,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: card,
       ),
     );
   }
