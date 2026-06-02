@@ -1855,6 +1855,21 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (_currentPosition == null) {
         _locationMessage = 'Obteniendo ubicación GPS...';
         if (!_isDisposed) notifyListeners();
+
+        // Tras instalar o primer arranque, el GPS en frío tarda; la caché del SO evita pantalla vacía.
+        try {
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null && !_isDisposed) {
+            _currentPosition = last;
+            _isLoadingLocation = false;
+            _locationMessage = 'Ubicación obtenida';
+            notifyListeners();
+            _iniciarSeguimientoUbicacion();
+            unawaited(_sendMapHeartbeat(last, force: true));
+          }
+        } catch (e) {
+          AppLogger.d('⚠️ getLastKnownPosition en arranque: $e');
+        }
       }
 
       Position position = await Geolocator.getCurrentPosition(
@@ -1881,6 +1896,13 @@ class ConductorHomeProvider extends ChangeNotifier {
       AppLogger.d('❌ Error obteniendo ubicación: $e');
 
       if (_isDisposed) return;
+
+      if (_currentPosition != null) {
+        _isLoadingLocation = false;
+        _locationMessage = 'Ubicación obtenida';
+        if (!_isDisposed) notifyListeners();
+        return;
+      }
 
       _isLoadingLocation = false;
       _locationMessage = 'Error obteniendo ubicación: ${e.toString()}';

@@ -11,6 +11,7 @@ import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/utils/phone_launcher.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 
 class ActiveServiceScreen extends StatelessWidget {
   final ServicioActivo servicio;
@@ -206,14 +207,15 @@ class ActiveServiceScreen extends StatelessWidget {
       children: [
         Row(
           children: [
-            CircleAvatar(
+            SafeCircleAvatar(
               radius: 24,
+              imageUrl: conductor.foto,
               backgroundColor: AppColors.primary,
-              backgroundImage:
-                  conductor.foto != null ? NetworkImage(conductor.foto!) : null,
-              child: conductor.foto == null
-                  ? const Icon(Iconsax.user_copy, color: Colors.white, size: 26)
-                  : null,
+              fallback: const Icon(
+                Iconsax.user_copy,
+                color: Colors.white,
+                size: 26,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(

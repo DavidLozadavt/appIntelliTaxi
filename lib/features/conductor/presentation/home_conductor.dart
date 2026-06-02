@@ -1636,8 +1636,8 @@ class _HomeConductorState extends State<HomeConductor>
                 child: _buildSancionesBanner(),
               ),
 
-            if (provider.currentPosition != null)
-              Positioned(
+            // Emergencia siempre visible (no depende del GPS; las coords se resuelven al enviar).
+            Positioned(
                 right: 16,
                 bottom: _fabBottomOffset(provider) + 72,
                 child: Consumer<EmergenciaProvider>(

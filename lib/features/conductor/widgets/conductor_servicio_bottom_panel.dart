@@ -4,6 +4,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/shared/widgets/whatsapp_brand_icon.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 /// Panel inferior del viaje activo del conductor (contacto, ruta, acciones).
 class ConductorServicioBottomPanel extends StatelessWidget {
   const ConductorServicioBottomPanel({
@@ -360,24 +361,18 @@ class _ContactoCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              if (fotoUrl != null && fotoUrl!.isNotEmpty)
-                CircleAvatar(
-                  radius: 22,
-                  backgroundImage: NetworkImage(fotoUrl!),
-                  onBackgroundImageError: (_, _) {},
-                )
-              else
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: esGestionadoPorIa
-                      ? Colors.deepPurple.shade700
-                      : AppColors.primary,
-                  child: Icon(
-                    esGestionadoPorIa ? Iconsax.cpu : Icons.person,
-                    color: Colors.white,
-                    size: 22,
-                  ),
+              SafeCircleAvatar(
+                radius: 22,
+                imageUrl: fotoUrl,
+                backgroundColor: esGestionadoPorIa
+                    ? Colors.deepPurple.shade700
+                    : AppColors.primary,
+                fallback: Icon(
+                  esGestionadoPorIa ? Iconsax.cpu : Icons.person,
+                  color: Colors.white,
+                  size: 22,
                 ),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(

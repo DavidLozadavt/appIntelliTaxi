@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/image_load_errors.dart';
 
 /// Arranque seguro: validación de `.env` y captura de errores en release.
 class AppBootstrap {
@@ -22,25 +23,62 @@ class AppBootstrap {
     StackTrace? stack, {
     bool fatal = false,
   }) {
+    final benignImage = shouldSuppressImageCrashReport(
+      error: error,
+      stack: stack,
+    );
     AppDiagnostics.recordError(
-      fatal ? 'fatal_error' : 'error',
+      benignImage ? 'image_load' : (fatal ? 'fatal_error' : 'error'),
       error: error,
       stackTrace: stack,
     );
     if (!_crashlyticsReady) return;
+    if (benignImage) {
+      FirebaseCrashlytics.instance.recordError(
+        error,
+        stack,
+        fatal: false,
+        reason: 'benign_image_decode',
+      );
+      return;
+    }
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: fatal);
   }
 
   static void installErrorHandlers() {
     FlutterError.onError = (details) {
+      final benignImage = shouldSuppressImageCrashReport(
+        error: details.exception,
+        stack: details.stack,
+      );
+
       AppDiagnostics.recordError(
-        'FlutterError',
+        benignImage ? 'image_load' : 'FlutterError',
         error: details.exception,
         stackTrace: details.stack,
       );
+
       if (_crashlyticsReady) {
-        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+        if (benignImage) {
+          FirebaseCrashlytics.instance.recordError(
+            details.exception,
+            details.stack,
+            fatal: false,
+            reason: 'benign_image_decode',
+          );
+        } else {
+          FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+        }
       }
+
+      if (benignImage) {
+        AppLogger.d(
+          'Imagen no decodificada (placeholder): ${details.exception}',
+          tag: 'ImageLoad',
+        );
+        return;
+      }
+
       AppLogger.e(
         details.exceptionAsString(),
         tag: 'FlutterError',
@@ -53,6 +91,10 @@ class AppBootstrap {
     };
 
     PlatformDispatcher.instance.onError = (error, stack) {
+      if (shouldSuppressImageCrashReport(error: error, stack: stack)) {
+        recordError(error, stack, fatal: false);
+        return true;
+      }
       recordError(error, stack, fatal: true);
       AppLogger.e(
         'Uncaught async error',

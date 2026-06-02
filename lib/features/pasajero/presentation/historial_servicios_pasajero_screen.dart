@@ -8,6 +8,7 @@ import 'package:intellitaxi/features/rides/data/historial_servicio_model.dart';
 import 'package:intellitaxi/features/rides/presentation/historial_calificaciones_screen.dart';
 import 'package:intellitaxi/features/rides/services/historial_servicio_service.dart';
 import 'package:provider/provider.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 
 class HistorialServiciosPasajeroScreen extends StatefulWidget {
   const HistorialServiciosPasajeroScreen({super.key});
@@ -430,19 +431,15 @@ class _HistorialServiciosPasajeroScreenState
                     shape: BoxShape.circle,
                     border: Border.all(color: borderColor, width: 1.5),
                   ),
-                  child: CircleAvatar(
+                  child: SafeCircleAvatar(
                     radius: 26,
+                    imageUrl: servicio.persona?.fotoPerfil,
                     backgroundColor: softSurface,
-                    backgroundImage: servicio.persona?.fotoPerfil != null
-                        ? NetworkImage(servicio.persona!.fotoPerfil!)
-                        : null,
-                    child: servicio.persona?.fotoPerfil == null
-                        ? Icon(
-                            Iconsax.user_copy,
-                            color: mutedText,
-                            size: 28,
-                          )
-                        : null,
+                    fallback: Icon(
+                      Iconsax.user_copy,
+                      color: mutedText,
+                      size: 28,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),

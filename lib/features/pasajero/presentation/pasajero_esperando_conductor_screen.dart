@@ -16,6 +16,7 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
 import 'package:intellitaxi/core/utils/phone_launcher.dart';
 import 'package:intellitaxi/core/utils/driver_rating_display.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -939,27 +940,16 @@ class _PasajeroEsperandoConductorScreenState
       child: Row(
         children: [
           // Avatar
-          conductor?['conductor_foto'] != null &&
-                  conductor!['conductor_foto'].toString().isNotEmpty
-              ? CircleAvatar(
-                  radius: 22,
-                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                  backgroundImage: NetworkImage(conductor['conductor_foto']),
-                  onBackgroundImageError: (exception, stackTrace) {
-                    AppLogger.d(
-                      '⚠️ Error cargando foto del conductor: $exception',
-                    );
-                  },
-                )
-              : CircleAvatar(
-                  radius: 22,
-                  backgroundColor: AppColors.primary,
-                  child: const Icon(
-                    Iconsax.user_copy,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
+          SafeCircleAvatar(
+            radius: 22,
+            imageUrl: conductor?['conductor_foto']?.toString(),
+            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+            fallback: const Icon(
+              Iconsax.user_copy,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

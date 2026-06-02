@@ -5,6 +5,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/features/auth/data/drawer_item.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 
 class CustomDrawer extends StatelessWidget {
   const CustomDrawer({super.key});
@@ -153,19 +154,11 @@ class CustomDrawer extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: CircleAvatar(
-                        radius: 30,
-                        backgroundColor: Colors.white,
-                        child: CircleAvatar(
-                          radius: 27,
-                          backgroundColor: Colors.grey.shade200,
-                          backgroundImage:
-                              tieneFoto ? NetworkImage(fotoUrl) : null,
-                          onBackgroundImageError: (_, _) {},
-                          child: tieneFoto
-                              ? null
-                              : const Icon(Icons.person, size: 35),
-                        ),
+                      child: SafeCircleAvatar(
+                        radius: 27,
+                        imageUrl: tieneFoto ? fotoUrl : null,
+                        backgroundColor: Colors.grey.shade200,
+                        fallback: const Icon(Icons.person, size: 35),
                       ),
                     ),
                     const SizedBox(width: 12),

@@ -3,6 +3,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/data/propietario_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 
 class PropietariosVehiculoScreen extends StatefulWidget {
   final VehiculoConductor vehiculo;
@@ -200,27 +201,19 @@ class _PropietariosVehiculoScreenState
           children: [
             Row(
               children: [
-                CircleAvatar(
+                SafeCircleAvatar(
                   radius: 28,
+                  imageUrl: propietario.rutaFotoUrl,
                   backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                  backgroundImage:
-                      propietario.rutaFotoUrl != null &&
-                          propietario.rutaFotoUrl!.isNotEmpty
-                      ? NetworkImage(propietario.rutaFotoUrl!)
-                      : null,
-                  child:
-                      propietario.rutaFotoUrl == null ||
-                          propietario.rutaFotoUrl!.isEmpty
-                      ? Text(
-                          propietario.nombre1.isNotEmpty
-                              ? propietario.nombre1[0].toUpperCase()
-                              : '?',
-                          style: const TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        )
-                      : null,
+                  fallback: Text(
+                    propietario.nombre1.isNotEmpty
+                        ? propietario.nombre1[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

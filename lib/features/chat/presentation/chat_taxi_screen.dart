@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 import '../controllers/chat_taxi_controller.dart';
 import '../providers/chat_badge_provider.dart';
 import '../services/chat_taxi_service.dart';
@@ -150,21 +150,15 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
           return Row(
             children: [
               // Avatar
-              CircleAvatar(
+              SafeCircleAvatar(
                 radius: 18,
+                imageUrl: controller.fotoOtroUsuario,
                 backgroundColor: isDark ? AppColors.darkCard : Colors.grey[300],
-                backgroundImage: controller.fotoOtroUsuario != null
-                    ? CachedNetworkImageProvider(controller.fotoOtroUsuario!)
-                    : null,
-                child: controller.fotoOtroUsuario == null
-                    ? Icon(
-                        Icons.person,
-                        size: 20,
-                        color: isDark
-                            ? AppColors.darkOnSurface
-                            : Colors.grey[700],
-                      )
-                    : null,
+                fallback: Icon(
+                  Icons.person,
+                  size: 20,
+                  color: isDark ? AppColors.darkOnSurface : Colors.grey[700],
+                ),
               ),
               const SizedBox(width: 12),
 

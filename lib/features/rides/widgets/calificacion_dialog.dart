@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 
 /// Diálogo para calificar un servicio (conductor o pasajero)
 class CalificacionDialog extends StatefulWidget {
@@ -135,25 +136,18 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               // Avatar
-              if (widget.fotoCalificado != null &&
-                  widget.fotoCalificado!.trim().isNotEmpty)
-                CircleAvatar(
-                  radius: 45,
-                  backgroundImage: NetworkImage(widget.fotoCalificado!),
-                  backgroundColor: Colors.grey.shade300,
-                )
-              else
-                CircleAvatar(
-                  radius: 45,
-                  backgroundColor: Colors.deepOrange.shade100,
-                  child: Icon(
-                    widget.tipoCalificacion == 'CONDUCTOR'
-                        ? Icons.person
-                        : Icons.person_outline,
-                    size: 50,
-                    color: Colors.deepOrange,
-                  ),
+              SafeCircleAvatar(
+                radius: 45,
+                imageUrl: widget.fotoCalificado,
+                backgroundColor: Colors.grey.shade300,
+                fallback: Icon(
+                  widget.tipoCalificacion == 'CONDUCTOR'
+                      ? Icons.person
+                      : Icons.person_outline,
+                  size: 50,
+                  color: Colors.deepOrange,
                 ),
+              ),
 
               const SizedBox(height: 16),
 

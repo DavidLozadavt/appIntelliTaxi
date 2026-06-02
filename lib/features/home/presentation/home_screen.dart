@@ -11,6 +11,7 @@ import 'package:intellitaxi/core/bootstrap/session_preload.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -194,35 +195,19 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             );
                           },
-                          child: CircleAvatar(
+                          child: SafeCircleAvatar(
                             radius: 18,
+                            imageUrl: user.persona.rutaFotoUrl,
                             backgroundColor: Colors.blue.shade100,
-                            backgroundImage:
-                                user.persona.rutaFotoUrl != null &&
-                                    user.persona.rutaFotoUrl!.isNotEmpty
-                                ? NetworkImage(user.persona.rutaFotoUrl!)
-                                : null,
-                            onBackgroundImageError:
-                                user.persona.rutaFotoUrl != null
-                                ? (exception, stackTrace) {
-                                    debugPrint(
-                                      '⚠️ Error cargando avatar: $exception',
-                                    );
-                                  }
-                                : null,
-                            child:
-                                (user.persona.rutaFotoUrl == null ||
-                                    user.persona.rutaFotoUrl!.isEmpty)
-                                ? Text(
-                                    user.persona.nombre1.isNotEmpty
-                                        ? user.persona.nombre1[0].toUpperCase()
-                                        : '?',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  )
-                                : null,
+                            fallback: Text(
+                              user.persona.nombre1.isNotEmpty
+                                  ? user.persona.nombre1[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
                           ),
                         ),
                       ],
