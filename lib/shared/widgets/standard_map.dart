@@ -59,6 +59,14 @@ class _StandardMapState extends State<StandardMap> {
   final fm.MapController _mapController = fm.MapController();
   GoogleMapController? _googleCompatController;
   bool _createdCallbackSent = false;
+  /// Rumbo del mapa; no leer [_mapController.camera] antes de [onMapReady].
+  double _mapBearing = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapBearing = widget.bearing;
+  }
 
   @override
   void dispose() {
@@ -73,8 +81,6 @@ class _StandardMapState extends State<StandardMap> {
 
     final sortedMarkers = widget.markers.where((m) => m.visible).toList()
       ..sort((a, b) => a.zIndexInt.compareTo(b.zIndexInt));
-
-    final mapBearing = _mapController.camera.rotation;
 
     return Stack(
       children: [
@@ -94,13 +100,22 @@ class _StandardMapState extends State<StandardMap> {
                       : ~fm.InteractiveFlag.rotate),
             ),
             onMapReady: () {
-              if (_createdCallbackSent) return;
-              _createdCallbackSent = true;
-              _googleCompatController ??=
-                  GoogleMapController(_mapController);
-              widget.onMapCreated(_googleCompatController!);
+              if (!_createdCallbackSent) {
+                _createdCallbackSent = true;
+                _googleCompatController ??=
+                    GoogleMapController(_mapController);
+                widget.onMapCreated(_googleCompatController!);
+              }
+              final rotation = _mapController.camera.rotation;
+              if (rotation != _mapBearing) {
+                setState(() => _mapBearing = rotation);
+              }
             },
             onPositionChanged: (position, hasGesture) {
+              final rotation = position.rotation;
+              if (rotation != _mapBearing) {
+                setState(() => _mapBearing = rotation);
+              }
               if (hasGesture) {
                 widget.onCameraMoveStarted?.call();
               }
@@ -111,7 +126,7 @@ class _StandardMapState extends State<StandardMap> {
                     position.center.longitude,
                   ),
                   zoom: position.zoom,
-                  bearing: position.rotation,
+                  bearing: rotation,
                 ),
               );
               if (!hasGesture) {
@@ -176,7 +191,7 @@ class _StandardMapState extends State<StandardMap> {
                           child: rotatedMarkerChild(
                             rotationDegrees: m.rotation,
                             flat: m.flat,
-                            mapBearingDegrees: mapBearing,
+                            mapBearingDegrees: _mapBearing,
                             child: MarkerIconWidget(descriptor: m.icon),
                           ),
                         ),
