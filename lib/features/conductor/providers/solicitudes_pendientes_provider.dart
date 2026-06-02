@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_distance_helper.dart';
@@ -69,11 +70,16 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
     }
 
     try {
-      await _home!.sincronizarSolicitudesPublicadasConductor();
+      await _home!.sincronizarSolicitudesPublicadasConductor(
+        propagarError: !silencioso,
+      );
       _error = null;
     } catch (e) {
       if (!silencioso) {
-        _error = e.toString().replaceAll('Exception: ', '');
+        _error = DioErrorMessage.from(
+          e,
+          fallback: 'No se pudieron cargar las solicitudes en espera',
+        );
       }
       AppLogger.d('⚠️ Error cargando pendientes: $e');
     } finally {

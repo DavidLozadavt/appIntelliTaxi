@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
@@ -114,7 +116,9 @@ class ConductorMapServiciosTabs {
       return home.solicitudesOrdenadas.isNotEmpty ||
           home.totalSolicitudesEnEspera > 0;
     }
-    return pendientes.total > 0 || pendientes.cargando;
+    return pendientes.total > 0 ||
+        pendientes.cargando ||
+        pendientes.error != null;
   }
 
   static bool mostrarAvisoEnEsperaEnLlegando({
@@ -241,8 +245,13 @@ class ConductorMapServiciosTabs {
     final espera = home.totalSolicitudesEnEspera;
     final soloAvisoEspera = lista.isEmpty && espera > 0;
 
-    Future<void> onRefresh() =>
-        home.sincronizarSolicitudesPublicadasConductor();
+    Future<void> onRefresh() async {
+      try {
+        await home.sincronizarSolicitudesPublicadasConductor(
+          propagarError: true,
+        );
+      } catch (_) {}
+    }
 
     if (lista.isEmpty && espera == 0) {
       return const SizedBox.shrink();
@@ -320,7 +329,11 @@ class ConductorMapServiciosTabs {
   }) {
     final lista = pendientes.pendientes;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    Future<void> onRefresh() => pendientes.refrescar(silencioso: false);
+    Future<void> onRefresh() async {
+      try {
+        await pendientes.refrescar(silencioso: false);
+      } catch (_) {}
+    }
     final panelH = _listPanelHeight(context, conBarraRefresh: true);
 
     Widget body;
@@ -330,6 +343,55 @@ class ConductorMapServiciosTabs {
           width: 22,
           height: 22,
           child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    } else if (pendientes.error != null && lista.isEmpty) {
+      body = RefreshIndicator(
+        color: AppColors.accent,
+        onRefresh: onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: panelH - 34 - 24,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.lock_outline_rounded,
+                        size: 32,
+                        color: Colors.grey.shade500,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        pendientes.error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: pendientes.cargando
+                            ? null
+                            : () => unawaited(
+                                  pendientes.refrescar(silencioso: false),
+                                ),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Reintentar'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     } else if (lista.isEmpty) {
@@ -407,7 +469,9 @@ class ConductorMapServiciosTabs {
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.only(right: 4, top: 2),
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 32),
-                onPressed: pendientes.cargando ? null : pendientes.refrescar,
+                onPressed: pendientes.cargando
+                    ? null
+                    : () => unawaited(pendientes.refrescar(silencioso: false)),
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 tooltip: 'Actualizar',
               ),

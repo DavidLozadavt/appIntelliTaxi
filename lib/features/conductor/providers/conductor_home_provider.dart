@@ -886,7 +886,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Alinea la cola local con el backend (otro conductor aceptó, realtime perdido, etc.).
-  Future<void> sincronizarSolicitudesPublicadasConductor() async {
+  Future<void> sincronizarSolicitudesPublicadasConductor({
+    bool propagarError = false,
+  }) async {
     if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
     try {
       final result = await _conductorService.listarSolicitudesPublicadasConductor(
@@ -953,6 +955,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
     } catch (e) {
       AppLogger.d('⚠️ Sync solicitudes publicadas: $e');
+      if (propagarError) rethrow;
     }
   }
 

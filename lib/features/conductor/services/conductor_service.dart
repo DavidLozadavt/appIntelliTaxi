@@ -785,6 +785,7 @@ class ConductorService {
     double? lng,
     int limit = 50,
   }) async {
+    const fallback = 'No se pudieron cargar las solicitudes en espera';
     try {
       final query = <String, dynamic>{'limit': limit.clamp(1, 100)};
       if (lat != null && lng != null) {
@@ -797,7 +798,24 @@ class ConductorService {
         queryParameters: query,
       );
 
+      final status = response.statusCode ?? 0;
+      if (status == 403) {
+        throw Exception(
+          _messageFromResponseData(
+            response.data,
+            'No tienes permiso para ver solicitudes en espera. '
+                'Verifica que tu turno esté activo.',
+          ),
+        );
+      }
+      if (status >= 400) {
+        throw Exception(_messageFromResponseData(response.data, fallback));
+      }
+
       return _parseSolicitudesPendientesResponse(response.data);
+    } on DioException catch (e) {
+      AppLogger.d('⚠️ Error listando solicitudes pendientes: $e');
+      throw Exception(_extractErrorMessage(e, fallback));
     } catch (e) {
       AppLogger.d('⚠️ Error listando solicitudes pendientes: $e');
       rethrow;
