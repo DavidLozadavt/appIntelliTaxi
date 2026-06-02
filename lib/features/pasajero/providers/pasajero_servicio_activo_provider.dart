@@ -502,8 +502,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         _estadoServicio = PasajeroServicioMapper.resolverEstadoUi({
           ...datosServicio,
           ...servicio,
-          if (conductorData != null) 'conductor': conductorData,
-          if (conductorId != null) 'conductor_id': conductorId,
+          'conductor': ?conductorData,
+          'conductor_id': ?conductorId,
           'idEstado': idEstado,
           'estado': estadoObj ?? estadoRaw,
         });

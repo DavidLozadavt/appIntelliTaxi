@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:intellitaxi/core/services/connectivity_provider.dart';
 import 'package:intellitaxi/core/theme/theme_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';

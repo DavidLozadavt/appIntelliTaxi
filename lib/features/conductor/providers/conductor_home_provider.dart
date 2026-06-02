@@ -935,9 +935,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       for (final m in list) {
-        final map = m is Map<String, dynamic>
-            ? m
-            : Map<String, dynamic>.from(m as Map);
+        final map = m;
         final sid = map['servicio_id'] ?? map['solicitud_id'] ?? map['id'];
         if (sid != null) {
           final sidStr = sid.toString();
