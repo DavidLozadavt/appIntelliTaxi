@@ -17,6 +17,16 @@ abstract final class ConductorOfertaIndriverHelper {
     return f == null || f == 'abierta' || f == 'broadcast' || f == 'publica';
   }
 
+  /// Exclusiva terminó y el mismo servicio entra al broadcast / «Llegando».
+  static bool pasoDeExclusivaAPublicoEnLlegando(
+    Map<String, dynamic>? anterior,
+    Map<String, dynamic> actual,
+  ) {
+    if (anterior == null) return false;
+    if (!esFaseExclusiva(anterior)) return false;
+    return esFaseAbierta(actual) && !esFaseExclusiva(actual);
+  }
+
   /// En canal público: ignorar si la oferta sigue siendo exclusiva para otro.
   static bool ignorarNuevaSolicitudPublica(
     Map<String, dynamic> raw, {

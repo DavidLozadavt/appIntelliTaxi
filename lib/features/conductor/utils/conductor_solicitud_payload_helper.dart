@@ -68,6 +68,37 @@ class ConductorSolicitudPayloadHelper {
     return _expiraColaDesdePayloadApi(solicitud);
   }
 
+  /// Fija `overlay_expira_en` con mínimo de ventana en «Llegando» (p. ej. tras exclusiva).
+  static void anclarOverlayExpiraEn(
+    Map<String, dynamic> destino, {
+    Map<String, dynamic>? anterior,
+    int minSegundosRestantes = kOportunidadConductorSegundos,
+  }) {
+    final minimo =
+        DateTime.now().add(Duration(seconds: minSegundosRestantes));
+    DateTime? mejor;
+
+    for (final raw in [
+      destino['_overlay_expira_en_ancla'],
+      anterior?['_overlay_expira_en_ancla'],
+      destino['overlay_expira_en'],
+      destino['overlayExpiraEn'],
+      anterior?['overlay_expira_en'],
+      anterior?['overlayExpiraEn'],
+    ]) {
+      final parsed = ServicioEsperaTimer.parseExpiraEn(raw);
+      if (parsed != null && (mejor == null || parsed.isAfter(mejor))) {
+        mejor = parsed;
+      }
+    }
+
+    final expira = mejor != null && mejor.isAfter(minimo) ? mejor : minimo;
+    final iso = expira.toIso8601String();
+    destino['overlay_expira_en'] = iso;
+    destino['overlayExpiraEn'] = iso;
+    destino['_overlay_expira_en_ancla'] = iso;
+  }
+
   /// Fija `_cola_expira_en` para cuenta regresiva fluida (no saltos en cada sync).
   static void anclarExpiracionCola(
     Map<String, dynamic> destino, {
@@ -105,6 +136,22 @@ class ConductorSolicitudPayloadHelper {
   static bool tieneExpiracionColaActiva(Map<String, dynamic> solicitud) {
     final seg = segundosRestantesCola(solicitud);
     return seg != null && seg > 0;
+  }
+
+  /// El API indica ventana activa en pestaña «Llegando».
+  static bool overlayVigenteEnServidor(Map<String, dynamic> solicitud) {
+    final expira = resolverOverlayExpiraEn(solicitud);
+    return expira != null && expira.isAfter(DateTime.now());
+  }
+
+  /// Segundos hasta que expire el overlay (mín. 1 s).
+  static int segundosRestantesOverlay(Map<String, dynamic> solicitud) {
+    final expira = resolverOverlayExpiraEn(solicitud);
+    if (expira != null) {
+      final s = expira.difference(DateTime.now()).inSeconds;
+      if (s > 0) return s;
+    }
+    return resolverTtlSegundos(solicitud);
   }
 
   /// TTL del overlay «Llegando» en mapa (no confundir con oferta exclusiva ni cola).

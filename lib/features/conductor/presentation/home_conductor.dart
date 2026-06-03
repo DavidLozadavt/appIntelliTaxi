@@ -748,59 +748,25 @@ class _HomeConductorState extends State<HomeConductor>
     }
   }
 
-  /// Rechaza la solicitud de servicio
+  /// Rechaza para este conductor (cola «Llegando» / «En espera»); no cancela el viaje del pasajero.
   void _rechazarSolicitud(String solicitudId) async {
-    AppLogger.d('❌ Solicitud rechazada: $solicitudId');
-
-    var solicitud =
-        _provider.buscarSolicitudPorId(solicitudId) ??
-        _provider.solicitudesOrdenadas.firstWhere(
-          (s) => _getSolicitudId(s) == solicitudId,
-          orElse: () => {},
-        );
-    if (solicitud.isEmpty) {
-      solicitud = {};
-    }
-    final isOfertaDirecta = solicitud['status'] == 'oferta_directa';
-    final servicioId = int.tryParse(solicitudId);
-
-    if (isOfertaDirecta && servicioId != null) {
-      final ok = await _provider.cancelarServicio(
-        servicioId: servicioId,
-        motivo: 'Oferta directa rechazada por conductor',
-      );
-
-      if (!mounted) return;
-
-      if (ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Oferta directa rechazada y cancelada'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo cancelar la oferta directa'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Solicitud rechazada'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    AppLogger.d('❌ Rechazo local conductor: $solicitudId');
 
     final okRemoto = await _provider.rechazarSolicitudParaConductor(solicitudId);
     _pendientesProvider.quitarPorId(solicitudId);
 
     if (!mounted) return;
-    if (!okRemoto && servicioId != null) {
+
+    if (okRemoto) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No te volverá a salir este servicio. Sigue disponible para otros conductores.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(

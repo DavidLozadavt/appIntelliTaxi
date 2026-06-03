@@ -5,6 +5,7 @@ class VoiceAlertService {
   static FlutterTts? _tts;
   static bool _ready = false;
   static DateTime? _lastSpeakAt;
+  static String? _lastSpokenText;
 
   static Future<void> _ensureReady() async {
     if (_ready) return;
@@ -14,18 +15,18 @@ class VoiceAlertService {
     await _tts!.setSpeechRate(0.48);
     await _tts!.setVolume(1.0);
     await _tts!.setPitch(1.0);
+    await _tts!.awaitSpeakCompletion(true);
     _ready = true;
   }
 
   /// Precalienta TTS antes de oferta exclusiva (evita perder el primer speak).
   static Future<void> prepare() => _ensureReady();
 
-  static String? _lastSpokenText;
-
   static Future<void> speak(
     String text, {
     Duration minInterval = const Duration(seconds: 2),
     bool force = false,
+    bool stopBefore = true,
   }) async {
     final mensaje = text.trim();
     if (mensaje.isEmpty) return;
@@ -40,7 +41,9 @@ class VoiceAlertService {
 
     try {
       await _ensureReady();
-      await _tts!.stop();
+      if (stopBefore) {
+        await _tts!.stop();
+      }
       _lastSpeakAt = now;
       _lastSpokenText = mensaje;
       await _tts!.speak(mensaje);
@@ -50,7 +53,12 @@ class VoiceAlertService {
   }
 
   static Future<void> announceNewService() async {
-    await speak('Nuevo servicio disponible', minInterval: const Duration(seconds: 5));
+    await speak(
+      'Nuevo servicio disponible',
+      minInterval: const Duration(seconds: 2),
+      force: true,
+      stopBefore: false,
+    );
   }
 
   /// Solo la dirección (barrio, calle…), sin frases extra. Una vez por oferta.

@@ -6,7 +6,7 @@ import 'package:intellitaxi/features/conductor/services/turno_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
-import 'package:intellitaxi/features/conductor/services/conductor_notification_sound_service.dart';
+import 'package:intellitaxi/core/services/incoming_service_alert_service.dart';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/config/maps_config.dart';
@@ -92,6 +92,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   final Set<String> _overlayOcultoPorTtl = {};
   final Map<String, DateTime> _recibidaPorRealtimeEn = {};
   final Map<String, DateTime> _sonidoEmitidoPorSolicitudId = {};
+  /// Evita 2.º beep si el mismo id sigue en «Llegando» (sync/realtime duplicado).
+  final Map<String, DateTime> _silenciarBeepLlegandoHasta = {};
+  /// Tras exclusiva: una publicación en «Llegando» y sin ping-pong con «En espera».
+  final Set<String> _publicadoLlegandoTrasExclusiva = {};
+  final Map<String, DateTime> _mantenerLlegandoTrasExclusivaHasta = {};
   final Map<String, Timer> _timersExpiracion = {};
   final Map<String, DateTime> _expiracionPorSolicitud = {};
   String? _ultimaSyncSolicitudesEn;
@@ -691,6 +696,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     _overlayOcultoPorTtl.clear();
     _recibidaPorRealtimeEn.clear();
     _sonidoEmitidoPorSolicitudId.clear();
+    _silenciarBeepLlegandoHasta.clear();
+    _publicadoLlegandoTrasExclusiva.clear();
+    _mantenerLlegandoTrasExclusivaHasta.clear();
     _solicitudesPorId.clear();
     _detenerTickerSiNoHaySolicitudes();
   }
@@ -703,31 +711,93 @@ class ConductorHomeProvider extends ChangeNotifier {
     _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion[solicitudId]?.cancel();
     _timersExpiracion.remove(solicitudId);
+    _publicadoLlegandoTrasExclusiva.remove(solicitudId);
+    _mantenerLlegandoTrasExclusivaHasta.remove(solicitudId);
   }
 
   void _marcarRecibidaPorRealtime(String solicitudId) {
     _recibidaPorRealtimeEn[solicitudId] = DateTime.now();
   }
 
-  /// Tono de alerta solo para alta en «Llegando» (Pusher/FCM), no en «En espera» ni sync API.
+  /// Beep (+ voz) al entrar en «Llegando».
   void _dispararSonidoNuevaSolicitud(
     String solicitudId, {
     bool decirNuevoServicioEnVoz = true,
+    bool beepInmediato = false,
   }) {
     if (_isDisposed || _enServicio || _enDescanso || !_isOnline) return;
 
-    final prev = _sonidoEmitidoPorSolicitudId[solicitudId];
-    if (prev != null &&
-        DateTime.now().difference(prev).inSeconds <
-            kSonidoSolicitudDedupeSegundos) {
-      return;
-    }
     _sonidoEmitidoPorSolicitudId[solicitudId] = DateTime.now();
 
-    unawaited(_reproducirSonidoNotificacion());
-    if (decirNuevoServicioEnVoz) {
-      unawaited(VoiceAlertService.announceNewService());
+    final tipo = decirNuevoServicioEnVoz ? 'llegando' : 'exclusiva';
+    unawaited(
+      IncomingServiceAlertService.alert(
+        includeVoice: decirNuevoServicioEnVoz,
+        dedupeKey: '$solicitudId:$tipo',
+        beepInmediato: beepInmediato,
+      ),
+    );
+  }
+
+  bool _beepLlegandoSilenciado(String solicitudId) {
+    final hasta = _silenciarBeepLlegandoHasta[solicitudId];
+    if (hasta == null) return false;
+    if (DateTime.now().isAfter(hasta)) {
+      _silenciarBeepLlegandoHasta.remove(solicitudId);
+      return false;
     }
+    return true;
+  }
+
+  void _marcarBeepLlegandoRecienEmitido(String solicitudId) {
+    _silenciarBeepLlegandoHasta[solicitudId] =
+        DateTime.now().add(const Duration(seconds: 12));
+  }
+
+  bool _mantenerEnLlegandoTrasExclusiva(String solicitudId) {
+    final hasta = _mantenerLlegandoTrasExclusivaHasta[solicitudId];
+    if (hasta == null) return false;
+    if (DateTime.now().isAfter(hasta)) {
+      _mantenerLlegandoTrasExclusivaHasta.remove(solicitudId);
+      return false;
+    }
+    return true;
+  }
+
+  void _marcarMantenerEnLlegandoTrasExclusiva(String solicitudId) {
+    _mantenerLlegandoTrasExclusivaHasta[solicitudId] = DateTime.now().add(
+      const Duration(seconds: kMantenerLlegandoTrasExclusivaSegundos),
+    );
+  }
+
+  /// Al cerrar exclusiva: una vez en «Llegando» + beep; sin rebotes ni sync a espera.
+  void _publicarEnLlegandoTrasExclusiva(String solicitudId) {
+    if (_isDisposed || _enServicio || _enDescanso || !_isOnline) return;
+    if (!_publicadoLlegandoTrasExclusiva.add(solicitudId)) return;
+
+    var solicitud = _solicitudesPorId[solicitudId];
+    if (solicitud == null) return;
+
+    final anterior = Map<String, dynamic>.from(solicitud);
+    solicitud = Map<String, dynamic>.from(solicitud)
+      ..['fase_oferta'] = 'abierta'
+      ..['oferta_exclusiva'] = false
+      ..remove('status');
+    ConductorSolicitudPayloadHelper.anclarOverlayExpiraEn(
+      solicitud,
+      anterior: anterior,
+    );
+    _solicitudesPorId[solicitudId] = solicitud;
+    _marcarMantenerEnLlegandoTrasExclusiva(solicitudId);
+
+    _aplicarOverlayLlegando(
+      solicitudId,
+      solicitud: solicitud,
+      esNueva: true,
+      forzarBeepLlegando: true,
+    );
+    unawaited(sincronizarSolicitudesPublicadasConductor());
+    if (!_isDisposed) notifyListeners();
   }
 
   /// No borrar en sync si acaba de llegar por Pusher/FCM o sigue en «Llegando».
@@ -1237,12 +1307,16 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Cierra la UI al llegar a 0 s y confirma con el API (rotación sin depender de Pusher).
   Future<void> _manejarOfertaExclusivaExpiradaLocal() async {
     if (_isDisposed) return;
+    final sid = _ofertaExclusiva?.solicitudId;
     _detenerTickOfertaExclusiva();
-    ConductorOfertaNavigation.cerrarSiVisible(
+    _limpiarOfertaExclusivaLocal(
+      cerrarPantalla: true,
       mensaje: 'El tiempo para responder terminó',
     );
-    if (!_isDisposed) notifyListeners();
-    await sincronizarOfertaActiva();
+    if (sid != null && sid.isNotEmpty) {
+      _publicarEnLlegandoTrasExclusiva(sid);
+    }
+    unawaited(sincronizarOfertaActiva());
   }
 
   Future<void> sincronizarOfertaActiva() async {
@@ -1348,35 +1422,38 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (sid == null || sid.isEmpty) return;
 
       final motivo = raw['motivo']?.toString().toLowerCase() ?? '';
+      final eraMiExclusiva = _ofertaExclusiva?.solicitudId == sid;
+
+      if (eraMiExclusiva && motivo == 'expirada') {
+        _limpiarOfertaExclusivaLocal(
+          cerrarPantalla: true,
+          mensaje: 'La oferta expiró',
+        );
+        _publicarEnLlegandoTrasExclusiva(sid);
+      } else if (eraMiExclusiva) {
+        final mensaje = motivo == 'tomada_por_otro'
+            ? 'Otro conductor tomó este servicio'
+            : 'La oferta ya no está disponible';
+        _limpiarOfertaExclusivaLocal(
+          cerrarPantalla: true,
+          mensaje: mensaje,
+        );
+      }
 
       unawaited(() async {
         final yoLoTome = await _yoTomeServicioSegunPayload(sid, raw);
         if (_isDisposed) return;
 
-        if (_ofertaExclusiva?.solicitudId == sid) {
-          if (yoLoTome) {
-            _limpiarOfertaExclusivaLocal(
-              cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
-            );
-          } else {
-            final mensaje = motivo == 'tomada_por_otro'
-                ? 'Otro conductor tomó este servicio'
-                : motivo == 'expirada'
-                    ? 'La oferta expiró'
-                    : 'La oferta ya no está disponible';
-            _limpiarOfertaExclusivaLocal(
-              cerrarPantalla: true,
-              mensaje: mensaje,
-            );
-          }
+        if (eraMiExclusiva && yoLoTome) {
+          _limpiarOfertaExclusivaLocal(
+            cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
+          );
+          _limpiarMarcaAceptacionPropia();
+          return;
         }
 
-        if (!yoLoTome &&
-            (motivo == 'tomada_por_otro' || motivo == 'expirada')) {
+        if (!yoLoTome && motivo == 'tomada_por_otro') {
           rechazarSolicitud(sid);
-        }
-        if (yoLoTome) {
-          _limpiarMarcaAceptacionPropia();
         }
       }());
     } catch (e) {
@@ -1403,7 +1480,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         );
       }
     }
-    if (!_isDisposed) notifyListeners();
+    if (!_isDisposed) {
+      notifyListeners();
+    }
     _reprogramarPollOfertaActiva();
   }
 
@@ -1598,6 +1677,19 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
       final overlayEstabaOculto =
           !esNueva && _overlayOcultoPorTtl.contains(solicitudId);
+      final pasoALlegandoPublico =
+          ConductorOfertaIndriverHelper.pasoDeExclusivaAPublicoEnLlegando(
+        existente,
+        solicitud,
+      );
+      if (pasoALlegandoPublico &&
+          _ofertaExclusiva?.solicitudId == solicitudId) {
+        _limpiarOfertaExclusivaLocal(cerrarPantalla: true);
+      }
+      final reboteRealtimeALlegando = overlayEstabaOculto && !fromSync;
+      final altaEnLlegando =
+          esNueva || reboteRealtimeALlegando || pasoALlegandoPublico;
+
       _solicitudesPorId[solicitudId] = existente != null
           ? {...existente, ...solicitud}
           : solicitud;
@@ -1611,27 +1703,61 @@ class ConductorHomeProvider extends ChangeNotifier {
         _iniciarTickerExpiracionUI();
       }
 
-      // Sync API también debe mostrar tarjeta en «Llegando» (no solo sonido + «En espera»).
-      final enOverlay = mostrarEnOverlay || !fromSync || esNueva;
       final solicitudMap = _solicitudesPorId[solicitudId]!;
+
+      // Sync: no reabrir «Llegando» por TTL local; solo si el API trae overlay vigente.
+      if (fromSync && !mostrarEnOverlay) {
+        if (esNueva) {
+          if (ConductorSolicitudPayloadHelper.overlayVigenteEnServidor(
+            solicitudMap,
+          )) {
+            _aplicarOverlayLlegando(
+              solicitudId,
+              solicitud: solicitudMap,
+              esNueva: true,
+            );
+            unawaited(
+              _enriquecerPoiTrasMostrar(
+                solicitudId,
+                esNueva: true,
+              ).catchError((_) {}),
+            );
+          } else {
+            _overlayOcultoPorTtl.add(solicitudId);
+            unawaited(
+              _enriquecerDireccionesSolicitud(solicitudId).catchError((_) {}),
+            );
+          }
+        } else {
+          _sincronizarPestanaOverlayDesdeApi(solicitudId, solicitudMap);
+        }
+        if (!_isDisposed) notifyListeners();
+        return;
+      }
+
+      var enOverlay = mostrarEnOverlay ||
+          !fromSync ||
+          esNueva ||
+          reboteRealtimeALlegando ||
+          pasoALlegandoPublico;
       if (enOverlay) {
-        if (esNueva || overlayEstabaOculto) {
-          _aplicarOverlayLlegando(
-            solicitudId,
-            solicitud: solicitudMap,
-            esNueva: esNueva || overlayEstabaOculto,
+        if (pasoALlegandoPublico || _mantenerEnLlegandoTrasExclusiva(solicitudId)) {
+          ConductorSolicitudPayloadHelper.anclarOverlayExpiraEn(
+            _solicitudesPorId[solicitudId]!,
+            anterior: existente,
           );
+        }
+        _aplicarOverlayLlegando(
+          solicitudId,
+          solicitud: _solicitudesPorId[solicitudId]!,
+          esNueva: altaEnLlegando && !_mantenerEnLlegandoTrasExclusiva(solicitudId),
+        );
+        if (altaEnLlegando) {
           unawaited(
             _enriquecerPoiTrasMostrar(
               solicitudId,
-              esNueva: esNueva || overlayEstabaOculto,
+              esNueva: true,
             ).catchError((_) {}),
-          );
-        } else {
-          _aplicarOverlayLlegando(
-            solicitudId,
-            solicitud: solicitudMap,
-            esNueva: false,
           );
         }
       } else {
@@ -1641,12 +1767,6 @@ class ConductorHomeProvider extends ChangeNotifier {
         unawaited(
           _enriquecerDireccionesSolicitud(solicitudId).catchError((_) {}),
         );
-      }
-
-      final visibleEnLlegando =
-          enOverlay && !_overlayOcultoPorTtl.contains(solicitudId);
-      if (esNueva && visibleEnLlegando && !fromSync) {
-        _dispararSonidoNuevaSolicitud(solicitudId);
       }
 
       if (!_isDisposed) notifyListeners();
@@ -1660,11 +1780,51 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
+  /// Alinea «Llegando» / «En espera» con [overlay_expira_en] del API (evita ping-pong en sync).
+  void _sincronizarPestanaOverlayDesdeApi(
+    String solicitudId,
+    Map<String, dynamic> solicitud,
+  ) {
+    if (_mantenerEnLlegandoTrasExclusiva(solicitudId) &&
+        !ConductorSolicitudPayloadHelper.overlayVigenteEnServidor(solicitud)) {
+      return;
+    }
+
+    if (_beepLlegandoSilenciado(solicitudId) &&
+        !ConductorSolicitudPayloadHelper.overlayVigenteEnServidor(solicitud)) {
+      return;
+    }
+
+    if (ConductorSolicitudPayloadHelper.overlayVigenteEnServidor(solicitud)) {
+      final expiraEn =
+          ConductorSolicitudPayloadHelper.resolverOverlayExpiraEn(solicitud)!;
+      _overlayOcultoPorTtl.remove(solicitudId);
+      _expiracionPorSolicitud[solicitudId] = expiraEn;
+      final segundos =
+          ConductorSolicitudPayloadHelper.segundosRestantesOverlay(solicitud);
+      _configurarTimerExpiracion(solicitudId, ttlSegundos: segundos);
+      _iniciarTickerExpiracionUI();
+    } else {
+      _timersExpiracion[solicitudId]?.cancel();
+      _timersExpiracion.remove(solicitudId);
+      _expiracionPorSolicitud.remove(solicitudId);
+      _overlayOcultoPorTtl.add(solicitudId);
+    }
+  }
+
   void _aplicarOverlayLlegando(
     String solicitudId, {
     required Map<String, dynamic> solicitud,
     required bool esNueva,
+    bool forzarBeepLlegando = false,
   }) {
+    final estabaEnEspera = _overlayOcultoPorTtl.contains(solicitudId);
+    final yaVisibleEnLlegando = !estabaEnEspera &&
+        _expiracionPorSolicitud.containsKey(solicitudId);
+    final entraEnPestanaLlegando = forzarBeepLlegando ||
+        estabaEnEspera ||
+        (esNueva && !yaVisibleEnLlegando);
+
     _marcarRecibidaPorRealtime(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
     if (esNueva) {
@@ -1673,13 +1833,29 @@ class ConductorHomeProvider extends ChangeNotifier {
       unawaited(_enriquecerDireccionesSolicitud(solicitudId));
     }
 
+    if (entraEnPestanaLlegando &&
+        !_esOfertaExclusivaActiva(solicitudId) &&
+        !_beepLlegandoSilenciado(solicitudId)) {
+      AppLogger.d(
+        forzarBeepLlegando
+            ? '🔊 Beep: Llegando al cerrar exclusiva (id=$solicitudId)'
+            : '🔊 Beep: entra en pestaña Llegando (id=$solicitudId)',
+      );
+      IncomingServiceAlertService.permitirNuevoBeepLlegando(solicitudId);
+      _dispararSonidoNuevaSolicitud(solicitudId, beepInmediato: true);
+      _marcarBeepLlegandoRecienEmitido(solicitudId);
+    }
+
     final expiraEn =
         ConductorSolicitudPayloadHelper.resolverOverlayExpiraEn(solicitud);
-    final ttlSegundos =
-        ConductorSolicitudPayloadHelper.resolverTtlSegundos(solicitud);
+    final segundosOverlay =
+        ConductorSolicitudPayloadHelper.segundosRestantesOverlay(solicitud);
     _expiracionPorSolicitud[solicitudId] = expiraEn ??
-        DateTime.now().add(Duration(seconds: ttlSegundos));
-    _configurarTimerExpiracion(solicitudId, ttlSegundos: ttlSegundos);
+        DateTime.now().add(Duration(seconds: segundosOverlay));
+    _configurarTimerExpiracion(
+      solicitudId,
+      ttlSegundos: segundosOverlay,
+    );
     _iniciarTickerExpiracionUI();
     _notificarNuevaSolicitudExterna(_solicitudesPorId[solicitudId]!);
   }
@@ -1780,7 +1956,19 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// TTL del overlay: oculta tarjeta en «Llegando»; el ítem sigue en el mapa (p. ej. «En espera»).
   void _expirarSolicitud(String solicitudId) {
     if (!_solicitudesPorId.containsKey(solicitudId)) return;
+    if (_mantenerEnLlegandoTrasExclusiva(solicitudId)) {
+      final seg =
+          ConductorSolicitudPayloadHelper.segundosRestantesOverlay(
+        _solicitudesPorId[solicitudId]!,
+      );
+      _configurarTimerExpiracion(
+        solicitudId,
+        ttlSegundos: seg > 0 ? seg : kOportunidadConductorSegundos,
+      );
+      return;
+    }
     AppLogger.d('⏱️ Overlay TTL expirado (sigue en lista API): $solicitudId');
+    _sonidoEmitidoPorSolicitudId.remove(solicitudId);
     _overlayOcultoPorTtl.add(solicitudId);
     _expiracionPorSolicitud.remove(solicitudId);
     _timersExpiracion.remove(solicitudId);
@@ -1788,16 +1976,10 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
-  /// Reproduce el tono elegido por el conductor en ajustes.
-  Future<void> _reproducirSonidoNotificacion() async {
-    await ConductorNotificationSoundService.playNewServiceSound();
-  }
-
   /// Corta tono, voz y notificación full-screen de solicitud entrante.
   Future<void> detenerAlertasSolicitudEntrante() async {
     await Future.wait([
-      ConductorNotificationSoundService.stopNewServiceSound(),
-      VoiceAlertService.stop(),
+      IncomingServiceAlertService.cancel(),
       IncomingServiceNotificationService.instance.dismiss(),
     ]);
   }

@@ -10,5 +10,8 @@ const int kPollOfertaActivaFondoSegundos = 45;
 /// Tras Pusher/FCM, no quitar del mapa por sync API hasta este margen (evita sonido sin tarjeta).
 const int kConservarRealtimeTrasSyncSegundos = 180;
 
-/// Evita doble sonido si la misma solicitud llega por Pusher + FCM + sync a la vez.
-const int kSonidoSolicitudDedupeSegundos = 75;
+/// Tras exclusiva→«Llegando»: no mandar a «En espera» por sync/TTL local (evita ping-pong).
+const int kMantenerLlegandoTrasExclusivaSegundos = 25;
+
+/// Reservado (dedupe de beep vive en [IncomingServiceAlertService], 6 s por id).
+const int kSonidoSolicitudDedupeSegundos = 6;
