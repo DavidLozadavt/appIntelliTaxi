@@ -514,8 +514,13 @@ class ConductorService {
       final turno = TurnoActivo.fromJson(turnoData);
       return turno.estaActivo ? turno : null;
     } on DioException catch (e) {
-      if (e.response?.statusCode == 404) return null;
-      AppLogger.d('⚠️ Error de red/servidor obteniendo turno activo: $e');
+      final status = e.response?.statusCode;
+      if (status == 404) return null;
+      AppLogger.d(
+        '⚠️ GET turno_actual_conductor → $status '
+        '(Authorization va por AuthInterceptor): '
+        '${DioErrorMessage.fromResponseData(e.response?.data, e.message ?? '')}',
+      );
       rethrow;
     } catch (e) {
       AppLogger.d('⚠️ Error obteniendo turno activo: $e');

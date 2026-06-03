@@ -25,6 +25,7 @@ import 'package:intellitaxi/config/pusher_config.dart';
 
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
+import 'package:intellitaxi/features/auth/services/auth_service.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_session_helper.dart';
@@ -2295,6 +2296,15 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Carga el turno actual del conductor
   Future<void> cargarTurnoActual() async {
+    final token = await AuthService.instance.getToken();
+    if (token == null || token.isEmpty) {
+      AppLogger.d(
+        'ℹ️ cargarTurnoActual: sin access_token en prefs; omitiendo GET turno_actual_conductor',
+        tag: 'Turno',
+      );
+      return;
+    }
+
     final teniaTurnoLocal = _turnoActivo != null;
     try {
       final turno = await _conductorService.getTurnoActivo();
