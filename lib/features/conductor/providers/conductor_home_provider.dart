@@ -1271,8 +1271,19 @@ class ConductorHomeProvider extends ChangeNotifier {
       unawaited(ConductorOfertaNavigation.abrirOfertaExclusiva(oferta));
     }
 
-    unawaited(_enriquecerDireccionesSolicitud(sid));
+    unawaited(() async {
+      await enriquecerOfertaExclusivaActiva();
+      if (!_isDisposed) notifyListeners();
+    }());
     _reprogramarPollOfertaActiva();
+  }
+
+  /// POI + geocode para que la pantalla/TTS de oferta exclusiva tengan recogida legible.
+  Future<void> enriquecerOfertaExclusivaActiva() async {
+    final sid = _ofertaExclusiva?.solicitudId;
+    if (sid == null || sid.isEmpty || _isDisposed) return;
+    await _enriquecerPoiAntesDeAlerta(sid);
+    await _enriquecerDireccionesSolicitud(sid);
   }
 
   void _procesarOfertaCerrada(dynamic data) {

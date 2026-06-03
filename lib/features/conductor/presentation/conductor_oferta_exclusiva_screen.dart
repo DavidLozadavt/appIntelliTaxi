@@ -69,11 +69,15 @@ class _ConductorOfertaExclusivaScreenState
       if (!mounted) return;
       final home = context.read<ConductorHomeProvider>();
       home.notificarPantallaOfertaExclusivaAbierta();
+      unawaited(VoiceAlertService.prepare());
       unawaited(home.sincronizarOfertaActiva());
+      unawaited(_prepararDireccionYVoz(home));
     });
     _timeoutCargandoDireccion = Timer(const Duration(seconds: 8), () {
       if (!mounted) return;
       setState(() => _finCargandoDireccionForzado = true);
+      final home = context.read<ConductorHomeProvider>();
+      _anunciarDireccionVoz(_datosSolicitud(home), cargando: false);
     });
     final inicial = widget.oferta.toSolicitudMap();
     if (!ConductorServicioPasajeroHelper.esGestionadoPorIa(inicial) &&
@@ -99,13 +103,33 @@ class _ConductorOfertaExclusivaScreenState
     return OfertaExclusivaDisplay.mostrarCargandoDireccion(solicitud);
   }
 
-  /// Una sola vez al llegar la oferta, cuando ya hay dirección (sin “nuevo servicio” ni extras).
-  void _anunciarDireccionVoz(OfertaUbicacionVista recogida, bool cargando) {
-    if (_vozDireccionHecha || cargando || !recogida.tieneDireccionLegible) {
-      return;
+  Future<void> _prepararDireccionYVoz(ConductorHomeProvider home) async {
+    await home.enriquecerOfertaExclusivaActiva();
+    if (!mounted) return;
+    final solicitud = _datosSolicitud(home);
+    _anunciarDireccionVoz(
+      solicitud,
+      cargando: _estaCargandoDireccion(solicitud),
+    );
+  }
+
+  /// Una sola vez al llegar la oferta: lee recogida (barrio, calle, respaldos del API).
+  void _anunciarDireccionVoz(
+    Map<String, dynamic> solicitud, {
+    required bool cargando,
+  }) {
+    if (_vozDireccionHecha) return;
+    if (cargando && !_finCargandoDireccionForzado) return;
+
+    var texto = OfertaExclusivaDisplay.textoParaVozRecogida(solicitud);
+    if (texto.isEmpty) {
+      final raw = widget.oferta.origen?.trim() ?? '';
+      if (raw.isNotEmpty) {
+        texto = SolicitudDisplayHelper.formatReadablePlaceName(raw);
+      }
     }
-    final texto = OfertaExclusivaDisplay.textoParaVoz(recogida);
     if (texto.isEmpty) return;
+
     _vozDireccionHecha = true;
     unawaited(VoiceAlertService.speakSoloDireccion(texto));
   }
@@ -401,7 +425,10 @@ class _ConductorOfertaExclusivaScreenState
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            _anunciarDireccionVoz(recogida, cargandoDireccion);
+            _anunciarDireccionVoz(
+              solicitud,
+              cargando: cargandoDireccion,
+            );
           }
         });
 

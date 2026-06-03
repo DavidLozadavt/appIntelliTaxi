@@ -19,6 +19,7 @@ class OfertaUbicacionVista {
 
   bool get tieneDireccionLegible {
     if (barrio != null && barrio!.trim().isNotEmpty) return true;
+    if (direccion.trim().isNotEmpty) return true;
     return titulo.trim().isNotEmpty &&
         !OfertaExclusivaDisplay._tituloVacio(titulo);
   }
@@ -250,6 +251,34 @@ abstract final class OfertaExclusivaDisplay {
     if (t.isNotEmpty && t.toLowerCase() != b.toLowerCase()) partes.add(t);
     if (d.isNotEmpty) partes.add(d);
     return partes.join(', ');
+  }
+
+  /// Texto para voz: recogida en pantalla + respaldos del payload (siempre que sea posible).
+  static String textoParaVozRecogida(Map<String, dynamic> data) {
+    final desdeVista = textoParaVoz(recogida(data)).trim();
+    if (desdeVista.isNotEmpty) return desdeVista;
+
+    final fallback = tituloRecogidaFallback(data).trim();
+    if (fallback.isNotEmpty &&
+        !_tituloVacio(fallback) &&
+        fallback != 'Dirección no disponible' &&
+        fallback != 'Servicio sin destino fijo') {
+      return fallback;
+    }
+
+    final n = SolicitudDisplayHelper.normalizeSolicitudMap(data);
+    final detalle = SolicitudDisplayHelper.pickupDetailForDriver(n).trim();
+    if (detalle.isNotEmpty) return detalle;
+
+    final origen = n['origen']?.toString().trim() ?? '';
+    if (origen.isNotEmpty && !SolicitudDisplayHelper.isPlaceholderPickup(origen)) {
+      return SolicitudDisplayHelper.formatReadablePlaceName(origen);
+    }
+
+    final hint = SolicitudDisplayHelper.pickupCoordinatesHint(n);
+    if (hint != null && hint.trim().isNotEmpty) return hint.trim();
+
+    return '';
   }
 
   static String distanciaTexto(double? km) {

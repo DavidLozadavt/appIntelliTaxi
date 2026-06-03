@@ -17,6 +17,9 @@ class VoiceAlertService {
     _ready = true;
   }
 
+  /// Precalienta TTS antes de oferta exclusiva (evita perder el primer speak).
+  static Future<void> prepare() => _ensureReady();
+
   static String? _lastSpokenText;
 
   static Future<void> speak(
@@ -51,12 +54,16 @@ class VoiceAlertService {
   }
 
   /// Solo la dirección (barrio, calle…), sin frases extra. Una vez por oferta.
-  static Future<void> speakSoloDireccion(String texto) async {
+  static Future<void> speakSoloDireccion(
+    String texto, {
+    bool force = true,
+  }) async {
     final mensaje = texto.trim();
     if (mensaje.isEmpty) return;
     await speak(
       mensaje,
       minInterval: const Duration(seconds: 45),
+      force: force,
     );
   }
 
