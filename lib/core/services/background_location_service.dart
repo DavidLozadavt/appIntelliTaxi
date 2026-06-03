@@ -5,6 +5,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/network/mobile_network_config.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/location_tracking_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -38,7 +39,7 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
 
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
+          accuracy: LocationAccuracy.high,
           timeLimit: Duration(seconds: 12),
         ),
       );
@@ -120,7 +121,9 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     timer?.cancel();
     await sendLocation();
     timer = Timer.periodic(
-      const Duration(seconds: LocationTrackingConfig.sendIntervalSeconds),
+      Duration(
+        seconds: RuntimePerfFlags.backgroundLocationIntervalSeconds,
+      ),
       (_) => sendLocation(),
     );
   });

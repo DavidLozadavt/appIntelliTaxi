@@ -515,9 +515,11 @@ class _ConductorServicioActivoScreenState
     _locationSubscription?.cancel();
     _locationSubscription =
         Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            distanceFilter: 10,
+          locationSettings: LocationSettings(
+            accuracy: _estadoActual == 'en_curso'
+                ? LocationAccuracy.high
+                : LocationAccuracy.medium,
+            distanceFilter: 18,
           ),
         ).listen((position) {
           if (!_canUpdateUi) return;

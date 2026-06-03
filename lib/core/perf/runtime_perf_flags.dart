@@ -31,13 +31,19 @@ abstract final class RuntimePerfFlags {
   /// Mismo orden de magnitud que antes (~50 s): al moverse o cada minuto.
   static const Duration conductorZonaMinInterval = Duration(seconds: 55);
 
-  /// Home conductor en línea (sin viaje): menos ticks GPS y menos rebuilds.
-  static const int conductorGpsDistanceFilterIdle = 12;
-  static const int conductorGpsDistanceFilterActive = 4;
-  static const Duration conductorGpsUiMinIntervalIdle = Duration(seconds: 2);
-  static const Duration conductorGpsUiMinIntervalNav = Duration(milliseconds: 450);
-  static const double conductorGpsUiMinMoveMetersIdle = 14;
-  static const double conductorGpsUiMinMoveMetersNav = 6;
+  /// Home conductor en línea (sin viaje): GPS más espaciado = menos batería.
+  static const int conductorGpsDistanceFilterIdle = 28;
+  static const int conductorGpsDistanceFilterActive = 8;
+  static const Duration conductorGpsUiMinIntervalIdle = Duration(seconds: 4);
+  static const Duration conductorGpsUiMinIntervalNav = Duration(milliseconds: 800);
+  static const double conductorGpsUiMinMoveMetersIdle = 22;
+  static const double conductorGpsUiMinMoveMetersNav = 10;
+
+  /// Heartbeat mapa flota (conductor en turno, sin viaje activo).
+  static const Duration mapHeartbeatMinInterval = Duration(seconds: 15);
+
+  /// Android: envío ubicación en servicio foreground (viaje).
+  static const int backgroundLocationIntervalSeconds = 15;
 
   /// Tiempo mínimo de marca en Splash (sin bloquear si la sesión tarda más).
   static const Duration splashMinDisplay = Duration(milliseconds: 550);

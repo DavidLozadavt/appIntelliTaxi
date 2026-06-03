@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -27,6 +28,7 @@ class ServicioActivoProvider extends ChangeNotifier {
   Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
   BitmapDescriptor? _carIcon;
+  Timer? _uiLocationTimer;
 
   // Getters
   Map<String, dynamic>? get servicioData => _servicioData;
@@ -53,6 +55,7 @@ class ServicioActivoProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _uiLocationTimer?.cancel();
     _trackingService.detenerSeguimiento();
     super.dispose();
   }
@@ -205,8 +208,13 @@ class ServicioActivoProvider extends ChangeNotifier {
       conductorId: _conductorId!,
     );
 
-    // Actualizar ubicación periódicamente en el provider
-    Timer.periodic(const Duration(seconds: 5), (timer) async {
+    // Android: el FGS ya envía ubicación; evitar GPS duplicado cada 5 s.
+    _uiLocationTimer?.cancel();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return;
+    }
+
+    _uiLocationTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
       if (_servicioData == null) {
         timer.cancel();
         return;
@@ -216,6 +224,7 @@ class ServicioActivoProvider extends ChangeNotifier {
         final position = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 10),
           ),
         );
 

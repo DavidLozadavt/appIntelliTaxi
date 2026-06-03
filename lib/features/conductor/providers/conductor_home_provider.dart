@@ -514,7 +514,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       unawaited(_sendMapHeartbeat(pos, force: true));
     }
 
-    _reconfigurarSeguimientoUbicacion();
+    _syncGpsConEstadoTurno();
     if (!_isDisposed) notifyListeners();
   }
 
@@ -548,7 +548,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       unawaited(_sendMapHeartbeat(pos, force: true));
     }
 
-    _reconfigurarSeguimientoUbicacion();
+    _syncGpsConEstadoTurno();
     if (!_isDisposed) notifyListeners();
   }
 
@@ -629,6 +629,8 @@ class ConductorHomeProvider extends ChangeNotifier {
         await conectarPusher();
         await _sendMapHeartbeat(position, force: true);
       }
+
+      _syncGpsConEstadoTurno();
 
       if (!_isDisposed) notifyListeners();
       return true;
@@ -1973,15 +1975,39 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
+  bool get _androidUsaTrackingEnViaje =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  /// GPS del home solo cuando hay turno y aporta (no duplicar FGS en viaje Android).
+  void _syncGpsConEstadoTurno() {
+    if (_isDisposed) return;
+
+    final debeSeguir = _isOnline &&
+        _turnoActivo != null &&
+        !_enDescanso &&
+        !(_enServicio && _androidUsaTrackingEnViaje);
+
+    if (!debeSeguir) {
+      _detenerSeguimientoUbicacion();
+      return;
+    }
+
+    if (_locationSubscription == null) {
+      _iniciarSeguimientoUbicacion();
+    } else {
+      _reconfigurarSeguimientoUbicacion();
+    }
+  }
+
   LocationSettings _locationStreamSettings() {
     if (_enServicio) {
       return const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
+        accuracy: LocationAccuracy.high,
         distanceFilter: RuntimePerfFlags.conductorGpsDistanceFilterActive,
       );
     }
     return const LocationSettings(
-      accuracy: LocationAccuracy.high,
+      accuracy: LocationAccuracy.medium,
       distanceFilter: RuntimePerfFlags.conductorGpsDistanceFilterIdle,
     );
   }
@@ -2063,7 +2089,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     final lastSentAt = _lastMapHeartbeatAt;
     if (!force &&
         lastSentAt != null &&
-        now.difference(lastSentAt) < const Duration(seconds: 5)) {
+        now.difference(lastSentAt) < RuntimePerfFlags.mapHeartbeatMinInterval) {
       return;
     }
 
@@ -2663,6 +2689,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     await prefs.remove('turno_hora_inicio');
 
     await desconectarPusher();
+    _detenerSeguimientoUbicacion();
 
     _turnoActivo = null;
     _isOnline = false;
