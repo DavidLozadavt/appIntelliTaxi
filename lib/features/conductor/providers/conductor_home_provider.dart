@@ -212,6 +212,12 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? get lastDescansoError => _lastDescansoError;
   bool get puedeUsarModoDescanso =>
       _isOnline && !_enServicio && _turnoActivo != null;
+
+  /// Cola local con solicitudes aún no visibles (p. ej. conductor fuera de línea).
+  bool get tieneColaSolicitudesLocal =>
+      !_enServicio && !_enDescanso && _solicitudesPorId.isNotEmpty;
+
+  static const _pendingSyncKey = 'conductor_pending_solicitudes_sync';
   /// Pestaña «Llegando»: overlay activo (Pusher / servicio.cercano, TTL no expirado).
   List<Map<String, dynamic>> get solicitudesOrdenadas =>
       _solicitudesOrdenadasVisiblesEnOverlay();
@@ -356,6 +362,24 @@ class ConductorHomeProvider extends ChangeNotifier {
         await cargarTurnoActual();
       }
     }
+    unawaited(resolverSolicitudesPendientesTrasArranque());
+  }
+
+  Future<void> _marcarSolicitudesPendientesDeSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_pendingSyncKey, true);
+  }
+
+  /// Tras FCM en segundo plano o estando fuera de línea: alinear cola con el API.
+  Future<void> resolverSolicitudesPendientesTrasArranque() async {
+    final prefs = await SharedPreferences.getInstance();
+    final habiaMarca = prefs.getBool(_pendingSyncKey) ?? false;
+    if (habiaMarca) {
+      await prefs.remove(_pendingSyncKey);
+    }
+    if (!_isOnline || _enServicio || _enDescanso) return;
+    if (!habiaMarca && _solicitudesPorId.isEmpty) return;
+    await sincronizarSolicitudesPublicadasConductor();
   }
 
   /// Sync rechazos: `GET /conductor/solicitudes-rechazadas` + cache local.
@@ -1458,11 +1482,19 @@ class ConductorHomeProvider extends ChangeNotifier {
               'id': servicioId,
             };
       _procesarNuevaSolicitud(payload, mostrarEnOverlay: true);
-      unawaited(sincronizarSolicitudesPublicadasConductor());
+      if (_isOnline) {
+        unawaited(sincronizarSolicitudesPublicadasConductor());
+      } else {
+        await _marcarSolicitudesPendientesDeSync();
+      }
       return;
     }
 
-    await sincronizarSolicitudesPublicadasConductor();
+    if (_isOnline) {
+      await sincronizarSolicitudesPublicadasConductor();
+    } else {
+      await _marcarSolicitudesPendientesDeSync();
+    }
   }
 
   /// Procesa una nueva solicitud (Pusher, sync API o alerta FCM).
@@ -2471,6 +2503,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (pos != null) {
       unawaited(_sendMapHeartbeat(pos, force: true));
     }
+    unawaited(resolverSolicitudesPendientesTrasArranque());
     if (!_isDisposed) notifyListeners();
   }
 

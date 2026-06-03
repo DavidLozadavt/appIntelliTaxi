@@ -136,6 +136,32 @@ class _HomeConductorState extends State<HomeConductor>
     setState(() {});
   }
 
+  void _avisarSolicitudesRecibidasFueraDeLinea() {
+    if (!mounted || _panelServiciosVisible(_provider)) return;
+    final enMapa = _provider.solicitudesOrdenadas.length;
+    final enEspera = _provider.totalSolicitudesEnEspera;
+    final total = enMapa + enEspera;
+    if (total <= 0) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          total == 1
+              ? 'Tienes 1 solicitud pendiente. Pásate En línea para verla en el mapa.'
+              : 'Tienes $total solicitudes pendientes. Pásate En línea para verlas en el mapa.',
+        ),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'En línea',
+          onPressed: () => unawaited(_mostrarSelectorVehiculo()),
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -212,7 +238,9 @@ class _HomeConductorState extends State<HomeConductor>
     await _provider.initialize();
     if (!mounted) return;
 
-    unawaited(ConductorPendingFcm.flush(context));
+    await ConductorPendingFcm.flush(context);
+    if (!mounted) return;
+    _avisarSolicitudesRecibidasFueraDeLinea();
 
     _pendientesProvider.attachHome(_provider);
     unawaited(_pendientesProvider.refrescar(silencioso: true));

@@ -48,6 +48,8 @@ import 'package:intellitaxi/core/config/app_performance_config.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:intellitaxi/firebase_background_handler.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/services/auth_session_coordinator.dart';
 import 'features/auth/presentation/login_screen.dart';
@@ -74,6 +76,7 @@ Future<void> main() async {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       await AppBootstrap.initCrashlytics();
       AppDiagnostics.enableCrashlyticsLogs();
       AppBootstrap.installErrorHandlers();

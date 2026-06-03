@@ -77,13 +77,37 @@ Future<bool> _shouldShowConductorIncomingAlert(
   return _isActiveConductorRole();
 }
 
+/// Une `data` del push con heurística del título/cuerpo (FCM solo-notification).
+Map<String, dynamic> mergeRemoteMessageData(RemoteMessage message) {
+  final data = Map<String, dynamic>.from(message.data);
+  if (data.isNotEmpty) return data;
+
+  final title = message.notification?.title ?? '';
+  final body = message.notification?.body ?? '';
+  final combined = '$title $body'.toLowerCase();
+  if (combined.contains('solicitud') ||
+      combined.contains('servicio') ||
+      combined.contains('taxbel')) {
+    return {
+      'tipo': 'nueva_solicitud_servicio',
+      'route': 'servicio',
+      if (title.isNotEmpty) 'title': title,
+      if (body.isNotEmpty) 'body': body,
+      'mensaje': body,
+    };
+  }
+  return data;
+}
+
 Future<void> _triggerConductorIncomingSync(Map<String, dynamic> data) async {
+  await ConductorPendingFcm.enqueue(data);
   try {
     final context = navigatorKey.currentContext;
     if (context == null || !context.mounted) return;
     await context.read<ConductorHomeProvider>().procesarAlertaSolicitudEntrante(
       data,
     );
+    await ConductorPendingFcm.clearAfterProcessed();
   } catch (e) {
     AppLogger.d('⚠️ FCM sync conductor fallback: $e');
   }
@@ -225,22 +249,29 @@ void onNotificationTap(NotificationResponse notificationResponse) {
   navigatorKey.currentState?.pushNamed('/home');
 }
 
-@pragma('vm:entry-point')
-Future<void> _handleBackgroundNotification(RemoteMessage message) async {
+/// Procesa FCM con la app en segundo plano o cerrada (registrado en [main]).
+Future<void> handleRemoteMessageInBackground(RemoteMessage message) async {
   AppLogger.d('Notificación en segundo plano: ${message.notification?.title}');
-  final data = message.data;
-  if (data.isEmpty) return;
-  final map = Map<String, dynamic>.from(data);
+  final map = mergeRemoteMessageData(message);
+  if (map.isEmpty) return;
+
   if (_isFleetEmergencyNotificationData(map)) {
     await FleetEmergencyAlertService.instance.handlePayload(map);
-  } else if (await _shouldShowConductorIncomingAlert(map)) {
+    return;
+  }
+
+  if (await _shouldShowConductorIncomingAlert(map)) {
+    await ConductorPendingFcm.enqueue(map);
     final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
       ConductorSolicitudPayloadHelper.normalizarSolicitud(map),
     );
     await IncomingServiceNotificationService.instance.showIncomingService(
       solicitud,
     );
-  } else if (!await _isActiveConductorRole() &&
+    return;
+  }
+
+  if (!await _isActiveConductorRole() &&
       _isConductorIncomingServiceNotification(map)) {
     await IncomingServiceNotificationService.instance.dismiss();
   }
@@ -266,11 +297,8 @@ class FirebaseMsg {
         'Notificación abierta desde segundo plano: ${message.notification?.title}',
       );
       AppLogger.d('Data: ${message.data}');
-      unawaited(
-        navigateFromFcmData(
-          message.data.isEmpty ? null : Map<String, dynamic>.from(message.data),
-        ),
-      );
+      final data = mergeRemoteMessageData(message);
+      unawaited(navigateFromFcmData(data.isEmpty ? null : data));
     });
 
     _handleTerminatedStateNotification();
@@ -291,11 +319,8 @@ class FirebaseMsg {
         'App abierta desde estado terminado por notificación: ${initialMessage.notification?.title}',
       );
       AppLogger.d('Data: ${initialMessage.data}');
-      await navigateFromFcmData(
-        initialMessage.data.isEmpty
-            ? null
-            : Map<String, dynamic>.from(initialMessage.data),
-      );
+      final data = mergeRemoteMessageData(initialMessage);
+      await navigateFromFcmData(data.isEmpty ? null : data);
     }
   }
 
@@ -387,7 +412,11 @@ class FirebaseMsg {
 
   Future<void> _handleForegroundNotification(RemoteMessage message) async {
     AppLogger.d('Notificación en primer plano: ${message.notification}');
-    final data = Map<String, dynamic>.from(message.data);
+    final data = mergeRemoteMessageData(message);
+    if (data.isEmpty) {
+      await _showNotification(message);
+      return;
+    }
     if (_isAppUpdateNotificationData(data)) {
       await AppUpdateService.instance.handlePushData(data);
       return;
