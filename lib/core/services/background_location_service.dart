@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/core/network/mobile_network_config.dart';
 import 'package:intellitaxi/core/services/location_tracking_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -64,12 +65,8 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
       dio ??= Dio(
         BaseOptions(
           baseUrl: AppConfig.baseUrl,
-          connectTimeout: const Duration(
-            seconds: LocationTrackingConfig.connectTimeoutSeconds,
-          ),
-          receiveTimeout: const Duration(
-            seconds: LocationTrackingConfig.receiveTimeoutSeconds,
-          ),
+          connectTimeout: MobileNetworkConfig.httpConnectTimeout,
+          receiveTimeout: MobileNetworkConfig.httpReceiveTimeout,
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',

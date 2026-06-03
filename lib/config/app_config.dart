@@ -40,4 +40,11 @@ class AppConfig {
       int.tryParse(dotenv.env['OFFER_EXPIRATION_MINUTES'] ?? '5') ?? 5;
   static double get defaultZoom =>
       double.tryParse(dotenv.env['DEFAULT_ZOOM'] ?? '15.0') ?? 15.0;
+
+  /// POST autenticado para actualizar `device_token` (FCM) sin volver a hacer login.
+  static String get deviceTokenSyncPath {
+    final raw = dotenv.env['DEVICE_TOKEN_SYNC_PATH'] ?? 'update_device_token';
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? 'update_device_token' : trimmed;
+  }
 }

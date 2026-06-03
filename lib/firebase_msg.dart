@@ -12,6 +12,7 @@ import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/device_token_sync_service.dart';
 import 'package:intellitaxi/core/services/fcm_token_resolver.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
@@ -251,6 +252,7 @@ class FirebaseMsg {
       FlutterLocalNotificationsPlugin();
 
   Future<void> initFCM({bool requestPermissionOnStart = false}) async {
+    DeviceTokenSyncService.instance.attachTokenRefreshListener();
     if (requestPermissionOnStart) {
       await requestUserPermissionIfNeeded();
     }
@@ -315,11 +317,13 @@ class FirebaseMsg {
       final token = await FcmTokenResolver.resolveForAuth();
       if (token != null) {
         AppLogger.i('Token FCM: $token', tag: 'FCM');
+        unawaited(DeviceTokenSyncService.instance.onTokenAvailable(token));
       } else {
         AppLogger.w(
           'FCM no disponible en este dispositivo; push puede no funcionar hasta reiniciar o actualizar Play Services.',
           tag: 'FCM',
         );
+        unawaited(DeviceTokenSyncService.instance.flushPendingIfNeeded());
       }
     } catch (e) {
       if (e.toString().contains('apns-token-not-set')) {

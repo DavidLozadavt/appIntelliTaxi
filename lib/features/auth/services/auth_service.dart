@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/interceptors/retry_interceptor.dart';
 import 'package:intellitaxi/core/network/mobile_network_config.dart';
+import 'package:intellitaxi/core/services/device_token_sync_service.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
@@ -258,6 +259,7 @@ class AuthService {
     // 👈 Después de llamar a la API borras todo
     await prefs.remove('token');
     await prefs.remove('user_data');
+    await DeviceTokenSyncService.instance.clearLocalCache();
     SessionPreload.invalidate();
   }
 
