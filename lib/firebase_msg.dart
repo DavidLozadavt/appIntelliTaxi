@@ -12,6 +12,7 @@ import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/fcm_token_resolver.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
@@ -311,25 +312,21 @@ class FirebaseMsg {
         }
       }
 
-      // ✅ Android o dispositivo físico iOS
-      final token = await msgService.getToken();
+      final token = await FcmTokenResolver.resolveForAuth();
       if (token != null) {
         AppLogger.i('Token FCM: $token', tag: 'FCM');
       } else {
         AppLogger.w(
-          'No se pudo obtener el token FCM, asignando token simulado',
+          'FCM no disponible en este dispositivo; push puede no funcionar hasta reiniciar o actualizar Play Services.',
           tag: 'FCM',
         );
-        AppLogger.i('Token FCM: SIMULATOR_FAKE_TOKEN', tag: 'FCM');
       }
     } catch (e) {
-      // ⚠️ En simulador puede lanzar apns-token-not-set: lo manejamos y seguimos
       if (e.toString().contains('apns-token-not-set')) {
         AppLogger.w(
-          'Simulador iOS sin APNs. Usando token simulado.',
+          'Simulador iOS sin APNs. Push desactivado en este entorno.',
           tag: 'FCM',
         );
-        AppLogger.i('Token FCM: SIMULATOR_FAKE_TOKEN', tag: 'FCM');
       } else {
         AppLogger.e(
           'Error inesperado obteniendo token FCM',

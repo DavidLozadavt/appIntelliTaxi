@@ -1,5 +1,5 @@
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/services/fcm_token_resolver.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/widgets/app_version_label.dart';
@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-        final deviceToken = await FirebaseMessaging.instance.getToken();
+        final deviceToken = await FcmTokenResolver.resolveForAuth();
 
         final success = await authProvider.login(
           _emailController.text.trim(),
