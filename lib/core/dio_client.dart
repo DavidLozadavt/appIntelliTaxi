@@ -29,13 +29,15 @@ class DioClient {
         ),
       );
 
-      _dio!.interceptors.add(AuthInterceptor());
       _dio!.interceptors.add(
         RetryInterceptor(
           dio: _dio!,
           maxRetries: MobileNetworkConfig.httpMaxRetries,
           baseDelay: MobileNetworkConfig.httpRetryBaseDelay,
         ),
+      );
+      _dio!.interceptors.add(
+        AuthInterceptor(dio: _dio!),
       );
 
       if (kDebugMode && RuntimePerfFlags.verboseHttpLogs) {

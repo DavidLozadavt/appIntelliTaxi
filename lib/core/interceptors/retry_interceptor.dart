@@ -44,8 +44,10 @@ class RetryInterceptor extends Interceptor {
 
   bool _shouldRetry(DioException err) {
     if (err.requestOptions.extra['no_retry'] == true) return false;
+    if (err.requestOptions.extra['auth_retry'] == true) return false;
 
     final status = err.response?.statusCode ?? 0;
+    if (status == 401) return false;
     if (status >= 500) return true;
 
     return err.type == DioExceptionType.connectionError ||

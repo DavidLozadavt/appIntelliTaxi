@@ -49,6 +49,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 // Firebase
 import 'package:firebase_core/firebase_core.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/auth/services/auth_session_coordinator.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/auth/presentation/register_screen.dart';
 import 'features/home/presentation/navigation_screen.dart';
@@ -81,6 +82,7 @@ Future<void> main() async {
       PerformanceMonitorService.initialize();
 
       AppDiagnostics.phase('runApp');
+      AuthSessionCoordinator.ensureConfigured();
       runApp(const AppDiagnosticsScope(child: MyApp()));
 
       unawaited(RuntimeBootstrap.run());

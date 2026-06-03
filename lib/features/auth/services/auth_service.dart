@@ -10,9 +10,16 @@ import 'package:intellitaxi/core/bootstrap/session_preload.dart';
 import 'package:intellitaxi/core/bootstrap/session_snapshot.dart';
 
 import '../data/auth_model.dart';
+import '../data/auth_session.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class AuthService {
+  AuthService._();
+  static final AuthService instance = AuthService._();
+  factory AuthService() => instance;
+
+  static const _keyExpiresAt = 'expires_at_iso';
+
   static SharedPreferences? _prefsCache;
 
   static Future<SharedPreferences> sharedPreferences() async {
@@ -73,7 +80,11 @@ class AuthService {
         },
       );
 
-      return AuthResponse.fromJson(response.data);
+      final auth = AuthResponse.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+      await _persistSession(auth);
+      return auth;
     } on DioException catch (e) {
       throw Exception(
         _extractDioErrorMessage(
@@ -82,6 +93,102 @@ class AuthService {
         ),
       );
     }
+  }
+
+  /// Renueva JWT (`POST auth/refresh`). El token del header puede estar expirado.
+  Future<AuthResponse?> refresh({
+    String? deviceToken,
+    bool isRetry = false,
+  }) async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) return null;
+
+    try {
+      final response = await _dio.post(
+        'auth/refresh',
+        data: deviceToken != null && deviceToken.isNotEmpty
+            ? {'device_token': deviceToken}
+            : null,
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+          extra: const {'no_auth_refresh': true},
+        ),
+      );
+
+      final data = response.data;
+      if (data is! Map<String, dynamic>) return null;
+      if (data['success'] != true) return null;
+
+      final auth = AuthResponse.fromJson(data);
+      await _persistSession(auth);
+      return auth;
+    } on DioException catch (e) {
+      final code = _errorCode(e);
+      AppLogger.w(
+        'auth/refresh falló status=${e.response?.statusCode} code=$code',
+        tag: 'AuthService',
+      );
+      if (_isTerminalRefreshError(e, code)) return null;
+      if (!isRetry &&
+          e.response?.statusCode == 500 &&
+          code == 'refresh_failed') {
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        return refresh(deviceToken: deviceToken, isRetry: true);
+      }
+      return null;
+    }
+  }
+
+  /// Al abrir la app: renueva si el token expira pronto (evita 401 en bloque).
+  Future<void> ensureValidSession({String? deviceToken}) async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) return;
+
+    final timing = await readSessionTiming();
+    if (timing == null || !timing.shouldRefreshSoon) return;
+
+    try {
+      await refresh(deviceToken: deviceToken);
+    } catch (_) {
+      // El interceptor atenderá el siguiente 401.
+    }
+  }
+
+  Future<AuthSessionTiming?> readSessionTiming() async {
+    final iso = await getExpiresAtIso();
+    if (iso == null || iso.isEmpty) return null;
+    try {
+      return AuthSessionTiming.fromStoredIso(iso);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _errorCode(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      return data['code'] as String?;
+    }
+    return null;
+  }
+
+  bool _isTerminalRefreshError(DioException e, String? code) {
+    final status = e.response?.statusCode;
+    if (status == 403 && code == 'account_inactive') return true;
+    if (status != 401) return false;
+    return code == null ||
+        code == 'token_missing' ||
+        code == 'token_invalid' ||
+        code == 'refresh_expired' ||
+        code == 'user_not_found';
+  }
+
+  Future<void> _persistSession(AuthResponse response) async {
+    await saveToken(response.token);
+    if (response.expiresAt != null) {
+      await saveExpiresAt(response.expiresAt!);
+    }
+    await saveUserData(response);
   }
 
   /// 📌 REGISTER
@@ -217,6 +324,17 @@ class AuthService {
     SessionPreload.invalidate();
   }
 
+  Future<void> saveExpiresAt(DateTime expiresAt) async {
+    final prefs = await sharedPreferences();
+    await prefs.setString(_keyExpiresAt, expiresAt.toIso8601String());
+    SessionPreload.invalidate();
+  }
+
+  Future<String?> getExpiresAtIso() async {
+    final prefs = await sharedPreferences();
+    return prefs.getString(_keyExpiresAt);
+  }
+
   /// 📌 Obtener token
   Future<String?> getToken() async {
     final prefs = await sharedPreferences();
@@ -238,27 +356,27 @@ class AuthService {
   }
 
   /// 📌 Cerrar sesión y limpiar todo
-  Future<void> clearSession() async {
+  Future<void> clearSession({bool skipLogoutApi = false}) async {
     final prefs = await sharedPreferences();
     final token = prefs.getString('token');
 
-    try {
-      await _dio.post(
-        "logout",
-        options: Options(
-          headers: {
-            "Authorization": "Bearer $token", // 👈 Envía el token
-          },
-        ),
-      );
-    } catch (e) {
-      // Opcional: manejar error si falla la petición
-      AppLogger.d("Error en logout API: $e");
+    if (!skipLogoutApi && token != null && token.isNotEmpty) {
+      try {
+        await _dio.post(
+          'logout',
+          options: Options(
+            headers: {'Authorization': 'Bearer $token'},
+            extra: const {'no_auth_refresh': true},
+          ),
+        );
+      } catch (e) {
+        AppLogger.d('Error en logout API: $e');
+      }
     }
 
-    // 👈 Después de llamar a la API borras todo
     await prefs.remove('token');
     await prefs.remove('user_data');
+    await prefs.remove(_keyExpiresAt);
     await DeviceTokenSyncService.instance.clearLocalCache();
     SessionPreload.invalidate();
   }

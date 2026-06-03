@@ -168,6 +168,8 @@ class AuthResponse {
   final List<String> permissions;
   final Company company;
   final User user;
+  final int? expiresInSeconds;
+  final DateTime? expiresAt;
 
   AuthResponse({
     required this.token,
@@ -175,6 +177,8 @@ class AuthResponse {
     required this.permissions,
     required this.company,
     required this.user,
+    this.expiresInSeconds,
+    this.expiresAt,
   });
 
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
@@ -184,6 +188,14 @@ class AuthResponse {
     final companyRaw =
         (payload['company'] as Map?)?.cast<String, dynamic>() ?? {};
     final userRaw = (json['user'] as Map?)?.cast<String, dynamic>() ?? {};
+    final expiresIn = (json['expires_in'] as num?)?.toInt();
+    final storedExpiresAt = json['expires_at_iso'] as String?;
+    DateTime? expiresAt;
+    if (storedExpiresAt != null && storedExpiresAt.isNotEmpty) {
+      expiresAt = DateTime.tryParse(storedExpiresAt);
+    } else if (expiresIn != null && expiresIn > 0) {
+      expiresAt = DateTime.now().add(Duration(seconds: expiresIn));
+    }
 
     return AuthResponse(
       token: _asString(json['access_token']),
@@ -191,11 +203,15 @@ class AuthResponse {
       permissions: permissionsRaw.map((e) => e.toString()).toList(),
       company: Company.fromJson(companyRaw),
       user: User.fromJson(userRaw),
+      expiresInSeconds: expiresIn,
+      expiresAt: expiresAt,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'access_token': token,
+    if (expiresInSeconds != null) 'expires_in': expiresInSeconds,
+    if (expiresAt != null) 'expires_at_iso': expiresAt!.toIso8601String(),
     'payload': {
       'roles': roles,
       'permissions': permissions,

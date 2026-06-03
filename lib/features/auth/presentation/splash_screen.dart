@@ -10,6 +10,7 @@ import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
+import 'package:intellitaxi/features/auth/services/auth_service.dart';
 import 'package:provider/provider.dart';
 import 'login_screen.dart';
 
@@ -143,6 +144,19 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (snapshot.canOpenHome) {
         await authProvider.hydrateFromSnapshot(snapshot);
+        try {
+          await AuthService.instance
+              .ensureValidSession()
+              .timeout(const Duration(seconds: 12));
+        } on TimeoutException {
+          if (kDebugMode) {
+            debugPrint('⏱️ [Splash] refresh proactivo timeout');
+          }
+        }
+        final updated = await AuthService.instance.getSavedUserData();
+        if (updated != null) {
+          authProvider.applyRefreshedSession(updated);
+        }
         if (kDebugMode) {
           debugPrint(
             '🚀 [Splash] home en ${sw.elapsedMilliseconds}ms (sesión precargada)',

@@ -13,7 +13,7 @@ import '../data/auth_model.dart';
 class AuthProvider with ChangeNotifier {
   static const String roleConductor = 'CONDUCTOR-INTELLITAXI';
   static const String rolePasajero = 'PASAJERO-INTELLITAXI';
-  final AuthService _authService = AuthService();
+  final AuthService _authService = AuthService.instance;
   static const String _activeRoleKey = 'active_role';
   bool isLoading = false;
 
@@ -69,6 +69,9 @@ class AuthProvider with ChangeNotifier {
 
       _authData = response;
       await _authService.saveToken(response.token);
+      if (response.expiresAt != null) {
+        await _authService.saveExpiresAt(response.expiresAt!);
+      }
       await _authService.saveUserData(response);
       await _syncActiveRoleFromStorage();
 
@@ -91,6 +94,30 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  /// Sesión inválida tras refresh fallido (interceptor / refresh_expired).
+  Future<void> clearSessionOnExpiry() async {
+    try {
+      await _authService.clearSession(skipLogoutApi: true);
+      SessionPreload.invalidate();
+      ActiveServiceCheckCache.invalidate();
+      ActiveServiceManager.invalidateFetchCache();
+      _authData = null;
+      _activeRole = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_activeRoleKey);
+      notifyListeners();
+    } catch (_) {
+      _authData = null;
+      _activeRole = null;
+      notifyListeners();
+    }
+  }
+
+  void applyRefreshedSession(AuthResponse response) {
+    _authData = response;
+    notifyListeners();
   }
 
   Future<void> logout() async {
