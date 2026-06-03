@@ -29,6 +29,7 @@ import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
+import 'package:intellitaxi/core/utils/dio_error_message.dart';
 
 class HomeConductor extends StatefulWidget {
   final List<dynamic> stories;
@@ -697,13 +698,15 @@ class _HomeConductorState extends State<HomeConductor>
     } catch (e) {
       closeLoadingIfNeeded();
 
-      // Mostrar error con el mensaje del backend
-      String errorMsg = e.toString().replaceAll('Exception: ', '');
+      final errorMsg = DioErrorMessage.from(
+        e,
+        fallback: 'No se pudo aceptar el servicio. Intenta de nuevo.',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMsg),
-            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 4),
           ),
         );
@@ -825,14 +828,11 @@ class _HomeConductorState extends State<HomeConductor>
       if (loadError != null && loadError.isNotEmpty) {
         messenger.showSnackBar(
           SnackBar(
-            content: Text(
-              'No se pudieron cargar tus vehículos: $loadError',
-            ),
-            backgroundColor: Colors.red,
+            content: Text(loadError),
+            behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 5),
             action: SnackBarAction(
               label: 'Reintentar',
-              textColor: Colors.white,
               onPressed: () => unawaited(_mostrarSelectorVehiculo()),
             ),
           ),

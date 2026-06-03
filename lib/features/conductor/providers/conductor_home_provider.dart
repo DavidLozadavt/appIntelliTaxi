@@ -24,6 +24,7 @@ import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 
 import 'package:dio/dio.dart';
+import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_session_helper.dart';
@@ -635,7 +636,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
-      _lastDescansoError = e.toString().replaceAll('Exception: ', '').trim();
+      _lastDescansoError = _mensajeParaUsuario(
+        e,
+        'No se pudo cambiar el modo descanso. Intenta de nuevo.',
+      );
       AppLogger.d('❌ Error cambiando modo descanso: $e');
       if (!_isDisposed) notifyListeners();
       return false;
@@ -1827,7 +1831,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       return null;
     } catch (e) {
       _limpiarMarcaAceptacionPropia();
-      _lastAcceptError = e.toString().replaceAll('Exception: ', '');
+      _lastAcceptError = _mensajeParaUsuario(
+        e,
+        'No se pudo aceptar el servicio. Intenta de nuevo.',
+      );
       AppLogger.d('❌ Error aceptando solicitud: $e');
       // Si hubo conflicto (otro conductor aceptó), retirar de la cola local.
       if (_lastAcceptError?.toLowerCase().contains('ya fue aceptado') == true) {
@@ -2215,10 +2222,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       return true;
     } catch (e) {
-      _lastVehiculosLoadError = e
-          .toString()
-          .replaceAll('Exception: ', '')
-          .trim();
+      _lastVehiculosLoadError = _mensajeParaUsuario(
+        e,
+        'No pudimos cargar tus vehículos. Revisa tu conexión o intenta más tarde.',
+      );
       AppLogger.d('❌ Error cargando vehículos: $e');
       if (!_isDisposed) notifyListeners();
       return false;
@@ -2436,7 +2443,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       await _sendMapHeartbeat(position, force: true);
       return true;
     } catch (e) {
-      _lastTurnoError = e.toString().replaceAll('Exception: ', '').trim();
+      _lastTurnoError = _mensajeParaUsuario(
+        e,
+        'No se pudo iniciar el turno. Intenta de nuevo.',
+      );
       AppLogger.d('❌ Error iniciando turno: $e');
       if (!_isDisposed) notifyListeners();
       return false;
@@ -2479,7 +2489,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       AppLogger.d('❌ Error finalizando turno $idTurno: $e');
 
       final dioStatus = e is DioException ? e.response?.statusCode : null;
-      final mensaje = e.toString().replaceAll('Exception: ', '').trim();
+      final mensaje = _mensajeParaUsuario(
+        e,
+        'No se pudo finalizar el turno. Intenta de nuevo.',
+      );
       final puedeReintentar =
           dioStatus == 403 || dioStatus == 404 || mensaje.contains('autorizado');
 
@@ -2503,9 +2516,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         }
       }
 
-      _lastTurnoError = mensaje.isNotEmpty
-          ? mensaje
-          : 'No se pudo finalizar el turno';
+      _lastTurnoError = mensaje;
       if (!_isDisposed) notifyListeners();
       return false;
     }
@@ -2706,5 +2717,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     _tickerExpiracionUI = null;
 
     if (!_isDisposed) notifyListeners();
+  }
+
+  static String _mensajeParaUsuario(Object error, String fallback) {
+    return DioErrorMessage.from(error, fallback: fallback);
   }
 }

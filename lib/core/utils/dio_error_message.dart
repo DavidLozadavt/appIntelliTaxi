@@ -14,6 +14,16 @@ abstract final class DioErrorMessage {
       if (status == 401) {
         return 'Sesión expirada. Vuelve a iniciar sesión.';
       }
+      if (status != null && status >= 500 && status < 600) {
+        final fromBody = fromResponseData(error.response?.data, '');
+        if (fromBody.isNotEmpty) return fromBody;
+        return 'El servidor no respondió bien. Intenta de nuevo en unos minutos.';
+      }
+      if (status == 404) {
+        final fromBody = fromResponseData(error.response?.data, '');
+        if (fromBody.isNotEmpty) return fromBody;
+        return fallback;
+      }
       final fromBody = fromResponseData(error.response?.data, '');
       if (fromBody.isNotEmpty) return fromBody;
       if (error.type == DioExceptionType.connectionError ||
@@ -24,13 +34,28 @@ abstract final class DioErrorMessage {
           error.type == DioExceptionType.sendTimeout) {
         return 'La red móvil está lenta. Espera un momento e intenta de nuevo.';
       }
+      if (error.type == DioExceptionType.badResponse) {
+        return fallback;
+      }
       return fallback;
     }
 
-    var msg = error.toString();
-    msg = msg.replaceFirst('Exception: ', '');
-    if (msg.startsWith('DioException')) return fallback;
+    return _sanitizePlainError(error, fallback);
+  }
+
+  static String _sanitizePlainError(Object error, String fallback) {
+    var msg = error.toString().replaceFirst('Exception: ', '').trim();
+    if (_looksLikeTechnicalDump(msg)) return fallback;
     return msg.isNotEmpty ? msg : fallback;
+  }
+
+  static bool _looksLikeTechnicalDump(String msg) {
+    final lower = msg.toLowerCase();
+    return lower.startsWith('dioexception') ||
+        lower.contains('validatestatus') ||
+        lower.contains('status code of') ||
+        lower.contains('requestoptions') ||
+        lower.contains('developer.mozilla.org');
   }
 
   static String fromResponseData(dynamic data, String fallback) {
