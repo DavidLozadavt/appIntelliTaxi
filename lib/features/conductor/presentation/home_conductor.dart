@@ -666,9 +666,19 @@ class _HomeConductorState extends State<HomeConductor>
           await _navigateToActiveServiceIfNeeded();
           return;
         }
-        throw Exception(
-          _provider.lastAcceptError ?? 'No se pudo aceptar la solicitud',
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _provider.lastAcceptError ??
+                    'No se pudo aceptar la solicitud',
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
       }
 
       // Mostrar éxito
@@ -740,7 +750,7 @@ class _HomeConductorState extends State<HomeConductor>
         );
       }
 
-      AppLogger.d('⚠️ Error al aceptar solicitud: $e');
+      AppLogger.d('⚠️ Error al aceptar solicitud: $errorMsg');
     }
   }
 

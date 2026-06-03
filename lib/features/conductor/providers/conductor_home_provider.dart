@@ -1829,9 +1829,16 @@ class ConductorHomeProvider extends ChangeNotifier {
         }
       }
 
+      final pos = _currentPosition;
+      if (pos != null) {
+        await _sendMapHeartbeat(pos, force: true);
+      }
+
       final response = await _conductorService.aceptarSolicitud(
         servicioId: solicitudId,
         precioOfertado: precio,
+        lat: pos?.latitude,
+        lng: pos?.longitude,
       );
 
       final servicioIdInt = int.tryParse(solicitudId);
@@ -1867,7 +1874,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         e,
         'No se pudo aceptar el servicio. Intenta de nuevo.',
       );
-      AppLogger.d('❌ Error aceptando solicitud: $e');
+      AppLogger.d('❌ Error aceptando solicitud: $_lastAcceptError');
       // Si hubo conflicto (otro conductor aceptó), retirar de la cola local.
       if (_lastAcceptError?.toLowerCase().contains('ya fue aceptado') == true) {
         rechazarSolicitud(solicitudId);
@@ -2320,7 +2327,10 @@ class ConductorHomeProvider extends ChangeNotifier {
         await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
       }
     } catch (e) {
-      AppLogger.d('⚠️ cargarTurnoActual falló (red/servidor), se conserva turno local: $e');
+      AppLogger.d(
+        '⚠️ cargarTurnoActual falló (red/servidor), se conserva turno local: '
+        '${_mensajeParaUsuario(e, 'Error al consultar turno en el servidor')}',
+      );
       await _restaurarTurnoTrasFalloDeRed();
     }
   }

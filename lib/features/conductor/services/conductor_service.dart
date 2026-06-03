@@ -10,11 +10,20 @@ import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dar
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 
 class ConductorService {
   final Dio _dio = DioClient.getInstance();
+
+  Never _failFromDio(DioException e, {required String fallback}) {
+    AppLogger.d(
+      'API ${e.requestOptions.path} → ${e.response?.statusCode}: '
+      '${DioErrorMessage.fromResponseData(e.response?.data, fallback)}',
+    );
+    throw Exception(DioErrorMessage.from(e, fallback: fallback));
+  }
 
   /// Bootstrap: estado rápido del conductor (`GET /taxi/conductor/estado-actual`).
   Future<TaxiConductorEstadoActual?> getEstadoActualConductor() async {
@@ -581,6 +590,8 @@ class ConductorService {
     required String servicioId,
     required double precioOfertado,
     String? mensaje,
+    double? lat,
+    double? lng,
   }) async {
     try {
       // Obtener conductor_id de la sesión
@@ -624,6 +635,14 @@ class ConductorService {
           'conductor_id': conductorId,
           'precio_ofertado': precioOfertado,
           if (mensaje != null && mensaje.isNotEmpty) 'mensaje': mensaje,
+          if (lat != null) ...{
+            'lat': lat,
+            'latitude': lat,
+          },
+          if (lng != null) ...{
+            'lng': lng,
+            'longitude': lng,
+          },
         },
         options: Options(
           headers: {'Content-Type': 'application/json'},
@@ -648,23 +667,10 @@ class ConductorService {
         throw Exception('Error al aceptar solicitud: ${response.statusCode}');
       }
     } on DioException catch (e) {
-      AppLogger.d('⚠️ DioException al aceptar solicitud:');
-      AppLogger.d('   Status: ${e.response?.statusCode}');
-      AppLogger.d('   Message: ${e.message}');
-      AppLogger.d('   Response: ${e.response?.data}');
-
       if (e.response?.statusCode == 302) {
         throw Exception(
           'Error de autenticación (302). Verifica que estés autenticado correctamente.',
         );
-      }
-
-      if (e.response?.statusCode == 400) {
-        // Extraer el mensaje del backend
-        final errorMessage = e.response?.data is Map
-            ? e.response?.data['message'] ?? 'Error en la solicitud'
-            : 'Error en la solicitud';
-        throw Exception(errorMessage);
       }
 
       if (e.response?.statusCode == 409) {
@@ -672,16 +678,14 @@ class ConductorService {
           e.response?.data,
         );
         if (enServicio != null) throw enServicio;
-
-        final errorMessage = e.response?.data is Map
-            ? e.response?.data['message'] ??
-                  'Este servicio ya fue aceptado por otro conductor'
-            : 'Este servicio ya fue aceptado por otro conductor';
-        throw Exception(errorMessage);
       }
 
-      rethrow;
+      _failFromDio(
+        e,
+        fallback: 'No se pudo aceptar el servicio. Intenta de nuevo.',
+      );
     } catch (e) {
+      if (e is Exception && e is! DioException) rethrow;
       AppLogger.d('⚠️ Error aceptando solicitud: $e');
       rethrow;
     }
