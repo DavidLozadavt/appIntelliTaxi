@@ -14,8 +14,21 @@ import io.flutter.embedding.engine.FlutterEngineCache
 class IntelliTaxiApplication : Application() {
     private val handler = Handler(Looper.getMainLooper())
 
+    companion object {
+        @Volatile
+        private var appInstance: IntelliTaxiApplication? = null
+
+        /** Lanzamiento nativo sin depender del isolate Dart (FCM en background). */
+        @JvmStatic
+        fun bringMainActivityToForeground() {
+            val app = appInstance ?: return
+            MainActivity.launchMainActivity(app.applicationContext)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        appInstance = this
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityPaused(activity: Activity) {
                 if (activity is MainActivity) {

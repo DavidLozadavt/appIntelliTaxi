@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:provider/provider.dart';
 
 /// Burbuja flotante Android: solo con **turno activo** y app en segundo plano.
@@ -74,6 +77,18 @@ class DriverOverlayService {
     });
   }
 
+  /// Burbuja desde prefs (válido en isolate FCM / sin [BuildContext]).
+  Future<void> showFromBadgeStore({bool enLinea = true}) async {
+    if (!_isSupported) return;
+    final counts = await ConductorOverlayBadgeStore.read();
+    if (counts.llegando <= 0 && counts.enEspera <= 0 && !enLinea) return;
+    await showDriverBubble(
+      llegando: counts.llegando,
+      enEspera: counts.enEspera,
+      enLinea: enLinea,
+    );
+  }
+
   /// Muestra o actualiza la burbuja según estado del conductor (sin exigir turno activo).
   Future<void> syncBubbleForConductor(ConductorHomeProvider provider) async {
     if (!_isSupported) return;
@@ -92,15 +107,26 @@ class DriverOverlayService {
       }
     }
 
+    final llegando = provider.solicitudesOrdenadas.length;
+    final enEspera = provider.totalSolicitudesEnEspera;
+    await ConductorOverlayBadgeStore.write(
+      llegando: llegando,
+      enEspera: enEspera,
+    );
     await showDriverBubble(
-      llegando: provider.solicitudesOrdenadas.length,
-      enEspera: provider.totalSolicitudesEnEspera,
+      llegando: llegando,
+      enEspera: enEspera,
       enLinea: provider.isOnline,
     );
   }
 
   Future<void> _showForBackgroundIfNeeded(BuildContext context) async {
     if (!_isSupported) return;
+    if (RuntimePerfFlags.autoOpenAppOnIncomingService &&
+        ConductorPendingFcm.hasPending) {
+      AppLogger.d('🔵 Overlay omitido: auto-apertura por solicitud entrante');
+      return;
+    }
 
     try {
       ConductorHomeProvider provider;

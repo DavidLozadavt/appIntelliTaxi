@@ -50,4 +50,7 @@ abstract final class RuntimePerfFlags {
 
   /// Timeout del chequeo de actualización en Splash (no bloquear home).
   static const Duration splashUpdateCheckTimeout = Duration(seconds: 2);
+
+  /// Nueva solicitud conductor: abrir IntelliTaxi si está en otra app o pantalla apagada.
+  static const bool autoOpenAppOnIncomingService = true;
 }

@@ -1,8 +1,10 @@
-import 'dart:async';
+import 'dart:async' show StreamSubscription, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
@@ -20,10 +22,38 @@ class _DriverOverlayAppState extends State<DriverOverlayApp> {
   /// PNG dedicado al overlay (isolate secundario en Android).
   static const String _logoAsset = 'assets/images/logo_overlay.png';
 
+  StreamSubscription<dynamic>? _overlayCommandSubscription;
+
   @override
   void initState() {
     super.initState();
     _loadLogo();
+    _listenForOpenAppCommands();
+  }
+
+  @override
+  void dispose() {
+    _overlayCommandSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenForOpenAppCommands() {
+    _overlayCommandSubscription =
+        FlutterOverlayWindow.overlayListener.listen((message) {
+      final text = message?.toString() ?? '';
+      if (!text.contains('open_app') && !text.contains('auto_open_app')) {
+        return;
+      }
+      AppLogger.d('🔵 Overlay auto-open → MainActivity');
+      unawaited(_openMainActivityFromOverlay());
+    });
+  }
+
+  Future<void> _openMainActivityFromOverlay() async {
+    await AppForegroundService.instance.ensureOverlayNativeChannel();
+    await AppForegroundService.instance.launchNativeApp();
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await AppForegroundService.instance.launchNativeApp();
   }
 
   Future<void> _loadLogo() async {

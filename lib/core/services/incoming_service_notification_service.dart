@@ -96,6 +96,8 @@ class IncomingServiceNotificationService {
         'tipo': 'nueva_solicitud_servicio',
         'route': 'servicio',
         'solicitud_id': solicitud['solicitud_id'] ?? solicitud['id'],
+        'servicio_id': solicitud['servicio_id'] ?? solicitud['solicitud_id'],
+        ...normalizada,
       });
 
       final androidDetails = AndroidNotificationDetails(

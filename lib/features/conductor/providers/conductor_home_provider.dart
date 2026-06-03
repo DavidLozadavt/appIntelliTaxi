@@ -24,8 +24,12 @@ import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
 import 'package:intellitaxi/config/pusher_config.dart';
 
 import 'package:dio/dio.dart';
+import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/auth/services/auth_service.dart';
+import 'package:intellitaxi/core/services/app_foreground_service.dart';
+import 'package:intellitaxi/core/services/driver_overlay_service.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_solicitud_enrichment_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_session_helper.dart';
@@ -63,6 +67,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   Position? _lastLocationUiNotifyPosition;
   DateTime? _lastMapHeartbeatAt;
   bool _isSendingMapHeartbeat = false;
+  DateTime? _lastResumeRefreshAt;
+  bool _resumeRefreshInFlight = false;
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
   final ConductorSolicitudEnrichmentService _solicitudEnrichment =
@@ -912,7 +918,11 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (_enServicio || _enDescanso) return;
     _syncSolicitudesTimer?.cancel();
     _syncSolicitudesTimer = Timer.periodic(const Duration(seconds: 50), (_) {
-      if (!_isDisposed && _suscritoAPusher && _isOnline && !_enDescanso) {
+      if (!_isDisposed &&
+          _suscritoAPusher &&
+          _isOnline &&
+          !_enDescanso &&
+          !ApiRateLimitGuard.instance.isBlocked) {
         sincronizarSolicitudesPublicadasConductor();
       }
     });
@@ -928,6 +938,12 @@ class ConductorHomeProvider extends ChangeNotifier {
     bool propagarError = false,
   }) async {
     if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
+    if (ApiRateLimitGuard.instance.isBlocked) {
+      AppLogger.d(
+        '⏭️ Sync solicitudes omitido (rate limit ${ApiRateLimitGuard.instance.secondsRemaining}s)',
+      );
+      return;
+    }
     try {
       final result = await _conductorService.listarSolicitudesPublicadasConductor(
         lat: _currentPosition?.latitude,
@@ -992,7 +1008,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       _iniciarTickerExpiracionUI();
       if (!_isDisposed) notifyListeners();
     } catch (e) {
-      AppLogger.d('⚠️ Sync solicitudes publicadas: $e');
+      ApiRateLimitGuard.instance.recordIfRateLimit(e);
+      if (!ApiRateLimitGuard.looksLikeRateLimit(e)) {
+        AppLogger.d('⚠️ Sync solicitudes publicadas: $e');
+      }
       if (propagarError) rethrow;
     }
   }
@@ -1228,6 +1247,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   Future<void> sincronizarOfertaActiva() async {
     if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
+    if (ApiRateLimitGuard.instance.isBlocked) return;
     try {
       final result = await _conductorService.getOfertaActiva();
       if (result.tieneOferta && result.oferta != null) {
@@ -1241,7 +1261,10 @@ class ConductorHomeProvider extends ChangeNotifier {
         );
       }
     } catch (e) {
-      AppLogger.d('⚠️ sincronizarOfertaActiva: $e');
+      ApiRateLimitGuard.instance.recordIfRateLimit(e);
+      if (!ApiRateLimitGuard.looksLikeRateLimit(e)) {
+        AppLogger.d('⚠️ sincronizarOfertaActiva: $e');
+      }
     } finally {
       _reprogramarPollOfertaActiva();
     }
@@ -1566,6 +1589,12 @@ class ConductorHomeProvider extends ChangeNotifier {
       final esNueva = existente == null;
       if (esNueva) {
         AppLogger.d('📩 Nueva solicitud: $solicitudId');
+        if (!AppLifecycleHelper.isInForeground()) {
+          unawaited(_actualizarBurbujaSegundoPlano());
+          if (RuntimePerfFlags.autoOpenAppOnIncomingService) {
+            unawaited(AppForegroundService.instance.openAppAggressively());
+          }
+        }
       }
       final overlayEstabaOculto =
           !esNueva && _overlayOcultoPorTtl.contains(solicitudId);
@@ -2128,6 +2157,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     bool force = false,
   }) async {
     if (_isDisposed || !_isOnline || _turnoActivo == null) return;
+    if (ApiRateLimitGuard.instance.isBlocked) return;
     // Durante servicio activo el tracking va por servicios/actualizar-ubicacion.
     if (_enServicio && !force) return;
     if (_isSendingMapHeartbeat) return;
@@ -2161,7 +2191,10 @@ class ConductorHomeProvider extends ChangeNotifier {
         await _actualizarZonaActual(position, force: force);
       }
     } catch (e) {
-      AppLogger.d('⚠️ No se pudo enviar heartbeat de mapa: $e');
+      ApiRateLimitGuard.instance.recordIfRateLimit(e);
+      if (!ApiRateLimitGuard.looksLikeRateLimit(e)) {
+        AppLogger.d('⚠️ No se pudo enviar heartbeat de mapa: $e');
+      }
       await _actualizarZonaActual(position, force: force);
     } finally {
       _isSendingMapHeartbeat = false;
@@ -2296,6 +2329,13 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Carga el turno actual del conductor
   Future<void> cargarTurnoActual() async {
+    if (ApiRateLimitGuard.instance.isBlocked) {
+      AppLogger.d(
+        '⏭️ cargarTurnoActual omitido (rate limit ${ApiRateLimitGuard.instance.secondsRemaining}s)',
+      );
+      await _restaurarTurnoTrasFalloDeRed();
+      return;
+    }
     final token = await AuthService.instance.getToken();
     if (token == null || token.isEmpty) {
       AppLogger.d(
@@ -2337,10 +2377,13 @@ class ConductorHomeProvider extends ChangeNotifier {
         await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
       }
     } catch (e) {
-      AppLogger.d(
-        '⚠️ cargarTurnoActual falló (red/servidor), se conserva turno local: '
-        '${_mensajeParaUsuario(e, 'Error al consultar turno en el servidor')}',
-      );
+      ApiRateLimitGuard.instance.recordIfRateLimit(e);
+      if (!ApiRateLimitGuard.looksLikeRateLimit(e)) {
+        AppLogger.d(
+          '⚠️ cargarTurnoActual falló (red/servidor), se conserva turno local: '
+          '${_mensajeParaUsuario(e, 'Error al consultar turno en el servidor')}',
+        );
+      }
       await _restaurarTurnoTrasFalloDeRed();
     }
   }
@@ -2361,7 +2404,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Al volver a la app: restaura GPS con última posición conocida para no vaciar el mapa.
-  Future<void> refrescarUbicacionEnResume() async {
+  Future<void> refrescarUbicacionEnResume({bool soloGps = false}) async {
     if (_isDisposed) return;
     try {
       final last = await Geolocator.getLastKnownPosition();
@@ -2373,7 +2416,9 @@ class ConductorHomeProvider extends ChangeNotifier {
           _iniciarSeguimientoUbicacion();
         }
         if (!_isDisposed) notifyListeners();
-        unawaited(_sendMapHeartbeat(last, force: true));
+        if (!soloGps && _isOnline && _turnoActivo != null) {
+          unawaited(_sendMapHeartbeat(last, force: false));
+        }
         return;
       }
     } catch (e) {
@@ -2385,58 +2430,65 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  /// Re-sincroniza turno y heartbeat al volver al foreground (sin borrar turno si falla la red).
-  Future<void> refrescarTurnoYHeartbeatEnResume() async {
+  /// Una sola ráfaga al volver al foreground (evita 429 por llamadas duplicadas).
+  Future<void> refrescarEnResume() async {
     if (_isDisposed) return;
-    if (_enServicio) return;
-
+    final now = DateTime.now();
+    if (_lastResumeRefreshAt != null &&
+        now.difference(_lastResumeRefreshAt!) < const Duration(seconds: 5)) {
+      AppLogger.d('⏭️ [Resume] refresco omitido (debounce 5s)');
+      return;
+    }
+    if (_resumeRefreshInFlight) return;
+    _resumeRefreshInFlight = true;
+    _lastResumeRefreshAt = now;
     try {
+      if (ApiRateLimitGuard.instance.isBlocked) {
+        AppLogger.d(
+          '⏭️ [Resume] API en cooldown '
+          '(${ApiRateLimitGuard.instance.secondsRemaining}s)',
+        );
+        return;
+      }
+
       AppLogger.d(
-        '🔄 [Resume] estado antes: isOnline=$_isOnline turno=${_turnoActivo?.id} enDescanso=$_enDescanso',
+        '🔄 [Resume] isOnline=$_isOnline turno=${_turnoActivo?.id} enServicio=$_enServicio',
       );
+
+      await refrescarUbicacionEnResume(soloGps: _enServicio);
+
+      if (_enServicio) return;
 
       if (_turnoActivo == null) {
         await restaurarTurnoDesdeCache();
       }
-
       await cargarTurnoActual();
 
-      if (_turnoActivo == null || !_isOnline) {
-        return;
-      }
+      if (_turnoActivo == null || !_isOnline) return;
 
-      Position? position = _currentPosition;
-      if (position == null) {
-        try {
-          position = await Geolocator.getLastKnownPosition();
-        } catch (_) {}
-      }
-      if (position == null) {
-        try {
-          position = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 6),
-            ),
-          );
-        } catch (e) {
-          AppLogger.d('⚠️ [Resume] sin GPS puntual: $e');
-        }
-      }
+      await sincronizarSolicitudesPublicadasConductor();
+      await sincronizarOfertaActiva();
+
+      final position = _currentPosition;
       if (position != null) {
-        _currentPosition = position;
-        await _sendMapHeartbeat(position, force: true);
+        await _sendMapHeartbeat(position, force: false);
       }
 
       if (!_isDisposed) notifyListeners();
-
-      AppLogger.d(
-        '✅ [Resume] estado después: isOnline=$_isOnline turno=${_turnoActivo?.id} enDescanso=$_enDescanso',
-      );
     } catch (e) {
-      AppLogger.d('⚠️ [Resume] Error refrescando turno/heartbeat: $e');
+      ApiRateLimitGuard.instance.recordIfRateLimit(e);
+      if (!ApiRateLimitGuard.looksLikeRateLimit(e)) {
+        AppLogger.d('⚠️ [Resume] Error refrescando: $e');
+      }
       await _restaurarTurnoTrasFalloDeRed();
+    } finally {
+      _resumeRefreshInFlight = false;
     }
+  }
+
+  /// Re-sincroniza turno y heartbeat al volver al foreground (sin borrar turno si falla la red).
+  Future<void> refrescarTurnoYHeartbeatEnResume() async {
+    await refrescarEnResume();
   }
 
   /// Inicia un turno con el vehículo seleccionado
@@ -2774,5 +2826,13 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   static String _mensajeParaUsuario(Object error, String fallback) {
     return DioErrorMessage.from(error, fallback: fallback);
+  }
+
+  Future<void> _actualizarBurbujaSegundoPlano() async {
+    await ConductorOverlayBadgeStore.write(
+      llegando: solicitudesOrdenadas.length,
+      enEspera: totalSolicitudesEnEspera,
+    );
+    await DriverOverlayService.instance.showFromBadgeStore(enLinea: _isOnline);
   }
 }

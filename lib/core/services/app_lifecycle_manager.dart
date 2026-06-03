@@ -1,7 +1,10 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/service_navigation_helper.dart';
+import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 
@@ -80,6 +83,8 @@ class AppLifecycleManager extends WidgetsBindingObserver {
     }
 
     AppLogger.d('🔄 [Lifecycle] App resumed - verificando servicio activo...');
+
+    unawaited(AppForegroundService.flushPendingNativeLaunch());
 
     // Evitar verificaciones múltiples simultáneas
     if (_isCheckingService) {

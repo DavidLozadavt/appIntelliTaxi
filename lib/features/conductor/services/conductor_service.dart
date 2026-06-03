@@ -10,6 +10,7 @@ import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dar
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
@@ -515,6 +516,9 @@ class ConductorService {
       return turno.estaActivo ? turno : null;
     } on DioException catch (e) {
       final status = e.response?.statusCode;
+      if (status == 429) {
+        ApiRateLimitGuard.instance.recordHit();
+      }
       if (status == 404) return null;
       AppLogger.d(
         '⚠️ GET turno_actual_conductor → $status '
@@ -817,12 +821,22 @@ class ConductorService {
           ),
         );
       }
+      if (status == 429) {
+        ApiRateLimitGuard.instance.recordHit();
+        throw Exception(
+          _messageFromResponseData(
+            response.data,
+            'Demasiadas peticiones. Espera un momento.',
+          ),
+        );
+      }
       if (status >= 400) {
         throw Exception(_messageFromResponseData(response.data, fallback));
       }
 
       return _parseSolicitudesPendientesResponse(response.data);
     } on DioException catch (e) {
+      ApiRateLimitGuard.instance.recordIfRateLimit(e);
       AppLogger.d('⚠️ Error listando solicitudes pendientes: $e');
       throw Exception(_extractErrorMessage(e, fallback));
     } catch (e) {

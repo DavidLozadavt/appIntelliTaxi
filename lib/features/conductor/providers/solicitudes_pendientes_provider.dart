@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
@@ -63,6 +64,7 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
 
   Future<void> refrescar({bool silencioso = false}) async {
     if (_isDisposed || _home == null) return;
+    if (ApiRateLimitGuard.instance.isBlocked) return;
     if (!silencioso) {
       _cargando = true;
       _error = null;

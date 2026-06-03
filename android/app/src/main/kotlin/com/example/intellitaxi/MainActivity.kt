@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
@@ -21,7 +23,8 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     companion object {
-        private const val APP_CHANNEL = "com.virtualt.intellitaxi/app"
+        const val APP_CHANNEL_NAME = "com.virtualt.intellitaxi/app"
+        private const val APP_CHANNEL = APP_CHANNEL_NAME
         private const val UPDATE_CHANNEL = "com.virtualt.intellitaxi/app_update"
         private const val DIAG_TAG = "IntelliTaxiDiag"
         /** Tag del motor overlay (`flutter_overlay_window`). */
@@ -168,13 +171,33 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        private fun launchMainActivity(context: Context) {
-            val intent = Intent(context, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        /** Abre MainActivity desde Application, overlay o FCM (siempre en main thread). */
+        fun launchMainActivity(context: Context) {
+            val appContext = context.applicationContext
+            val launch: () -> Unit = {
+                wakeForIncomingService(appContext)
+                val intent = Intent(appContext, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        addFlags(Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT)
+                    }
+                }
+                try {
+                    appContext.startActivity(intent)
+                    logNativeLifecycle("launchMainActivity ok")
+                } catch (e: Exception) {
+                    Log.w(DIAG_TAG, "launchMainActivity falló: ${e.message}")
+                }
+                Unit
             }
-            context.startActivity(intent)
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                launch()
+            } else {
+                Handler(Looper.getMainLooper()).post(launch)
+            }
         }
 
         /// Solo enciende pantalla. NO reinicia la Activity (evita que la app «se cierre sola»).
@@ -233,6 +256,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        flutterEngine.plugins.add(AppForegroundPlugin())
         registerAppChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         registerOverlayEngineChannelIfPresent()
 

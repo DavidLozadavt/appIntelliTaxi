@@ -376,13 +376,7 @@ class _HomeConductorState extends State<HomeConductor>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_overlayService.hide());
-      unawaited(_provider.refrescarUbicacionEnResume());
-      if (!_provider.enServicio) {
-        unawaited(_provider.sincronizarSolicitudesPublicadasConductor());
-        unawaited(_pendientesProvider.refrescar(silencioso: true));
-      }
-      unawaited(_provider.refrescarTurnoYHeartbeatEnResume());
-      unawaited(_provider.sincronizarOfertaActiva());
+      unawaited(_provider.refrescarEnResume());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       if (!_overlayService.isRequestingPermission) {

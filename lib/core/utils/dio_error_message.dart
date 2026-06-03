@@ -14,6 +14,9 @@ abstract final class DioErrorMessage {
       if (status == 401) {
         return 'Sesión expirada. Vuelve a iniciar sesión.';
       }
+      if (status == 429) {
+        return 'Demasiadas peticiones. Espera un momento e intenta de nuevo.';
+      }
       if (status != null && status >= 500 && status < 600) {
         final fromBody = fromResponseData(error.response?.data, '');
         if (fromBody.isNotEmpty) return fromBody;

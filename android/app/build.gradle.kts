@@ -61,6 +61,7 @@ val mapsApiKey =
 
 dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
+    implementation("com.google.firebase:firebase-messaging")
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("com.google.android.play:core:1.10.3")
     implementation("org.slf4j:slf4j-nop:2.0.13")

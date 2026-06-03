@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -75,6 +76,7 @@ class ConductorPendingFcm {
         data,
       );
       await clearAfterProcessed();
+      await ConductorOverlayBadgeStore.clearPendingFlag();
       AppLogger.d('✅ FCM conductor procesado desde cola');
     } catch (e) {
       AppLogger.d('⚠️ ConductorPendingFcm flush: $e');

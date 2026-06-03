@@ -14,9 +14,14 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/device_token_sync_service.dart';
 import 'package:intellitaxi/core/services/fcm_token_resolver.dart';
+import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
+import 'package:intellitaxi/core/services/driver_overlay_service.dart';
+import 'package:intellitaxi/core/utils/device_screen_helper.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:provider/provider.dart';
@@ -99,6 +104,86 @@ Map<String, dynamic> mergeRemoteMessageData(RemoteMessage message) {
   return data;
 }
 
+/// Burbuja + alerta heads-up para ver el servicio sin tener la app abierta.
+Future<void> _alertConductorEnSegundoPlano(
+  Map<String, dynamic> data, {
+  bool showHeadsUp = true,
+  bool showOverlay = true,
+}) async {
+  await ConductorOverlayBadgeStore.recordIncomingFromFcm();
+  if (showHeadsUp) {
+    final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
+      ConductorSolicitudPayloadHelper.normalizarSolicitud(
+        ConductorSolicitudPayloadHelper.parsePayload(data),
+      ),
+    );
+    await IncomingServiceNotificationService.instance.showIncomingService(
+      solicitud,
+    );
+  }
+  if (showOverlay) {
+    await DriverOverlayService.instance.showFromBadgeStore(enLinea: true);
+  }
+}
+
+/// Cola FCM, abre la app si aplica, sincroniza cola y muestra burbuja/heads-up.
+Future<void> _manejarSolicitudEntranteConductor(
+  Map<String, dynamic> data, {
+  bool showHeadsUp = true,
+}) async {
+  await ConductorPendingFcm.enqueue(data);
+
+  final enPrimerPlano = AppLifecycleHelper.isInForeground();
+  final pantallaApagada = !enPrimerPlano ||
+      await AppLifecycleHelper.shouldShowIncomingServiceAlert();
+  final autoOpen =
+      RuntimePerfFlags.autoOpenAppOnIncomingService && pantallaApagada;
+
+  if (autoOpen) {
+    AppLogger.d('🚕 Abriendo IntelliTaxi automáticamente (solicitud entrante)');
+    await DriverOverlayService.instance.hide();
+    await DeviceScreenHelper.wakeForIncomingService();
+    if (showHeadsUp) {
+      final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
+        ConductorSolicitudPayloadHelper.normalizarSolicitud(
+          ConductorSolicitudPayloadHelper.parsePayload(data),
+        ),
+      );
+      await IncomingServiceNotificationService.instance.showIncomingService(
+        solicitud,
+      );
+    }
+    await AppForegroundService.instance.openAppAggressively();
+    await _signalOverlayToOpenApp();
+    unawaited(_triggerConductorIncomingSync(data));
+    Future<void>.delayed(const Duration(seconds: 3), () async {
+      if (AppLifecycleHelper.isInForeground()) return;
+      await _alertConductorEnSegundoPlano(
+        data,
+        showHeadsUp: false,
+        showOverlay: true,
+      );
+    });
+    return;
+  }
+
+  unawaited(_triggerConductorIncomingSync(data));
+  unawaited(_alertConductorEnSegundoPlano(data, showHeadsUp: showHeadsUp));
+}
+
+/// Pide al isolate del overlay que lance MainActivity (canal nativo registrado ahí).
+Future<void> _signalOverlayToOpenApp() async {
+  if (!Platform.isAndroid) return;
+  try {
+    await AppForegroundService.instance.ensureOverlayNativeChannel();
+    await FlutterOverlayWindow.shareData('open_app');
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    await FlutterOverlayWindow.shareData('auto_open_app');
+  } catch (e) {
+    AppLogger.d('⚠️ auto_open overlay: $e');
+  }
+}
+
 Future<void> _triggerConductorIncomingSync(Map<String, dynamic> data) async {
   await ConductorPendingFcm.enqueue(data);
   try {
@@ -159,9 +244,7 @@ Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
   }
   if (await _shouldShowConductorIncomingAlert(data)) {
     AppLogger.d('🚕 FCM → solicitud entrante (conductor)');
-    ConductorPendingFcm.enqueue(data);
-    unawaited(AppForegroundService.instance.launchNativeApp());
-    unawaited(_triggerConductorIncomingSync(data));
+    await _manejarSolicitudEntranteConductor(data);
     return;
   }
   if (_isServicioTripUpdateNotification(data)) {
@@ -261,12 +344,9 @@ Future<void> handleRemoteMessageInBackground(RemoteMessage message) async {
   }
 
   if (await _shouldShowConductorIncomingAlert(map)) {
-    await ConductorPendingFcm.enqueue(map);
-    final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
-      ConductorSolicitudPayloadHelper.normalizarSolicitud(map),
-    );
-    await IncomingServiceNotificationService.instance.showIncomingService(
-      solicitud,
+    await _manejarSolicitudEntranteConductor(
+      map,
+      showHeadsUp: true,
     );
     return;
   }
@@ -426,18 +506,10 @@ class FirebaseMsg {
       return;
     }
     if (await _shouldShowConductorIncomingAlert(data)) {
-      unawaited(_triggerConductorIncomingSync(data));
-      // En primer plano: panel «Llegando» en el mapa; notificación solo si no está visible.
-      if (await AppLifecycleHelper.shouldShowIncomingServiceAlert()) {
-        final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
-          ConductorSolicitudPayloadHelper.normalizarSolicitud(
-            ConductorSolicitudPayloadHelper.parsePayload(data),
-          ),
-        );
-        await IncomingServiceNotificationService.instance.showIncomingService(
-          solicitud,
-        );
-      }
+      final headsUp = await AppLifecycleHelper.shouldShowIncomingServiceAlert();
+      unawaited(
+        _manejarSolicitudEntranteConductor(data, showHeadsUp: headsUp),
+      );
       return;
     }
 
