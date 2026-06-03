@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/network/mobile_network_config.dart';
 import 'package:intellitaxi/core/services/fcm_token_resolver.dart';
+import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/widgets/app_version_label.dart';
-import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
+import 'package:intellitaxi/features/app_update/services/app_update_service.dart'
+    show AppUpdateCheckResult, AppUpdateService;
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -22,11 +27,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
 
   String _presentableError(Object error) {
-    final raw = error.toString();
-    if (raw.startsWith('Exception: ')) {
-      return raw.replaceFirst('Exception: ', '').trim();
-    }
-    return raw;
+    return DioErrorMessage.from(
+      error,
+      fallback: 'No fue posible iniciar sesión. Intenta de nuevo.',
+    );
   }
 
   @override
@@ -40,7 +44,9 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-        final deviceToken = await FcmTokenResolver.resolveForAuth();
+        final deviceToken = await FcmTokenResolver.resolveForAuth(
+          maxWait: MobileNetworkConfig.fcmMaxWaitBeforeLogin,
+        );
 
         final success = await authProvider.login(
           _emailController.text.trim(),
@@ -51,7 +57,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
         if (success) {
-          final updateResult = await AppUpdateService.instance.checkForUpdate();
+          final updateResult = await AppUpdateService.instance
+              .checkForUpdate()
+              .timeout(
+                MobileNetworkConfig.postLoginUpdateCheckTimeout,
+                onTimeout: () => const AppUpdateCheckResult(
+                  updateAvailable: false,
+                  shouldBlock: false,
+                ),
+              );
           if (!mounted || updateResult.shouldBlock) return;
           Navigator.pushReplacementNamed(context, '/home');
         }

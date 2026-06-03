@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/core/network/mobile_network_config.dart';
+import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -11,12 +13,9 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 class RideRequestService {
   final Dio _dio = DioClient.getInstance();
 
-  static const Duration _requestTimeout = Duration(seconds: 5);
-
-  Options get _fastRequestOptions => Options(
-        receiveTimeout: _requestTimeout,
-        sendTimeout: _requestTimeout,
-        extra: const {'no_retry': true},
+  Options get _userActionOptions => Options(
+        receiveTimeout: MobileNetworkConfig.userActionTimeout,
+        sendTimeout: MobileNetworkConfig.userActionTimeout,
       );
 
   /// 📌 SOLICITAR SERVICIO DE VIAJE
@@ -69,7 +68,7 @@ class RideRequestService {
       final response = await _dio.post(
         'taxi/solicitud',
         data: requestData,
-        options: _fastRequestOptions,
+        options: _userActionOptions,
       );
 
       // Log de respuesta exitosa
@@ -99,7 +98,12 @@ class RideRequestService {
           e.response?.data['message'] ?? 'Error al solicitar el servicio',
         );
       }
-      throw Exception('Error de conexión al solicitar el servicio');
+      throw Exception(
+        DioErrorMessage.from(
+          e,
+          fallback: 'Error de conexión al solicitar el servicio',
+        ),
+      );
     }
   }
 
@@ -224,7 +228,7 @@ class RideRequestService {
       final response = await _dio.post(
         'taxi/oferta-directa',
         data: requestData,
-        options: _fastRequestOptions,
+        options: _userActionOptions,
       );
       _logResponse(response.data);
 
@@ -238,7 +242,12 @@ class RideRequestService {
         final payload = e.response!.data as Map;
         throw Exception(payload['message'] ?? 'Error enviando oferta directa');
       }
-      throw Exception('Error de conexión enviando oferta directa');
+      throw Exception(
+        DioErrorMessage.from(
+          e,
+          fallback: 'Error de conexión enviando oferta directa',
+        ),
+      );
     }
   }
 
@@ -440,7 +449,7 @@ class RideRequestService {
       final response = await _dio.post(
         'taxi/oferta/aceptar',
         data: {'oferta_id': ofertaId},
-        options: _fastRequestOptions,
+        options: _userActionOptions,
       );
       return response.data is Map<String, dynamic>
           ? response.data as Map<String, dynamic>
@@ -451,7 +460,12 @@ class RideRequestService {
         final payload = e.response!.data as Map;
         throw Exception(payload['message'] ?? 'No se pudo aceptar la oferta');
       }
-      throw Exception('Error de conexión al aceptar la oferta');
+      throw Exception(
+        DioErrorMessage.from(
+          e,
+          fallback: 'Error de conexión al aceptar la oferta',
+        ),
+      );
     }
   }
 
@@ -461,7 +475,7 @@ class RideRequestService {
       final response = await _dio.post(
         'taxi/oferta/rechazar',
         data: {'oferta_id': ofertaId},
-        options: _fastRequestOptions,
+        options: _userActionOptions,
       );
       return response.data is Map<String, dynamic>
           ? response.data as Map<String, dynamic>
@@ -472,7 +486,12 @@ class RideRequestService {
         final payload = e.response!.data as Map;
         throw Exception(payload['message'] ?? 'No se pudo rechazar la oferta');
       }
-      throw Exception('Error de conexión al rechazar la oferta');
+      throw Exception(
+        DioErrorMessage.from(
+          e,
+          fallback: 'Error de conexión al rechazar la oferta',
+        ),
+      );
     }
   }
 

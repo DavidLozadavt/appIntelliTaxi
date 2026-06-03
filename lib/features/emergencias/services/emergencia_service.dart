@@ -6,7 +6,7 @@ import '../data/emergencia_model.dart';
 class EmergenciaService {
   final Dio _dio = DioClient.getInstance();
 
-  static const Duration _postTimeout = Duration(seconds: 8);
+  static const Duration _postTimeout = Duration(seconds: 25);
 
   static Options get _fastPostOptions => Options(
         sendTimeout: _postTimeout,

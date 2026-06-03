@@ -20,6 +20,10 @@ abstract final class DioErrorMessage {
           error.type == DioExceptionType.connectionTimeout) {
         return 'Sin conexión. Revisa tu internet e intenta de nuevo.';
       }
+      if (error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout) {
+        return 'La red móvil está lenta. Espera un momento e intenta de nuevo.';
+      }
       return fallback;
     }
 

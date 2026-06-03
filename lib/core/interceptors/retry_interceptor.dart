@@ -5,8 +5,8 @@ import 'package:dio/dio.dart';
 class RetryInterceptor extends Interceptor {
   RetryInterceptor({
     required Dio dio,
-    this.maxRetries = 2,
-    this.baseDelay = const Duration(milliseconds: 350),
+    this.maxRetries = 3,
+    this.baseDelay = const Duration(milliseconds: 700),
   }) : _dio = dio;
 
   final Dio _dio;

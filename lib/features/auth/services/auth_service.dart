@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/core/interceptors/retry_interceptor.dart';
+import 'package:intellitaxi/core/network/mobile_network_config.dart';
+import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
 import 'package:intellitaxi/core/bootstrap/session_snapshot.dart';
@@ -37,14 +40,25 @@ class AuthService {
     );
   }
 
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: AppConfig.baseUrl,
-      headers: {"Accept": "application/json"},
-      connectTimeout: const Duration(seconds: 60),
-      receiveTimeout: const Duration(seconds: 60),
-    ),
-  );
+  final Dio _dio = () {
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: AppConfig.baseUrl,
+        headers: {"Accept": "application/json"},
+        connectTimeout: MobileNetworkConfig.httpConnectTimeout,
+        receiveTimeout: MobileNetworkConfig.httpReceiveTimeout,
+        sendTimeout: MobileNetworkConfig.httpSendTimeout,
+      ),
+    );
+    dio.interceptors.add(
+      RetryInterceptor(
+        dio: dio,
+        maxRetries: MobileNetworkConfig.httpMaxRetries,
+        baseDelay: MobileNetworkConfig.httpRetryBaseDelay,
+      ),
+    );
+    return dio;
+  }();
 
   /// 📌 LOGIN
   Future<AuthResponse> login(String email, String password, deviceToken) async {
@@ -177,7 +191,7 @@ class AuthService {
       return data;
     }
 
-    return fallback;
+    return DioErrorMessage.from(e, fallback: fallback);
   }
 
   String? _extractFirstValidationError(dynamic source) {
