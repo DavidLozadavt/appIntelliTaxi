@@ -104,15 +104,42 @@ class ConductorSolicitudPayloadHelper {
     Map<String, dynamic> destino, {
     Map<String, dynamic>? anterior,
   }) {
-    for (final raw in [
-      destino['_cola_expira_en'],
-      anterior?['_cola_expira_en'],
-    ]) {
-      if (raw == null) continue;
-      final prev = DateTime.tryParse(raw.toString());
-      if (prev != null && prev.isAfter(DateTime.now())) {
-        destino['_cola_expira_en'] = prev.toIso8601String();
-        return;
+    final tabAnterior = anterior != null ? conductorTab(anterior) : null;
+    final tabNuevo = conductorTab(destino);
+    final cambioDePestana =
+        tabAnterior != null && tabNuevo != null && tabAnterior != tabNuevo;
+
+    if (!cambioDePestana) {
+      for (final raw in [
+        destino['_cola_expira_en'],
+        anterior?['_cola_expira_en'],
+      ]) {
+        if (raw == null) continue;
+        final prev = DateTime.tryParse(raw.toString());
+        if (prev != null && prev.isAfter(DateTime.now())) {
+          destino['_cola_expira_en'] = prev.toIso8601String();
+          return;
+        }
+      }
+    } else {
+      destino.remove('_cola_expira_en');
+    }
+
+    if (usaConductorTabApi(destino)) {
+      if (esTabEspera(destino)) {
+        final seg = _segundosEsperaDesdeApi(destino);
+        if (seg > 0) {
+          destino['_cola_expira_en'] =
+              DateTime.now().add(Duration(seconds: seg)).toIso8601String();
+          return;
+        }
+      } else if (esTabLlegando(destino)) {
+        final seg = _segundosLlegandoDesdeApi(destino);
+        if (seg > 0) {
+          destino['_cola_expira_en'] =
+              DateTime.now().add(Duration(seconds: seg)).toIso8601String();
+          return;
+        }
       }
     }
 
@@ -122,8 +149,149 @@ class ConductorSolicitudPayloadHelper {
     }
   }
 
-  /// Cuenta regresiva de cola (~10 min) anclada a `cola_expira_en`.
+  static int _segundosLlegandoDesdeApi(Map<String, dynamic> solicitud) {
+    if (broadcastFaseLlegando(solicitud)) {
+      final broadcast = _parseSegundosApi(solicitud, const [
+        'segundos_restantes_llegando',
+        'segundosRestantesLlegando',
+        'countdown_segundos',
+        'countdownSegundos',
+      ]);
+      if (broadcast != null) return broadcast;
+    }
+    return _parseSegundosApi(solicitud, const [
+          'countdown_segundos',
+          'countdownSegundos',
+          'segundos_restantes_llegando',
+          'segundosRestantesLlegando',
+          'segundos_restantes',
+          'segundos_restantes_fase_exclusiva',
+          'segundosRestantesFaseExclusiva',
+        ]) ??
+        0;
+  }
+
+  static int _segundosEsperaDesdeApi(Map<String, dynamic> solicitud) {
+    return _parseSegundosApi(solicitud, const [
+          'segundos_restantes_espera',
+          'segundosRestantesEspera',
+          'segundos_restantes_cola_total',
+          'countdown_segundos',
+          'countdownSegundos',
+          'segundos_restantes',
+          'segundosRestantes',
+        ]) ??
+        0;
+  }
+
+  static int? _parseSegundosApi(Map<String, dynamic> solicitud, List<String> keys) {
+    for (final key in keys) {
+      final raw = solicitud[key];
+      if (raw == null) continue;
+      final n = int.tryParse(raw.toString());
+      if (n != null && n >= 0) return n;
+    }
+    return null;
+  }
+
+  /// `llegando` | `espera` desde el API (`GET /solicitudes-pendientes`).
+  static String? conductorTab(Map<String, dynamic> solicitud) {
+    final tab = solicitud['conductor_tab']?.toString().trim().toLowerCase();
+    if (tab == 'llegando' || tab == 'espera') return tab;
+    return null;
+  }
+
+  static bool esTabLlegando(Map<String, dynamic> solicitud) =>
+      conductorTab(solicitud) == 'llegando';
+
+  static bool esTabEspera(Map<String, dynamic> solicitud) =>
+      conductorTab(solicitud) == 'espera';
+
+  static bool usaConductorTabApi(Map<String, dynamic> solicitud) =>
+      conductorTab(solicitud) != null;
+
+  static bool broadcastFaseLlegando(Map<String, dynamic> solicitud) =>
+      solicitud['broadcast_fase_llegando'] == true;
+
+  /// Pestaña Llegando: `countdown_segundos` (exclusiva) o `segundos_restantes_llegando` (BROADCAST fase 1).
+  static int segundosCountdownLlegando(Map<String, dynamic> solicitud) {
+    if (broadcastFaseLlegando(solicitud)) {
+      final broadcast = _parseSegundosApi(solicitud, const [
+        'segundos_restantes_llegando',
+        'segundosRestantesLlegando',
+        'countdown_segundos',
+        'countdownSegundos',
+      ]);
+      if (broadcast != null) return broadcast;
+    }
+
+    final api = _parseSegundosApi(solicitud, const [
+      'countdown_segundos',
+      'countdownSegundos',
+      'segundos_restantes_llegando',
+      'segundosRestantesLlegando',
+      'segundos_restantes',
+      'segundos_restantes_fase_exclusiva',
+      'segundosRestantesFaseExclusiva',
+    ]);
+    if (api != null) return api;
+    return segundosRestantesOverlay(solicitud);
+  }
+
+  /// Pestaña En espera: `segundos_restantes_espera` o `countdown_segundos` si `conductor_tab == espera`.
+  static int segundosRestantesEspera(Map<String, dynamic> solicitud) {
+    if (esTabEspera(solicitud)) {
+      final expira = resolverExpiraEnCola(solicitud);
+      if (expira != null) {
+        return expira.difference(DateTime.now()).inSeconds.clamp(0, 86400);
+      }
+    }
+
+    final espera = _parseSegundosApi(solicitud, const [
+      'segundos_restantes_espera',
+      'segundosRestantesEspera',
+      'segundos_restantes_cola_total',
+    ]);
+    if (espera != null) return espera;
+
+    if (esTabEspera(solicitud)) {
+      final cd = _parseSegundosApi(solicitud, const [
+        'countdown_segundos',
+        'countdownSegundos',
+        'segundos_restantes',
+        'segundosRestantes',
+      ]);
+      if (cd != null) return cd;
+    }
+
+    final expira = resolverExpiraEnCola(solicitud);
+    if (expira != null) {
+      return expira.difference(DateTime.now()).inSeconds.clamp(0, 86400);
+    }
+    return ServicioEsperaTimer.segundosCola(solicitud);
+  }
+
+  static bool debeMostrarHaceMinutos(Map<String, dynamic> solicitud) =>
+      solicitud['mostrar_hace_minutos'] == true;
+
+  static bool countdownModoHastaFaseAbierta(Map<String, dynamic> solicitud) =>
+      solicitud['countdown_modo']?.toString() == 'hasta_fase_abierta';
+
+  static int segundosHastaFaseAbierta(Map<String, dynamic> solicitud) {
+    final api = _parseSegundosApi(solicitud, const [
+      'segundos_restantes_fase_abierta',
+      'segundosRestantesFaseAbierta',
+      'segundos_restantes_fase_exclusiva',
+    ]);
+    return api ?? 0;
+  }
+
+  /// Cuenta regresiva cola (legacy); preferir [segundosRestantesEspera] en «En espera».
   static int? segundosRestantesCola(Map<String, dynamic> solicitud) {
+    if (usaConductorTabApi(solicitud)) {
+      final seg = segundosRestantesEspera(solicitud);
+      return seg > 0 ? seg : 0;
+    }
     final expira = resolverExpiraEnCola(solicitud);
     if (expira != null) {
       final restantes = expira.difference(DateTime.now()).inSeconds;
@@ -134,6 +302,12 @@ class ConductorSolicitudPayloadHelper {
   }
 
   static bool tieneExpiracionColaActiva(Map<String, dynamic> solicitud) {
+    if (esTabEspera(solicitud)) {
+      return segundosRestantesEspera(solicitud) > 0;
+    }
+    if (esTabLlegando(solicitud)) {
+      return segundosCountdownLlegando(solicitud) > 0;
+    }
     final seg = segundosRestantesCola(solicitud);
     return seg != null && seg > 0;
   }
@@ -164,6 +338,8 @@ class ConductorSolicitudPayloadHelper {
     final ttlRaw = solicitud['ttl_segundos'] ?? solicitud['ttl'];
     final ttl = int.tryParse(ttlRaw?.toString() ?? '');
     if (ttl != null && ttl > 0) return ttl;
+    final cd = _parseSegundosApi(solicitud, const ['countdown_segundos']);
+    if (cd != null && cd > 0) return cd;
     return kOportunidadConductorSegundos;
   }
 

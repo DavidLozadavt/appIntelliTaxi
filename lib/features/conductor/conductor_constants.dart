@@ -1,5 +1,8 @@
-/// TTL overlay por defecto (alineado con `TAXI_SOLICITUD_OVERLAY_TTL_SECONDS` en backend).
+/// TTL overlay solo si el API no envía `countdown_segundos` / `overlay_expira_en`.
 const int kOportunidadConductorSegundos = 120;
+
+/// Polling `GET /taxi/solicitudes-pendientes` (3–5 s recomendado).
+const int kPollSolicitudesPendientesSegundos = 4;
 
 /// Poll `GET /taxi/oferta-activa` con pantalla exclusiva abierta (10–15 s recomendado).
 const int kPollOfertaActivaPantallaSegundos = 12;

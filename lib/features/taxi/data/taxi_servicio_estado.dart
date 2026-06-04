@@ -117,6 +117,10 @@ class TaxiSolicitudesPendientesResult {
   final String? assignmentMethod;
   /// Radio efectivo en km (BD): `driver_search_radius_km` o alias `radio_km`.
   final double? driverSearchRadiusKm;
+  /// Meta cola (`companyAssignmentSettings` vía API).
+  final double? queueMaxMinutes;
+  final double? queueAbiertaMaxMinutes;
+  final double? ventanaListaMinutos;
 
   const TaxiSolicitudesPendientesResult({
     required this.enServicio,
@@ -130,6 +134,9 @@ class TaxiSolicitudesPendientesResult {
     this.listaGlobal = true,
     this.assignmentMethod,
     this.driverSearchRadiusKm,
+    this.queueMaxMinutes,
+    this.queueAbiertaMaxMinutes,
+    this.ventanaListaMinutos,
   });
 
   /// Alias de [driverSearchRadiusKm] para compatibilidad.

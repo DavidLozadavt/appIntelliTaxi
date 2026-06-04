@@ -469,9 +469,11 @@ class _PasajeroEsperandoConductorScreenState
   }
 
   Widget _buildBuscandoConductor(PasajeroServicioActivoProvider provider) {
+    final maxSec = PasajeroServicioActivoProvider.maxWaitingSeconds;
+    final elapsed = provider.elapsedSeconds.clamp(0, maxSec);
+    final minutes = elapsed ~/ 60;
+    final seconds = elapsed % 60;
     final remainingSeconds = provider.remainingSeconds;
-    final minutes = remainingSeconds ~/ 60;
-    final seconds = remainingSeconds % 60;
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final origenAddr =
@@ -513,7 +515,7 @@ class _PasajeroEsperandoConductorScreenState
             children: [
               _buildCustomLoader(
                 size: 52,
-                progress: provider.elapsedSeconds / 120,
+                progress: (elapsed / maxSec).clamp(0.0, 1.0),
                 color: remainingSeconds > 30 ? AppColors.accent : Colors.orange,
               ),
               const SizedBox(width: 14),

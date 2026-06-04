@@ -1,4 +1,5 @@
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 
 /// Oferta exclusiva inDrive (`oferta.servicio.exclusiva` / GET oferta-activa).
@@ -150,7 +151,19 @@ class ConductorOfertaExclusiva {
     final sid = _parseServicioId(map);
     if (sid == null || sid <= 0) return null;
 
-    final fase = map['fase_oferta']?.toString().toLowerCase() ?? 'exclusiva';
+    // Cola Llegando/Espera (BROADCAST o inDrive en lista): no pantalla exclusiva.
+    if (ConductorSolicitudPayloadHelper.usaConductorTabApi(map)) {
+      final modo = map['countdown_modo']?.toString();
+      if (modo != 'oferta_exclusiva') return null;
+    }
+    if (ConductorSolicitudPayloadHelper.broadcastFaseLlegando(map)) {
+      return null;
+    }
+    final metodo = map['assignment_method']?.toString().toUpperCase() ??
+        map['assignmentMethod']?.toString().toUpperCase();
+    if (metodo == 'BROADCAST_NEARBY_DRIVERS') return null;
+
+    final fase = map['fase_oferta']?.toString().toLowerCase();
     if (fase != 'exclusiva' && map['oferta_exclusiva'] != true) {
       return null;
     }
@@ -163,7 +176,7 @@ class ConductorOfertaExclusiva {
       servicioId: sid,
       solicitudId: sid.toString(),
       raw: map,
-      faseOferta: fase,
+      faseOferta: fase ?? 'exclusiva',
       segundosRestantes: segRestantes,
       ttlSegundos: ttl ?? segRestantes,
       intento: _parseInt(map['intento']),

@@ -922,7 +922,17 @@ class ConductorService {
       listaGlobal: listaGlobal,
       assignmentMethod: assignmentMethod,
       driverSearchRadiusKm: driverSearchRadiusKm,
+      queueMaxMinutes: _parseDoubleMeta(data['queue_max_minutes']),
+      queueAbiertaMaxMinutes:
+          _parseDoubleMeta(data['queue_abierta_max_minutes']),
+      ventanaListaMinutos: _parseDoubleMeta(data['ventana_lista_minutos']),
     );
+  }
+
+  static double? _parseDoubleMeta(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw.toString());
   }
 
   double? _parseDriverSearchRadiusKm(Map data) {

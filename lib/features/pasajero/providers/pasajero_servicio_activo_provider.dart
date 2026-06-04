@@ -45,6 +45,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   Timer? _countdownTimer;
   static const int _maxWaitingSeconds = 120;
   int _elapsedSeconds = 0;
+
+  static int get maxWaitingSeconds => _maxWaitingSeconds;
   Timer? _refreshTimer;
   Timer? _nearbyDriversTimer;
   bool _isFetchingService = false;
@@ -58,7 +60,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   Set<Marker> get markers => {..._markers, ..._nearbyDriverMarkers};
   Set<Polyline> get polylines => _polylines;
   int get elapsedSeconds => _elapsedSeconds;
-  int get remainingSeconds => _maxWaitingSeconds - _elapsedSeconds;
+  int get remainingSeconds =>
+      (_maxWaitingSeconds - _elapsedSeconds).clamp(0, _maxWaitingSeconds);
   int get conductoresCercanosCount => _conductoresCercanosCount;
   bool get cargandoConductoresCercanos => _cargandoConductoresCercanos;
   bool get isBuscando =>
@@ -250,6 +253,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// ⏱️ Inicia el temporizador de timeout
   void _iniciarTimeout() {
+    _cancelarTimeout();
     _elapsedSeconds = 0;
 
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -258,8 +262,10 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         return;
       }
       if (isBuscando) {
-        _elapsedSeconds++;
-        _notifyListenersSafe();
+        if (_elapsedSeconds < _maxWaitingSeconds) {
+          _elapsedSeconds++;
+          _notifyListenersSafe();
+        }
       } else {
         timer.cancel();
       }

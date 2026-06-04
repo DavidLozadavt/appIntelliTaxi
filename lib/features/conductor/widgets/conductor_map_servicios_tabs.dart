@@ -5,7 +5,6 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_servicios_espera_hint.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 
 /// Pestañas compactas bajo el chip «En línea».
@@ -100,7 +99,7 @@ class ConductorMapServiciosTabs {
     h += chipAltura;
     h += tabBarHeight(context);
     if (avisoEsperaEnLlegando) {
-      h += ConductorServiciosEsperaHint.alturaEstimada;
+      h += 44;
     }
     h += compact ? 4.0 : 6.0;
     return h;
@@ -199,7 +198,6 @@ class ConductorMapServiciosTabs {
     required String Function(Map<String, dynamic>) getSolicitudId,
     required int Function(String id) segundosRestantes,
     VoidCallback? onVerEnEspera,
-    VoidCallback? onDismissEsperaHint,
   }) {
     if (!shouldShowPanel(
       controller: controller,
@@ -218,7 +216,6 @@ class ConductorMapServiciosTabs {
         onAceptar: onAceptarLlegando,
         onRechazar: onRechazarLlegando,
         onVerEnEspera: onVerEnEspera,
-        onDismissEsperaHint: onDismissEsperaHint,
       );
     }
 
@@ -239,7 +236,6 @@ class ConductorMapServiciosTabs {
     required void Function(String id) onAceptar,
     required void Function(String id) onRechazar,
     VoidCallback? onVerEnEspera,
-    VoidCallback? onDismissEsperaHint,
   }) {
     final lista = home.solicitudesOrdenadas;
     final espera = home.totalSolicitudesEnEspera;
@@ -261,14 +257,17 @@ class ConductorMapServiciosTabs {
     if (soloAvisoEspera) {
       listBody = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
         children: [
-          Text(
-            'No hay servicios en «Llegando» ahora. Revisa los que siguen disponibles en espera.',
-            style: TextStyle(
-              fontSize: 12,
-              height: 1.35,
-              color: Colors.grey.shade600,
+          Center(
+            child: TextButton.icon(
+              onPressed: onVerEnEspera,
+              icon: const Icon(Icons.arrow_forward, size: 18),
+              label: Text(
+                espera == 1
+                    ? 'Ver 1 servicio en espera'
+                    : 'Ver $espera servicios en espera',
+              ),
             ),
           ),
         ],
@@ -302,12 +301,6 @@ class ConductorMapServiciosTabs {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (soloAvisoEspera && onVerEnEspera != null)
-            ConductorServiciosEsperaHint(
-              cantidad: espera,
-              onVerEnEspera: onVerEnEspera,
-              onDismiss: onDismissEsperaHint,
-            ),
           Expanded(
             child: RefreshIndicator(
               color: AppColors.accent,
@@ -436,13 +429,13 @@ class ConductorMapServiciosTabs {
             final item = lista[index];
             final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
             if (id == null || id.isEmpty) return const SizedBox.shrink();
-            final segCola = pendientes.segundosRestantesCola(item) ?? 0;
+            final segEspera = home.obtenerSegundosRestantes(id);
             return SolicitudServicioCard(
               solicitud: item,
               marginExterno: false,
               compact: true,
               denseList: true,
-              segundosRestantes: segCola > 0 ? segCola : null,
+              segundosRestantes: segEspera > 0 ? segEspera : null,
               distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
               tiempoPublicado: pendientes.tiempoPublicado(item),
               precioOfertado: pendientes.precioOfertadoDe(item),

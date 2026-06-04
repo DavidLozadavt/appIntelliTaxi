@@ -306,7 +306,10 @@ class SolicitudDisplayHelper {
         v == 'mi ubicación' ||
         v == 'mi ubicacion' ||
         v == 'ubicación actual' ||
-        v == 'ubicacion actual';
+        v == 'ubicacion actual' ||
+        v == 'nueva recogida' ||
+        v == 'punto de recogida' ||
+        v == 'nueva solicitud';
   }
 
   static bool isPlaceholderDestino(String value) {
@@ -532,11 +535,18 @@ class SolicitudDisplayHelper {
 
   /// Solo el nombre del lugar (tarjeta compacta: ya dice RECOGIDA / DESTINO).
   static String pickupPlaceLabel(Map<String, dynamic> data) {
-    final title = pickupTitleForDriver(data);
-    if (!isPlaceholderPickup(title) && title.trim().isNotEmpty) {
+    final n = normalizeSolicitudMap(data);
+    final title = pickupTitleForDriver(n);
+    if (!isPlaceholderPickup(title) &&
+        title.trim().isNotEmpty &&
+        title != _pickupPlaceholder) {
       return formatReadablePlaceName(title);
     }
-    final barrio = barrioFromPayload(normalizeSolicitudMap(data));
+    final addr = _pickupAddressRaw(n);
+    if (addr != null && !isPlaceholderPickup(addr)) {
+      return formatReadablePlaceName(placeNameFromAddress(addr));
+    }
+    final barrio = barrioFromPayload(n);
     if (barrio != null && barrio.isNotEmpty) {
       return formatReadablePlaceName(barrio);
     }
@@ -552,12 +562,21 @@ class SolicitudDisplayHelper {
 
   /// Título legible al volante (nombre del lugar, sin prefijo).
   static String pickupHeadline(Map<String, dynamic> data) {
+    final tituloConductor = pickupTitleForDriver(data);
+    if (!isPlaceholderPickup(tituloConductor) &&
+        tituloConductor.trim().isNotEmpty &&
+        tituloConductor != _pickupPlaceholder) {
+      return formatReadablePlaceName(tituloConductor);
+    }
+
     final place = pickupName(data);
-    if (isPlaceholderPickup(place)) {
+    if (isPlaceholderPickup(place) || place == _pickupPlaceholder) {
       final barrio = barrioFromPayload(normalizeSolicitudMap(data));
       if (barrio != null && barrio.isNotEmpty) {
         return formatReadablePlaceName(barrio);
       }
+      final hint = pickupCoordinatesHint(data);
+      if (hint != null) return hint;
       return 'Nueva recogida';
     }
     return formatReadablePlaceName(place);

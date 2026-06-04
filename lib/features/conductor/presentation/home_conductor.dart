@@ -24,7 +24,6 @@ import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
 import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_permission_flow.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
-import 'package:intellitaxi/features/conductor/widgets/conductor_servicios_espera_hint.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
@@ -71,8 +70,6 @@ class _HomeConductorState extends State<HomeConductor>
   late TabController _serviciosTabController;
   /// Solo true si aún no sabemos si hay turno (evita bloquear al volver de un viaje).
   bool _validandoTurno = false;
-  bool _avisoEsperaDescartado = false;
-
   void _irATabEnEspera() {
     if (_serviciosTabController.index != 1) {
       _serviciosTabController.animateTo(1);
@@ -80,34 +77,10 @@ class _HomeConductorState extends State<HomeConductor>
     unawaited(_pendientesProvider.refrescar(silencioso: true));
   }
 
-  bool _mostrarAvisoEsperaEnHeader(ConductorHomeProvider provider) =>
-      _panelServiciosVisible(provider) &&
-      _serviciosTabController.index == 0 &&
-      provider.totalSolicitudesEnEspera > 0 &&
-      !_avisoEsperaDescartado;
-
   void _onNuevaSolicitudRecibida(Map<String, dynamic> solicitud) {
     if (!mounted) return;
     if (_serviciosTabController.index != 0) {
       _serviciosTabController.animateTo(0);
-    }
-    if (_provider.solicitudesOrdenadas.isEmpty &&
-        _provider.totalSolicitudesEnEspera > 0) {
-      final enEspera = _provider.totalSolicitudesEnEspera;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            enEspera == 1
-                ? 'Hay 1 servicio en «En espera»'
-                : 'Hay $enEspera servicios en «En espera»',
-          ),
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'Ver',
-            onPressed: _irATabEnEspera,
-          ),
-        ),
-      );
     }
     if (!_panelServiciosVisible(_provider)) {
       final nombre = solicitud['pasajero_nombre']?.toString().trim();
@@ -211,7 +184,7 @@ class _HomeConductorState extends State<HomeConductor>
               context,
               provider,
               chipAltura: chipH,
-              avisoEsperaEnLlegando: _mostrarAvisoEsperaEnHeader(provider),
+              avisoEsperaEnLlegando: false,
             ) +
             4
         : chipH + 24;
@@ -1454,7 +1427,7 @@ class _HomeConductorState extends State<HomeConductor>
       context,
       provider,
       chipAltura: _chipEstadoAltura(provider, compact: compact),
-      avisoEsperaEnLlegando: _mostrarAvisoEsperaEnHeader(provider),
+      avisoEsperaEnLlegando: false,
     );
   }
 
@@ -1558,14 +1531,6 @@ class _HomeConductorState extends State<HomeConductor>
                         llegando: provider.solicitudesOrdenadas.length,
                         enEspera: provider.totalSolicitudesEnEspera,
                       ),
-                      if (_mostrarAvisoEsperaEnHeader(provider))
-                        ConductorServiciosEsperaHint(
-                          cantidad: provider.totalSolicitudesEnEspera,
-                          onVerEnEspera: _irATabEnEspera,
-                          onDismiss: () {
-                            setState(() => _avisoEsperaDescartado = true);
-                          },
-                        ),
                     ],
                   ),
                 ),
@@ -1615,9 +1580,6 @@ class _HomeConductorState extends State<HomeConductor>
                       onAceptarEspera: _aceptarSolicitud,
                       onDescartarEspera: _rechazarSolicitud,
                       onVerEnEspera: _irATabEnEspera,
-                      onDismissEsperaHint: () {
-                        setState(() => _avisoEsperaDescartado = true);
-                      },
                     ),
                   );
                 },

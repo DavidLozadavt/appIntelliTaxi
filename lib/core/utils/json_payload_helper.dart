@@ -22,6 +22,15 @@ class JsonPayloadHelper {
       final nested = payload[key];
       if (nested is Map) {
         merged.addAll(Map<String, dynamic>.from(nested));
+      } else if (nested is String && nested.trim().isNotEmpty) {
+        try {
+          final decoded = json.decode(nested);
+          if (decoded is Map) {
+            merged.addAll(Map<String, dynamic>.from(decoded));
+          }
+        } catch (_) {
+          // No es JSON; se ignora.
+        }
       }
     }
     return merged;

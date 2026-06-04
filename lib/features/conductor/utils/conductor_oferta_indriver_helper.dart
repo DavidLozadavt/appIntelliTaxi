@@ -27,6 +27,37 @@ abstract final class ConductorOfertaIndriverHelper {
     return esFaseAbierta(actual) && !esFaseExclusiva(actual);
   }
 
+  /// BROADCAST / inDrive: el API movió el servicio de «Llegando» a «En espera» (fase 2).
+  static bool pasoDeLlegandoAEspera(
+    Map<String, dynamic>? anterior,
+    Map<String, dynamic> actual,
+  ) {
+    if (anterior == null) return false;
+    final tabAnt =
+        anterior['conductor_tab']?.toString().trim().toLowerCase();
+    final tabNuevo =
+        actual['conductor_tab']?.toString().trim().toLowerCase();
+    if (tabAnt == 'llegando' && tabNuevo == 'espera') return true;
+    if (tabAnt != 'llegando') return false;
+    return esFaseAbierta(actual) &&
+        faseOferta(anterior) != null &&
+        faseOferta(actual) == 'abierta';
+  }
+
+  /// `servicio.cercano` / pendientes con cola asignada a este conductor (BROADCAST fase 1, etc.).
+  static bool esAsignacionColaParaMi(Map<String, dynamic> raw) {
+    final tab = raw['conductor_tab']?.toString().trim().toLowerCase();
+    if (tab == 'llegando' || tab == 'espera') return true;
+    if (raw['broadcast_fase_llegando'] == true) return true;
+    if (raw['aceptar_rechazar'] == true && tab != null) return true;
+    final method = raw['assignment_method']?.toString().toUpperCase() ??
+        raw['assignmentMethod']?.toString().toUpperCase();
+    if (method == 'BROADCAST_NEARBY_DRIVERS') return true;
+    final modo = raw['countdown_modo']?.toString().toLowerCase() ?? '';
+    if (modo.contains('broadcast')) return true;
+    return false;
+  }
+
   /// En canal público: ignorar si la oferta sigue siendo exclusiva para otro.
   /// Con [listaGlobal] true (híbrido), el broadcast público siempre entra a la cola.
   static bool ignorarNuevaSolicitudPublica(
@@ -36,8 +67,9 @@ abstract final class ConductorOfertaIndriverHelper {
     int? miOfertaExclusivaServicioId,
   }) {
     if (listaGlobal) return false;
+    if (esAsignacionColaParaMi(raw)) return false;
 
-    if (esFaseExclusiva(raw)) {
+    if (esFaseExclusiva(raw) && raw['oferta_exclusiva'] == true) {
       return true;
     }
     if (tengoOfertaExclusivaActiva) {

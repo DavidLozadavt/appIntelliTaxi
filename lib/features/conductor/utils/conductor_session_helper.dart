@@ -56,8 +56,12 @@ class ConductorSessionHelper {
   }
 
   /// Canal privado del conductor (`servicio.cercano`, ofertas directas).
+  /// Incluye alias `conductor.{id}` por si el backend lo emite sin prefijo `private-`.
   static Set<String> canalesOfertaDirecta(int? idPersona) {
     if (idPersona == null || idPersona <= 0) return {};
-    return {'private-conductor.$idPersona'};
+    return {
+      'private-conductor.$idPersona',
+      'conductor.$idPersona',
+    };
   }
 }

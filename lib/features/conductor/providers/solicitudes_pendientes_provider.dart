@@ -50,7 +50,9 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
 
   void iniciarRefrescoPeriodico() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: kPollSolicitudesPendientesSegundos),
+      (_) {
       if (!_isDisposed && !_cargando) {
         unawaited(refrescar(silencioso: true));
       }
@@ -114,10 +116,14 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
     return ConductorSolicitudDistanceHelper.resolveLabel(solicitud) ?? '';
   }
 
-  int? segundosRestantesCola(Map<String, dynamic> solicitud) =>
-      ConductorSolicitudPayloadHelper.segundosRestantesCola(solicitud);
+  int segundosRestantesEspera(Map<String, dynamic> solicitud) =>
+      ConductorSolicitudPayloadHelper.segundosRestantesEspera(solicitud);
 
+  /// El API envía `mostrar_hace_minutos: false`; no mostrar «Hace X min».
   String tiempoPublicado(Map<String, dynamic> solicitud) {
+    if (!ConductorSolicitudPayloadHelper.debeMostrarHaceMinutos(solicitud)) {
+      return '';
+    }
     final seg = int.tryParse(
       (solicitud['publicado_hace_segundos'] ?? '').toString(),
     );
