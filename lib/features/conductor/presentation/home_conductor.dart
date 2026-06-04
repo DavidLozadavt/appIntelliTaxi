@@ -173,7 +173,8 @@ class _HomeConductorState extends State<HomeConductor>
       provider.isOnline &&
       !provider.enServicio &&
       !provider.enDescanso &&
-      provider.tieneTurnoActivo;
+      provider.tieneTurnoActivo &&
+      !provider.tieneOfertaExclusivaActiva;
 
   EdgeInsets _paddingMapaNavegacion(ConductorHomeProvider provider) {
     final panelVisible = _panelServiciosVisible(provider);

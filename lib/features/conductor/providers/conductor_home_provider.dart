@@ -1117,8 +1117,12 @@ class ConductorHomeProvider extends ChangeNotifier {
       _suscritoAPusher = true;
       _iniciarSincronizacionSolicitudes();
       _reprogramarPollOfertaActiva();
-      unawaited(sincronizarSolicitudesPublicadasConductor());
-      unawaited(sincronizarOfertaActiva());
+      unawaited(() async {
+        await sincronizarOfertaActiva();
+        if (!_isDisposed && _isOnline && !_enServicio && !_enDescanso) {
+          await sincronizarSolicitudesPublicadasConductor();
+        }
+      }());
       AppLogger.d('✅ Suscrito correctamente al canal de solicitudes');
     } catch (e) {
       AppLogger.d('❌ Error al conectarse a Pusher: $e');
@@ -1579,20 +1583,19 @@ class ConductorHomeProvider extends ChangeNotifier {
       _dispararSonidoNuevaSolicitud(sid, decirNuevoServicioEnVoz: false);
     }
 
-    final showAlert = await AppLifecycleHelper.shouldShowIncomingServiceAlert();
-    if (showAlert) {
-      await IncomingServiceNotificationService.instance.showIncomingService(
-        solicitud,
-      );
-    }
-
-    if (!_isDisposed) notifyListeners();
-
     if (abrirPantalla && !ConductorOfertaNavigation.pantallaVisible) {
       unawaited(ConductorOfertaNavigation.abrirOfertaExclusiva(oferta));
     }
+    if (!_isDisposed) notifyListeners();
 
     unawaited(() async {
+      final showAlert =
+          await AppLifecycleHelper.shouldShowIncomingServiceAlert();
+      if (showAlert && !_isDisposed) {
+        await IncomingServiceNotificationService.instance.showIncomingService(
+          solicitud,
+        );
+      }
       await enriquecerOfertaExclusivaActiva();
       if (!_isDisposed) notifyListeners();
     }());
@@ -1811,10 +1814,20 @@ class ConductorHomeProvider extends ChangeNotifier {
         _procesarOfertaCerrada(raw);
         break;
       case ConductorSocketAccion.mergeColaCercano:
-        _procesarNuevaSolicitud(raw, mostrarEnOverlay: true);
+        if (ConductorSolicitudPayloadHelper.esOfertaDirecta(raw) ||
+            ConductorSocketPayloadRouter.requiereOverlayFullscreen(raw)) {
+          unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
+        } else {
+          _procesarNuevaSolicitud(raw, mostrarEnOverlay: true);
+        }
         break;
       case ConductorSocketAccion.mergeCola:
-        _procesarNuevaSolicitud(raw);
+        if (ConductorSolicitudPayloadHelper.esOfertaDirecta(raw) ||
+            ConductorSocketPayloadRouter.requiereOverlayFullscreen(raw)) {
+          unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
+        } else {
+          _procesarNuevaSolicitud(raw);
+        }
         break;
     }
   }
@@ -1828,7 +1841,11 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (notifTipo.contains('oferta_servicio_exclusiva') ||
         notifTipo == 'exclusiva_indrive' ||
         notifTipo == 'oferta_directa') {
-      await sincronizarOfertaActiva();
+      if (ConductorOfertaExclusiva.tryFromDynamic(raw) != null) {
+        await _aplicarOfertaExclusivaDesdePayload(raw);
+      } else {
+        await sincronizarOfertaActiva();
+      }
       return;
     }
 
@@ -1895,7 +1912,6 @@ class ConductorHomeProvider extends ChangeNotifier {
           isDirectOffer || ConductorSolicitudPayloadHelper.esOfertaDirecta(raw);
 
       if (esDirecta &&
-          !fromSync &&
           ConductorSocketPayloadRouter.requiereOverlayFullscreen(raw)) {
         unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
         return;
