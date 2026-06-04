@@ -34,6 +34,55 @@ class ConductorSolicitudDistanceHelper {
   static String labelDesdeConductor(double meters) =>
       'A ${formatMeters(meters)} de ti';
 
+  /// Distancia conductor → recogida en km (API o Haversine).
+  static double? distanciaDesdeMiKm(
+    Map<String, dynamic> solicitud, {
+    double? driverLat,
+    double? driverLng,
+  }) {
+    final kmApi =
+        solicitud['distancia_desde_mi_km'] ?? solicitud['distanciaDesdeMiKm'];
+    if (kmApi != null) {
+      final km = JsonPayloadHelper.parseDouble(kmApi, fallback: -1);
+      if (km >= 0) return km;
+    }
+
+    final metrosApi = solicitud['distancia_metros'] ??
+        solicitud['distanciaMetros'] ??
+        solicitud['distance_value'];
+    if (metrosApi != null) {
+      final m = JsonPayloadHelper.parseDouble(metrosApi);
+      if (m > 0 && m < 500_000) return m / 1000.0;
+    }
+
+    if (driverLat != null && driverLng != null) {
+      final meters = metersToPickup(
+        solicitud,
+        driverLat: driverLat,
+        driverLng: driverLng,
+      );
+      if (meters != null) return meters / 1000.0;
+    }
+    return null;
+  }
+
+  /// Modo `BROADCAST_NEARBY_DRIVERS`: visible solo si distancia ≤ [radioKm] (BD/API).
+  static bool dentroDelRadioAsignacion(
+    Map<String, dynamic> solicitud, {
+    required double radioKm,
+    double? driverLat,
+    double? driverLng,
+  }) {
+    if (radioKm <= 0) return true;
+    final km = distanciaDesdeMiKm(
+      solicitud,
+      driverLat: driverLat,
+      driverLng: driverLng,
+    );
+    if (km == null) return true;
+    return km <= radioKm;
+  }
+
   /// Texto para tarjeta: «A 450 m de ti». Prioriza API; si falta, calcula con GPS.
   static String? resolveLabel(
     Map<String, dynamic> solicitud, {

@@ -105,21 +105,35 @@ class TaxiSolicitudesPendientesResult {
   final bool enServicio;
   final bool enDescanso;
   final int? idEmpresa;
+  final int? servicioActivoId;
   final int total;
   final List<Map<String, dynamic>> pendientes;
   final String? actualizadoEn;
   /// `TAXI_PENDIENTES_MAX_EDAD_MINUTOS` en servidor (solo informativo en UI).
   final int? pendientesMaxEdadMinutos;
+  /// `NEAREST_OFFER_THEN_BROADCAST` → true; `BROADCAST_NEARBY_DRIVERS` → false.
+  final bool listaGlobal;
+  /// Método de asignación de la empresa (`companyAssignmentSettings`).
+  final String? assignmentMethod;
+  /// Radio efectivo en km (BD): `driver_search_radius_km` o alias `radio_km`.
+  final double? driverSearchRadiusKm;
 
   const TaxiSolicitudesPendientesResult({
     required this.enServicio,
     this.enDescanso = false,
     this.idEmpresa,
+    this.servicioActivoId,
     required this.total,
     required this.pendientes,
     this.actualizadoEn,
     this.pendientesMaxEdadMinutos,
+    this.listaGlobal = true,
+    this.assignmentMethod,
+    this.driverSearchRadiusKm,
   });
+
+  /// Alias de [driverSearchRadiusKm] para compatibilidad.
+  double? get radioKm => driverSearchRadiusKm;
 
   factory TaxiSolicitudesPendientesResult.empty({
     bool enServicio = false,

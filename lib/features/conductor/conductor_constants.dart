@@ -2,7 +2,7 @@
 const int kOportunidadConductorSegundos = 120;
 
 /// Poll `GET /taxi/oferta-activa` con pantalla exclusiva abierta (10–15 s recomendado).
-const int kPollOfertaActivaPantallaSegundos = 18;
+const int kPollOfertaActivaPantallaSegundos = 12;
 
 /// Poll de respaldo cuando hay oferta activa pero la pantalla está cerrada.
 const int kPollOfertaActivaFondoSegundos = 45;

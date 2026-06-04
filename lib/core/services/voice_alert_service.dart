@@ -61,6 +61,21 @@ class VoiceAlertService {
     );
   }
 
+  /// «Nuevo servicio disponible» + dirección de recogida (pestaña «Llegando»).
+  static Future<void> announceNewServiceWithAddress(String direccion) async {
+    final dir = direccion.trim();
+    if (dir.isEmpty) {
+      await announceNewService();
+      return;
+    }
+    await speak(
+      'Nuevo servicio disponible. $dir',
+      minInterval: const Duration(seconds: 45),
+      force: true,
+      stopBefore: false,
+    );
+  }
+
   /// Solo la dirección (barrio, calle…), sin frases extra. Una vez por oferta.
   static Future<void> speakSoloDireccion(
     String texto, {

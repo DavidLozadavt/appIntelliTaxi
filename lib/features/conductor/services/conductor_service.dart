@@ -879,11 +879,17 @@ class ConductorService {
 
     final enServicio = data['en_servicio'] == true;
     final enDescanso = data['en_descanso'] == true;
+    final servicioActivoId = int.tryParse(
+      (data['servicio_activo_id'] ?? data['servicioActivoId'] ?? '').toString(),
+    );
 
     if (enServicio || enDescanso) {
-      return TaxiSolicitudesPendientesResult.empty(
+      return TaxiSolicitudesPendientesResult(
         enServicio: enServicio,
         enDescanso: enDescanso,
+        servicioActivoId: servicioActivoId,
+        total: 0,
+        pendientes: const [],
       );
     }
 
@@ -893,6 +899,10 @@ class ConductorService {
             .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>))
             .toList()
         : <Map<String, dynamic>>[];
+
+    final assignmentMethod = data['assignment_method']?.toString().trim();
+    final driverSearchRadiusKm = _parseDriverSearchRadiusKm(data);
+    final listaGlobal = _parseListaGlobal(data, assignmentMethod);
 
     return TaxiSolicitudesPendientesResult(
       enServicio: false,
@@ -908,7 +918,35 @@ class ConductorService {
                 '')
             .toString(),
       ),
+      listaGlobal: listaGlobal,
+      assignmentMethod: assignmentMethod,
+      driverSearchRadiusKm: driverSearchRadiusKm,
     );
+  }
+
+  double? _parseDriverSearchRadiusKm(Map data) {
+    for (final key in const [
+      'driver_search_radius_km',
+      'driverSearchRadiusKm',
+      'radio_km',
+      'radioKm',
+    ]) {
+      final raw = data[key];
+      if (raw == null) continue;
+      final km = double.tryParse(raw.toString());
+      if (km != null && km > 0) return km;
+    }
+    return null;
+  }
+
+  bool _parseListaGlobal(Map data, String? assignmentMethod) {
+    if (data.containsKey('lista_global')) {
+      return data['lista_global'] == true;
+    }
+    final method = assignmentMethod?.toUpperCase().trim();
+    if (method == 'NEAREST_OFFER_THEN_BROADCAST') return true;
+    if (method == 'BROADCAST_NEARBY_DRIVERS') return false;
+    return true;
   }
 
   /// Cancelar servicio activo

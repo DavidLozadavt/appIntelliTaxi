@@ -14,10 +14,12 @@ class IncomingServiceAlertService {
 
   /// [dedupeKey] formato `servicioId:llegando` o `servicioId:exclusiva`.
   /// [beepInmediato]: exclusiva → «Llegando» sin esperar cola.
+  /// [direccionVoz]: recogida (barrio/calle); si viene vacío, fallback genérico.
   static Future<void> alert({
     required bool includeVoice,
     String? dedupeKey,
     bool beepInmediato = false,
+    String? direccionVoz,
   }) async {
     final esLlegando = dedupeKey != null && dedupeKey.endsWith(':llegando');
     final servicioId = _servicioIdDesdeKey(dedupeKey);
@@ -31,6 +33,16 @@ class IncomingServiceAlertService {
       _ultimoBeepLlegandoPorServicio[servicioId] = now;
     }
 
+    Future<void> reproducirVoz() async {
+      if (!includeVoice) return;
+      final dir = direccionVoz?.trim() ?? '';
+      if (dir.isNotEmpty) {
+        await VoiceAlertService.announceNewServiceWithAddress(dir);
+      } else {
+        await VoiceAlertService.announceNewService();
+      }
+    }
+
     try {
       if (beepInmediato) {
         unawaited(
@@ -40,16 +52,14 @@ class IncomingServiceAlertService {
           unawaited(
             Future<void>.delayed(
               const Duration(milliseconds: 400),
-              VoiceAlertService.announceNewService,
+              reproducirVoz,
             ),
           );
         }
         return;
       }
       await ConductorNotificationSoundService.playNewServiceSound();
-      if (includeVoice) {
-        await VoiceAlertService.announceNewService();
-      }
+      await reproducirVoz();
     } catch (e) {
       AppLogger.d('⚠️ Alerta solicitud entrante: $e');
     }
