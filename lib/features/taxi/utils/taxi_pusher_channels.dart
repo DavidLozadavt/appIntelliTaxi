@@ -22,4 +22,22 @@ class TaxiPusherEvents {
   static const servicioAceptado = 'servicio.aceptado';
   static const servicioEstadoCambiado = 'servicio.estado.cambiado';
   static const conductorUbicacionActualizada = 'conductor.ubicacion.actualizada';
+
+  /// Eventos de chat en `chat.servicio.{id}` (Laravel `NuevoMensajeTaxi`).
+  static const nuevoMensaje = 'nuevo.mensaje';
+  static const mensajeLeido = 'mensaje.leido';
+
+  /// Variantes que el backend puede emitir según `broadcastAs` / versión.
+  static const List<String> nuevoMensajeAliases = [
+    nuevoMensaje,
+    'NuevoMensajeTaxi',
+    'nuevo_mensaje',
+    'nuevo-mensaje',
+  ];
+
+  static const List<String> mensajeLeidoAliases = [
+    mensajeLeido,
+    'MensajeLeidoTaxi',
+    'mensaje_leido',
+  ];
 }

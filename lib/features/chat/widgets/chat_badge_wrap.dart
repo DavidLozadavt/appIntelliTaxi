@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/chat_badge_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 
-/// Inicia polling de no leídos mientras la pantalla de servicio está visible.
+/// Socket del chat + polling de respaldo mientras el viaje está activo.
 class ChatBadgeLifecycle extends StatefulWidget {
   const ChatBadgeLifecycle({
     super.key,

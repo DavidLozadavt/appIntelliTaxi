@@ -117,7 +117,7 @@ class AppBootstrap {
       missing.add('GOOGLE_MAPS_API_KEY');
     }
     if (AppConfig.pusherAppKey.isEmpty) {
-      missing.add('PUSHER_APP_KEY o PUSHER_SECONDARY_APP_KEY');
+      missing.add('SOCKET_APP_KEY, PUSHER_APP_KEY o PUSHER_SECONDARY_APP_KEY');
     }
 
     return missing;
@@ -126,7 +126,7 @@ class AppBootstrap {
   static void logConfigWarnings() {
     if (AppConfig.pusherPrimaryUsesSecondaryFallback) {
       AppLogger.w(
-        'PUSHER_APP_KEY vacío: Primary usará PUSHER_SECONDARY_APP_KEY',
+        'PUSHER_APP_KEY vacío: Primary usará SOCKET_APP_KEY o secondary',
         tag: 'Bootstrap',
       );
     }

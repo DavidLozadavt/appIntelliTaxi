@@ -64,23 +64,30 @@ class MensajeTaxi {
     );
   }
 
-  /// Factory para mensajes que llegan por Pusher
+  /// Factory para mensajes que llegan por Pusher o FCM (payload plano o anidado).
   factory MensajeTaxi.fromPusher(Map<String, dynamic> json) {
+    final createdRaw =
+        json['created_at'] ?? json['createdAt'] ?? json['timestamp'];
     return MensajeTaxi(
-      id: _toInt(json['id']),
-      servicioId: _toInt(json['servicio_id']),
-      remitenteId: _toInt(json['remitente_id']),
-      remitenteNombre: json['remitente_nombre'] ?? 'Usuario',
-      remitenteFoto: json['remitente_foto'],
-      destinatarioId: _toInt(json['destinatario_id']),
-      mensaje: json['mensaje']?.toString() ?? '',
-      tipo: json['tipo']?.toString() ?? 'texto',
-      imagenUrl: json['imagen_url']?.toString(),
+      id: _toInt(json['id'] ?? json['mensaje_id']),
+      servicioId: _toInt(json['servicio_id'] ?? json['servicioId']),
+      remitenteId: _toInt(json['remitente_id'] ?? json['remitenteId']),
+      remitenteNombre: json['remitente_nombre']?.toString() ??
+          json['remitenteNombre']?.toString() ??
+          'Usuario',
+      remitenteFoto: json['remitente_foto']?.toString() ??
+          json['remitenteFoto']?.toString(),
+      destinatarioId: _toInt(json['destinatario_id'] ?? json['destinatarioId']),
+      mensaje: json['mensaje']?.toString() ?? json['texto']?.toString() ?? '',
+      tipo: json['tipo']?.toString() ?? json['mensaje_tipo']?.toString() ?? 'texto',
+      imagenUrl: json['imagen_url']?.toString() ?? json['imagenUrl']?.toString(),
       caption: json['caption']?.toString(),
-      leido: false,
-      fechaLectura: null,
-      createdAt: json['timestamp'] != null
-          ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
+      leido: json['leido'] == true,
+      fechaLectura: json['fecha_lectura'] != null
+          ? DateTime.tryParse(json['fecha_lectura'].toString())
+          : null,
+      createdAt: createdRaw != null
+          ? DateTime.tryParse(createdRaw.toString()) ?? DateTime.now()
           : DateTime.now(),
     );
   }

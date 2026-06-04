@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
+import 'package:intellitaxi/features/chat/services/chat_realtime_bridge.dart';
 import 'package:intellitaxi/features/chat/utils/chat_notification_navigation.dart';
 import 'package:intellitaxi/features/app_update/services/app_update_service.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
@@ -583,6 +584,10 @@ class FirebaseMsg {
           cancelado: true,
         );
       }
+    }
+
+    if (ChatRealtimeBridge.tryDeliverFromPush(data)) {
+      return;
     }
 
     await _showNotification(message);

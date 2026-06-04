@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import '../data/mensaje_taxi_model.dart';
+import '../services/chat_realtime_bridge.dart';
 import '../services/chat_taxi_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
@@ -81,7 +82,12 @@ class ChatTaxiController extends ChangeNotifier {
 
       await marcarTodosComoLeidos();
 
-      // Suscribirse al canal (usa Pusher global secundario)
+      ChatRealtimeBridge.register(
+        servicioId: servicioId,
+        onMensaje: _onNuevoMensaje,
+      );
+
+      // Reintento / segunda llamada: solo refresca handlers, no vuelve a subscribe.
       await _service.suscribirseAlChat(
         servicioId: servicioId,
         onNuevoMensaje: _onNuevoMensaje,
@@ -254,6 +260,7 @@ class ChatTaxiController extends ChangeNotifier {
   /// Limpiar recursos
   @override
   void dispose() {
+    ChatRealtimeBridge.unregister(servicioId);
     if (_pusherInicializado) {
       _service.desuscribirse(servicioId, quitarCanal: false);
     }

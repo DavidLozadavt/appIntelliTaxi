@@ -1,17 +1,19 @@
 // lib/features/chat/services/chat_taxi_service.dart
 
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import '../data/mensaje_taxi_model.dart';
-import '../../../config/pusher_config.dart';
 import '../../../core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/features/chat/services/chat_taxi_realtime_hub.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
 
 class ChatTaxiService {
   final Dio _dio = DioClient.getInstance();
-  String? _currentChannel;
+  int? _listeningServicioId;
+  void Function(MensajeTaxi)? _onMensajeCallback;
+  void Function(int mensajeId, int leidoPor)? _onLeidoCallback;
 
   // ============================================
   // MÉTODOS HTTP
@@ -178,89 +180,66 @@ class ChatTaxiService {
   }
 
   // ============================================
-  // PUSHER - TIEMPO REAL (usando PusherService global)
+  // WebSocket — ChatTaxiRealtimeHub (socket VPS)
   // ============================================
 
-  /// Suscribirse al canal del chat usando el Pusher secundario
+  /// Suscribe al canal del servicio (socket VPS) y registra callbacks.
   Future<void> suscribirseAlChat({
     required int servicioId,
     required Function(MensajeTaxi) onNuevoMensaje,
     Function(int mensajeId, int leidoPor)? onMensajeLeido,
   }) async {
     try {
-      final channelName = 'chat.servicio.$servicioId';
-      _currentChannel = channelName;
+      await desuscribirse(servicioId, quitarCanal: false);
 
-      // Registrar handler para nuevos mensajes
-      final keyNuevoMensaje = '$channelName:nuevo.mensaje';
-      PusherService.registerEventHandlerSecondary(keyNuevoMensaje, (data) {
-        try {
-          final decoded = data is String ? jsonDecode(data) : data;
-          final jsonData = decoded is Map<String, dynamic>
-              ? decoded
-              : Map<String, dynamic>.from(decoded as Map);
-          final mensaje = MensajeTaxi.fromPusher(jsonData);
-          onNuevoMensaje(mensaje);
-        } catch (e, st) {
-          AppLogger.d('Error parseando mensaje: $e');
-          AppLogger.d('Payload tipo: ${data.runtimeType}');
-          AppLogger.d('Payload valor: $data');
-          AppLogger.d('Stack: $st');
-        }
-      });
+      _listeningServicioId = servicioId;
+      _onMensajeCallback = (m) {
+        AppLogger.d('📨 Chat socket: ${m.textoVista}');
+        onNuevoMensaje(m);
+      };
+      ChatTaxiRealtimeHub.addMensajeListener(servicioId, _onMensajeCallback!);
 
-      // Registrar handler para mensajes leídos
       if (onMensajeLeido != null) {
-        final keyMensajeLeido = '$channelName:mensaje.leido';
-        PusherService.registerEventHandlerSecondary(keyMensajeLeido, (data) {
-          try {
-            final decoded = data is String ? jsonDecode(data) : data;
-            final jsonData = decoded is Map<String, dynamic>
-                ? decoded
-                : Map<String, dynamic>.from(decoded as Map);
-            onMensajeLeido(
-              _toInt(jsonData['mensaje_id']),
-              _toInt(jsonData['leido_por']),
-            );
-          } catch (e) {
-            AppLogger.d('Error parseando mensaje leído: $e');
-          }
-        });
+        _onLeidoCallback = onMensajeLeido;
+        ChatTaxiRealtimeHub.addLeidoListener(servicioId, _onLeidoCallback!);
       }
 
-      // Suscribirse al canal usando PusherService secundario
-      await PusherService.subscribeSecondary(channelName);
+      await ChatTaxiRealtimeHub.ensureSubscribed(servicioId);
 
-      AppLogger.d('✅ Chat Taxi: Suscrito al canal $channelName');
+      AppLogger.d(
+        '✅ Chat Taxi: socket en ${TaxiPusherChannels.chatServicio(servicioId)}',
+      );
     } catch (e) {
-      AppLogger.d('❌ Error suscribiéndose al canal: $e');
+      AppLogger.d('❌ Error suscribiéndose al chat socket: $e');
     }
   }
 
-  static void desregistrarHandlers(int servicioId) {
-    final channel = 'chat.servicio.$servicioId';
-    PusherService.unregisterEventHandlerSecondary('$channel:nuevo.mensaje');
-    PusherService.unregisterEventHandlerSecondary('$channel:mensaje.leido');
+  /// Mantener el canal activo durante el viaje (badge / mapa).
+  Future<void> mantenerCanalActivo(int servicioId) async {
+    if (servicioId <= 0) return;
+    await ChatTaxiRealtimeHub.ensureSubscribed(servicioId);
   }
 
-  /// Desuscribirse del canal ([quitarCanal] false si otro listener sigue activo).
+  /// Quita los listeners de esta pantalla (el canal sigue si el badge u otro listener activo).
   Future<void> desuscribirse(
     int servicioId, {
     bool quitarCanal = true,
   }) async {
     try {
-      final channel = _currentChannel ?? 'chat.servicio.$servicioId';
-      desregistrarHandlers(servicioId);
-
-      if (quitarCanal) {
-        await PusherService.unsubscribeSecondary(channel);
-        AppLogger.d('❌ Chat Taxi: Desuscrito del canal $channel');
-      } else {
-        AppLogger.d('❌ Chat Taxi: Handlers quitados, canal $channel activo');
+      if (_onMensajeCallback != null) {
+        ChatTaxiRealtimeHub.removeMensajeListener(
+          servicioId,
+          _onMensajeCallback!,
+        );
+        _onMensajeCallback = null;
       }
-      _currentChannel = null;
+      if (_onLeidoCallback != null) {
+        ChatTaxiRealtimeHub.removeLeidoListener(servicioId, _onLeidoCallback!);
+        _onLeidoCallback = null;
+      }
+      _listeningServicioId = null;
     } catch (e) {
-      AppLogger.d('Error desuscribiendo: $e');
+      AppLogger.d('Error desuscribiendo chat: $e');
     }
   }
 
@@ -268,11 +247,4 @@ class ChatTaxiService {
   void dispose() {
     // No cerrar _dio porque es una instancia compartida
   }
-}
-
-int _toInt(dynamic value) {
-  if (value is int) return value;
-  if (value is num) return value.toInt();
-  if (value is String) return int.tryParse(value) ?? 0;
-  return 0;
 }
