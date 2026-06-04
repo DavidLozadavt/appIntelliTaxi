@@ -17,6 +17,7 @@ import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.
 import 'package:intellitaxi/core/utils/phone_launcher.dart';
 import 'package:intellitaxi/core/utils/driver_rating_display.dart';
 import 'package:intellitaxi/shared/optimized_image_widgets.dart';
+import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 
 class PasajeroEsperandoConductorScreen extends StatefulWidget {
   final int servicioId;
@@ -197,21 +198,15 @@ class _PasajeroEsperandoConductorScreenState
     PasajeroServicioActivoProvider provider,
   ) async {
     if (_cancelacionManualEnCurso) return;
+
+    final seleccion = await CancelacionServicioDialog.mostrar(
+      context,
+      tipoUsuario: 'pasajero',
+    );
+    if (seleccion == null || !mounted) return;
+
     _cancelacionManualEnCurso = true;
     _terminalFlowStarted = true;
-
-    String motivo;
-    if (provider.estadoServicio == 'buscando') {
-      motivo = 'Cancelado por el pasajero - No se encontró conductor';
-    } else {
-      motivo = 'Cancelado por el pasajero';
-    }
-
-    if (!mounted) {
-      _cancelacionManualEnCurso = false;
-      _terminalFlowStarted = false;
-      return;
-    }
 
     showDialog<void>(
       context: context,
@@ -239,7 +234,10 @@ class _PasajeroEsperandoConductorScreenState
 
     var okRemoto = false;
     try {
-      okRemoto = await provider.cancelarServicio(motivo: motivo);
+      okRemoto = await provider.cancelarServicio(
+        motivoCodigo: seleccion.motivoCodigo,
+        motivo: seleccion.motivoTexto,
+      );
     } catch (e) {
       AppLogger.d('❌ Error cancelando servicio: $e');
       okRemoto = false;

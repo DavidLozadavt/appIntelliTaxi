@@ -2998,16 +2998,18 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  /// Cancelar servicio activo
+  /// Cancelar servicio activo (motivo opcional).
   Future<bool> cancelarServicio({
     required int servicioId,
-    required String motivo,
+    String? motivoCodigo,
+    String? motivo,
   }) async {
     try {
       AppLogger.d('🚫 Cancelando servicio: $servicioId');
 
       await _conductorService.cancelarServicio(
         servicioId: servicioId,
+        motivoCodigo: motivoCodigo,
         motivo: motivo,
       );
 

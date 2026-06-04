@@ -213,15 +213,18 @@ class ActiveServiceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> cancelarServicio(String motivo) async {
+  Future<bool> cancelarServicio({
+    String? motivoCodigo,
+    String? motivo,
+  }) async {
     try {
       _isLoading = true;
       _error = null;
       notifyListeners();
 
-      // Llamar al servicio de cancelación
       await _rideService.cancelarServicio(
         servicioId: _servicio.id,
+        motivoCodigo: motivoCodigo,
         motivo: motivo,
       );
 

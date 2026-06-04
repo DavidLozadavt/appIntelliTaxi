@@ -610,12 +610,12 @@ class ActiveServiceScreen extends StatelessWidget {
     BuildContext context,
     ActiveServiceProvider provider,
   ) async {
-    final resultado = await CancelacionServicioDialog.mostrar(
+    final seleccion = await CancelacionServicioDialog.mostrar(
       context,
       tipoUsuario: 'pasajero',
     );
 
-    if (resultado != null && resultado.isNotEmpty) {
+    if (seleccion != null) {
       if (!context.mounted) return;
 
       showDialog(
@@ -624,7 +624,10 @@ class ActiveServiceScreen extends StatelessWidget {
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      final success = await provider.cancelarServicio(resultado);
+      final success = await provider.cancelarServicio(
+        motivoCodigo: seleccion.motivoCodigo,
+        motivo: seleccion.motivoTexto,
+      );
 
       if (context.mounted) Navigator.pop(context);
 

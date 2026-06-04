@@ -8,6 +8,7 @@ import 'package:intellitaxi/core/network/mobile_network_config.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
+import 'package:intellitaxi/features/taxi/services/taxi_servicio_cancelacion_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 class RideRequestService {
@@ -495,25 +496,18 @@ class RideRequestService {
     }
   }
 
-  /// 📌 CANCELAR SERVICIO ACTIVO (para pasajeros)
+  /// 📌 CANCELAR SERVICIO ACTIVO (motivo opcional).
   Future<Map<String, dynamic>> cancelarServicio({
     required int servicioId,
-    required String motivo,
+    String? motivoCodigo,
+    String? motivo,
   }) async {
     try {
-      AppLogger.d('📤 Cancelando servicio (pasajero):');
-      AppLogger.d('   servicio_id: $servicioId');
-      AppLogger.d('   motivo: $motivo');
-
-      final response = await _dio.post(
-        'taxi/servicio/cancelar',
-        data: {'servicio_id': servicioId, 'motivo': motivo},
+      return await TaxiServicioCancelacionService(_dio).cancelar(
+        servicioId: servicioId,
+        motivoCodigo: motivoCodigo,
+        motivo: motivo,
       );
-
-      AppLogger.d('✅ Servicio cancelado exitosamente');
-      return response.data is Map<String, dynamic>
-          ? response.data
-          : {'success': true};
     } catch (e) {
       AppLogger.d('❌ Error cancelando servicio: $e');
       rethrow;

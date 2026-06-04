@@ -7,6 +7,7 @@ import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/pasajero/services/pasajero_servicio_mapper.dart';
 import 'package:intellitaxi/features/pasajero/services/servicio_conductor_location_cache_service.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/features/taxi/services/taxi_servicio_cancelacion_service.dart';
 import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
@@ -686,13 +687,16 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _notifyListenersSafe();
   }
 
-  /// 🚫 Cancela el servicio. Devuelve `true` si el servidor confirmó; si falla la red o el API (p. ej. 500), devuelve `false` sin lanzar para que la UI pueda volver al inicio de forma segura.
-  Future<bool> cancelarServicio({required String motivo}) async {
+  /// 🚫 Cancela el servicio (motivo opcional).
+  Future<bool> cancelarServicio({
+    String? motivoCodigo,
+    String? motivo,
+  }) async {
     try {
-      final dio = DioClient.getInstance();
-      await dio.post(
-        'taxi/servicio/cancelar',
-        data: {'servicio_id': servicioId, 'motivo': motivo},
+      await TaxiServicioCancelacionService(DioClient.getInstance()).cancelar(
+        servicioId: servicioId,
+        motivoCodigo: motivoCodigo,
+        motivo: motivo,
       );
       AppLogger.d('✅ PROVIDER: Servicio cancelado');
       // Evita que el refresh/Pusher sigan en "buscando" y disparen otra salida mientras la UI navega.

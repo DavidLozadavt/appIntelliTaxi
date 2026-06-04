@@ -21,6 +21,7 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/utils/phone_launcher.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:intellitaxi/features/taxi/data/motivos_cancelacion.dart';
 import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
@@ -1209,17 +1210,17 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _mostrarDialogoCancelacion() async {
-    final resultado = await CancelacionServicioDialog.mostrar(
+    final seleccion = await CancelacionServicioDialog.mostrar(
       context,
       tipoUsuario: 'conductor',
     );
 
-    if (resultado != null && resultado.isNotEmpty) {
-      await _cancelarServicio(resultado);
+    if (seleccion != null) {
+      await _cancelarServicio(seleccion);
     }
   }
 
-  Future<void> _cancelarServicio(String motivo) async {
+  Future<void> _cancelarServicio(CancelacionServicioSeleccion seleccion) async {
     if (!_canUpdateUi) return;
     _safeSetState(() => _isLoading = true);
 
@@ -1240,7 +1241,8 @@ class _ConductorServicioActivoScreenState
         servicioId: servicioId is int
             ? servicioId
             : int.parse(servicioId.toString()),
-        motivo: motivo,
+        motivoCodigo: seleccion.motivoCodigo,
+        motivo: seleccion.motivoTexto,
       );
 
       if (exitoso) {

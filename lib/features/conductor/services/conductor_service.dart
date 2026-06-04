@@ -14,6 +14,7 @@ import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
+import 'package:intellitaxi/features/taxi/services/taxi_servicio_cancelacion_service.dart';
 
 class ConductorService {
   final Dio _dio = DioClient.getInstance();
@@ -949,27 +950,18 @@ class ConductorService {
     return true;
   }
 
-  /// Cancelar servicio activo
+  /// Cancelar servicio activo (`POST taxi/servicio/cancelar`, motivo opcional).
   Future<Map<String, dynamic>> cancelarServicio({
     required int servicioId,
-    required String motivo,
+    String? motivoCodigo,
+    String? motivo,
   }) async {
     try {
-      AppLogger.d('📤 Cancelando servicio:');
-      AppLogger.d('   servicio_id: $servicioId');
-      AppLogger.d('   motivo: $motivo');
-
-      final response = await _dio.post(
-        'taxi/servicio/cancelar',
-        data: {'servicio_id': servicioId, 'motivo': motivo},
+      return await TaxiServicioCancelacionService(_dio).cancelar(
+        servicioId: servicioId,
+        motivoCodigo: motivoCodigo,
+        motivo: motivo,
       );
-
-      AppLogger.d('✅ Servicio cancelado exitosamente');
-      final body = response.data;
-      if (body is Map) {
-        return Map<String, dynamic>.from(body);
-      }
-      return {'success': true};
     } catch (e) {
       AppLogger.d('❌ Error cancelando servicio: $e');
       rethrow;
