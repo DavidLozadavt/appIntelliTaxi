@@ -269,6 +269,8 @@ class ConductorSolicitudPayloadHelper {
       'idConductor',
       'persona_id',
       'personaId',
+      'id_persona',
+      'idPersona',
     ]) {
       final v = raw[key];
       if (v == null) continue;
@@ -280,6 +282,13 @@ class ConductorSolicitudPayloadHelper {
       final id = conductor['id'] ?? conductor['persona_id'];
       final n = int.tryParse(id?.toString() ?? '');
       if (n != null && n > 0) return n;
+    }
+    final servicio = raw['servicio'];
+    if (servicio is Map) {
+      for (final key in const ['idConductor', 'id_conductor', 'conductor_id']) {
+        final n = int.tryParse(servicio[key]?.toString() ?? '');
+        if (n != null && n > 0) return n;
+      }
     }
     return null;
   }

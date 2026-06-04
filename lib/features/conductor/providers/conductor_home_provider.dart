@@ -1520,6 +1520,14 @@ class ConductorHomeProvider extends ChangeNotifier {
     await _enriquecerDireccionesSolicitud(sid);
   }
 
+  bool _motivoOfertaCerradaPorMi(String motivo) {
+    return motivo == 'aceptada' ||
+        motivo == 'asignada' ||
+        motivo == 'tomada' ||
+        motivo == 'aceptada_por_conductor' ||
+        motivo == 'aceptada_por_mi';
+  }
+
   void _procesarOfertaCerrada(dynamic data) {
     try {
       final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
@@ -1530,36 +1538,44 @@ class ConductorHomeProvider extends ChangeNotifier {
       final motivo = raw['motivo']?.toString().toLowerCase() ?? '';
       final eraMiExclusiva = _ofertaExclusiva?.solicitudId == sid;
 
+      // Expiración: mensaje inmediato (no es auto-aceptación).
       if (eraMiExclusiva && motivo == 'expirada') {
         _limpiarOfertaExclusivaLocal(
           cerrarPantalla: true,
           mensaje: 'La oferta expiró',
         );
         _publicarEnLlegandoTrasExclusiva(sid);
-      } else if (eraMiExclusiva) {
-        final mensaje = motivo == 'tomada_por_otro'
-            ? 'Otro conductor tomó este servicio'
-            : 'La oferta ya no está disponible';
-        _limpiarOfertaExclusivaLocal(
-          cerrarPantalla: true,
-          mensaje: mensaje,
-        );
       } else if (_listaGlobalSolicitudes &&
+          !eraMiExclusiva &&
           (motivo == 'max_intentos' ||
               motivo == 'expirada' ||
               motivo == 'rechazada')) {
         _publicarEnLlegandoTrasExclusiva(sid);
       }
 
+      // No mostrar «otro conductor» en sincrónico: Pusher puede llegar ms después del POST 200 propio.
       unawaited(() async {
         final yoLoTome = await _yoTomeServicioSegunPayload(sid, raw);
         if (_isDisposed) return;
 
-        if (eraMiExclusiva && yoLoTome) {
+        if (eraMiExclusiva) {
+          if (motivo == 'expirada') return;
+
+          if (yoLoTome || _motivoOfertaCerradaPorMi(motivo)) {
+            _limpiarOfertaExclusivaLocal(
+              cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
+            );
+            _limpiarMarcaAceptacionPropia();
+            return;
+          }
+
+          final mensaje = motivo == 'tomada_por_otro'
+              ? 'Otro conductor tomó este servicio'
+              : 'La oferta ya no está disponible';
           _limpiarOfertaExclusivaLocal(
-            cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
+            cerrarPantalla: true,
+            mensaje: mensaje,
           );
-          _limpiarMarcaAceptacionPropia();
           return;
         }
 
@@ -2201,6 +2217,12 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       _removerSolicitudDelMapa(solicitudId);
       _detenerTickerSiNoHaySolicitudes();
+
+      if (_ofertaExclusiva?.solicitudId == solicitudId) {
+        _limpiarOfertaExclusivaLocal(
+          cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
+        );
+      }
 
       if (!_isDisposed) notifyListeners();
       return response;
