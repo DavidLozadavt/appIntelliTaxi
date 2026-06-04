@@ -11,7 +11,9 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/core/services/device_token_sync_service.dart';
 import 'package:intellitaxi/core/services/fcm_token_resolver.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
@@ -51,14 +53,52 @@ bool _isServicioTripUpdateNotification(Map<String, dynamic> data) {
   if (tipo.contains('llegue') || tipo.contains('llegó')) return true;
   if (tipo.contains('en_curso')) return true;
   if (tipo.contains('finalizado')) return true;
-  if (tipo.contains('cancelado')) return true;
+  if (tipo.contains('cancelado') || tipo.contains('servicio_cancelado')) {
+    return true;
+  }
   if (data.containsKey('estado') ||
       data.containsKey('estado_id') ||
-      data.containsKey('id_estado')) {
+      data.containsKey('id_estado') ||
+      data.containsKey('idEstado')) {
     return true;
   }
   final route = data['route']?.toString().toLowerCase().trim() ?? '';
   return route == 'servicio' && !_isConductorIncomingServiceNotification(data);
+}
+
+int? _servicioIdDesdeFcm(Map<String, dynamic> data) {
+  try {
+    final merged = JsonPayloadHelper.parseAndMerge(data);
+    return JsonPayloadHelper.parseInt(
+      merged['servicio_id'] ??
+          merged['servicioId'] ??
+          merged['solicitud_id'] ??
+          merged['id'],
+    );
+  } catch (_) {
+    return JsonPayloadHelper.parseInt(
+      data['servicio_id'] ?? data['servicioId'] ?? data['id'],
+    );
+  }
+}
+
+bool _fcmIndicaCancelacion(Map<String, dynamic> data) {
+  try {
+    final merged = JsonPayloadHelper.parseAndMerge(data);
+    final tipo = merged['tipo']?.toString().toLowerCase() ?? '';
+    if (tipo.contains('servicio_cancelado') || tipo.contains('cancelado')) {
+      return true;
+    }
+    final estado = merged['estado']?.toString().toLowerCase() ?? '';
+    if (estado.contains('cancel')) return true;
+    final idEstado = JsonPayloadHelper.parseInt(
+      merged['id_estado'] ?? merged['idEstado'] ?? merged['estado_id'],
+    );
+    return idEstado == 6;
+  } catch (_) {
+    final tipo = data['tipo']?.toString().toLowerCase() ?? '';
+    return tipo.contains('cancelado');
+  }
 }
 
 Future<bool> _isActiveConductorRole() async {
@@ -250,7 +290,16 @@ Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
   if (_isServicioTripUpdateNotification(data)) {
     AppLogger.d('🚕 FCM → actualización de viaje');
     await IncomingServiceNotificationService.instance.dismiss();
-    navigatorKey.currentState?.pushNamed('/home');
+    final sid = _servicioIdDesdeFcm(data);
+    final handled = sid != null &&
+        _fcmIndicaCancelacion(data) &&
+        ActiveServiceScreenRegistry.notifyRemoteTerminal(
+          serviceId: sid,
+          cancelado: true,
+        );
+    if (!handled) {
+      navigatorKey.currentState?.pushNamed('/home');
+    }
     return;
   }
   AppLogger.d('📱 FCM tipo no taxi; fallback chat');
@@ -524,6 +573,16 @@ class FirebaseMsg {
     // Pasajero o cambio de estado: quitar alerta de conductor si quedó activa.
     if (_isServicioTripUpdateNotification(data) || !isConductor) {
       await IncomingServiceNotificationService.instance.dismiss();
+    }
+
+    if (_isServicioTripUpdateNotification(data) && _fcmIndicaCancelacion(data)) {
+      final sid = _servicioIdDesdeFcm(data);
+      if (sid != null) {
+        ActiveServiceScreenRegistry.notifyRemoteTerminal(
+          serviceId: sid,
+          cancelado: true,
+        );
+      }
     }
 
     await _showNotification(message);

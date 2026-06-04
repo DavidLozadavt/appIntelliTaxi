@@ -80,6 +80,7 @@ class _ConductorServicioActivoScreenState
   bool _isLoading = false;
   BitmapDescriptor? _carIcon;
   StreamSubscription<Position>? _locationSubscription;
+  Timer? _estadoPollTimer;
   bool _terminalNavigationInProgress = false;
   /// Evita doble flujo calificación + home (botón y Pusher).
   bool _finalizacionEnCurso = false;
@@ -109,6 +110,21 @@ class _ConductorServicioActivoScreenState
       type: 'conductor',
       serviceId: _safeServiceId(),
     );
+    ActiveServiceScreenRegistry.onRemoteTerminal =
+        ({required int serviceId, required bool cancelado}) {
+      if (!mounted || serviceId != _safeServiceId()) return;
+      if (_terminalNavigationInProgress) return;
+      _terminalNavigationInProgress = true;
+      if (cancelado) {
+        unawaited(_salirPorServicioCancelado());
+      } else {
+        unawaited(_salirPorServicioCerradoRemoto());
+      }
+    };
+    _estadoPollTimer = Timer.periodic(
+      const Duration(seconds: 28),
+      (_) => unawaited(_sincronizarServicioRemotoEnResume()),
+    );
     _inicializar();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -126,6 +142,11 @@ class _ConductorServicioActivoScreenState
   @override
   void dispose() {
     _terminalNavigationInProgress = true;
+    _estadoPollTimer?.cancel();
+    _estadoPollTimer = null;
+    if (ActiveServiceScreenRegistry.onRemoteTerminal != null) {
+      ActiveServiceScreenRegistry.onRemoteTerminal = null;
+    }
     WidgetsBinding.instance.removeObserver(this);
     _locationSubscription?.cancel();
     _locationSubscription = null;
@@ -167,6 +188,23 @@ class _ConductorServicioActivoScreenState
       if (rid != sid) return;
       if (!_canUpdateUi) return;
 
+      if (!_restoration.esServicioActivo(serv)) {
+        _terminalNavigationInProgress = true;
+        final idEst = serv['idEstado'] is int
+            ? serv['idEstado'] as int
+            : int.tryParse(serv['idEstado']?.toString() ?? '');
+        final ui =
+            _estadoDesdeId(idEst) ?? _normalizarEstadoBackend(serv['estado']);
+        if (idEst == 6 || ui == 'cancelado') {
+          await _salirPorServicioCancelado();
+        } else if (idEst == 22 || ui == 'finalizado') {
+          await _programarFinalizacionViaje();
+        } else {
+          await _salirPorServicioCerradoRemoto();
+        }
+        return;
+      }
+
       _safeSetState(() {
         widget.servicio.addAll(serv);
         final idEst = serv['idEstado'] is int
@@ -178,6 +216,16 @@ class _ConductorServicioActivoScreenState
         if (ui != null) _estadoActual = ui;
         _actualizarDestinoSegunEstado(ui);
       });
+
+      if (_estadoUiEfectivo == 'cancelado') {
+        _terminalNavigationInProgress = true;
+        await _salirPorServicioCancelado();
+        return;
+      }
+      if (_estadoUiEfectivo == 'finalizado') {
+        await _programarFinalizacionViaje();
+        return;
+      }
 
       await _guardarServicioActivo();
       _actualizarMarcadores();
