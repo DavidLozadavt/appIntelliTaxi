@@ -350,6 +350,19 @@ class _HomeConductorState extends State<HomeConductor>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_overlayService.hide());
+      if (_provider.tieneTurnoActivo) {
+        if (_validandoTurno && mounted) {
+          setState(() => _validandoTurno = false);
+        }
+      } else {
+        unawaited(
+          _provider.restaurarTurnoDesdeCache().then((restored) {
+            if (mounted && restored) {
+              setState(() => _validandoTurno = false);
+            }
+          }),
+        );
+      }
       unawaited(_provider.refrescarEnResume());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {

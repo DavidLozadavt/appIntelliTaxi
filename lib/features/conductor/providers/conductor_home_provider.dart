@@ -27,7 +27,6 @@ import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/auth/services/auth_service.dart';
-import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
@@ -72,6 +71,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _isSendingMapHeartbeat = false;
   DateTime? _lastResumeRefreshAt;
   bool _resumeRefreshInFlight = false;
+  DateTime? _turnoCacheRestauradoEn;
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
   final ConductorSolicitudEnrichmentService _solicitudEnrichment =
@@ -389,6 +389,13 @@ class ConductorHomeProvider extends ChangeNotifier {
     _nuevaSolicitudListeners.remove(listener);
   }
 
+  /// Tras wake/FCM: no borrar turno local si el API aún no respondió.
+  bool _turnoProtegidoTrasWake() {
+    if (_turnoCacheRestauradoEn == null) return false;
+    return DateTime.now().difference(_turnoCacheRestauradoEn!) <
+        const Duration(seconds: 45);
+  }
+
   /// Restaura turno desde SharedPreferences (sin red) para no bloquear el home.
   Future<bool> restaurarTurnoDesdeCache() async {
     if (_turnoActivo != null) return true;
@@ -408,6 +415,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         estado: 'ACTIVO',
       );
       _isOnline = true;
+      _turnoCacheRestauradoEn = DateTime.now();
       _sincronizarVehiculoSeleccionadoConTurno();
       if (!_isDisposed) notifyListeners();
       AppLogger.d('✅ Turno restaurado desde cache: $turnoId');
@@ -1998,9 +2006,6 @@ class ConductorHomeProvider extends ChangeNotifier {
         AppLogger.d('📩 Nueva solicitud: $solicitudId');
         if (!AppLifecycleHelper.isInForeground()) {
           unawaited(_actualizarBurbujaSegundoPlano());
-          if (RuntimePerfFlags.autoOpenAppOnIncomingService) {
-            unawaited(AppForegroundService.instance.openAppAggressively());
-          }
         }
       }
       final overlayEstabaOculto =
@@ -3114,6 +3119,18 @@ class ConductorHomeProvider extends ChangeNotifier {
           if (!_isDisposed) notifyListeners();
           return;
         }
+        if (_turnoActivo != null && _turnoProtegidoTrasWake()) {
+          AppLogger.d(
+            'ℹ️ API sin turno tras wake; se conserva turno local '
+            '(id=${_turnoActivo?.id})',
+          );
+          _isOnline = true;
+          if (!_enDescanso && !_suscritoAPusher) {
+            unawaited(conectarPusher());
+          }
+          if (!_isDisposed) notifyListeners();
+          return;
+        }
         AppLogger.d(
           'ℹ️ Sin turno en servidor; limpiando cache local (id=${_turnoActivo?.id})',
         );
@@ -3197,6 +3214,10 @@ class ConductorHomeProvider extends ChangeNotifier {
       AppLogger.d(
         '🔄 [Resume] isOnline=$_isOnline turno=${_turnoActivo?.id} enServicio=$_enServicio',
       );
+
+      if (_turnoActivo == null) {
+        await restaurarTurnoDesdeCache();
+      }
 
       await refrescarUbicacionEnResume(soloGps: _enServicio);
 
@@ -3309,6 +3330,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     _turnoActivo = turno;
     _isOnline = true;
+    _turnoCacheRestauradoEn = DateTime.now();
     _enDescanso = false;
     _recibeServicios = true;
     _visibleEnMapa = true;

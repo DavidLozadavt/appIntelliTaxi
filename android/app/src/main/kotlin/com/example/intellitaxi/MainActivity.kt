@@ -180,7 +180,6 @@ class MainActivity : FlutterActivity() {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         addFlags(Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT)
                     }
@@ -230,6 +229,12 @@ class MainActivity : FlutterActivity() {
     override fun onStart() {
         super.onStart()
         logNativeLifecycle("onStart")
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        logNativeLifecycle("onNewIntent")
     }
 
     override fun onResume() {

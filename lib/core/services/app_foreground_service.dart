@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/main.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Trae la actividad principal al frente (Android) y restaura la ruta home.
+/// Trae la actividad principal al frente (Android) sin reiniciar la UI en caliente.
 class AppForegroundService {
   AppForegroundService._();
   static final AppForegroundService instance = AppForegroundService._();
@@ -19,20 +20,37 @@ class AppForegroundService {
 
   static const _pendingNativeLaunchKey = 'pending_native_launch_app';
 
+  DateTime? _lastNativeLaunchAt;
+  bool _nativeLaunchInFlight = false;
+  bool _nativeRetryScheduled = false;
+
   /// Solo abre la Activity (válido desde el isolate del overlay).
-  Future<void> launchNativeApp() async {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      AppDiagnostics.record('native', 'bringToForeground');
-      try {
-        await _channel.invokeMethod<void>('bringToForeground');
-      } catch (e, st) {
-        AppLogger.e(
-          'No se pudo abrir la app nativamente',
-          tag: 'AppForeground',
-          error: e,
-          stackTrace: st,
-        );
-      }
+  Future<void> launchNativeApp({bool force = false}) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+
+    final now = DateTime.now();
+    if (!force &&
+        _lastNativeLaunchAt != null &&
+        now.difference(_lastNativeLaunchAt!) <
+            const Duration(milliseconds: 1400)) {
+      return;
+    }
+    if (_nativeLaunchInFlight) return;
+
+    _nativeLaunchInFlight = true;
+    _lastNativeLaunchAt = now;
+    AppDiagnostics.record('native', 'bringToForeground');
+    try {
+      await _channel.invokeMethod<void>('bringToForeground');
+    } catch (e, st) {
+      AppLogger.e(
+        'No se pudo abrir la app nativamente',
+        tag: 'AppForeground',
+        error: e,
+        stackTrace: st,
+      );
+    } finally {
+      _nativeLaunchInFlight = false;
     }
   }
 
@@ -63,43 +81,42 @@ class AppForegroundService {
     final prefs = await SharedPreferences.getInstance();
     if (!(prefs.getBool(_pendingNativeLaunchKey) ?? false)) return;
     await prefs.remove(_pendingNativeLaunchKey);
-    await AppForegroundService.instance.launchNativeApp();
+    await AppForegroundService.instance.launchNativeApp(force: true);
     await ConductorPendingFcm.ensureLoaded();
     final ctx = navigatorKey.currentContext;
     if (ctx != null && ctx.mounted) {
       await ConductorPendingFcm.flush(ctx);
     }
-    AppForegroundService.instance._navigateHomeIfSessionReady();
   }
 
-  /// Abre la app. No fuerza `/home` si la sesión aún no está hidratada (evita
-  /// spinner infinito al abrir desde FCM en cold start o hot restart).
+  /// Abre la app sin resetear la pila de navegación si ya hay sesión activa.
   Future<void> bringAppToForeground() async {
-    await launchNativeApp();
-    _navigateHomeIfSessionReady();
+    await launchNativeApp(force: true);
+    _navigateHomeIfSessionReady(onlyFromLogin: true);
   }
 
-  /// Varios intentos: canal nativo, overlay y bandera para reintentar al resume.
+  /// FCM / solicitud entrante: una apertura suave + un reintento nativo (sin parpadeos).
   Future<void> openAppAggressively() async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       await markPendingNativeLaunch();
     }
-    await launchNativeApp();
-    _scheduleNativeLaunchRetries();
-    _navigateHomeIfSessionReady();
+    await launchNativeApp(force: true);
+    _scheduleSingleNativeRetry();
   }
 
-  void _scheduleNativeLaunchRetries() {
+  void _scheduleSingleNativeRetry() {
     if (!kIsWeb && defaultTargetPlatform != TargetPlatform.android) return;
-    for (final ms in const [400, 1000, 2000]) {
-      Future<void>.delayed(Duration(milliseconds: ms), () async {
-        await launchNativeApp();
-        _navigateHomeIfSessionReady();
-      });
-    }
+    if (_nativeRetryScheduled) return;
+    _nativeRetryScheduled = true;
+    Future<void>.delayed(const Duration(milliseconds: 900), () async {
+      _nativeRetryScheduled = false;
+      if (AppLifecycleHelper.isInForeground()) return;
+      await launchNativeApp(force: true);
+    });
   }
 
-  void _navigateHomeIfSessionReady() {
+  /// Solo navega en arranque frío post-login; nunca destruye `/home` en caliente.
+  void _navigateHomeIfSessionReady({bool onlyFromLogin = false}) {
     final nav = navigatorKey.currentState;
     final context = navigatorKey.currentContext;
     if (nav == null || context == null || !context.mounted) return;
@@ -114,6 +131,11 @@ class AppForegroundService {
 
     final routeName = ModalRoute.of(context)?.settings.name;
     if (routeName == '/home') return;
+
+    // App ya en uso (otra pantalla del stack): no resetear navegación.
+    if (nav.canPop() || AppLifecycleHelper.isInForeground()) return;
+
+    if (onlyFromLogin && routeName != '/login') return;
 
     nav.pushNamedAndRemoveUntil('/home', (route) => false);
   }

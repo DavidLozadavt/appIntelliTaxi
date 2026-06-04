@@ -112,9 +112,14 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _checkLogin() async {
     final sw = Stopwatch()..start();
     try {
+      await ConductorPendingFcm.ensureLoaded();
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-      final minBrand = Future<void>.delayed(RuntimePerfFlags.splashMinDisplay);
+      final minBrand = Future<void>.delayed(
+        ConductorPendingFcm.hasPending
+            ? const Duration(milliseconds: 120)
+            : RuntimePerfFlags.splashMinDisplay,
+      );
       final sessionFuture = SessionPreload.ensureReady();
 
       AppUpdateCheckResult updateResult = const AppUpdateCheckResult(
