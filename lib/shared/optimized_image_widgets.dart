@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/utils/image_load_errors.dart';
 
@@ -34,7 +35,7 @@ class OptimizedNetworkImage extends StatelessWidget {
       height: height,
       fit: fit,
       placeholder: (context, url) =>
-          placeholder ?? const Center(child: CircularProgressIndicator()),
+          placeholder ?? const Center(child: AppLoadingIndicator()),
       errorWidget: (context, url, error) =>
           errorWidget ??
           const Icon(Iconsax.info_circle_copy, color: Colors.grey),
@@ -93,7 +94,7 @@ class SafeCircleAvatar extends StatelessWidget {
               child: SizedBox(
                 width: radius * 0.6,
                 height: radius * 0.6,
-                child: const CircularProgressIndicator(strokeWidth: 2),
+                child: const AppBrandLoaderCompact(ringSize: 24),
               ),
             ),
           ),

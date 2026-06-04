@@ -2,6 +2,7 @@ import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_socket_payload_router.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 
@@ -368,6 +369,9 @@ class ConductorSolicitudPayloadHelper {
     }
     return base;
   }
+
+  static bool esOfertaDirecta(Map<String, dynamic> raw) =>
+      ConductorSocketPayloadRouter.esOfertaDirecta(raw);
 
   static Map<String, dynamic> normalizarOfertaDirecta(Map<String, dynamic> raw) {
     final merged = SolicitudDisplayHelper.normalizeSolicitudMap(raw);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -103,7 +104,7 @@ class _ConductorKeepScreenOnTileState extends State<ConductorKeepScreenOnTile> {
           ? const SizedBox(
               width: 24,
               height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: AppBrandLoaderCompact(ringSize: 24),
             )
           : Switch.adaptive(
               value: _enabled,

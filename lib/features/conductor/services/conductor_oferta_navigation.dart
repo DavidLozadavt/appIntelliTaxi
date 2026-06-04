@@ -51,4 +51,9 @@ abstract final class ConductorOfertaNavigation {
       }
     }
   }
+
+  /// Tras `pushReplacement` hacia servicio activo (no hacer pop extra).
+  static void marcarReemplazada() {
+    _pantallaVisible = false;
+  }
 }

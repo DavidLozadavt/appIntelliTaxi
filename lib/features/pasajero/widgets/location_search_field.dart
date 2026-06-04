@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -127,7 +128,7 @@ class LocationSearchField extends StatelessWidget {
         if (isSearching)
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: AppLoadingIndicator()),
           ),
 
         AnimatedSize(

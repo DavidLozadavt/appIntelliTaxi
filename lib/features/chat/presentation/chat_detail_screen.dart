@@ -1,10 +1,11 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/permissions/permissions_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/chat/providers/chat_provider.dart';
 import 'package:intellitaxi/features/chat/widgets/build_message_bubble_widget.dart';
 import 'package:intellitaxi/features/chat/widgets/user_avatar_widget.dart';
-import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -270,12 +271,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                 ),
                                 child: const Padding(
                                   padding: EdgeInsets.all(12.0),
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 3,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
-                                  ),
+                                  child: AppLoadingIndicator(size: 56),
                                 ),
                               ),
                               const SizedBox(height: 20),

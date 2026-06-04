@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
@@ -44,13 +45,9 @@ class RideRequestFloatingCta extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (isLoading)
-                const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
+                const AppBrandLoaderCompact(
+                  ringSize: 22,
+                  theme: AppLoaderTheme.dark,
                 )
               else
                 const Icon(Iconsax.car_copy, color: Colors.white, size: 22),

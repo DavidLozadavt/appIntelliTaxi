@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/features/conductor/data/documento_vehiculo_model.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 import 'package:intellitaxi/features/conductor/presentation/propietarios_vehiculo_screen.dart';
@@ -113,7 +114,7 @@ class _MisVehiculosScreenState extends State<MisVehiculosScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: AppLoadingIndicator())
           : _error != null
           ? Center(child: Text('Error: $_error'))
           : _vehiculos.isEmpty
@@ -861,14 +862,7 @@ class _EditarDocumentoVehiculoSheetState
                       ),
                     ),
                     icon: _guardando
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
+                        ? const AppBrandLoaderCompact(ringSize: 18)
                         : const Icon(Icons.check_circle_outline),
                     label: Text(
                       _guardando ? 'Guardando...' : 'Guardar cambios',

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
@@ -416,7 +417,7 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
         if (isSearching)
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: AppLoadingIndicator()),
           ),
 
         if (!isSearching && predictions.isNotEmpty)

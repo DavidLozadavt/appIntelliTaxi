@@ -13,7 +13,7 @@ const int kPollOfertaActivaFondoSegundos = 45;
 /// Tras Pusher/FCM, no quitar del mapa por sync API hasta este margen (evita sonido sin tarjeta).
 const int kConservarRealtimeTrasSyncSegundos = 180;
 
-/// Tras exclusiva→«Llegando»: no mandar a «En espera» por sync/TTL local (evita ping-pong).
+/// Tras exclusiva→«Llegando»: fallback local si aún no llegó meta API (`oferta_exclusiva_segundos`).
 const int kMantenerLlegandoTrasExclusivaSegundos = 25;
 
 /// Reservado (dedupe de beep vive en [IncomingServiceAlertService], 6 s por id).

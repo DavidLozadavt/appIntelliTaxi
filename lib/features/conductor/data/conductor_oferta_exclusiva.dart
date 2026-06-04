@@ -1,5 +1,6 @@
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_socket_payload_router.dart';
 import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 
 /// Oferta exclusiva inDrive (`oferta.servicio.exclusiva` / GET oferta-activa).
@@ -38,6 +39,8 @@ class ConductorOfertaExclusiva {
   final double? origenLng;
   final String? expiraEn;
 
+  bool get esDirecta => faseOferta.toLowerCase() == 'directa';
+
   bool get esExclusiva =>
       faseOferta.toLowerCase() == 'exclusiva' ||
       raw['oferta_exclusiva'] == true;
@@ -48,7 +51,7 @@ class ConductorOfertaExclusiva {
     m['solicitud_id'] = servicioId;
     m['id'] = servicioId;
     m['fase_oferta'] = faseOferta;
-    m['oferta_exclusiva'] = true;
+    m['oferta_exclusiva'] = esExclusiva;
     if (segundosRestantes != null) {
       m['segundos_restantes'] = segundosRestantes;
       m['ttl_segundos'] = ttlSegundos ?? segundosRestantes;
@@ -151,6 +154,17 @@ class ConductorOfertaExclusiva {
     final sid = _parseServicioId(map);
     if (sid == null || sid <= 0) return null;
 
+    final notifTipo = ConductorSocketPayloadRouter.notificacionTipo(map);
+    final esDirecta = ConductorSocketPayloadRouter.esOfertaDirecta(map);
+
+    if (esDirecta || notifTipo == 'oferta_directa') {
+      return _buildFromMap(map, sid, faseOferta: 'directa');
+    }
+
+    if (notifTipo == 'exclusiva_indrive') {
+      return _buildFromMap(map, sid, faseOferta: 'exclusiva');
+    }
+
     // Cola Llegando/Espera (BROADCAST o inDrive en lista): no pantalla exclusiva.
     if (ConductorSolicitudPayloadHelper.usaConductorTabApi(map)) {
       final modo = map['countdown_modo']?.toString();
@@ -168,6 +182,14 @@ class ConductorOfertaExclusiva {
       return null;
     }
 
+    return _buildFromMap(map, sid, faseOferta: fase ?? 'exclusiva');
+  }
+
+  static ConductorOfertaExclusiva _buildFromMap(
+    Map<String, dynamic> map,
+    int sid, {
+    required String faseOferta,
+  }) {
     final ttl = _parseInt(map['ttl_segundos'] ?? map['oferta_segundos']);
     final seg = ServicioEsperaTimer.segundosOferta(map);
     final segRestantes = seg > 0 ? seg : ttl;
@@ -176,7 +198,7 @@ class ConductorOfertaExclusiva {
       servicioId: sid,
       solicitudId: sid.toString(),
       raw: map,
-      faseOferta: fase ?? 'exclusiva',
+      faseOferta: faseOferta,
       segundosRestantes: segRestantes,
       ttlSegundos: ttl ?? segRestantes,
       intento: _parseInt(map['intento']),

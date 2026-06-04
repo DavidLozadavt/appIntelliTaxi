@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
 import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 
@@ -275,15 +276,9 @@ class _CalificacionDialogState extends State<CalificacionDialog> {
                         elevation: 0,
                       ),
                       child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
+                          ? const AppBrandLoaderCompact(
+                              ringSize: 20,
+                              theme: AppLoaderTheme.dark,
                             )
                           : const Text(
                               'Enviar',

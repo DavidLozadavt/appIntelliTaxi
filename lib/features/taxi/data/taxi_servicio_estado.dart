@@ -121,6 +121,10 @@ class TaxiSolicitudesPendientesResult {
   final double? queueMaxMinutes;
   final double? queueAbiertaMaxMinutes;
   final double? ventanaListaMinutos;
+  /// `companyAssignmentSettings.oferta_exclusiva_segundos`
+  final int? ofertaExclusivaSegundos;
+  /// `companyAssignmentSettings.oferta_max_intentos`
+  final int? ofertaMaxIntentos;
 
   const TaxiSolicitudesPendientesResult({
     required this.enServicio,
@@ -137,6 +141,8 @@ class TaxiSolicitudesPendientesResult {
     this.queueMaxMinutes,
     this.queueAbiertaMaxMinutes,
     this.ventanaListaMinutos,
+    this.ofertaExclusivaSegundos,
+    this.ofertaMaxIntentos,
   });
 
   /// Alias de [driverSearchRadiusKm] para compatibilidad.

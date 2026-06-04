@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -242,14 +243,7 @@ class _EmergenciasScreenState extends State<EmergenciasScreen> {
                       ? _confirmarFinalizarEmergencia
                       : _enviarApoyo,
                   icon: emergenciaProvider.isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2.5,
-                          ),
-                        )
+                      ? const AppBrandLoaderCompact(ringSize: 24, theme: AppLoaderTheme.dark)
                       : Icon(
                           enEmergencia ? Icons.check_circle : Icons.sos,
                           size: 28,

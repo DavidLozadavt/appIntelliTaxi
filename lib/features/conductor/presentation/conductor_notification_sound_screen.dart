@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:flutter/services.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -108,7 +109,7 @@ class _ConductorNotificationSoundScreenState
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: AppLoadingIndicator())
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                     itemCount: ConductorNotificationSoundCatalog.options.length,
@@ -239,11 +240,7 @@ class _SoundOptionCard extends StatelessWidget {
                   foregroundColor: AppColors.accent,
                 ),
                 icon: previewing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const AppBrandLoaderCompact(ringSize: 20)
                     : const Icon(Iconsax.play_circle_copy, size: 22),
               ),
               AnimatedSwitcher(

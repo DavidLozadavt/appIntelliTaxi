@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -1105,7 +1106,7 @@ class _ConductorServicioActivoScreenState
                 },
               )
             else
-              const Center(child: CircularProgressIndicator()),
+              const Center(child: AppLoadingIndicator()),
 
             if (puntoRuta != null)
               Positioned(
@@ -1228,7 +1229,7 @@ class _ConductorServicioActivoScreenState
             if (_isLoading)
               Container(
                 color: Colors.black54,
-                child: const Center(child: CircularProgressIndicator()),
+                child: const Center(child: AppLoadingIndicator()),
               ),
           ],
         ),

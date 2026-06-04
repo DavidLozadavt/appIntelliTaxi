@@ -2075,25 +2075,22 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   int? _parseServicioIdFromResponse(Map<String, dynamic> response) {
-    if (response['solicitud_id'] != null) {
-      return int.tryParse(response['solicitud_id'].toString());
+    int? fromMap(Map map) {
+      for (final key in const ['solicitud_id', 'servicio_id', 'id']) {
+        final value = map[key];
+        if (value == null) continue;
+        if (value is int && value > 0) return value;
+        final parsed = int.tryParse(value.toString());
+        if (parsed != null && parsed > 0) return parsed;
+      }
+      if (map['servicio'] is Map) {
+        return fromMap(map['servicio'] as Map);
+      }
+      return null;
     }
-    if (response['servicio'] is Map) {
-      final id = (response['servicio'] as Map)['id'];
-      if (id is int) return id;
-      return int.tryParse(id?.toString() ?? '');
-    }
-    if (response['data'] is Map) {
-      final id = (response['data'] as Map)['id'];
-      if (id is int) return id;
-      return int.tryParse(id?.toString() ?? '');
-    }
-    if (response['servicio_id'] != null) {
-      final id = response['servicio_id'];
-      if (id is int) return id;
-      return int.tryParse(id.toString());
-    }
-    return null;
+
+    return fromMap(response) ??
+        (response['data'] is Map ? fromMap(response['data'] as Map) : null);
   }
 
   Future<void> _onDriverMarkerTap(Conductor conductor) async {

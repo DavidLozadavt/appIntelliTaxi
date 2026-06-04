@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
@@ -332,11 +333,7 @@ class ConductorMapServiciosTabs {
     Widget body;
     if (pendientes.cargando && lista.isEmpty) {
       body = const Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: const AppBrandLoaderCompact(ringSize: 22),
       );
     } else if (pendientes.error != null && lista.isEmpty) {
       body = RefreshIndicator(

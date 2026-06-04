@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
@@ -621,7 +622,7 @@ class ActiveServiceScreen extends StatelessWidget {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (context) => const Center(child: AppLoadingIndicator()),
       );
 
       final success = await provider.cancelarServicio(

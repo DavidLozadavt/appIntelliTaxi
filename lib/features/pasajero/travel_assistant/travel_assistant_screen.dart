@@ -128,7 +128,7 @@
 //               child: Column(
 //                 mainAxisSize: MainAxisSize.min,
 //                 children: [
-//                   const CircularProgressIndicator(),
+//                   const AppLoadingIndicator(size: 48),
 //                   const SizedBox(height: 16),
 //                   Text(
 //                     'Agendando tu servicio…',

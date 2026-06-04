@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
@@ -138,13 +139,9 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: isLoading ? null : onAccionPrincipal,
                     icon: isLoading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
+                        ? const AppBrandLoaderCompact(
+                            ringSize: 22,
+                            theme: AppLoaderTheme.dark,
                           )
                         : Icon(accion.icon, size: 22),
                     label: Text(

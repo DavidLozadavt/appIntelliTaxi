@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 /// Visor a pantalla completa con pinch-to-zoom para imágenes del chat.
@@ -55,7 +56,7 @@ class ChatImagenFullscreen extends StatelessWidget {
                 fit: BoxFit.contain,
                 width: MediaQuery.sizeOf(context).width,
                 placeholder: (_, _) => const Center(
-                  child: CircularProgressIndicator(color: Colors.white70),
+                  child: AppBrandLoader(ringSize: 48, theme: AppLoaderTheme.dark),
                 ),
                 errorWidget: (_, _, _) => const Column(
                   mainAxisSize: MainAxisSize.min,

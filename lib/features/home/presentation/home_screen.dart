@@ -6,6 +6,7 @@ import 'package:intellitaxi/features/pasajero/presentation/home_pasajero_screen.
 import 'package:intellitaxi/features/profile/presentation/profile_screen.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
@@ -72,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (user == null) {
           AppLogger.d('⚠️ HomeScreen: Usuario es NULL');
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: AppLoadingIndicator());
         }
 
         final roles = authProvider.roles;
@@ -119,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         // Tiene ambos roles y aún no selecciona
         else if (authProvider.canSwitchRole && activeRole == null) {
-          body = const Center(child: CircularProgressIndicator());
+          body = const Center(child: AppLoadingIndicator());
         }
         // Si no tiene ninguno de estos roles
         else {

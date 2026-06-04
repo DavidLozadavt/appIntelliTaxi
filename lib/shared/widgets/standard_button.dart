@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 
 enum ButtonType { primary, secondary, danger, success }
 
@@ -38,13 +39,11 @@ class StandardButton extends StatelessWidget {
         child: OutlinedButton.icon(
           onPressed: isLoading ? null : onPressed,
           icon: isLoading
-              ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(colors['color']!),
-                  ),
+              ? AppBrandLoaderCompact(
+                  ringSize: 22,
+                  theme: isOutlined
+                      ? AppLoaderTheme.light
+                      : AppLoaderTheme.dark,
                 )
               : (icon != null ? Icon(icon, size: 20) : const SizedBox.shrink()),
           label: Text(
@@ -69,13 +68,9 @@ class StandardButton extends StatelessWidget {
         child: ElevatedButton.icon(
           onPressed: isLoading ? null : onPressed,
           icon: isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
+              ? const AppBrandLoaderCompact(
+                  ringSize: 22,
+                  theme: AppLoaderTheme.dark,
                 )
               : Icon(icon, size: 20),
           label: Text(
@@ -108,13 +103,9 @@ class StandardButton extends StatelessWidget {
           elevation: 2,
         ),
         child: isLoading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
+            ? const AppBrandLoaderCompact(
+                ringSize: 22,
+                theme: AppLoaderTheme.dark,
               )
             : Text(
                 text,

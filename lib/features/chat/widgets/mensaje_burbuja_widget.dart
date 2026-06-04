@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 
 import '../data/mensaje_taxi_model.dart';
 import 'chat_imagen_fullscreen.dart';
@@ -116,7 +117,7 @@ class MensajeBurbujaWidget extends StatelessWidget {
                     width: 220,
                     height: 160,
                     child: Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: AppBrandLoaderCompact(ringSize: 24),
                     ),
                   ),
                   errorWidget: (_, _, _) => const SizedBox(

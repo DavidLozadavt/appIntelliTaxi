@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 
 class LocationStatusView extends StatelessWidget {
   final bool isLoading;
@@ -79,26 +80,7 @@ class LocationStatusView extends StatelessWidget {
                   ),
                   child: Center(
                     child: isLoading
-                        ? Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Icon(
-                                Icons.location_on_rounded,
-                                size: 45,
-                                color: colorScheme.primary,
-                              ),
-                              SizedBox(
-                                width: 90,
-                                height: 90,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 3,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          )
+                        ? const AppBrandLoader(ringSize: 72)
                         : Icon(
                             Icons.location_off_rounded,
                             size: 45,

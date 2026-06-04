@@ -38,11 +38,13 @@ import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_distanc
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_ranking_helper.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_oferta_exclusiva.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_oferta_indriver_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_socket_payload_router.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_oferta_navigation.dart';
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 import 'package:intellitaxi/main.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
+import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 
@@ -111,6 +113,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   Map<String, dynamic>? _servicioActivoPendienteNavegacion;
   final Set<String> _offerChannels = {};
   final Set<String> _offerHandlerKeys = {};
+  Future<void>? _desuscribirRecepcionFuture;
   String? _lastAcceptError;
   String? _lastTurnoError;
   bool _enDescanso = false;
@@ -127,6 +130,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _listaGlobalSolicitudes = true;
   String? _assignmentMethod;
   double? _driverSearchRadiusKm;
+  int? _ofertaExclusivaSegundosEmpresa;
+  int? _ofertaMaxIntentosEmpresa;
 
   /// Oferta inDrive exclusiva (solo este conductor).
   ConductorOfertaExclusiva? _ofertaExclusiva;
@@ -194,6 +199,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Radio efectivo km (BD vía API). No usar constantes locales para asignación.
   double? get driverSearchRadiusKm => _driverSearchRadiusKm;
   double? get radioKmAsignacion => _driverSearchRadiusKm;
+  int? get ofertaExclusivaSegundosEmpresa => _ofertaExclusivaSegundosEmpresa;
+  int? get ofertaMaxIntentosEmpresa => _ofertaMaxIntentosEmpresa;
+
+  int get _segundosOfertaEmpresa =>
+      _ofertaExclusivaSegundosEmpresa ?? kMantenerLlegandoTrasExclusivaSegundos;
 
   bool get _filtrarPorRadioAsignacion => !_listaGlobalSolicitudes;
 
@@ -585,20 +595,31 @@ class ConductorHomeProvider extends ChangeNotifier {
     _servicioActivoId = servicioActivoId;
 
     _limpiarColaSolicitudesLocal();
-    await _desuscribirCanalSolicitudesServicio();
 
     if (detalleNavegacion != null) {
-      _servicioActivoPendienteNavegacion = detalleNavegacion;
-    } else if (servicioActivoId != null) {
-      final detalle = await _fetchServicioActivoDetalle();
-      if (detalle != null) {
-        _servicioActivoPendienteNavegacion = detalle;
-      }
+      final nav =
+          ServicioPayloadAdapter.unwrapNavegacionPayload(detalleNavegacion) ??
+              detalleNavegacion;
+      _servicioActivoPendienteNavegacion = nav;
+    }
+
+    if (!_isDisposed) notifyListeners();
+
+    // No bloquear el POST de aceptación: socket/WhatsApp van afterResponse en backend.
+    unawaited(_desuscribirCanalSolicitudesServicio());
+
+    if (_servicioActivoPendienteNavegacion == null && servicioActivoId != null) {
+      unawaited(() async {
+        final detalle = await _fetchServicioActivoDetalle();
+        if (detalle != null && !_isDisposed) {
+          _servicioActivoPendienteNavegacion = detalle;
+          notifyListeners();
+        }
+      }());
     }
 
     final pos = _currentPosition;
     if (pos != null) {
-      // Un heartbeat al entrar en viaje: backend marca ocupado y oculta en mapa flota.
       unawaited(_sendMapHeartbeat(pos, force: true));
     }
 
@@ -879,7 +900,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   void _marcarMantenerEnLlegandoTrasExclusiva(String solicitudId) {
     _mantenerLlegandoTrasExclusivaHasta[solicitudId] = DateTime.now().add(
-      const Duration(seconds: kMantenerLlegandoTrasExclusivaSegundos),
+      Duration(seconds: _segundosOfertaEmpresa),
     );
   }
 
@@ -981,7 +1002,7 @@ class ConductorHomeProvider extends ChangeNotifier {
           (data) {
             AppLogger.d('🔔 Evento recibido: $eventName');
             if (data != null) {
-              _procesarNuevaSolicitud(data);
+              _procesarPayloadSocket(data, eventName: eventName);
             }
           },
         );
@@ -999,9 +1020,10 @@ class ConductorHomeProvider extends ChangeNotifier {
         );
       }
 
-      final idPersona = await ConductorSessionHelper.obtenerIdPersonaConductor();
+      final idsConductor =
+          await ConductorSessionHelper.obtenerIdsConductorSesion();
       final candidateChannels =
-          ConductorSessionHelper.canalesOfertaDirecta(idPersona);
+          ConductorSessionHelper.canalesOfertaDirecta(idsConductor);
       if (candidateChannels.isNotEmpty) {
         for (final channel in candidateChannels) {
           await PusherService.subscribeSecondary(channel);
@@ -1015,9 +1037,9 @@ class ConductorHomeProvider extends ChangeNotifier {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
             PusherService.registerEventHandlerSecondary(key, (data) {
-              AppLogger.d('🔔 Evento recibido: $eventName en $channel');
+              AppLogger.d('🔔 Evento privado: $eventName en $channel');
               if (data != null) {
-                _procesarNuevaSolicitud(data, isDirectOffer: true);
+                _procesarPayloadSocket(data, eventName: eventName);
               }
             });
           }
@@ -1029,9 +1051,9 @@ class ConductorHomeProvider extends ChangeNotifier {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
             PusherService.registerEventHandlerSecondary(key, (data) {
-              AppLogger.d('🔔 Evento recibido: $eventName en $channel');
+              AppLogger.d('🔔 Evento privado: $eventName en $channel');
               if (data != null) {
-                _procesarNuevaSolicitud(data, isDirectOffer: true);
+                _procesarPayloadSocket(data, eventName: eventName);
               }
             });
           }
@@ -1043,9 +1065,9 @@ class ConductorHomeProvider extends ChangeNotifier {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
             PusherService.registerEventHandlerSecondary(key, (data) {
-              AppLogger.d('🔔 Oferta exclusiva inDrive: $eventName');
+              AppLogger.d('🔔 Evento privado: $eventName en $channel');
               if (data != null) {
-                unawaited(_aplicarOfertaExclusivaDesdePayload(data));
+                _procesarPayloadSocket(data, eventName: eventName);
               }
             });
           }
@@ -1057,8 +1079,10 @@ class ConductorHomeProvider extends ChangeNotifier {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
             PusherService.registerEventHandlerSecondary(key, (data) {
-              AppLogger.d('🔔 Oferta cerrada inDrive: $eventName');
-              if (data != null) _procesarOfertaCerrada(data);
+              AppLogger.d('🔔 Evento privado: $eventName en $channel');
+              if (data != null) {
+                _procesarPayloadSocket(data, eventName: eventName);
+              }
             });
           }
 
@@ -1070,8 +1094,10 @@ class ConductorHomeProvider extends ChangeNotifier {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
             PusherService.registerEventHandlerSecondary(key, (data) {
-              AppLogger.d('🔔 Evento recibido: $eventName en $channel');
-              if (data != null) _procesarNuevaSolicitud(data);
+              AppLogger.d('🔔 Evento privado: $eventName en $channel');
+              if (data != null) {
+                _procesarPayloadSocket(data, eventName: eventName);
+              }
             });
           }
         }
@@ -1159,6 +1185,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       _listaGlobalSolicitudes = result.listaGlobal;
       _assignmentMethod = result.assignmentMethod;
       _driverSearchRadiusKm = result.driverSearchRadiusKm;
+      _ofertaExclusivaSegundosEmpresa = result.ofertaExclusivaSegundos;
+      _ofertaMaxIntentosEmpresa = result.ofertaMaxIntentos;
 
       final list = result.pendientes;
       _ultimaSyncSolicitudesEn = DateTime.now().toIso8601String();
@@ -1181,7 +1209,9 @@ class ConductorHomeProvider extends ChangeNotifier {
           _removerSolicitudDelMapa(id);
         } else if (_filtrarPorRadioAsignacion) {
           final item = _solicitudesPorId[id];
-          if (item != null && !_dentroDelRadioAsignacion(item)) {
+          if (item != null &&
+              !ConductorSolicitudPayloadHelper.esOfertaDirecta(item) &&
+              !_dentroDelRadioAsignacion(item)) {
             _removerSolicitudDelMapa(id);
           }
         }
@@ -1193,6 +1223,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         if (sid != null) {
           final sidStr = sid.toString();
           if (!_listaGlobalSolicitudes &&
+              !ConductorSolicitudPayloadHelper.esOfertaDirecta(map) &&
               ConductorOfertaIndriverHelper.esFaseExclusiva(map) &&
               !ConductorOfertaIndriverHelper.esAsignacionColaParaMi(map) &&
               _ofertaExclusiva?.solicitudId != sidStr) {
@@ -1226,6 +1257,24 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   Future<void> _desuscribirRecepcionServicios() async {
+    final inFlight = _desuscribirRecepcionFuture;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final task = _desuscribirRecepcionServiciosImpl();
+    _desuscribirRecepcionFuture = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_desuscribirRecepcionFuture, task)) {
+        _desuscribirRecepcionFuture = null;
+      }
+    }
+  }
+
+  Future<void> _desuscribirRecepcionServiciosImpl() async {
     _detenerSincronizacionSolicitudes();
     _detenerPollOfertaActiva();
     for (final eventName in const [
@@ -1246,12 +1295,12 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
     } catch (_) {}
 
-    for (final key in _offerHandlerKeys) {
+    for (final key in _offerHandlerKeys.toList(growable: false)) {
       PusherService.unregisterEventHandlerSecondary(key);
     }
     _offerHandlerKeys.clear();
 
-    for (final channel in _offerChannels) {
+    for (final channel in _offerChannels.toList(growable: false)) {
       await PusherService.unsubscribeSecondary(channel);
     }
     _offerChannels.clear();
@@ -1268,6 +1317,16 @@ class ConductorHomeProvider extends ChangeNotifier {
     _aceptacionPropiaEn = DateTime.now();
   }
 
+  /// Al tocar Aceptar: marca antes del POST para ignorar `oferta.cerrada` inmediato.
+  void prepararAceptacionOfertaExclusiva() {
+    final sid = _ofertaExclusiva?.solicitudId;
+    if (sid != null) _marcarAceptacionPropiaEnCurso(sid);
+  }
+
+  void cancelarAceptacionOfertaEnUi() {
+    _limpiarMarcaAceptacionPropia();
+  }
+
   void _limpiarMarcaAceptacionPropia() {
     _servicioIdAceptacionPropia = null;
     _aceptacionPropiaEn = null;
@@ -1277,7 +1336,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (_servicioIdAceptacionPropia != servicioId) return false;
     final t = _aceptacionPropiaEn;
     if (t == null) return false;
-    return DateTime.now().difference(t) < const Duration(seconds: 25);
+    return DateTime.now().difference(t) <
+        Duration(seconds: _segundosOfertaEmpresa);
   }
 
   Future<bool> _yoTomeServicioSegunPayload(
@@ -1500,11 +1560,16 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     final solicitud = ConductorSolicitudPayloadHelper.normalizarSolicitud(
       oferta.toSolicitudMap(),
-      isDirectOffer: true,
+      isDirectOffer: oferta.esDirecta,
     );
     solicitud['_local_id'] = sid;
-    solicitud['fase_oferta'] = 'exclusiva';
-    solicitud['oferta_exclusiva'] = true;
+    if (oferta.esDirecta) {
+      solicitud['status'] = 'oferta_directa';
+      solicitud['notificacion_tipo'] = 'oferta_directa';
+    } else {
+      solicitud['fase_oferta'] = 'exclusiva';
+      solicitud['oferta_exclusiva'] = true;
+    }
     _solicitudesPorId[sid] = solicitud;
     _overlayOcultoPorTtl.remove(sid);
 
@@ -1556,6 +1621,14 @@ class ConductorHomeProvider extends ChangeNotifier {
       final sid = raw['servicio_id']?.toString() ??
           raw['solicitud_id']?.toString();
       if (sid == null || sid.isEmpty) return;
+
+      // POST aceptar en vuelo: no cerrar overlay; navegación la hace el HTTP 200.
+      if (_esAceptacionPropiaReciente(sid)) {
+        AppLogger.d(
+          'ℹ️ oferta.cerrada ignorada (aceptación HTTP en curso): $sid',
+        );
+        return;
+      }
 
       final motivo = raw['motivo']?.toString().toLowerCase() ?? '';
       final eraMiExclusiva = _ofertaExclusiva?.solicitudId == sid;
@@ -1648,13 +1721,27 @@ class ConductorHomeProvider extends ChangeNotifier {
   }) async {
     final oferta = _ofertaExclusiva;
     if (oferta == null) return null;
-    final response = await aceptarSolicitud(
+    return aceptarSolicitud(
       oferta.solicitudId,
       vehiculoId,
       precioOfertado: oferta.precioEstimado,
     );
+  }
+
+  /// Tras POST 200: cierra overlay, limpia estado y marca de aceptación en curso.
+  void finalizarAceptacionOfertaEnUi({bool cerrarPantalla = true}) {
+    if (cerrarPantalla) {
+      ConductorOfertaNavigation.cerrarSiVisible();
+    } else {
+      ConductorOfertaNavigation.marcarReemplazada();
+    }
     _limpiarOfertaExclusivaLocal(cerrarPantalla: false);
-    return response;
+    _limpiarMarcaAceptacionPropia();
+  }
+
+  /// Tras POST 200: limpia estado local sin esperar `oferta.servicio.cerrada`.
+  void limpiarOfertaExclusivaTrasAceptacionHttp() {
+    finalizarAceptacionOfertaEnUi();
   }
 
   void _notificarNuevaSolicitudExterna(Map<String, dynamic> solicitud) {
@@ -1708,17 +1795,50 @@ class ConductorHomeProvider extends ChangeNotifier {
     _suscritoEmergenciasFlota = false;
   }
 
+  /// Enruta payload Pusher/FCM: `notificacion_tipo` > nombre evento > overlay (§5 spec).
+  void _procesarPayloadSocket(dynamic data, {String? eventName}) {
+    if (_isDisposed || _enServicio || _enDescanso) return;
+
+    final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+    switch (ConductorSocketPayloadRouter.accionParaPayload(
+      raw,
+      eventName: eventName,
+    )) {
+      case ConductorSocketAccion.overlayFullscreen:
+        unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
+        break;
+      case ConductorSocketAccion.cerrarOverlay:
+        _procesarOfertaCerrada(raw);
+        break;
+      case ConductorSocketAccion.mergeColaCercano:
+        _procesarNuevaSolicitud(raw, mostrarEnOverlay: true);
+        break;
+      case ConductorSocketAccion.mergeCola:
+        _procesarNuevaSolicitud(raw);
+        break;
+    }
+  }
+
   /// FCM / alerta: primero tarjeta + sonido; sync después (sin borrar overlay activo).
   Future<void> procesarAlertaSolicitudEntrante(Map<String, dynamic> data) async {
     if (_isDisposed || _enServicio || _enDescanso) return;
 
     final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
-    final tipo = raw['tipo']?.toString().toLowerCase() ?? '';
-    if (tipo.contains('oferta_servicio_exclusiva') ||
-        raw['fullscreen'] == true ||
-        raw['fullscreen'] == 1 ||
-        raw['fullscreen'] == '1') {
+    final notifTipo = ConductorSocketPayloadRouter.notificacionTipo(raw) ?? '';
+    if (notifTipo.contains('oferta_servicio_exclusiva') ||
+        notifTipo == 'exclusiva_indrive' ||
+        notifTipo == 'oferta_directa') {
       await sincronizarOfertaActiva();
+      return;
+    }
+
+    final accion = ConductorSocketPayloadRouter.accionParaPayload(raw);
+    if (accion == ConductorSocketAccion.overlayFullscreen) {
+      unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
+      return;
+    }
+    if (accion == ConductorSocketAccion.cerrarOverlay) {
+      _procesarOfertaCerrada(raw);
       return;
     }
 
@@ -1733,7 +1853,11 @@ class ConductorHomeProvider extends ChangeNotifier {
               'solicitud_id': servicioId,
               'id': servicioId,
             };
-      _procesarNuevaSolicitud(payload, mostrarEnOverlay: true);
+      _procesarNuevaSolicitud(
+        payload,
+        isDirectOffer: ConductorSolicitudPayloadHelper.esOfertaDirecta(raw),
+        mostrarEnOverlay: accion == ConductorSocketAccion.mergeColaCercano,
+      );
       if (_isOnline) {
         unawaited(sincronizarSolicitudesPublicadasConductor());
       } else {
@@ -1767,12 +1891,22 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     try {
       final raw = ConductorSolicitudPayloadHelper.parsePayload(data);
+      final esDirecta =
+          isDirectOffer || ConductorSolicitudPayloadHelper.esOfertaDirecta(raw);
+
+      if (esDirecta &&
+          !fromSync &&
+          ConductorSocketPayloadRouter.requiereOverlayFullscreen(raw)) {
+        unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
+        return;
+      }
 
       final ofertaExclusiva = ConductorOfertaExclusiva.tryFromDynamic(raw);
       if (ofertaExclusiva != null &&
           !fromSync &&
+          !esDirecta &&
           !ConductorSolicitudPayloadHelper.usaConductorTabApi(raw)) {
-        final abrirPantalla = isDirectOffer ||
+        final abrirPantalla =
             ConductorOfertaIndriverHelper.esPayloadOfertaExclusivaParaMi(raw) ||
             !_listaGlobalSolicitudes;
         if (abrirPantalla) {
@@ -1781,7 +1915,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         }
       }
 
-      if (!isDirectOffer &&
+      if (!esDirecta &&
           ConductorOfertaIndriverHelper.ignorarNuevaSolicitudPublica(
             raw,
             listaGlobal: _listaGlobalSolicitudes,
@@ -1796,7 +1930,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       if (!_listaGlobalSolicitudes &&
           ConductorOfertaIndriverHelper.esFaseExclusiva(raw) &&
-          !isDirectOffer &&
+          !esDirecta &&
           !ConductorOfertaIndriverHelper.esAsignacionColaParaMi(raw)) {
         AppLogger.d('ℹ️ Ignorando solicitud en fase exclusiva (canal público)');
         return;
@@ -1813,7 +1947,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         AppLogger.d('ℹ️ Ignorando solicitud: rechazada por este conductor');
         return;
       }
-      if (_filtrarPorRadioAsignacion && !_dentroDelRadioAsignacion(raw)) {
+      if (!esDirecta &&
+          _filtrarPorRadioAsignacion &&
+          !_dentroDelRadioAsignacion(raw)) {
         AppLogger.d(
           'ℹ️ Ignorando solicitud fuera de radio '
           '(${_driverSearchRadiusKm ?? "?"} km, modo cercanos)',
@@ -1822,7 +1958,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
       final solicitud = ConductorSolicitudPayloadHelper.normalizarSolicitud(
         raw,
-        isDirectOffer: isDirectOffer,
+        isDirectOffer: esDirecta,
       );
       var solicitudId = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
       if (solicitudId == null || solicitudId.isEmpty) {
@@ -2422,9 +2558,6 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       final pos = _currentPosition;
-      if (pos != null) {
-        await _sendMapHeartbeat(pos, force: true);
-      }
 
       final response = await _conductorService.aceptarSolicitud(
         servicioId: solicitudId,
@@ -2433,28 +2566,53 @@ class ConductorHomeProvider extends ChangeNotifier {
         lng: pos?.longitude,
       );
 
-      final servicioIdInt = int.tryParse(solicitudId);
-      if (servicioIdInt != null) {
-        Map<String, dynamic>? detalle;
-        final data = response['data'];
-        if (data is Map<String, dynamic>) {
-          detalle = Map<String, dynamic>.from(data);
-        } else if (response['servicio'] != null) {
-          detalle = Map<String, dynamic>.from(response);
-        }
-        await marcarEnServicio(
-          servicioId: servicioIdInt,
-          detalleNavegacion: detalle,
+      if (!ServicioPayloadAdapter.esAceptacionExitosa(response)) {
+        throw Exception(
+          response['message']?.toString() ??
+              'No se pudo confirmar la aceptación del servicio',
         );
+      }
+
+      final servicioIdInt =
+          int.tryParse(solicitudId) ??
+          ServicioPayloadAdapter.servicioIdDesdeAceptacion(response);
+      if (servicioIdInt != null) {
+        var detalle =
+            ServicioPayloadAdapter.unwrapNavegacionPayload(response);
+        if (detalle == null &&
+            _ofertaExclusiva?.solicitudId == solicitudId) {
+          detalle = {
+            'servicio': _ofertaExclusiva!.toSolicitudMap(),
+          };
+        }
+        unawaited(
+          marcarEnServicio(
+            servicioId: servicioIdInt,
+            detalleNavegacion: detalle,
+          ),
+        );
+        _enServicio = true;
+        _servicioActivoId = servicioIdInt;
+        if (detalle != null) {
+          _servicioActivoPendienteNavegacion = detalle;
+        }
+      }
+
+      if (pos != null) {
+        unawaited(_sendMapHeartbeat(pos, force: true));
       }
 
       _removerSolicitudDelMapa(solicitudId);
       _detenerTickerSiNoHaySolicitudes();
 
-      if (_ofertaExclusiva?.solicitudId == solicitudId) {
-        _limpiarOfertaExclusivaLocal(
-          cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
-        );
+      final ofertaEnPantalla =
+          _ofertaExclusiva?.solicitudId == solicitudId &&
+          ConductorOfertaNavigation.pantallaVisible;
+      if (_ofertaExclusiva?.solicitudId == solicitudId && !ofertaEnPantalla) {
+        _limpiarOfertaExclusivaLocal(cerrarPantalla: false);
+        _limpiarMarcaAceptacionPropia();
+      } else if (!ofertaEnPantalla) {
+        _limpiarMarcaAceptacionPropia();
       }
 
       if (!_isDisposed) notifyListeners();

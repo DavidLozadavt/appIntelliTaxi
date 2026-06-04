@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
@@ -130,7 +131,7 @@ class _CalificacionConductorDialogState
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(),
+                  const AppLoadingIndicator(size: 48),
                   SizedBox(height: 16),
                   Text('Enviando calificación...'),
                 ],

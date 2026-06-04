@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
@@ -13,8 +14,7 @@ import 'package:intellitaxi/features/conductor/widgets/no_assigned_vehicles_dial
 import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_map_servicios_tabs.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
-import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
-import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_servicio_navegacion.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
@@ -505,40 +505,16 @@ class _HomeConductorState extends State<HomeConductor>
   Future<void> _navigateToActiveServiceIfNeeded() async {
     if (!_provider.enServicio) return;
 
-    final pendiente = _provider.servicioActivoPendienteNavegacion;
-    if (pendiente == null) return;
-
-    _provider.clearServicioActivoPendienteNavegacion();
-
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final conductorId = authProvider.user?.id;
     if (conductorId == null) return;
 
-    final servicioRaw = pendiente['servicio'];
-    if (servicioRaw is! Map) return;
-
-    final servicioNormalizado = ServicioPayloadAdapter.normalize(
-      servicio: Map<String, dynamic>.from(servicioRaw),
-      pasajero: pendiente['pasajero'] is Map
-          ? Map<String, dynamic>.from(pendiente['pasajero'] as Map)
-          : null,
-      conductor: pendiente['conductor'] is Map
-          ? Map<String, dynamic>.from(pendiente['conductor'] as Map)
-          : null,
-      vehiculo: pendiente['vehiculo'] is Map
-          ? Map<String, dynamic>.from(pendiente['vehiculo'] as Map)
-          : null,
-    );
-
-    if (!mounted) return;
-
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => ConductorServicioActivoScreen(
-          servicio: servicioNormalizado,
-          conductorId: conductorId,
-        ),
-      ),
+    await ConductorServicioNavegacion.abrirTrasAceptar(
+      context,
+      home: _provider,
+      conductorId: conductorId,
+      acceptResponse: _provider.servicioActivoPendienteNavegacion,
+      reemplazar: true,
     );
   }
 
@@ -594,7 +570,7 @@ class _HomeConductorState extends State<HomeConductor>
         context: context,
         useRootNavigator: true,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (context) => const Center(child: AppLoadingIndicator()),
       );
     }
 
@@ -663,42 +639,13 @@ class _HomeConductorState extends State<HomeConductor>
       AppLogger.d('✅ Solicitud $solicitudId aceptada exitosamente');
       _pendientesProvider.quitarPorId(solicitudId);
 
-      // Navegar a la pantalla de servicio activo del conductor
-      if (mounted && response['servicio'] != null) {
-        try {
-          // Obtener conductor ID del auth provider
-          final authProvider = Provider.of<AuthProvider>(
-            context,
-            listen: false,
-          );
-          final conductorId = authProvider.user?.id ?? 0;
-
-          final servicioNormalizado = ServicioPayloadAdapter.normalize(
-            servicio: Map<String, dynamic>.from(response['servicio']),
-            pasajero: response['pasajero'] != null
-                ? Map<String, dynamic>.from(response['pasajero'])
-                : null,
-            conductor: response['conductor'] != null
-                ? Map<String, dynamic>.from(response['conductor'])
-                : null,
-            vehiculo: response['vehiculo'] != null
-                ? Map<String, dynamic>.from(response['vehiculo'])
-                : null,
-          );
-
-          // Navegar a ConductorServicioActivoScreen pasando el objeto servicio
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ConductorServicioActivoScreen(
-                servicio: servicioNormalizado,
-                conductorId: conductorId,
-              ),
-            ),
-          );
-        } catch (e) {
-          AppLogger.d('⚠️ Error procesando servicio activo: $e');
-        }
+      if (mounted) {
+        await ConductorServicioNavegacion.abrirTrasAceptar(
+          context,
+          home: _provider,
+          conductorId: conductorId,
+          acceptResponse: response,
+        );
       }
     } catch (e) {
       closeLoadingIfNeeded();
@@ -1293,14 +1240,7 @@ class _HomeConductorState extends State<HomeConductor>
               Row(
                 children: [
                   if (_validandoTurno) ...[
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    ),
+                    const AppBrandLoaderCompact(ringSize: 16),
                     const SizedBox(width: 8),
                     const Text(
                       'Validando turno',

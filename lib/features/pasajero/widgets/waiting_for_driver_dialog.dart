@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 
 /// Modal que se muestra mientras se busca un conductor disponible
 class WaitingForDriverDialog extends StatelessWidget {
@@ -22,7 +23,7 @@ class WaitingForDriverDialog extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircularProgressIndicator(),
+              const AppLoadingIndicator(size: 48),
               const SizedBox(height: 24),
               Text(
                 isDelivery

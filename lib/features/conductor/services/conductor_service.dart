@@ -926,7 +926,17 @@ class ConductorService {
       queueAbiertaMaxMinutes:
           _parseDoubleMeta(data['queue_abierta_max_minutes']),
       ventanaListaMinutos: _parseDoubleMeta(data['ventana_lista_minutos']),
+      ofertaExclusivaSegundos: _parseIntMeta(
+        data['oferta_exclusiva_segundos'],
+      ),
+      ofertaMaxIntentos: _parseIntMeta(data['oferta_max_intentos']),
     );
+  }
+
+  static int? _parseIntMeta(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is int) return raw > 0 ? raw : null;
+    return int.tryParse(raw.toString());
   }
 
   static double? _parseDoubleMeta(dynamic raw) {

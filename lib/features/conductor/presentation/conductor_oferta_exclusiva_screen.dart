@@ -4,15 +4,17 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
-import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/services/voice_alert_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_oferta_exclusiva.dart';
-import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/features/conductor/services/conductor_oferta_navigation.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_servicio_map_service.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_servicio_navegacion.dart';
+import 'package:intellitaxi/main.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
@@ -357,13 +359,15 @@ class _ConductorOfertaExclusivaScreenState
     setState(() => _procesando = true);
 
     final home = context.read<ConductorHomeProvider>();
+    home.prepararAceptacionOfertaExclusiva();
+
     final vehiculoId = home.vehiculoSeleccionado?.id ?? 0;
     final response = await home.aceptarOfertaExclusiva(vehiculoId: vehiculoId);
 
-    if (!mounted) return;
-    setState(() => _procesando = false);
-
     if (response == null) {
+      home.cancelarAceptacionOfertaEnUi();
+      if (!mounted) return;
+      setState(() => _procesando = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -375,33 +379,37 @@ class _ConductorOfertaExclusivaScreenState
       return;
     }
 
-    Navigator.of(context).pop();
-
-    final auth = context.read<AuthProvider>();
-    final conductorId = auth.user?.id ?? 0;
-    final servicio = response['servicio'];
-    if (servicio is Map && mounted) {
-      final normalizado = ServicioPayloadAdapter.normalize(
-        servicio: Map<String, dynamic>.from(servicio),
-        pasajero: response['pasajero'] is Map
-            ? Map<String, dynamic>.from(response['pasajero'] as Map)
-            : null,
-        conductor: response['conductor'] is Map
-            ? Map<String, dynamic>.from(response['conductor'] as Map)
-            : null,
-        vehiculo: response['vehiculo'] is Map
-            ? Map<String, dynamic>.from(response['vehiculo'] as Map)
-            : null,
-      );
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => ConductorServicioActivoScreen(
-            servicio: normalizado,
-            conductorId: conductorId,
-          ),
-        ),
-      );
+    final reemplazar =
+        mounted && ConductorOfertaNavigation.pantallaVisible;
+    final navCtx = mounted ? context : navigatorKey.currentContext;
+    if (navCtx == null || !navCtx.mounted) {
+      home.finalizarAceptacionOfertaEnUi();
+      return;
     }
+
+    final auth = navCtx.read<AuthProvider>();
+    final conductorId = auth.user?.id ?? 0;
+    await ConductorServicioNavegacion.abrirTrasAceptar(
+      navCtx,
+      home: home,
+      conductorId: conductorId,
+      acceptResponse: response,
+      reemplazar: reemplazar,
+    );
+
+    home.finalizarAceptacionOfertaEnUi(cerrarPantalla: !reemplazar);
+    if (mounted) setState(() => _procesando = false);
+  }
+
+  Widget _conCapaAceptando(Widget child) {
+    if (!_procesando) return child;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        const AppLoadingOverlay(),
+      ],
+    );
   }
 
   @override
@@ -433,6 +441,17 @@ class _ConductorOfertaExclusivaScreenState
         });
 
         if (!home.tieneOfertaExclusivaActiva) {
+          if (_procesando) {
+            return const PopScope(
+              canPop: false,
+              child: Scaffold(
+                backgroundColor: Colors.black,
+                body: Center(
+                  child: AppBrandLoader(theme: AppLoaderTheme.dark),
+                ),
+              ),
+            );
+          }
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             if (Navigator.of(context).canPop()) {
@@ -469,9 +488,10 @@ class _ConductorOfertaExclusivaScreenState
         if (esIa) {
           return PopScope(
             canPop: !_procesando,
-            child: Scaffold(
-              backgroundColor: Colors.black,
-              body: _VistaOfertaIa(
+            child: _conCapaAceptando(
+              Scaffold(
+                backgroundColor: Colors.black,
+                body: _VistaOfertaIa(
                 recogida: recogida,
                 destino: destino,
                 precio: precio,
@@ -490,6 +510,7 @@ class _ConductorOfertaExclusivaScreenState
                 onRechazar: _rechazar,
                 onAceptar: _aceptar,
               ),
+            ),
             ),
           );
         }
@@ -510,7 +531,8 @@ class _ConductorOfertaExclusivaScreenState
 
         return PopScope(
           canPop: !_procesando,
-          child: Scaffold(
+          child: _conCapaAceptando(
+            Scaffold(
             backgroundColor: Colors.black,
             body: Column(
               children: [
@@ -689,6 +711,7 @@ class _ConductorOfertaExclusivaScreenState
                 ),
               ],
             ),
+          ),
           ),
         );
       },
@@ -1198,13 +1221,9 @@ class _BotonesOferta extends StatelessWidget {
                   ),
                 ),
                 child: procesando
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                    ? const AppBrandLoaderCompact(
+                        ringSize: 22,
+                        theme: AppLoaderTheme.dark,
                       )
                     : const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -1463,14 +1482,7 @@ class _CargandoDireccionBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              color: AppColors.brandWineLight,
-            ),
-          ),
+          const AppBrandLoaderCompact(ringSize: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

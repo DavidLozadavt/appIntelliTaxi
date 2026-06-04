@@ -26,6 +26,7 @@ import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/utils/device_screen_helper.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_socket_payload_router.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,8 +35,18 @@ const _activeRoleKey = 'active_role';
 
 /// Solo alertas de cola para conductores — no cambios de estado del viaje.
 bool _isConductorIncomingServiceNotification(Map<String, dynamic> data) {
-  final tipo = data['tipo']?.toString().toLowerCase() ?? '';
+  final merged = JsonPayloadHelper.parseAndMerge(data);
+  final notif = ConductorSocketPayloadRouter.notificacionTipo(merged) ?? '';
+  if (notif == 'exclusiva_indrive' ||
+      notif == 'oferta_directa' ||
+      notif == 'cercano_broadcast' ||
+      notif == 'global_indrive' ||
+      notif == 'fase_abierta_indrive') {
+    return true;
+  }
+  final tipo = merged['tipo']?.toString().toLowerCase() ?? '';
   if (tipo.contains('oferta_servicio_exclusiva')) return true;
+  if (tipo.contains('oferta_directa')) return true;
   if (tipo.contains('nueva_solicitud_servicio')) return true;
   if (tipo.contains('servicio_asignado')) return true;
   if (tipo.contains('nueva_solicitud') || tipo.contains('nueva-solicitud')) {

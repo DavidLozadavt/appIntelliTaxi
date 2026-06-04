@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -214,7 +215,7 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(),
+                const AppLoadingIndicator(size: 48),
                 SizedBox(height: 16),
                 Text('Cargando mensajes...'),
               ],
@@ -435,15 +436,9 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
                   child: IconButton(
                     onPressed: _enviando ? null : _enviarMensaje,
                     icon: _enviando
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
+                        ? const AppBrandLoaderCompact(
+                            ringSize: 20,
+                            theme: AppLoaderTheme.dark,
                           )
                         : const Icon(Icons.send, color: Colors.white),
                   ),

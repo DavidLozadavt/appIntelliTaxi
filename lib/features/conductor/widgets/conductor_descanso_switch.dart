@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
@@ -149,11 +150,7 @@ class ConductorDescansoSwitch extends StatelessWidget {
                   ),
                 ),
                 if (loading)
-                  const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                  const AppBrandLoaderCompact(ringSize: 22)
                 else
                   Switch.adaptive(
                     value: enDescanso,

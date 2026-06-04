@@ -2,6 +2,7 @@ import 'package:intellitaxi/features/profile/presentation/profile_body_screen.da
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/shared/loading_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:provider/provider.dart';
 
 class ProfileTab extends StatefulWidget {
@@ -38,7 +39,7 @@ class _ProfileTabState extends State<ProfileTab>
     final user = authProvider.user;
 
     if (user == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: AppLoadingIndicator()));
     }
 
     final persona = user.persona;

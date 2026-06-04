@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -144,7 +145,7 @@ class _HistorialServiciosPasajeroScreenState
 
   Widget _buildHistorialTab() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: AppLoadingIndicator());
     }
 
     if (_error != null) {
@@ -630,7 +631,7 @@ class _HistorialServiciosPasajeroScreenState
     if (_isLoadingMore) {
       return const Padding(
         padding: EdgeInsets.fromLTRB(0, 6, 0, 24),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: AppLoadingIndicator()),
       );
     }
 

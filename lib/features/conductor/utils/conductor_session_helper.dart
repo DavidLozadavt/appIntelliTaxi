@@ -39,29 +39,65 @@ class ConductorSessionHelper {
     await guardarServiciosRechazados(actuales);
   }
 
-  /// `persona.id` del conductor (no `user.id`) — canal `private-conductor.{idPersona}`.
+  /// `persona.id` del conductor (comparaciones de aceptación / tomada).
   static Future<int?> obtenerIdPersonaConductor() async {
+    final ids = await obtenerIdsConductorSesion();
+    if (ids.isEmpty) return null;
     final prefs = await SharedPreferences.getInstance();
     final userDataStr = prefs.getString('user_data');
-    if (userDataStr == null || userDataStr.isEmpty) return null;
+    if (userDataStr != null && userDataStr.isNotEmpty) {
+      try {
+        final userData = json.decode(userDataStr);
+        final personaId = userData['user']?['persona']?['id'];
+        final parsed = personaId is int
+            ? personaId
+            : int.tryParse(personaId?.toString() ?? '');
+        if (parsed != null && parsed > 0) return parsed;
+      } catch (_) {}
+    }
+    return ids.first;
+  }
+
+  /// IDs de sesión posibles (`user.id`, `persona.id`, prefs) para canales privados.
+  static Future<Set<int>> obtenerIdsConductorSesion() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = <int>{};
+
+    for (final raw in [
+      prefs.getInt('conductor_id'),
+      prefs.getInt('user_id'),
+    ]) {
+      if (raw != null && raw > 0) ids.add(raw);
+    }
+
+    final userDataStr = prefs.getString('user_data');
+    if (userDataStr == null || userDataStr.isEmpty) return ids;
 
     try {
       final userData = json.decode(userDataStr);
-      final personaId = userData['user']?['persona']?['id'];
-      if (personaId is int && personaId > 0) return personaId;
-      return int.tryParse(personaId?.toString() ?? '');
-    } catch (_) {
-      return null;
-    }
+      for (final value in [
+        userData['user']?['id'],
+        userData['user']?['persona']?['id'],
+        userData['id'],
+      ]) {
+        final parsed = value is int
+            ? value
+            : int.tryParse(value?.toString() ?? '');
+        if (parsed != null && parsed > 0) ids.add(parsed);
+      }
+    } catch (_) {}
+
+    return ids;
   }
 
-  /// Canal privado del conductor (`servicio.cercano`, ofertas directas).
-  /// Incluye alias `conductor.{id}` por si el backend lo emite sin prefijo `private-`.
-  static Set<String> canalesOfertaDirecta(int? idPersona) {
-    if (idPersona == null || idPersona <= 0) return {};
-    return {
-      'private-conductor.$idPersona',
-      'conductor.$idPersona',
-    };
+  /// Canales privados: `private-conductor.{personaId}` (+ alias legacy por otros IDs de sesión).
+  static Set<String> canalesOfertaDirecta(Set<int> idsConductor) {
+    final channels = <String>{};
+    for (final id in idsConductor) {
+      if (id <= 0) continue;
+      channels.add('private-conductor.$id');
+      channels.add('conductor.$id');
+    }
+    return channels;
   }
 }

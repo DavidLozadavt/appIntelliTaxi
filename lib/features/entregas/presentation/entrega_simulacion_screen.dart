@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
@@ -396,16 +397,7 @@ class _EntregaSimulacionScreenState extends State<EntregaSimulacionScreen>
                           ),
                         ),
                       if (isActive && _isProcessing)
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              AppColors.accent,
-                            ),
-                          ),
-                        ),
+                        const AppBrandLoaderCompact(ringSize: 16),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -499,13 +491,9 @@ class _EntregaSimulacionScreenState extends State<EntregaSimulacionScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (_isProcessing) ...[
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
+                  const AppBrandLoaderCompact(
+                    ringSize: 20,
+                    theme: AppLoaderTheme.dark,
                   ),
                   const SizedBox(width: 12),
                   const Text(

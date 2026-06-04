@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -492,15 +493,9 @@ class EditarDocumentoSheet extends StatefulWidget {
                       elevation: 0,
                     ),
                     child: _isUploading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
+                        ? const AppBrandLoaderCompact(
+                            ringSize: 20,
+                            theme: AppLoaderTheme.dark,
                           )
                         : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,

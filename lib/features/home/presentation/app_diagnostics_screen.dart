@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:flutter/services.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/diagnostics/native_diagnostics_helper.dart';
@@ -124,7 +125,7 @@ class _AppDiagnosticsScreenState extends State<AppDiagnosticsScreen> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: AppLoadingIndicator())
                 : SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     child: SelectableText(

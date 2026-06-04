@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
@@ -1039,42 +1040,12 @@ class _PasajeroEsperandoConductorScreenState
     double? progress,
     Color color = AppColors.accent,
   }) {
-    final logoSize = size * 0.48;
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          SizedBox(
-            width: size,
-            height: size,
-            child: CircularProgressIndicator(
-              value: progress,
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-              backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-            ),
-          ),
-          Container(
-            width: logoSize,
-            height: logoSize,
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            // Tin de marca en modo claro para mantener identidad visual.
-            foregroundDecoration: Theme.of(context).brightness == Brightness.dark
-                ? null
-                : BoxDecoration(
-                    color: AppColors.brandWine.withValues(alpha: 0.6),
-                    backgroundBlendMode: BlendMode.modulate,
-                  ),
-            child: Image.asset('assets/images/logoTaxbel.webp'),
-          ),
-        ],
-      ),
+    return AppBrandLoader(
+      ringSize: size,
+      strokeWidth: size >= 50 ? 2.5 : 2,
+      value: progress,
+      ringColor: progress != null ? color : null,
+      theme: AppLoaderTheme.light,
     );
   }
 

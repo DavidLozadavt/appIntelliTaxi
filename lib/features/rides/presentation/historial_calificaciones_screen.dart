@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/rides/data/calificacion_model.dart';
 import 'package:intellitaxi/features/rides/services/calificacion_service.dart';
@@ -96,7 +97,7 @@ class _HistorialCalificacionesScreenState
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: AppLoadingIndicator())
           : _error != null
           ? _buildError()
           : _calificaciones.isEmpty
