@@ -19,7 +19,7 @@ class PusherNativeInit {
       return {
         'apiKey': apiKey,
         'cluster': cluster,
-        if (authEndpoint != null) 'authEndpoint': authEndpoint,
+        'authEndpoint': ?authEndpoint,
         if (authorizer) 'authorizer': true,
       };
     }
@@ -33,7 +33,7 @@ class PusherNativeInit {
       'useTLS': useTls,
       if (!useTls) 'wsPort': port,
       if (useTls) 'wssPort': port,
-      if (authEndpoint != null) 'authEndpoint': authEndpoint,
+      'authEndpoint': ?authEndpoint,
       if (authorizer) 'authorizer': true,
     };
   }

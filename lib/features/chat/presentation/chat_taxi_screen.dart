@@ -215,7 +215,7 @@ class _ChatTaxiScreenState extends State<ChatTaxiScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const AppLoadingIndicator(size: 48),
+                AppLoadingIndicator(size: 48),
                 SizedBox(height: 16),
                 Text('Cargando mensajes...'),
               ],

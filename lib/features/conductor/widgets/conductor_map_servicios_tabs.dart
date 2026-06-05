@@ -333,7 +333,7 @@ class ConductorMapServiciosTabs {
     Widget body;
     if (pendientes.cargando && lista.isEmpty) {
       body = const Center(
-        child: const AppBrandLoaderCompact(ringSize: 22),
+        child: AppBrandLoaderCompact(ringSize: 22),
       );
     } else if (pendientes.error != null && lista.isEmpty) {
       body = RefreshIndicator(

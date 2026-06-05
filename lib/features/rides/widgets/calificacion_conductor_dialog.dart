@@ -131,7 +131,7 @@ class _CalificacionConductorDialogState
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const AppLoadingIndicator(size: 48),
+                  AppLoadingIndicator(size: 48),
                   SizedBox(height: 16),
                   Text('Enviando calificación...'),
                 ],
