@@ -7,10 +7,12 @@ class WhatsAppBrandIcon extends StatelessWidget {
     super.key,
     this.size = 22,
     this.solid = true,
+    this.color,
   });
 
   final double size;
   final bool solid;
+  final Color? color;
 
   static const Color brandGreen = Color(0xFF25D366);
 
@@ -22,11 +24,11 @@ class WhatsAppBrandIcon extends StatelessWidget {
       color: Colors.white,
     );
 
-    if (!solid) {
+    if (!solid || color != null) {
       return FaIcon(
         FontAwesomeIcons.whatsapp,
         size: size,
-        color: brandGreen,
+        color: color ?? brandGreen,
       );
     }
 

@@ -518,7 +518,11 @@ class _ContactoCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                icon: WhatsAppBrandIcon(size: compacto ? 20 : 18, solid: false),
+                icon: WhatsAppBrandIcon(
+                  size: compacto ? 20 : 18,
+                  solid: false,
+                  color: Colors.white,
+                ),
                 label: Text(
                   'Escribir por WhatsApp',
                   style: TextStyle(
