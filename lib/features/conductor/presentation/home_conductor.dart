@@ -82,35 +82,43 @@ class _HomeConductorState extends State<HomeConductor>
     if (_serviciosTabController.index != 0) {
       _serviciosTabController.animateTo(0);
     }
-    if (!_panelServiciosVisible(_provider)) {
-      final nombre = solicitud['pasajero_nombre']?.toString().trim();
-      final origen = solicitud['origen']?.toString().trim();
-      final detalle = [
-        if (nombre != null && nombre.isNotEmpty) nombre,
-        if (origen != null && origen.isNotEmpty) origen,
-      ].join(' · ');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            detalle.isNotEmpty
-                ? 'Nueva solicitud: $detalle. Activa tu turno para verla en el mapa.'
-                : 'Nueva solicitud. Activa tu turno en línea para verla en el mapa.',
-          ),
-          duration: const Duration(seconds: 5),
-          action: !_provider.isOnline
-              ? SnackBarAction(
-                  label: 'En línea',
-                  onPressed: () => unawaited(_mostrarSelectorVehiculo()),
-                )
-              : null,
-        ),
-      );
+    if (_panelServiciosVisible(_provider) ||
+        (_provider.tieneTurnoActivo && _provider.isOnline)) {
+      setState(() {});
+      return;
     }
+
+    final nombre = solicitud['pasajero_nombre']?.toString().trim();
+    final origen = solicitud['origen']?.toString().trim();
+    final detalle = [
+      if (nombre != null && nombre.isNotEmpty) nombre,
+      if (origen != null && origen.isNotEmpty) origen,
+    ].join(' · ');
+    final tieneTurno = _provider.tieneTurnoActivo;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          detalle.isNotEmpty
+              ? (tieneTurno
+                  ? 'Nueva solicitud: $detalle. Pásate En línea para verla en el mapa.'
+                  : 'Nueva solicitud: $detalle. Inicia tu turno para verla en el mapa.')
+              : (tieneTurno
+                  ? 'Nueva solicitud. Pásate En línea para verla en el mapa.'
+                  : 'Nueva solicitud. Inicia tu turno para verla en el mapa.'),
+        ),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: tieneTurno ? 'En línea' : 'Turno',
+          onPressed: () => unawaited(_mostrarSelectorVehiculo()),
+        ),
+      ),
+    );
     setState(() {});
   }
 
   void _avisarSolicitudesRecibidasFueraDeLinea() {
     if (!mounted || _panelServiciosVisible(_provider)) return;
+    if (_provider.tieneTurnoActivo && _provider.isOnline) return;
     final enMapa = _provider.solicitudesOrdenadas.length;
     final enEspera = _provider.totalSolicitudesEnEspera;
     final total = enMapa + enEspera;

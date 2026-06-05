@@ -2048,12 +2048,13 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (fromSync && !mostrarEnOverlay) {
         if (esNueva) {
           if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitudMap)) {
-            _sincronizarPestanaOverlayDesdeApi(
-              solicitudId,
-              solicitudMap,
-              forzarReanclaje: true,
-            );
             if (ConductorSolicitudPayloadHelper.esTabLlegando(solicitudMap)) {
+              _aplicarOverlayLlegando(
+                solicitudId,
+                solicitud: solicitudMap,
+                esNueva: true,
+                forzarBeepLlegando: pasoALlegandoPublico,
+              );
               unawaited(
                 _enriquecerPoiTrasMostrar(
                   solicitudId,
@@ -2061,6 +2062,11 @@ class ConductorHomeProvider extends ChangeNotifier {
                 ).catchError((_) {}),
               );
             } else {
+              _sincronizarPestanaOverlayDesdeApi(
+                solicitudId,
+                solicitudMap,
+                forzarReanclaje: true,
+              );
               unawaited(
                 _enriquecerDireccionesSolicitud(solicitudId).catchError((_) {}),
               );
@@ -2085,6 +2091,15 @@ class ConductorHomeProvider extends ChangeNotifier {
               _enriquecerDireccionesSolicitud(solicitudId).catchError((_) {}),
             );
           }
+        } else if (ConductorSolicitudPayloadHelper.esTabLlegando(solicitudMap) &&
+            (pasoALlegandoPublico ||
+                _overlayOcultoPorTtl.contains(solicitudId))) {
+          _aplicarOverlayLlegando(
+            solicitudId,
+            solicitud: solicitudMap,
+            esNueva: false,
+            forzarBeepLlegando: true,
+          );
         } else {
           _sincronizarPestanaOverlayDesdeApi(
             solicitudId,
@@ -2098,19 +2113,16 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitudMap)) {
-        if (ConductorSolicitudPayloadHelper.esTabLlegando(solicitudMap) &&
-            (mostrarEnOverlay ||
-                esNueva ||
-                reboteRealtimeALlegando ||
-                pasoALlegandoPublico)) {
+        if (ConductorSolicitudPayloadHelper.esTabLlegando(solicitudMap)) {
           _aplicarOverlayLlegando(
             solicitudId,
             solicitud: solicitudMap,
             esNueva: altaEnLlegando &&
                 !_mantenerEnLlegandoTrasExclusiva(solicitudId),
-            forzarBeepLlegando: pasoALlegandoPublico,
+            forzarBeepLlegando:
+                pasoALlegandoPublico || reboteRealtimeALlegando,
           );
-          if (altaEnLlegando) {
+          if (altaEnLlegando || reboteRealtimeALlegando) {
             unawaited(
               _enriquecerPoiTrasMostrar(
                 solicitudId,
@@ -2340,9 +2352,13 @@ class ConductorHomeProvider extends ChangeNotifier {
     final estabaEnEspera = _overlayOcultoPorTtl.contains(solicitudId);
     final yaVisibleEnLlegando = !estabaEnEspera &&
         _expiracionPorSolicitud.containsKey(solicitudId);
+    final aunSinSonido =
+        !_sonidoEmitidoPorSolicitudId.containsKey(solicitudId);
     final entraEnPestanaLlegando = forzarBeepLlegando ||
         estabaEnEspera ||
-        (esNueva && !yaVisibleEnLlegando);
+        (esNueva && !yaVisibleEnLlegando) ||
+        (aunSinSonido &&
+            ConductorSolicitudPayloadHelper.esTabLlegando(solicitud));
 
     _marcarRecibidaPorRealtime(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
