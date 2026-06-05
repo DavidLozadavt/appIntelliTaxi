@@ -3465,7 +3465,24 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
+  /// Rechaza el viaje asignado: libera al conductor; el servicio sigue para otros.
+  Future<bool> rechazarServicioActivo({required int servicioId}) async {
+    try {
+      AppLogger.d('↩️ Rechazo conductor en viaje activo: $servicioId');
+      final ok =
+          await rechazarSolicitudParaConductor(servicioId.toString());
+      if (!ok) return false;
+      await marcarDisponible();
+      return true;
+    } catch (e) {
+      AppLogger.d('❌ Error rechazando servicio activo: $e');
+      return false;
+    }
+  }
+
   /// Cancelar servicio activo (motivo opcional).
+  /// Solo debe usarse si el backend exige cancelación total; en viaje activo del
+  /// conductor preferir [rechazarServicioActivo].
   Future<bool> cancelarServicio({
     required int servicioId,
     String? motivoCodigo,

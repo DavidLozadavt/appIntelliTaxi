@@ -22,7 +22,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     required this.onCopiarTelefono,
     required this.onChat,
     required this.onAccionPrincipal,
-    required this.onCancelar,
+    required this.onRechazar,
     this.servicioId,
     this.isLoading = false,
   });
@@ -39,7 +39,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
   final VoidCallback onCopiarTelefono;
   final VoidCallback onChat;
   final VoidCallback onAccionPrincipal;
-  final VoidCallback onCancelar;
+  final VoidCallback onRechazar;
   final int? servicioId;
   final bool isLoading;
 
@@ -172,19 +172,34 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                   estadoUi != 'finalizado' &&
                   estadoUi != 'cancelado') ...[
                 const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: onCancelar,
-                  icon: Icon(
-                    Iconsax.close_circle,
-                    color: Colors.red.shade600,
-                    size: 20,
-                  ),
-                  label: Text(
-                    'Cancelar servicio',
-                    style: TextStyle(
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onRechazar,
+                    icon: Icon(
+                      Iconsax.close_circle,
                       color: Colors.red.shade600,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
+                      size: 20,
+                    ),
+                    label: Text(
+                      'Rechazar',
+                      style: TextStyle(
+                        color: Colors.red.shade600,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade600,
+                      side: BorderSide(color: Colors.red.shade600, width: 1.5),
+                      minimumSize: const Size(double.infinity, 48),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),

@@ -22,8 +22,6 @@ import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/utils/phone_launcher.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
-import 'package:intellitaxi/features/taxi/data/motivos_cancelacion.dart';
-import 'package:intellitaxi/shared/widgets/cancelacion_servicio_dialog.dart';
 import 'package:intellitaxi/features/rides/widgets/calificacion_dialog.dart';
 import 'package:intellitaxi/features/chat/utils/chat_helper.dart';
 import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
@@ -1215,7 +1213,7 @@ class _ConductorServicioActivoScreenState
                           onCopiarTelefono: _copiarTelefonoPasajero,
                           onChat: _abrirChatPasajero,
                           onAccionPrincipal: _onPanelAccionPrincipal,
-                          onCancelar: _mostrarDialogoCancelacion,
+                          onRechazar: _rechazarViajeActivo,
                           isLoading: _isLoading,
                         ),
                       ),
@@ -1258,81 +1256,46 @@ class _ConductorServicioActivoScreenState
     }
   }
 
-  Future<void> _mostrarDialogoCancelacion() async {
-    final seleccion = await CancelacionServicioDialog.mostrar(
-      context,
-      tipoUsuario: 'conductor',
+  /// Rechazo del conductor (no cancela el viaje del pasajero).
+  Future<void> _rechazarViajeActivo() async {
+    if (!_canUpdateUi || _isLoading) return;
+
+    final servicioId = widget.servicio['id'];
+    if (servicioId == null) {
+      _mostrarError('ID de servicio no encontrado');
+      return;
+    }
+
+    final id = servicioId is int
+        ? servicioId
+        : int.tryParse(servicioId.toString());
+    if (id == null || id <= 0) {
+      _mostrarError('ID de servicio no válido');
+      return;
+    }
+
+    final provider = context.read<ConductorHomeProvider>();
+    final okRemoto = await provider.rechazarServicioActivo(servicioId: id);
+
+    if (!mounted) return;
+
+    _trackingService.detenerSeguimiento();
+    await _notificacionService.cancelarNotificacion(id, tipo: 'conductor');
+    await _persistencia.limpiarServicioActivo();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          okRemoto
+              ? 'No te volverá a salir este servicio. Sigue disponible para otros conductores.'
+              : 'Ocultado en la app. Si vuelve a aparecer, revisa tu conexión.',
+        ),
+        backgroundColor: Colors.orange,
+      ),
     );
 
-    if (seleccion != null) {
-      await _cancelarServicio(seleccion);
-    }
-  }
-
-  Future<void> _cancelarServicio(CancelacionServicioSeleccion seleccion) async {
-    if (!_canUpdateUi) return;
-    _safeSetState(() => _isLoading = true);
-
-    try {
-      // Obtener el servicio ID
-      final servicioId = widget.servicio['id'];
-      if (servicioId == null) {
-        throw Exception('ID de servicio no encontrado');
-      }
-
-      // Verificar que el context siga montado
-      if (!mounted) return;
-
-      // Llamar al servicio de cancelación a través del provider
-      final provider = context.read<ConductorHomeProvider>();
-
-      final exitoso = await provider.cancelarServicio(
-        servicioId: servicioId is int
-            ? servicioId
-            : int.parse(servicioId.toString()),
-        motivoCodigo: seleccion.motivoCodigo,
-        motivo: seleccion.motivoTexto,
-      );
-
-      if (exitoso) {
-        // Quitar overlay de “cancelando” antes de awaits largos para no dejar UI negra.
-        if (_canUpdateUi) {
-          _safeSetState(() => _isLoading = false);
-        }
-
-        // Detener tracking
-        _trackingService.detenerSeguimiento();
-
-        // Cancelar notificación
-        await _notificacionService.cancelarNotificacion(
-          servicioId,
-          tipo: 'conductor',
-        );
-
-        // Limpiar persistencia
-        await _persistencia.limpiarServicioActivo();
-
-        if (!mounted) return;
-
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          const SnackBar(
-            content: Text('Servicio cancelado exitosamente'),
-            backgroundColor: AppColors.green,
-          ),
-        );
-
-        await _navegarAlHomeRaiz();
-      } else {
-        throw Exception('No se pudo cancelar el servicio');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _mostrarError('Error al cancelar: ${e.toString()}');
-    } finally {
-      // Siempre bajar loading si sigue activo (evita overlay negro si la navegación falla o queda a medias).
-      if (_canUpdateUi && _isLoading) {
-        _safeSetState(() => _isLoading = false);
-      }
-    }
+    await _navegarAlHomeRaiz();
   }
 }

@@ -143,6 +143,26 @@ class PasajeroServicioMapper {
     }
   }
 
+  /// Indica que el conductor liberó/rechazó un servicio ya asignado.
+  static bool esRechazoConductor(Map<String, dynamic> data) {
+    final motivo = (pick(data, [
+          'motivo',
+          'motivo_codigo',
+          'motivoCodigo',
+          'tipo',
+        ]) ??
+            '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (motivo.isEmpty) return false;
+    return motivo == 'conductor_rechazo' ||
+        motivo == 'rechazo_conductor' ||
+        motivo == 'rechazada_por_conductor' ||
+        motivo == 'conductor_rechazo_servicio' ||
+        (motivo.contains('rechaz') && motivo.contains('conductor'));
+  }
+
   /// Estado UI coherente con conductor ya asignado (evita «buscando» + tarjeta de conductor).
   static String resolverEstadoUi(Map<String, dynamic> data) {
     final estado = estadoInicial(data);

@@ -39,6 +39,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   final Set<Marker> _nearbyDriverMarkers = {};
   int _conductoresCercanosCount = 0;
   bool _cargandoConductoresCercanos = false;
+  bool _conductorRechazoReciente = false;
 
   // ===== TIMERS =====
   Timer? _timeoutTimer;
@@ -66,9 +67,13 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   bool get cargandoConductoresCercanos => _cargandoConductoresCercanos;
   bool get isBuscando =>
       _estadoServicio == 'buscando' || _estadoServicio == 'pendiente';
+  bool get conductorRechazoReciente => _conductorRechazoReciente;
 
   /// Mensaje dinámico según conductores en zona y tiempo de espera.
   String get mensajeActividadBusqueda {
+    if (_conductorRechazoReciente) {
+      return 'El conductor no pudo continuar. Estamos buscando otro taxi…';
+    }
     if (_conductoresCercanosCount > 0) {
       final n = _conductoresCercanosCount;
       return n == 1
@@ -85,10 +90,17 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   }
 
   String get subtituloActividadBusqueda {
+    if (_conductorRechazoReciente) {
+      return 'Tu solicitud sigue activa. El contador se reinició para buscar otro conductor.';
+    }
     if (_conductoresCercanosCount > 0) {
       return 'Cuando uno acepte, verás su datos y ubicación en el mapa.';
     }
     return 'Verás en el mapa los taxis disponibles cerca de tu punto de recogida.';
+  }
+
+  void consumirAvisoRechazoConductor() {
+    _conductorRechazoReciente = false;
   }
 
   PasajeroServicioActivoProvider({
@@ -379,6 +391,38 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _notifyListenersSafe();
   }
 
+  bool _sinConductorEnPayload(Map<String, dynamic> data) {
+    final id = data['conductor_id'] ?? data['idConductor'] ?? data['conductorId'];
+    if (id != null && id.toString().trim().isNotEmpty) return false;
+    return data['conductor'] == null;
+  }
+
+  /// Vuelve a modo búsqueda: limpia conductor, reinicia contador desde 0.
+  void _volverABusqueda({required bool porRechazoConductor}) {
+    final teniaConductor =
+        _conductor != null || _conductorUbicacion != null;
+    if (!teniaConductor && !porRechazoConductor && isBuscando) {
+      if (_countdownTimer != null) return;
+    }
+
+    _conductor = null;
+    _conductorUbicacion = null;
+    _markers.removeWhere((m) => m.markerId.value == 'conductor');
+    _polylines.clear();
+    unawaited(_locationCacheService.clear(servicioId));
+    _lastConductorLocationCache.remove(servicioId);
+
+    _estadoServicio = 'buscando';
+    if (porRechazoConductor) {
+      _conductorRechazoReciente = true;
+    }
+
+    _iniciarTimeout();
+    _iniciarRefreshConductoresCercanos();
+    unawaited(_dibujarRuta());
+    _notifyListenersSafe();
+  }
+
   /// 🔌 Suscribe a eventos de Pusher
   Future<void> _suscribirEventos() async {
     AppLogger.d('🔌 PROVIDER: Suscribiendo a eventos Pusher...');
@@ -388,6 +432,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       onServicioAceptado: (data) {
         if (_disposed) return;
         AppLogger.d('🎉 Servicio aceptado - Data: ${data.keys}');
+        _conductorRechazoReciente = false;
         _cancelarTimeout();
         _alSalirDeBusqueda();
         unawaited(PasajeroServicioNotificationHelper.clearForServicio(servicioId));
@@ -429,10 +474,23 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       onEstadoCambiado: (data) {
         if (_disposed) return;
         AppLogger.d('🔄 Estado cambiado: ${data['estado']}');
-        final eraBusqueda = isBuscando;
-        _estadoServicio = PasajeroServicioMapper.normalizeEstado(
+        final esRechazo = PasajeroServicioMapper.esRechazoConductor(data);
+        final sinConductor = _sinConductorEnPayload(data);
+        final teniaConductor = _conductor != null;
+        final nuevoEstado = PasajeroServicioMapper.normalizeEstado(
           data['estado'],
         );
+        final vuelveABuscar =
+            nuevoEstado == 'buscando' || nuevoEstado == 'pendiente';
+
+        if (esRechazo ||
+            (teniaConductor && sinConductor && vuelveABuscar)) {
+          _volverABusqueda(porRechazoConductor: true);
+          return;
+        }
+
+        final eraBusqueda = isBuscando;
+        _estadoServicio = nuevoEstado;
         if (eraBusqueda && !isBuscando) {
           _alSalirDeBusqueda();
         }
@@ -518,6 +576,14 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             estadoNormalizado == 'finalizado') {
           _estadoServicio = estadoNormalizado;
         }
+        final teniaConductor = _conductor != null;
+        final esRechazo = PasajeroServicioMapper.esRechazoConductor({
+          ...root,
+          ...servicio,
+        });
+        final vuelveABuscar =
+            _estadoServicio == 'buscando' || _estadoServicio == 'pendiente';
+
         if (eraBusqueda && !isBuscando) {
           _alSalirDeBusqueda();
         }
@@ -551,8 +617,12 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
           }
 
           _notifyListenersSafe();
+        } else if (teniaConductor &&
+            vuelveABuscar &&
+            estadoNormalizado != 'cancelado' &&
+            estadoNormalizado != 'finalizado') {
+          _volverABusqueda(porRechazoConductor: esRechazo || teniaConductor);
         } else {
-          // Sin conductor pero el estado pudo pasar a cancelado/finalizado (p. ej. tras cancelar en otro cliente).
           _notifyListenersSafe();
         }
       }
@@ -686,6 +756,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
   /// 🔄 Reinicia la búsqueda de conductor
   void reintentar() {
+    _conductorRechazoReciente = false;
     _estadoServicio = 'buscando';
     _iniciarTimeout();
     _iniciarRefreshConductoresCercanos();

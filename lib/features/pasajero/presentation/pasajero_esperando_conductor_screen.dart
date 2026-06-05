@@ -42,6 +42,7 @@ class _PasajeroEsperandoConductorScreenState
   String? _lastMapCameraKey;
   bool _terminalFlowStarted = false;
   bool _timeoutDialogShown = false;
+  bool _rechazoConductorSnackShown = false;
   /// Evita que el post-frame dispare salida remota mientras cancelamos manualmente (misma petición).
   bool _cancelacionManualEnCurso = false;
 
@@ -302,6 +303,21 @@ class _PasajeroEsperandoConductorScreenState
               return;
             }
 
+            if (provider.conductorRechazoReciente && !_rechazoConductorSnackShown) {
+              _rechazoConductorSnackShown = true;
+              _driverCameraCentered = false;
+              _lastMapCameraKey = null;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'El conductor rechazó el viaje. Buscando otro taxi…',
+                  ),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 4),
+                ),
+              );
+            }
+
             if (_terminalFlowStarted) return;
 
             if (provider.estadoServicio == 'cancelado' &&
@@ -511,6 +527,38 @@ class _PasajeroEsperandoConductorScreenState
             ),
           ),
           const SizedBox(height: 14),
+          if (provider.conductorRechazoReciente) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Iconsax.info_circle_copy,
+                    size: 20,
+                    color: Colors.orange.shade800,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'El conductor rechazó el viaje. Reiniciamos la búsqueda desde 0:00.',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.orange.shade900,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
