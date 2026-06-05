@@ -1,4 +1,4 @@
-// lib/services/pusher_service.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -9,12 +9,18 @@ import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import '../config/app_config.dart';
-import '../config/pusher_native_init.dart';
+import '../config/socket_native_init.dart';
 
-class PusherService {
-  static PusherChannelsFlutter? _pusherPrimary;
-  static PusherChannelsFlutter? _pusherSecondary;
+/// Cliente WebSocket taxi (protocolo Pusher-compatible vía Soketi en VPS).
+class SocketService {
+  static PusherChannelsFlutter? _clientPrimary;
+  static PusherChannelsFlutter? _clientSecondary;
   static bool _secondaryReady = false;
+  static bool _isConnected = false;
+  static bool _isDisconnecting = false;
+  static bool _reconfiguringEndpoint = false;
+  static Future<void>? _initFuture;
+  static Completer<void>? _connectedCompleter;
   static final Map<String, Function(dynamic)> _eventHandlers = {};
   static final Map<String, Function(dynamic)> _eventHandlersSecondary = {};
   static final Set<String> _subscribedPrimary = {};
@@ -35,90 +41,41 @@ class PusherService {
     return false;
   }
 
-  /// Inicializa ambas conexiones de Pusher
-  static Future<void> initialize() async {
-    final primaryKey = AppConfig.pusherAppKey;
-    final secondaryKey = AppConfig.pusherSecondaryAppKey;
-    final sameKey =
-        primaryKey.isNotEmpty &&
-        secondaryKey.isNotEmpty &&
-        primaryKey == secondaryKey;
-
-    if (sameKey) {
-      AppLogger.d(
-        'Pusher: misma API key en primary y secondary — solo conexión secondary',
-        tag: 'Pusher',
-      );
-      if (!_secondaryReady) {
-        await _initializeSecondary();
-      }
-      _pusherPrimary = _pusherSecondary;
-      return;
-    }
-
-    await _initializePrimary();
-    await _initializeSecondary();
+  /// Inicializa la conexión WebSocket al VPS.
+  static Future<void> initialize() {
+    _initFuture ??= _doInitialize();
+    return _initFuture!;
   }
 
-  /// Inicializa la conexión principal de Pusher
-  static Future<void> _initializePrimary() async {
-    final apiKey = AppConfig.pusherAppKey;
+  static Future<void> _ensureReady() async {
+    if (_secondaryReady) return;
+    await initialize();
+  }
+
+  static Future<void> _doInitialize() async {
+    final apiKey = AppConfig.socketAppKey;
     if (apiKey.isEmpty) {
-      AppLogger.w('Pusher Primary omitido: sin API key en .env', tag: 'Pusher');
+      AppLogger.w('Socket omitido: sin SOCKET_APP_KEY en .env', tag: 'Socket');
       return;
     }
 
-    _pusherPrimary = PusherChannelsFlutter.getInstance();
-
-    try {
-      AppLogger.d('🔧 Inicializando Pusher Primary...');
-      AppLogger.d('   App Key: $apiKey');
-      if (AppConfig.pusherPrimaryUsesSecondaryFallback) {
-        AppLogger.d('   (fallback desde PUSHER_SECONDARY_APP_KEY)');
-      }
-      AppLogger.d('   Cluster: ${AppConfig.pusherCluster}');
-
-      await _pusherPrimary!.init(
-        apiKey: apiKey,
-        cluster: AppConfig.pusherCluster,
-        onEvent: _onEventPrimary,
-        onSubscriptionSucceeded: _onSubscriptionSucceededPrimary,
-        onError: _onErrorPrimary,
-        onConnectionStateChange: _onConnectionStateChangePrimary,
-      );
-
-      if (PusherNativeInit.hasCustomEndpoint) {
-        await _applyCustomPusherEndpoint(
-          _pusherPrimary!,
-          apiKey: AppConfig.pusherAppKey,
-          cluster: AppConfig.pusherCluster,
-        );
-      } else {
-        await _pusherPrimary!.connect();
-      }
-      AppLogger.d(
-        '✅ Pusher Primary conectado (Key: ${AppConfig.pusherAppKey})',
-      );
-      AppLogger.d('   Esperando eventos...');
-    } catch (e) {
-      AppLogger.d('❌ Error inicializando Pusher Primary: $e');
+    if (_secondaryReady && _clientSecondary != null) {
+      _clientPrimary = _clientSecondary;
+      return;
     }
+
+    await _initializeSecondary();
+    _clientPrimary = _clientSecondary;
   }
 
-  /// Inicializa la conexión secundaria de Pusher
   static Future<void> _initializeSecondary() async {
-    if (_secondaryReady && _pusherSecondary != null) {
-      AppLogger.d('Pusher Secondary ya listo, omitiendo re-init', tag: 'Pusher');
-      return;
-    }
     try {
-      // Crear segunda instancia de Pusher
-      _pusherSecondary = PusherChannelsFlutter.getInstance();
+      _clientSecondary = PusherChannelsFlutter.getInstance();
 
-      await _pusherSecondary!.init(
-        apiKey: AppConfig.pusherSecondaryAppKey,
-        cluster: AppConfig.pusherSecondaryCluster,
-        authEndpoint: '${AppConfig.baseUrl}auth/pusher-secondary',
+      await _clientSecondary!.init(
+        apiKey: AppConfig.socketAppKeySecondary,
+        cluster: AppConfig.socketCluster,
+        authEndpoint: '${AppConfig.baseUrl}auth/pusher',
         onAuthorizer: _onAuthorizerSecondary,
         onEvent: _onEventSecondary,
         onSubscriptionSucceeded: _onSubscriptionSucceededSecondary,
@@ -127,30 +84,34 @@ class PusherService {
         onConnectionStateChange: _onConnectionStateChangeSecondary,
       );
 
-      if (PusherNativeInit.hasCustomEndpoint) {
-        await _applyCustomPusherEndpoint(
-          _pusherSecondary!,
-          apiKey: AppConfig.pusherSecondaryAppKey,
-          cluster: AppConfig.pusherSecondaryCluster,
-          authEndpoint: '${AppConfig.baseUrl}auth/pusher-secondary',
+      if (SocketNativeInit.hasCustomEndpoint) {
+        await _applyCustomEndpoint(
+          _clientSecondary!,
+          apiKey: AppConfig.socketAppKeySecondary,
+          cluster: AppConfig.socketCluster,
+          authEndpoint: '${AppConfig.baseUrl}auth/pusher',
           authorizer: true,
+          isFirstSetup: true,
         );
       } else {
-        await _pusherSecondary!.connect();
+        await _clientSecondary!.connect();
+        await _waitForConnected(fallbackAfterConnect: true);
       }
+
       _secondaryReady = true;
       _ensureDefaultSecondaryHandlers();
       AppLogger.d(
-        '✅ Pusher Secondary conectado (Key: ${AppConfig.pusherSecondaryAppKey}'
-        '${PusherNativeInit.hasCustomEndpoint ? ", host: ${AppConfig.pusherHost}:${AppConfig.pusherPort}" : ""})',
+        '✅ Socket conectado (Key: ${AppConfig.socketAppKeySecondary}'
+        '${SocketNativeInit.hasCustomEndpoint ? ", host: ${AppConfig.socketHost}:${AppConfig.socketPort}" : ""})',
+        tag: 'Socket',
       );
     } catch (e) {
       _secondaryReady = false;
-      AppLogger.d('❌ Error inicializando Pusher Secondary: $e');
+      _initFuture = null;
+      AppLogger.d('❌ Error inicializando Socket: $e', tag: 'Socket');
+      rethrow;
     }
   }
-
-  // ========== MÉTODOS PARA CONEXIÓN PRINCIPAL ==========
 
   static Future<void> subscribe(String channelName) async {
     if (_subscribedPrimary.contains(channelName)) {
@@ -158,7 +119,7 @@ class PusherService {
     }
     try {
       AppLogger.d('📡 Intentando suscribirse a: $channelName');
-      await _pusherPrimary?.subscribe(channelName: channelName);
+      await _clientPrimary?.subscribe(channelName: channelName);
       _subscribedPrimary.add(channelName);
       AppLogger.d('✅ Suscrito exitosamente a canal principal: $channelName');
       AppLogger.d('   Handlers registrados: ${_eventHandlers.keys.toList()}');
@@ -173,7 +134,7 @@ class PusherService {
       return;
     }
     try {
-      await _pusherPrimary?.unsubscribe(channelName: channelName);
+      await _clientPrimary?.unsubscribe(channelName: channelName);
       _subscribedPrimary.remove(channelName);
       AppLogger.d('🔕 Desuscrito del canal principal: $channelName');
     } catch (e) {
@@ -192,47 +153,6 @@ class PusherService {
     _eventHandlers.remove(eventKey);
     AppLogger.d('🗑️ Handler eliminado para evento principal: $eventKey');
   }
-
-  static void _onEventPrimary(PusherEvent event) {
-    AppLogger.d('\n========================================');
-    AppLogger.d('🔵 [PRIMARY] ¡EVENTO PUSHER RECIBIDO!');
-    AppLogger.d('========================================');
-    AppLogger.d('   Canal: ${event.channelName}');
-    AppLogger.d('   Evento: ${event.eventName}');
-    AppLogger.d('   Data: ${event.data}');
-
-    final key = '${event.channelName}:${event.eventName}';
-    AppLogger.d('   Key buscada: $key');
-    AppLogger.d('   Handlers disponibles: ${_eventHandlers.keys.toList()}');
-
-    if (_eventHandlers.containsKey(key)) {
-      AppLogger.d('   ✅ Handler encontrado, ejecutando...');
-      _eventHandlers[key]!(event.data);
-    } else {
-      AppLogger.d('   ⚠️ NO hay handler registrado para este evento');
-    }
-    AppLogger.d('========================================\n');
-  }
-
-  static void _onSubscriptionSucceededPrimary(
-    String channelName,
-    dynamic data,
-  ) {
-    AppLogger.d('✅ [PRIMARY] Suscripción exitosa a: $channelName');
-  }
-
-  static void _onErrorPrimary(String message, int? code, dynamic e) {
-    AppLogger.d('❌ [PRIMARY] Error: $message (código: $code)');
-  }
-
-  static void _onConnectionStateChangePrimary(
-    dynamic currentState,
-    dynamic previousState,
-  ) {
-    AppLogger.d('🔄 [PRIMARY] Estado: $previousState → $currentState');
-  }
-
-  // ========== MÉTODOS PARA CONEXIÓN SECUNDARIA ==========
 
   static Future<void> subscribeSecondary(String channelName) async {
     if (_subscribedSecondary.contains(channelName)) {
@@ -257,30 +177,47 @@ class PusherService {
   static Future<void> _subscribeSecondaryOnce(String channelName) async {
     if (_subscribedSecondary.contains(channelName)) return;
 
-    try {
-      await _pusherSecondary?.subscribe(channelName: channelName);
-      _subscribedSecondary.add(channelName);
-      if (RuntimePerfFlags.verbosePusherLogs) {
-        AppLogger.d('Suscrito secondary: $channelName', tag: 'Pusher');
+    await _ensureReady();
+    await _waitForConnected();
+
+    for (var attempt = 0; attempt < 4; attempt++) {
+      if (_isDisconnecting || _reconfiguringEndpoint) {
+        await _waitForConnected();
       }
-    } catch (e) {
-      if (_isAlreadySubscribedError(e)) {
+
+      try {
+        await _clientSecondary?.subscribe(channelName: channelName);
         _subscribedSecondary.add(channelName);
+        if (RuntimePerfFlags.verboseSocketLogs) {
+          AppLogger.d('Suscrito: $channelName', tag: 'Socket');
+        }
+        return;
+      } catch (e) {
+        if (_isAlreadySubscribedError(e)) {
+          _subscribedSecondary.add(channelName);
+          return;
+        }
+        if (_isDisconnectingError(e) && attempt < 3) {
+          await Future<void>.delayed(
+            Duration(milliseconds: 250 * (attempt + 1)),
+          );
+          await _waitForConnected();
+          continue;
+        }
+        AppLogger.d(
+          '❌ Error suscribiéndose al canal $channelName: $e',
+        );
         return;
       }
-      AppLogger.d(
-        '❌ Error suscribiéndose al canal secundario $channelName: $e',
-      );
     }
   }
 
-  /// Re-suscribe aunque Dart crea que ya está unido (p. ej. tras reconectar el socket).
   static Future<void> forceSubscribeSecondary(String channelName) async {
     _subscribedSecondary.remove(channelName);
     _pendingSecondarySubscribe.remove(channelName);
 
     try {
-      await _pusherSecondary?.unsubscribe(channelName: channelName);
+      await _clientSecondary?.unsubscribe(channelName: channelName);
     } catch (_) {
       // Tras disconnect el canal puede no existir en el cliente nativo.
     }
@@ -299,12 +236,12 @@ class PusherService {
       return;
     }
     try {
-      await _pusherSecondary?.unsubscribe(channelName: channelName);
+      await _clientSecondary?.unsubscribe(channelName: channelName);
       _subscribedSecondary.remove(channelName);
-      AppLogger.d('🔕 Desuscrito del canal secundario: $channelName');
+      AppLogger.d('🔕 Desuscrito del canal: $channelName');
     } catch (e) {
       AppLogger.d(
-        '❌ Error desuscribiéndose del canal secundario $channelName: $e',
+        '❌ Error desuscribiéndose del canal $channelName: $e',
       );
     }
   }
@@ -314,17 +251,16 @@ class PusherService {
     Function(dynamic) handler,
   ) {
     _eventHandlersSecondary[eventKey] = handler;
-    if (RuntimePerfFlags.verbosePusherLogs) {
-      AppLogger.d('Handler secondary: $eventKey', tag: 'Pusher');
+    if (RuntimePerfFlags.verboseSocketLogs) {
+      AppLogger.d('Handler: $eventKey', tag: 'Socket');
     }
   }
 
   static void unregisterEventHandlerSecondary(String eventKey) {
     _eventHandlersSecondary.remove(eventKey);
-    AppLogger.d('🗑️ Handler eliminado para evento secundario: $eventKey');
+    AppLogger.d('🗑️ Handler eliminado para evento: $eventKey');
   }
 
-  /// Handlers vacíos para no perder eventos entre el init de Pusher y el home.
   static void _ensureDefaultSecondaryHandlers() {
     const keys = [
       'conductores-disponibles:conductor.actualizado',
@@ -342,7 +278,7 @@ class PusherService {
     final key = '${event.channelName}:${event.eventName}';
     if (kDebugMode && event.channelName.contains('chat.servicio')) {
       AppLogger.d(
-        '💬 [SECONDARY] $key handler=${_eventHandlersSecondary.containsKey(key)}',
+        '💬 [SOCKET] $key handler=${_eventHandlersSecondary.containsKey(key)}',
       );
     }
     final handler = _eventHandlersSecondary[key];
@@ -351,7 +287,7 @@ class PusherService {
           (event.channelName.contains('chat.servicio') ||
               event.eventName.toLowerCase().contains('mensaje'))) {
         AppLogger.d(
-          '⚠️ [SECONDARY] Chat sin handler: $key (evento=${event.eventName})',
+          '⚠️ [SOCKET] Chat sin handler: $key (evento=${event.eventName})',
         );
       }
       return;
@@ -359,37 +295,96 @@ class PusherService {
     handler(event.data);
   }
 
-  /// Re-inicializa el socket nativo con host/puerto del `.env` (Soketi en VPS).
-  static Future<void> _applyCustomPusherEndpoint(
-    PusherChannelsFlutter pusher, {
+  static Future<void> _applyCustomEndpoint(
+    PusherChannelsFlutter client, {
     required String apiKey,
     required String cluster,
     String? authEndpoint,
     bool authorizer = false,
+    bool isFirstSetup = false,
   }) async {
-    if (!PusherNativeInit.hasCustomEndpoint) return;
+    if (!SocketNativeInit.hasCustomEndpoint) return;
 
+    _reconfiguringEndpoint = true;
     try {
-      await pusher.disconnect();
-      _subscribedPrimary.clear();
-      _subscribedSecondary.clear();
-      await pusher.methodChannel.invokeMethod(
+      if (!isFirstSetup && (_isConnected || _isDisconnecting)) {
+        await client.disconnect();
+        _subscribedPrimary.clear();
+        _subscribedSecondary.clear();
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+      }
+
+      await client.methodChannel.invokeMethod(
         'init',
-        PusherNativeInit.customEndpointOverrides(
+        SocketNativeInit.customEndpointOverrides(
           apiKey: apiKey,
           cluster: cluster,
           authEndpoint: authEndpoint,
           authorizer: authorizer,
         ),
       );
-      await pusher.methodChannel.invokeMethod('connect');
+      await client.methodChannel.invokeMethod('connect');
+      await _waitForConnected(fallbackAfterConnect: true);
       AppLogger.d(
-        '🔌 Pusher Secondary reconfigurado → ${AppConfig.pusherHost}:${AppConfig.pusherPort} '
-        '(TLS=${AppConfig.pusherUseTls})',
-        tag: 'Pusher',
+        '🔌 Socket reconfigurado → ${AppConfig.socketHost}:${AppConfig.socketPort} '
+        '(TLS=${AppConfig.socketUseTls})',
+        tag: 'Socket',
       );
     } catch (e) {
-      AppLogger.d('❌ Pusher custom endpoint: $e', tag: 'Pusher');
+      AppLogger.d('❌ Socket custom endpoint: $e', tag: 'Socket');
+      rethrow;
+    } finally {
+      _reconfiguringEndpoint = false;
+    }
+  }
+
+  static Future<void> _waitForConnected({
+    Duration timeout = const Duration(seconds: 15),
+    bool fallbackAfterConnect = false,
+  }) async {
+    if (_isConnected && !_isDisconnecting && !_reconfiguringEndpoint) {
+      return;
+    }
+
+    _connectedCompleter ??= Completer<void>();
+    try {
+      await _connectedCompleter!.future.timeout(timeout);
+    } on TimeoutException {
+      if (!_isConnected && fallbackAfterConnect) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        _markConnected();
+      } else if (!_isConnected) {
+        AppLogger.w(
+          'Socket: timeout esperando CONNECTED (${timeout.inSeconds}s)',
+          tag: 'Socket',
+        );
+      }
+    } finally {
+      if (_connectedCompleter?.isCompleted ?? true) {
+        _connectedCompleter = null;
+      }
+    }
+  }
+
+  static bool _isDisconnectingError(Object e) {
+    final text = e.toString().toUpperCase();
+    return text.contains('DISCONNECTING');
+  }
+
+  static void _markConnected() {
+    _isConnected = true;
+    _isDisconnecting = false;
+    final pending = _connectedCompleter;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete();
+    }
+  }
+
+  static void _markDisconnected({bool disconnecting = false}) {
+    _isConnected = false;
+    _isDisconnecting = disconnecting;
+    if (!disconnecting) {
+      _connectedCompleter = null;
     }
   }
 
@@ -397,27 +392,40 @@ class PusherService {
     String channelName,
     dynamic data,
   ) {
-    if (RuntimePerfFlags.verbosePusherLogs) {
-      AppLogger.d('OK secondary: $channelName', tag: 'Pusher');
+    if (RuntimePerfFlags.verboseSocketLogs) {
+      AppLogger.d('OK: $channelName', tag: 'Socket');
     }
   }
 
   static void _onErrorSecondary(String message, int? code, dynamic e) {
-    AppLogger.d('❌ [SECONDARY] Error: $message (código: $code)');
+    if (_reconfiguringEndpoint &&
+        message.toUpperCase().contains('DISCONNECTING')) {
+      return;
+    }
+    AppLogger.d('❌ [SOCKET] Error: $message (código: $code)');
   }
 
   static void _onSubscriptionErrorSecondary(String message, dynamic e) {
-    AppLogger.d('❌ [SECONDARY] Error de suscripción: $message | details=$e');
+    AppLogger.d('❌ [SOCKET] Error de suscripción: $message | details=$e');
   }
 
   static void _onConnectionStateChangeSecondary(
     dynamic currentState,
     dynamic previousState,
   ) {
-    if (!RuntimePerfFlags.verbosePusherLogs) return;
+    final state = currentState.toString().toUpperCase();
+    if (state.contains('CONNECTED') && !state.contains('DISCONNECTED')) {
+      _markConnected();
+    } else if (state.contains('DISCONNECTING')) {
+      _markDisconnected(disconnecting: true);
+    } else if (state.contains('DISCONNECTED')) {
+      _markDisconnected();
+    }
+
+    if (!RuntimePerfFlags.verboseSocketLogs) return;
     AppLogger.d(
-      '[SECONDARY] $previousState → $currentState',
-      tag: 'Pusher',
+      '[SOCKET] $previousState → $currentState',
+      tag: 'Socket',
     );
   }
 
@@ -428,14 +436,14 @@ class PusherService {
   ) async {
     try {
       AppLogger.d(
-        '🔐 [SECONDARY] Auth private channel: channel=$channelName socket=$socketId',
+        '🔐 [SOCKET] Auth private channel: channel=$channelName socket=$socketId',
       );
 
       final dio = DioClient.getInstance();
       Response response;
       try {
         response = await dio.post(
-          'auth/pusher-secondary',
+          'auth/pusher',
           data: FormData.fromMap({
             'channel_name': channelName,
             'socket_id': socketId,
@@ -446,7 +454,7 @@ class PusherService {
         );
       } on DioException catch (e) {
         AppLogger.d(
-          '⚠️ [SECONDARY] auth/pusher-secondary falló (${e.response?.statusCode}), probando auth/pusher',
+          '⚠️ [SOCKET] auth/pusher falló (${e.response?.statusCode}), probando auth/pusher',
         );
         response = await dio.post(
           'auth/pusher',
@@ -461,7 +469,7 @@ class PusherService {
       }
 
       AppLogger.d(
-        '✅ [SECONDARY] Auth response ${response.statusCode}: ${response.data}',
+        '✅ [SOCKET] Auth response ${response.statusCode}: ${response.data}',
       );
 
       if (response.data is String) {
@@ -469,18 +477,19 @@ class PusherService {
       }
       return response.data;
     } catch (e) {
-      AppLogger.d('❌ [SECONDARY] Error auth private channel $channelName: $e');
+      AppLogger.d('❌ [SOCKET] Error auth private channel $channelName: $e');
       return {};
     }
   }
 
-  // ========== MÉTODOS GENERALES ==========
-
   static Future<void> disconnect() async {
-    await _pusherPrimary?.disconnect();
-    await _pusherSecondary?.disconnect();
+    await _clientPrimary?.disconnect();
+    await _clientSecondary?.disconnect();
     _subscribedPrimary.clear();
     _subscribedSecondary.clear();
-    AppLogger.d('🔌 Ambas conexiones Pusher desconectadas');
+    _secondaryReady = false;
+    _initFuture = null;
+    _markDisconnected();
+    AppLogger.d('🔌 Socket desconectado', tag: 'Socket');
   }
 }

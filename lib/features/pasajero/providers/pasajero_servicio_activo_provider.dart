@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
-import 'package:intellitaxi/features/rides/services/servicio_pusher_service.dart';
+import 'package:intellitaxi/features/rides/services/servicio_socket_service.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/pasajero/services/pasajero_servicio_mapper.dart';
 import 'package:intellitaxi/features/pasajero/services/servicio_conductor_location_cache_service.dart';
@@ -16,7 +16,7 @@ import 'package:intellitaxi/features/conductor/services/conductores_service.dart
 /// 🎯 Provider que maneja toda la lógica del servicio activo del pasajero
 class PasajeroServicioActivoProvider extends ChangeNotifier {
   // ===== SERVICIOS =====
-  final ServicioPusherService _pusherService = ServicioPusherService();
+  final ServicioSocketService _socketService = ServicioSocketService();
   final RoutesService _routesService = RoutesService();
   final ServicioConductorLocationCacheService _locationCacheService =
       ServicioConductorLocationCacheService();
@@ -427,7 +427,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   Future<void> _suscribirEventos() async {
     AppLogger.d('🔌 PROVIDER: Suscribiendo a eventos Pusher...');
 
-    _pusherService.suscribirServicio(
+    _socketService.suscribirServicio(
       servicioId: servicioId,
       onServicioAceptado: (data) {
         if (_disposed) return;
@@ -804,7 +804,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       _locationCacheService.clear(servicioId);
       _lastConductorLocationCache.remove(servicioId);
     }
-    _pusherService.desconectar();
+    _socketService.desconectar();
     super.dispose();
   }
 }

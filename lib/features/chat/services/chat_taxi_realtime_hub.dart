@@ -1,8 +1,8 @@
-import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/config/socket_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/chat/data/mensaje_taxi_model.dart';
-import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_socket_channels.dart';
 
 /// Suscripción única a `chat.servicio.{id}` (varios listeners: pantalla chat, badge).
 class ChatTaxiRealtimeHub {
@@ -36,7 +36,7 @@ class ChatTaxiRealtimeHub {
       final payload = merged['mensaje'] is Map
           ? Map<String, dynamic>.from(merged['mensaje'] as Map)
           : merged;
-      return MensajeTaxi.fromPusher(payload);
+      return MensajeTaxi.fromSocket(payload);
     } catch (e) {
       AppLogger.d('💬 Hub: error parseando mensaje: $e');
       return null;
@@ -46,11 +46,11 @@ class ChatTaxiRealtimeHub {
   static Future<void> ensureSubscribed(int servicioId) async {
     if (servicioId <= 0) return;
 
-    final channelName = TaxiPusherChannels.chatServicio(servicioId);
+    final channelName = TaxiSocketChannels.chatServicio(servicioId);
     _registrarHandlersCanal(channelName, servicioId);
     _serviciosConCanal.add(servicioId);
 
-    await PusherService.forceSubscribeSecondary(channelName);
+    await SocketService.forceSubscribeSecondary(channelName);
 
     AppLogger.d(
       '💬 Hub: canal $channelName (listeners=${_mensajeListeners[servicioId]?.length ?? 0})',
@@ -60,9 +60,9 @@ class ChatTaxiRealtimeHub {
   /// Tras reconectar el socket (Soketi VPS), volver a unirse a los canales activos.
   static Future<void> resubscribeAllChannels() async {
     for (final servicioId in List.of(_serviciosConCanal)) {
-      final channelName = TaxiPusherChannels.chatServicio(servicioId);
+      final channelName = TaxiSocketChannels.chatServicio(servicioId);
       _registrarHandlersCanal(channelName, servicioId);
-      await PusherService.forceSubscribeSecondary(channelName);
+      await SocketService.forceSubscribeSecondary(channelName);
       AppLogger.d('💬 Hub: re-suscrito $channelName');
     }
   }
@@ -76,11 +76,11 @@ class ChatTaxiRealtimeHub {
     final servicioId = servicioIdFromChannel(channelName);
     if (servicioId == null) return;
 
-    if (TaxiPusherEvents.nuevoMensajeAliases.contains(eventName)) {
+    if (TaxiSocketEvents.nuevoMensajeAliases.contains(eventName)) {
       dispatchMensaje(servicioId, data);
       return;
     }
-    if (TaxiPusherEvents.mensajeLeidoAliases.contains(eventName)) {
+    if (TaxiSocketEvents.mensajeLeidoAliases.contains(eventName)) {
       dispatchLeido(servicioId, data);
     }
   }
@@ -120,17 +120,17 @@ class ChatTaxiRealtimeHub {
   }
 
   static void _registrarHandlersCanal(String channelName, int servicioId) {
-    for (final eventName in TaxiPusherEvents.nuevoMensajeAliases) {
+    for (final eventName in TaxiSocketEvents.nuevoMensajeAliases) {
       final key = '$channelName:$eventName';
-      PusherService.registerEventHandlerSecondary(
+      SocketService.registerEventHandlerSecondary(
         key,
         (data) => dispatchMensaje(servicioId, data),
       );
     }
 
-    for (final eventName in TaxiPusherEvents.mensajeLeidoAliases) {
+    for (final eventName in TaxiSocketEvents.mensajeLeidoAliases) {
       final key = '$channelName:$eventName';
-      PusherService.registerEventHandlerSecondary(
+      SocketService.registerEventHandlerSecondary(
         key,
         (data) => dispatchLeido(servicioId, data),
       );
@@ -177,15 +177,15 @@ class ChatTaxiRealtimeHub {
 
     if (!_serviciosConCanal.contains(servicioId)) return;
 
-    final channel = TaxiPusherChannels.chatServicio(servicioId);
-    PusherService.unsubscribeSecondary(channel);
+    final channel = TaxiSocketChannels.chatServicio(servicioId);
+    SocketService.unsubscribeSecondary(channel);
     _serviciosConCanal.remove(servicioId);
 
-    for (final eventName in TaxiPusherEvents.nuevoMensajeAliases) {
-      PusherService.unregisterEventHandlerSecondary('$channel:$eventName');
+    for (final eventName in TaxiSocketEvents.nuevoMensajeAliases) {
+      SocketService.unregisterEventHandlerSecondary('$channel:$eventName');
     }
-    for (final eventName in TaxiPusherEvents.mensajeLeidoAliases) {
-      PusherService.unregisterEventHandlerSecondary('$channel:$eventName');
+    for (final eventName in TaxiSocketEvents.mensajeLeidoAliases) {
+      SocketService.unregisterEventHandlerSecondary('$channel:$eventName');
     }
 
     AppLogger.d('💬 Hub: desuscrito $channel');

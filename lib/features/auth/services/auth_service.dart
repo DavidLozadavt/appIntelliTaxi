@@ -26,6 +26,10 @@ class AuthService {
     return _prefsCache ??= await SharedPreferences.getInstance();
   }
 
+  static void invalidatePrefsCache() {
+    _prefsCache = null;
+  }
+
   /// Una sola lectura de prefs: token + JSON de usuario + rol activo.
   static Future<SessionSnapshot> readSessionSnapshot() async {
     final prefs = await sharedPreferences();

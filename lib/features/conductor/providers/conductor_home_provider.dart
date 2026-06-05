@@ -20,8 +20,8 @@ import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dar
 import 'package:intellitaxi/features/conductor/data/turno_model.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
-import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
-import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_socket_channels.dart';
+import 'package:intellitaxi/config/socket_service.dart';
 
 import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
@@ -106,7 +106,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? _ultimaSyncSolicitudesEn;
   Timer? _tickerExpiracionUI;
   Timer? _syncSolicitudesTimer;
-  bool _suscritoAPusher = false;
+  bool _suscritoASocket = false;
   bool _suscritoEmergenciasFlota = false;
   bool _enServicio = false;
   int? _servicioActivoId;
@@ -655,8 +655,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
     }
 
-    if (_isOnline && !_enDescanso && !_suscritoAPusher) {
-      await conectarPusher();
+    if (_isOnline && !_enDescanso && !_suscritoASocket) {
+      await conectarSocket();
     }
 
     final pos = _currentPosition;
@@ -743,7 +743,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         await _suscribirEmergenciasFlota();
         await _sendMapHeartbeat(position, force: true);
       } else {
-        await conectarPusher();
+        await conectarSocket();
         await _sendMapHeartbeat(position, force: true);
       }
 
@@ -968,14 +968,14 @@ class ConductorHomeProvider extends ChangeNotifier {
     _detenerPollOfertaActiva();
     _detenerTickOfertaExclusiva();
     VoiceAlertService.dispose();
-    desconectarPusher();
+    desconectarSocket();
     super.dispose();
   }
 
-  // ==================== CONEXIÓN PUSHER ====================
+  // ==================== CONEXIÓN SOCKET ====================
 
   /// Conecta a Pusher y se suscribe al canal de solicitudes
-  Future<void> conectarPusher() async {
+  Future<void> conectarSocket() async {
     if (_enServicio) {
       AppLogger.d('ℹ️ En servicio: no suscribir solicitudes-servicio');
       await _suscribirEmergenciasFlota();
@@ -989,24 +989,25 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     try {
-      if (_suscritoAPusher) {
+      if (_suscritoASocket) {
         AppLogger.d('⚠️ Ya está suscrito a solicitudes-servicio');
         return;
       }
 
       AppLogger.d('🔌 Suscribiéndose al canal de solicitudes...');
 
-      await PusherService.subscribeSecondary(TaxiPusherChannels.solicitudesServicio);
+      await SocketService.initialize();
+      await SocketService.subscribeSecondary(TaxiSocketChannels.solicitudesServicio);
 
       // Registrar handlers para variantes del evento de nuevas solicitudes
       for (final eventName in const [
-        TaxiPusherEvents.nuevaSolicitud,
+        TaxiSocketEvents.nuevaSolicitud,
         'nueva_solicitud',
         'nueva-oferta',
         'nueva_oferta',
       ]) {
-        PusherService.registerEventHandlerSecondary(
-          '${TaxiPusherChannels.solicitudesServicio}:$eventName',
+        SocketService.registerEventHandlerSecondary(
+          '${TaxiSocketChannels.solicitudesServicio}:$eventName',
           (data) {
             AppLogger.d('🔔 Evento recibido: $eventName');
             if (data != null) {
@@ -1017,11 +1018,11 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       for (final eventName in const [
-        TaxiPusherEvents.solicitudTomada,
+        TaxiSocketEvents.solicitudTomada,
         'solicitud_tomada',
       ]) {
-        PusherService.registerEventHandlerSecondary(
-          '${TaxiPusherChannels.solicitudesServicio}:$eventName',
+        SocketService.registerEventHandlerSecondary(
+          '${TaxiSocketChannels.solicitudesServicio}:$eventName',
           (data) {
             if (data != null) _procesarSolicitudTomada(data);
           },
@@ -1034,7 +1035,7 @@ class ConductorHomeProvider extends ChangeNotifier {
           ConductorSessionHelper.canalesOfertaDirecta(idsConductor);
       if (candidateChannels.isNotEmpty) {
         for (final channel in candidateChannels) {
-          await PusherService.subscribeSecondary(channel);
+          await SocketService.subscribeSecondary(channel);
           _offerChannels.add(channel);
 
           for (final eventName in const [
@@ -1044,7 +1045,7 @@ class ConductorHomeProvider extends ChangeNotifier {
           ]) {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
-            PusherService.registerEventHandlerSecondary(key, (data) {
+            SocketService.registerEventHandlerSecondary(key, (data) {
               AppLogger.d('🔔 Evento privado: $eventName en $channel');
               if (data != null) {
                 _procesarPayloadSocket(data, eventName: eventName);
@@ -1053,12 +1054,12 @@ class ConductorHomeProvider extends ChangeNotifier {
           }
 
           for (final eventName in const [
-            TaxiPusherEvents.servicioCercano,
+            TaxiSocketEvents.servicioCercano,
             'servicio_cercano',
           ]) {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
-            PusherService.registerEventHandlerSecondary(key, (data) {
+            SocketService.registerEventHandlerSecondary(key, (data) {
               AppLogger.d('🔔 Evento privado: $eventName en $channel');
               if (data != null) {
                 _procesarPayloadSocket(data, eventName: eventName);
@@ -1067,12 +1068,12 @@ class ConductorHomeProvider extends ChangeNotifier {
           }
 
           for (final eventName in const [
-            TaxiPusherEvents.ofertaServicioExclusiva,
+            TaxiSocketEvents.ofertaServicioExclusiva,
             'oferta.servicio.exclusiva',
           ]) {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
-            PusherService.registerEventHandlerSecondary(key, (data) {
+            SocketService.registerEventHandlerSecondary(key, (data) {
               AppLogger.d('🔔 Evento privado: $eventName en $channel');
               if (data != null) {
                 _procesarPayloadSocket(data, eventName: eventName);
@@ -1081,12 +1082,12 @@ class ConductorHomeProvider extends ChangeNotifier {
           }
 
           for (final eventName in const [
-            TaxiPusherEvents.ofertaServicioCerrada,
+            TaxiSocketEvents.ofertaServicioCerrada,
             'oferta.servicio.cerrada',
           ]) {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
-            PusherService.registerEventHandlerSecondary(key, (data) {
+            SocketService.registerEventHandlerSecondary(key, (data) {
               AppLogger.d('🔔 Evento privado: $eventName en $channel');
               if (data != null) {
                 _procesarPayloadSocket(data, eventName: eventName);
@@ -1096,12 +1097,12 @@ class ConductorHomeProvider extends ChangeNotifier {
 
           // Mismo merge que `solicitudes-servicio` (modo broadcast / backend legacy).
           for (final eventName in const [
-            TaxiPusherEvents.nuevaSolicitud,
+            TaxiSocketEvents.nuevaSolicitud,
             'nueva_solicitud',
           ]) {
             final key = '$channel:$eventName';
             _offerHandlerKeys.add(key);
-            PusherService.registerEventHandlerSecondary(key, (data) {
+            SocketService.registerEventHandlerSecondary(key, (data) {
               AppLogger.d('🔔 Evento privado: $eventName en $channel');
               if (data != null) {
                 _procesarPayloadSocket(data, eventName: eventName);
@@ -1122,7 +1123,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       await _suscribirEmergenciasFlota();
 
-      _suscritoAPusher = true;
+      _suscritoASocket = true;
       _iniciarSincronizacionSolicitudes();
       _reprogramarPollOfertaActiva();
       unawaited(() async {
@@ -1133,7 +1134,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       }());
       AppLogger.d('✅ Suscrito correctamente al canal de solicitudes');
     } catch (e) {
-      AppLogger.d('❌ Error al conectarse a Pusher: $e');
+      AppLogger.d('❌ Error al conectarse al socket: $e');
     }
   }
 
@@ -1144,7 +1145,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       const Duration(seconds: kPollSolicitudesPendientesSegundos),
       (_) {
       if (!_isDisposed &&
-          _suscritoAPusher &&
+          _suscritoASocket &&
           _isOnline &&
           !_enDescanso &&
           !ApiRateLimitGuard.instance.isBlocked) {
@@ -1258,13 +1259,13 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Desconecta de Pusher
-  Future<void> desconectarPusher() async {
+  Future<void> desconectarSocket() async {
     try {
       await _desuscribirRecepcionServicios();
       await _desuscribirEmergenciasFlota();
-      AppLogger.d('✅ Desconectado de Pusher');
+      AppLogger.d('✅ Desconectado del socket');
     } catch (e) {
-      AppLogger.d('❌ Error al desconectar Pusher: $e');
+      AppLogger.d('❌ Error al desconectar socket: $e');
     }
   }
 
@@ -1290,34 +1291,34 @@ class ConductorHomeProvider extends ChangeNotifier {
     _detenerSincronizacionSolicitudes();
     _detenerPollOfertaActiva();
     for (final eventName in const [
-      TaxiPusherEvents.nuevaSolicitud,
+      TaxiSocketEvents.nuevaSolicitud,
       'nueva_solicitud',
       'nueva-oferta',
       'nueva_oferta',
-      TaxiPusherEvents.solicitudTomada,
+      TaxiSocketEvents.solicitudTomada,
       'solicitud_tomada',
     ]) {
-      PusherService.unregisterEventHandlerSecondary(
-        '${TaxiPusherChannels.solicitudesServicio}:$eventName',
+      SocketService.unregisterEventHandlerSecondary(
+        '${TaxiSocketChannels.solicitudesServicio}:$eventName',
       );
     }
     try {
-      await PusherService.unsubscribeSecondary(
-        TaxiPusherChannels.solicitudesServicio,
+      await SocketService.unsubscribeSecondary(
+        TaxiSocketChannels.solicitudesServicio,
       );
     } catch (_) {}
 
     for (final key in _offerHandlerKeys.toList(growable: false)) {
-      PusherService.unregisterEventHandlerSecondary(key);
+      SocketService.unregisterEventHandlerSecondary(key);
     }
     _offerHandlerKeys.clear();
 
     for (final channel in _offerChannels.toList(growable: false)) {
-      await PusherService.unsubscribeSecondary(channel);
+      await SocketService.unsubscribeSecondary(channel);
     }
     _offerChannels.clear();
 
-    _suscritoAPusher = false;
+    _suscritoASocket = false;
   }
 
   Future<void> _desuscribirCanalSolicitudesServicio() async {
@@ -1766,7 +1767,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (_suscritoEmergenciasFlota) return;
     const channel = 'emergencias-conductores';
     try {
-      await PusherService.subscribeSecondary(channel);
+      await SocketService.subscribeSecondary(channel);
       for (final eventName in const [
         'nueva-emergencia',
         'nueva_emergencia',
@@ -1774,7 +1775,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         'emergencia_conductor',
         'emergencia-nueva',
       ]) {
-        PusherService.registerEventHandlerSecondary(
+        SocketService.registerEventHandlerSecondary(
           '$channel:$eventName',
           (data) {
             if (data != null) {
@@ -1800,9 +1801,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       'emergencia_conductor',
       'emergencia-nueva',
     ]) {
-      PusherService.unregisterEventHandlerSecondary('$channel:$eventName');
+      SocketService.unregisterEventHandlerSecondary('$channel:$eventName');
     }
-    await PusherService.unsubscribeSecondary(channel);
+    await SocketService.unsubscribeSecondary(channel);
     _suscritoEmergenciasFlota = false;
   }
 
@@ -3129,8 +3130,8 @@ class ConductorHomeProvider extends ChangeNotifier {
             tag: 'Turno',
           );
           _isOnline = true;
-          if (!_enDescanso && !_suscritoAPusher) {
-            unawaited(conectarPusher());
+          if (!_enDescanso && !_suscritoASocket) {
+            unawaited(conectarSocket());
           }
           if (!_isDisposed) notifyListeners();
           return;
@@ -3141,8 +3142,8 @@ class ConductorHomeProvider extends ChangeNotifier {
             '(id=${_turnoActivo?.id})',
           );
           _isOnline = true;
-          if (!_enDescanso && !_suscritoAPusher) {
-            unawaited(conectarPusher());
+          if (!_enDescanso && !_suscritoASocket) {
+            unawaited(conectarSocket());
           }
           if (!_isDisposed) notifyListeners();
           return;
@@ -3167,15 +3168,15 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void> _restaurarTurnoTrasFalloDeRed() async {
     if (_turnoActivo != null) {
       _isOnline = true;
-      if (!_enDescanso && !_suscritoAPusher) {
-        unawaited(conectarPusher());
+      if (!_enDescanso && !_suscritoASocket) {
+        unawaited(conectarSocket());
       }
       if (!_isDisposed) notifyListeners();
       return;
     }
     final ok = await restaurarTurnoDesdeCache();
     if (ok && !_enDescanso) {
-      unawaited(conectarPusher());
+      unawaited(conectarSocket());
     }
   }
 
@@ -3351,7 +3352,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _recibeServicios = true;
     _visibleEnMapa = true;
     _sincronizarVehiculoSeleccionadoConTurno();
-    await conectarPusher();
+    await conectarSocket();
     final pos = _currentPosition;
     if (pos != null) {
       unawaited(_sendMapHeartbeat(pos, force: true));
@@ -3627,7 +3628,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     await prefs.remove('turno_fecha');
     await prefs.remove('turno_hora_inicio');
 
-    await desconectarPusher();
+    await desconectarSocket();
     _detenerSeguimientoUbicacion();
 
     _turnoActivo = null;

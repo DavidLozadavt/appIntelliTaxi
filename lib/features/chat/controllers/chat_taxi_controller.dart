@@ -17,7 +17,7 @@ class ChatTaxiController extends ChangeNotifier {
   bool _cargando = false;
   String? _error;
   Map<String, dynamic>? _infoChat;
-  bool _pusherInicializado = false;
+  bool _socketInicializado = false;
 
   ChatTaxiController({
     required ChatTaxiService service,
@@ -30,7 +30,7 @@ class ChatTaxiController extends ChangeNotifier {
   bool get cargando => _cargando;
   String? get error => _error;
   Map<String, dynamic>? get infoChat => _infoChat;
-  bool get pusherInicializado => _pusherInicializado;
+  bool get socketInicializado => _socketInicializado;
 
   /// Obtener nombre del otro usuario
   String get nombreOtroUsuario {
@@ -94,7 +94,7 @@ class ChatTaxiController extends ChangeNotifier {
         onMensajeLeido: _onMensajeLeido,
       );
 
-      _pusherInicializado = true;
+      _socketInicializado = true;
       _error = null;
     } catch (e) {
       _error = 'Error al inicializar: $e';
@@ -261,7 +261,7 @@ class ChatTaxiController extends ChangeNotifier {
   @override
   void dispose() {
     ChatRealtimeBridge.unregister(servicioId);
-    if (_pusherInicializado) {
+    if (_socketInicializado) {
       _service.desuscribirse(servicioId, quitarCanal: false);
     }
     _service.dispose();

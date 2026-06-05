@@ -65,7 +65,7 @@ class MensajeTaxi {
   }
 
   /// Factory para mensajes que llegan por Pusher o FCM (payload plano o anidado).
-  factory MensajeTaxi.fromPusher(Map<String, dynamic> json) {
+  factory MensajeTaxi.fromSocket(Map<String, dynamic> json) {
     final createdRaw =
         json['created_at'] ?? json['createdAt'] ?? json['timestamp'];
     return MensajeTaxi(

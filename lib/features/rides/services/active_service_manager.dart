@@ -3,9 +3,9 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
-import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/config/socket_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
-import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_socket_channels.dart';
 
 class ActiveServiceManager {
   final Dio _dio = DioClient.getInstance();
@@ -233,12 +233,12 @@ class ActiveServiceManager {
     try {
       AppLogger.d('📡 Suscribiendo a eventos del servicio $servicioId');
 
-      final channelName = TaxiPusherChannels.servicio(servicioId);
+      final channelName = TaxiSocketChannels.servicio(servicioId);
 
-      await PusherService.subscribeSecondary(channelName);
+      await SocketService.subscribeSecondary(channelName);
 
-      PusherService.registerEventHandlerSecondary(
-        '$channelName:${TaxiPusherEvents.servicioEstadoCambiado}',
+      SocketService.registerEventHandlerSecondary(
+        '$channelName:${TaxiSocketEvents.servicioEstadoCambiado}',
         (data) async {
           AppLogger.d('🔔 Estado del servicio cambió');
           try {
@@ -259,15 +259,15 @@ class ActiveServiceManager {
         },
       );
 
-      PusherService.registerEventHandlerSecondary(
-        '$channelName:${TaxiPusherEvents.conductorUbicacionActualizada}',
+      SocketService.registerEventHandlerSecondary(
+        '$channelName:${TaxiSocketEvents.conductorUbicacionActualizada}',
         (data) {
           AppLogger.d('📍 Ubicación del conductor actualizada');
         },
       );
 
-      PusherService.registerEventHandlerSecondary(
-        '$channelName:${TaxiPusherEvents.servicioAceptado}',
+      SocketService.registerEventHandlerSecondary(
+        '$channelName:${TaxiSocketEvents.servicioAceptado}',
         (data) async {
           AppLogger.d('✅ Servicio aceptado por conductor');
           try {
@@ -292,19 +292,19 @@ class ActiveServiceManager {
     try {
       AppLogger.d('🔕 Desuscribiendo de eventos del servicio $servicioId');
 
-      final channelName = TaxiPusherChannels.servicio(servicioId);
+      final channelName = TaxiSocketChannels.servicio(servicioId);
 
-      PusherService.unregisterEventHandlerSecondary(
-        '$channelName:${TaxiPusherEvents.servicioEstadoCambiado}',
+      SocketService.unregisterEventHandlerSecondary(
+        '$channelName:${TaxiSocketEvents.servicioEstadoCambiado}',
       );
-      PusherService.unregisterEventHandlerSecondary(
-        '$channelName:${TaxiPusherEvents.conductorUbicacionActualizada}',
+      SocketService.unregisterEventHandlerSecondary(
+        '$channelName:${TaxiSocketEvents.conductorUbicacionActualizada}',
       );
-      PusherService.unregisterEventHandlerSecondary(
-        '$channelName:${TaxiPusherEvents.servicioAceptado}',
+      SocketService.unregisterEventHandlerSecondary(
+        '$channelName:${TaxiSocketEvents.servicioAceptado}',
       );
 
-      await PusherService.unsubscribeSecondary(channelName);
+      await SocketService.unsubscribeSecondary(channelName);
 
       AppLogger.d('✅ Desuscripción exitosa');
     } catch (e) {

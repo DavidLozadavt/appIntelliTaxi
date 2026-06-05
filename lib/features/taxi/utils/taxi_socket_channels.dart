@@ -1,6 +1,6 @@
-/// Nombres de canales/eventos Pusher taxi (instancia secundaria).
-class TaxiPusherChannels {
-  TaxiPusherChannels._();
+/// Nombres de canales/eventos WebSocket taxi (Soketi en VPS).
+class TaxiSocketChannels {
+  TaxiSocketChannels._();
 
   static const solicitudesServicio = 'solicitudes-servicio';
 
@@ -11,8 +11,8 @@ class TaxiPusherChannels {
   static String pasajero(int userId) => 'pasajero.$userId';
 }
 
-class TaxiPusherEvents {
-  TaxiPusherEvents._();
+class TaxiSocketEvents {
+  TaxiSocketEvents._();
 
   static const nuevaSolicitud = 'nueva-solicitud';
   static const servicioCercano = 'servicio.cercano';

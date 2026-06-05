@@ -174,7 +174,7 @@ class ChatProvider with ChangeNotifier {
     debugPrint("✅ Subscribed to channel: $channelName");
   }
 
-  void disconnectPusher() {
+  void disconnectSocket() {
     _pusher?.disconnect();
     _pusher = null;
   }

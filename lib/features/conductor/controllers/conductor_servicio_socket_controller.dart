@@ -1,12 +1,12 @@
-import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/config/socket_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_estado_helper.dart';
-import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_socket_channels.dart';
 
-/// Resultado de un evento `servicio.estado.cambiado` en Pusher.
-class ConductorServicioEstadoPusherEvent {
-  const ConductorServicioEstadoPusherEvent({
+/// Resultado de un evento `servicio.estado.cambiado` por WebSocket.
+class ConductorServicioEstadoSocketEvent {
+  const ConductorServicioEstadoSocketEvent({
     this.estadoUi,
     this.estadoId,
     this.estadoNombre,
@@ -22,14 +22,14 @@ class ConductorServicioEstadoPusherEvent {
 }
 
 /// Suscripción y parseo de eventos de estado del servicio activo.
-class ConductorServicioPusherController {
+class ConductorServicioSocketController {
   final List<String> _eventKeys = [];
 
   Future<void> subscribe({
     required int servicioId,
-    required void Function(ConductorServicioEstadoPusherEvent event) onEstado,
+    required void Function(ConductorServicioEstadoSocketEvent event) onEstado,
   }) async {
-    final channelName = TaxiPusherChannels.servicio(servicioId);
+    final channelName = TaxiSocketChannels.servicio(servicioId);
 
     void onRawEvent(dynamic event, String eventName) {
       final parsed = parseEstadoEvent(event);
@@ -42,30 +42,30 @@ class ConductorServicioPusherController {
     }
 
     for (final eventName in const [
-      TaxiPusherEvents.servicioEstadoCambiado,
+      TaxiSocketEvents.servicioEstadoCambiado,
       'servicio.estado.cambiado',
       'ServicioEstadoCambiado',
       'servicio_estado_cambiado',
     ]) {
       final key = '$channelName:$eventName';
       _eventKeys.add(key);
-      PusherService.registerEventHandlerSecondary(key, (event) {
+      SocketService.registerEventHandlerSecondary(key, (event) {
         onRawEvent(event, eventName);
       });
     }
 
-    await PusherService.subscribeSecondary(channelName);
+    await SocketService.subscribeSecondary(channelName);
   }
 
   void unsubscribe(int servicioId) {
     for (final key in _eventKeys) {
-      PusherService.unregisterEventHandlerSecondary(key);
+      SocketService.unregisterEventHandlerSecondary(key);
     }
     _eventKeys.clear();
-    PusherService.unsubscribeSecondary(TaxiPusherChannels.servicio(servicioId));
+    SocketService.unsubscribeSecondary(TaxiSocketChannels.servicio(servicioId));
   }
 
-  static ConductorServicioEstadoPusherEvent? parseEstadoEvent(dynamic event) {
+  static ConductorServicioEstadoSocketEvent? parseEstadoEvent(dynamic event) {
     try {
       final data = JsonPayloadHelper.parseAndMerge(event);
 
@@ -91,7 +91,7 @@ class ConductorServicioPusherController {
       final cancelado = estadoUi == 'cancelado' || estadoId == 6;
       final finalizado = estadoUi == 'finalizado' || estadoId == 22;
 
-      return ConductorServicioEstadoPusherEvent(
+      return ConductorServicioEstadoSocketEvent(
         estadoUi: estadoUi,
         estadoId: estadoId,
         estadoNombre: estadoNombre,

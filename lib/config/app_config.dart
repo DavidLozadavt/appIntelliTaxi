@@ -2,7 +2,7 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AppConfig {
-  /// Primera variable definida en `.env` (alineado con Laravel `SOCKET_*` / `PUSHER_*`).
+  /// Primera variable definida en `.env` (alineado con Laravel `SOCKET_*`).
   static String _envFirst(List<String> keys, {String fallback = ''}) {
     for (final key in keys) {
       final value = dotenv.env[key]?.trim();
@@ -22,68 +22,32 @@ class AppConfig {
   // Google Maps API Key
   static String get googleMapsApiKey => dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
-  // WebSocket taxis (Laravel: SOCKET_* en broadcasting; PUSHER_* suele ir vacío)
-  static String get pusherAppKeyRaw =>
-      _envFirst(['PUSHER_APP_KEY', 'SOCKET_APP_KEY']);
+  // WebSocket taxis — Soketi / laravel-websockets en VPS (NO Pusher.com)
+  static String get socketAppKey => _envFirst(['SOCKET_APP_KEY']);
 
-  /// Si primary está vacío, usa secondary / SOCKET_APP_KEY.
-  static String get pusherAppKey {
-    if (pusherAppKeyRaw.isNotEmpty) return pusherAppKeyRaw;
-    return pusherSecondaryAppKey;
-  }
+  /// Misma key que [socketAppKey] (una sola conexión al VPS).
+  static String get socketAppKeySecondary => socketAppKey;
 
-  static bool get pusherPrimaryUsesSecondaryFallback =>
-      pusherAppKeyRaw.isEmpty && pusherSecondaryAppKey.isNotEmpty;
+  static String get socketCluster =>
+      _envFirst(['SOCKET_APP_CLUSTER'], fallback: 'mt1');
 
-  static String get pusherCluster =>
-      _envFirst(['PUSHER_CLUSTER', 'SOCKET_APP_CLUSTER'], fallback: 'mt1');
+  static String get socketHost => _envFirst(['SOCKET_HOST']);
 
-  /// Host Soketi / laravel-websockets. Vacío = cluster Pusher.com.
-  static String get pusherHost => _envFirst([
-        'PUSHER_HOST',
-        'PUSHER_SECONDARY_HOST',
-        'SOCKET_HOST',
-      ]);
-
-  static int get pusherPort {
-    final raw = _envFirst([
-      'PUSHER_PORT',
-      'PUSHER_SECONDARY_PORT',
-      'SOCKET_PORT',
-    ]);
+  static int get socketPort {
+    final raw = _envFirst(['SOCKET_PORT']);
     if (raw.isNotEmpty) {
-      return int.tryParse(raw) ?? (pusherUseTls ? 443 : 80);
+      return int.tryParse(raw) ?? (socketUseTls ? 443 : 80);
     }
-    return pusherUseTls ? 443 : 80;
+    return socketUseTls ? 443 : 80;
   }
 
-  static bool get pusherUseTls {
-    final scheme = _envFirst([
-      'PUSHER_SCHEME',
-      'PUSHER_SECONDARY_SCHEME',
-      'SOCKET_SCHEME',
-    ]).toLowerCase();
+  static bool get socketUseTls {
+    final scheme = _envFirst(['SOCKET_SCHEME']).toLowerCase();
     if (scheme == 'https' || scheme == 'wss') return true;
     if (scheme == 'http' || scheme == 'ws') return false;
-    final useTls = dotenv.env['PUSHER_USE_TLS']?.trim().toLowerCase();
-    if (useTls == 'true' || useTls == '1') return true;
-    if (useTls == 'false' || useTls == '0') return false;
-    // VPS taxi habitual (SOCKET_SCHEME=http): sin TLS si hay host propio
-    if (pusherHost.isNotEmpty) return false;
+    if (socketHost.isNotEmpty) return false;
     return true;
   }
-
-  static String get pusherSecondaryAppKey => _envFirst([
-        'PUSHER_SECONDARY_APP_KEY',
-        'SOCKET_APP_KEY',
-        'PUSHER_APP_KEY',
-      ]);
-
-  static String get pusherSecondaryCluster => _envFirst([
-        'PUSHER_SECONDARY_CLUSTER',
-        'PUSHER_CLUSTER',
-        'SOCKET_APP_CLUSTER',
-      ], fallback: 'mt1');
 
   // Configuración de la app
   static int get defaultRadius =>

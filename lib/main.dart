@@ -4,6 +4,7 @@ import 'package:intellitaxi/core/theme/theme_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
 import 'package:intellitaxi/core/bootstrap/app_bootstrap.dart';
+import 'package:intellitaxi/core/bootstrap/fresh_install_guard.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics_scope.dart';
@@ -70,6 +71,10 @@ Future<void> main() async {
       AppDiagnostics.phase('dotenv');
       await dotenv.load(fileName: ".env");
       AppBootstrap.logConfigWarnings();
+
+      AppDiagnostics.phase('fresh_install');
+      await FreshInstallGuard.ensureCleanStateIfNeeded();
+
       SessionPreload.start();
 
       AppDiagnostics.phase('firebase_init');

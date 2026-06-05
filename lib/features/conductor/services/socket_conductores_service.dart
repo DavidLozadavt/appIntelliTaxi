@@ -1,18 +1,17 @@
 import 'dart:convert';
-import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/config/socket_service.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
-class PusherConductoresService {
+class SocketConductoresService {
   final int idEmpresa;
   Function(Conductor)? onDriverUpdate;
   Function(int conductorId)? onDriverOffline;
   bool _isConnected = false;
 
-  PusherConductoresService({required this.idEmpresa});
+  SocketConductoresService({required this.idEmpresa});
 
-  // Canal genérico de conductores disponibles
   String get channelName => 'conductores-disponibles';
 
   Future<void> connect() async {
@@ -22,21 +21,19 @@ class PusherConductoresService {
     }
 
     try {
-      if (RuntimePerfFlags.verbosePusherLogs) {
-        AppLogger.d('Conectando canal: $channelName', tag: 'Pusher');
+      if (RuntimePerfFlags.verboseSocketLogs) {
+        AppLogger.d('Conectando canal: $channelName', tag: 'Socket');
       }
 
-      // Suscribirse al canal usando la conexión secundaria
-      await PusherService.subscribeSecondary(channelName);
+      await SocketService.subscribeSecondary(channelName);
 
-      // Registrar handler para el evento conductor.actualizado
-      PusherService.registerEventHandlerSecondary(
+      SocketService.registerEventHandlerSecondary(
         '$channelName:conductor.actualizado',
         _handleDriverUpdate,
       );
 
       _isConnected = true;
-      AppLogger.d('✅ Pusher conductores en $channelName', tag: 'Pusher');
+      AppLogger.d('✅ Socket conductores en $channelName', tag: 'Socket');
     } catch (e) {
       AppLogger.d('❌ Error conectando a canal de conductores: $e');
     }
@@ -67,10 +64,8 @@ class PusherConductoresService {
         return;
       }
 
-      // El evento puede venir con estructura anidada
       final driverData = eventData['data'] ?? eventData;
 
-      // Verificar si el conductor se desconectó o está en descanso
       final estado = driverData['estado']?.toString().toLowerCase();
       final visibleEnMapa = driverData['visible_en_mapa'] != false;
       final modoDescanso =
@@ -102,7 +97,6 @@ class PusherConductoresService {
         );
       }
 
-      // Llamar callback si está definido
       if (onDriverUpdate != null) {
         onDriverUpdate!(conductor);
       }
@@ -118,11 +112,9 @@ class PusherConductoresService {
     try {
       AppLogger.d('🔌 Desconectando del canal de conductores');
 
-      // Desuscribirse del canal
-      await PusherService.unsubscribeSecondary(channelName);
+      await SocketService.unsubscribeSecondary(channelName);
 
-      // Eliminar handler
-      PusherService.unregisterEventHandlerSecondary(
+      SocketService.unregisterEventHandlerSecondary(
         '$channelName:conductor.actualizado',
       );
 

@@ -3,7 +3,7 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/background_location_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
-import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/config/socket_service.dart';
 import 'package:intellitaxi/features/rides/services/servicio_notificacion_foreground.dart';
 import 'package:intellitaxi/firebase_msg.dart';
 
@@ -31,8 +31,8 @@ class RuntimeBootstrap {
     );
 
     await _step(
-      'pusher',
-      () => PusherService.initialize().timeout(const Duration(seconds: 60)),
+      'socket',
+      () => SocketService.initialize().timeout(const Duration(seconds: 60)),
     );
 
     await _step(

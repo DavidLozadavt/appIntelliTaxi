@@ -8,20 +8,20 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 import 'package:intellitaxi/features/conductor/services/conductores_service.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
-import 'package:intellitaxi/features/conductor/services/pusher_conductores_service.dart';
+import 'package:intellitaxi/features/conductor/services/socket_conductores_service.dart';
 
-/// Conductores cercanos en el mapa del pasajero (API + Pusher + animación).
+/// Conductores cercanos en el mapa del pasajero (API + socket + animación).
 class PasajeroNearbyDriversController {
   PasajeroNearbyDriversController({
     ConductoresService? conductoresService,
   }) : _conductoresService = conductoresService ?? ConductoresService();
 
   final ConductoresService _conductoresService;
-  PusherConductoresService? _pusher;
+  SocketConductoresService? _conductoresSocket;
 
   DateTime? _lastApiLoadAt;
   static final Duration _minApiInterval = RuntimePerfFlags.driversApiDebounce;
-  bool _pusherConnected = false;
+  bool _socketConnected = false;
 
   final Map<int, Conductor> conductores = {};
   final Map<int, LatLng> displayedPositions = {};
@@ -36,20 +36,20 @@ class PasajeroNearbyDriversController {
 
   bool get hasConductores => conductores.isNotEmpty;
 
-  Future<void> connectPusher({
+  Future<void> connectSocket({
     int idEmpresa = 1,
     required void Function(Conductor conductor) onDriverUpdate,
     required void Function(int conductorId) onDriverOffline,
   }) async {
     try {
-      _pusher = PusherConductoresService(idEmpresa: idEmpresa);
-      _pusher!.onDriverUpdate = onDriverUpdate;
-      _pusher!.onDriverOffline = onDriverOffline;
-      await _pusher!.connect();
-      _pusherConnected = true;
-      AppLogger.d('✅ Pusher conductores configurado');
+      _conductoresSocket = SocketConductoresService(idEmpresa: idEmpresa);
+      _conductoresSocket!.onDriverUpdate = onDriverUpdate;
+      _conductoresSocket!.onDriverOffline = onDriverOffline;
+      await _conductoresSocket!.connect();
+      _socketConnected = true;
+      AppLogger.d('✅ Socket conductores configurado');
     } catch (e) {
-      AppLogger.d('❌ Error configurando Pusher conductores: $e');
+      AppLogger.d('❌ Error configurando socket conductores: $e');
     }
   }
 
@@ -290,12 +290,12 @@ class PasajeroNearbyDriversController {
     }
   }
 
-  bool get pusherConnected => _pusherConnected;
+  bool get socketConnected => _socketConnected;
 
   void dispose() {
-    _pusher?.disconnect();
-    _pusher = null;
-    _pusherConnected = false;
+    _conductoresSocket?.disconnect();
+    _conductoresSocket = null;
+    _socketConnected = false;
     conductores.clear();
     displayedPositions.clear();
     displayedBearings.clear();

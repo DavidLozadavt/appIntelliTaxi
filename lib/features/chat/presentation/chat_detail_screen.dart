@@ -57,7 +57,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   void dispose() {
     _controller.dispose();
-    _chatProvider?.disconnectPusher();
+    _chatProvider?.disconnectSocket();
     _scrollController.dispose();
     super.dispose();
   }

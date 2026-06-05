@@ -7,7 +7,7 @@ import '../data/mensaje_taxi_model.dart';
 import '../../../core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/chat/services/chat_taxi_realtime_hub.dart';
-import 'package:intellitaxi/features/taxi/utils/taxi_pusher_channels.dart';
+import 'package:intellitaxi/features/taxi/utils/taxi_socket_channels.dart';
 
 class ChatTaxiService {
   final Dio _dio = DioClient.getInstance();
@@ -207,7 +207,7 @@ class ChatTaxiService {
       await ChatTaxiRealtimeHub.ensureSubscribed(servicioId);
 
       AppLogger.d(
-        '✅ Chat Taxi: socket en ${TaxiPusherChannels.chatServicio(servicioId)}',
+        '✅ Chat Taxi: socket en ${TaxiSocketChannels.chatServicio(servicioId)}',
       );
     } catch (e) {
       AppLogger.d('❌ Error suscribiéndose al chat socket: $e');

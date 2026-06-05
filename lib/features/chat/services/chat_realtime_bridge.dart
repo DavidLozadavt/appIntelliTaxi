@@ -44,7 +44,7 @@ class ChatRealtimeBridge {
           ? Map<String, dynamic>.from(merged['mensaje'] as Map)
           : merged;
       final mensaje = ChatTaxiRealtimeHub.parseMensaje(payload) ??
-          MensajeTaxi.fromPusher(payload);
+          MensajeTaxi.fromSocket(payload);
       if (mensaje.mensaje.isEmpty && !mensaje.esImagen) {
         return false;
       }

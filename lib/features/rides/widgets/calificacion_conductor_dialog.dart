@@ -572,10 +572,7 @@ class _CalificacionConductorDialogState
                   Expanded(
                     flex: 2,
                     child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.pop(context, true);
-                      },
+                      onPressed: () => Navigator.pop(context, true),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         side: BorderSide(

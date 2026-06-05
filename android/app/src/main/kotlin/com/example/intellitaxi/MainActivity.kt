@@ -150,6 +150,14 @@ class MainActivity : FlutterActivity() {
                         wakeForIncomingService(context)
                         result.success(true)
                     }
+                    "checkFreshInstall" -> {
+                        val epoch = readFirstInstallEpochMs(context.applicationContext)
+                        result.success(
+                            mapOf(
+                                "firstInstallMs" to epoch,
+                            ),
+                        )
+                    }
                     "setKeepScreenOn" -> {
                         val enable = call.argument<Boolean>("enable") ?: false
                         val activity = context as? MainActivity
@@ -215,6 +223,13 @@ class MainActivity : FlutterActivity() {
                 }
             } catch (_: Exception) {
             }
+        }
+
+        /** Epoch de instalación (cambia al reinstalar; no se restaura con backup de prefs). */
+        private fun readFirstInstallEpochMs(context: Context): Long {
+            val pm = context.packageManager
+            val info = pm.getPackageInfo(context.packageName, 0)
+            return info.firstInstallTime
         }
     }
 

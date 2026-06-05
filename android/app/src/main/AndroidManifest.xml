@@ -23,6 +23,8 @@
         android:name=".IntelliTaxiApplication"
         android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:usesCleartextTraffic="false"
         android:requestLegacyExternalStorage="false"
         android:enableOnBackInvokedCallback="true">

@@ -16,9 +16,9 @@ class AppConfig {
   // Google Maps API Key
   static String get googleMapsApiKey => dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
-  // Pusher Configuration
-  static String get pusherAppKey => dotenv.env['PUSHER_APP_KEY'] ?? '';
-  static String get pusherCluster => dotenv.env['PUSHER_CLUSTER'] ?? 'mt1';
+  // WebSocket taxis (Soketi / laravel-websockets en VPS)
+  static String get socketAppKey => dotenv.env['SOCKET_APP_KEY'] ?? '';
+  static String get socketCluster => dotenv.env['SOCKET_APP_CLUSTER'] ?? 'mt1';
 
   // Configuración de la app
   static int get defaultRadius =>

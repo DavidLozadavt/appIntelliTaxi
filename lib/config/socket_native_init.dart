@@ -1,11 +1,11 @@
 import '../config/app_config.dart';
 
 /// Parámetros nativos extra para Soketi / Laravel WebSockets (no expuestos por el plugin Dart).
-class PusherNativeInit {
-  PusherNativeInit._();
+class SocketNativeInit {
+  SocketNativeInit._();
 
   static bool get hasCustomEndpoint =>
-      AppConfig.pusherHost.trim().isNotEmpty;
+      AppConfig.socketHost.trim().isNotEmpty;
 
   /// Mapa para `MethodChannel.invokeMethod('init', …)` tras el `init()` del plugin.
   static Map<String, dynamic> customEndpointOverrides({
@@ -14,7 +14,7 @@ class PusherNativeInit {
     String? authEndpoint,
     bool authorizer = false,
   }) {
-    final host = AppConfig.pusherHost.trim();
+    final host = AppConfig.socketHost.trim();
     if (host.isEmpty) {
       return {
         'apiKey': apiKey,
@@ -24,8 +24,8 @@ class PusherNativeInit {
       };
     }
 
-    final port = AppConfig.pusherPort;
-    final useTls = AppConfig.pusherUseTls;
+    final port = AppConfig.socketPort;
+    final useTls = AppConfig.socketUseTls;
 
     return {
       'apiKey': apiKey,

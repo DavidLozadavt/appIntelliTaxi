@@ -6,7 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
-import 'package:intellitaxi/features/conductor/controllers/conductor_servicio_pusher_controller.dart';
+import 'package:intellitaxi/features/conductor/controllers/conductor_servicio_socket_controller.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_servicio_map_service.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_servicio_state_transitions.dart';
 import 'package:intellitaxi/features/rides/services/servicio_tracking_service.dart';
@@ -57,8 +57,8 @@ class _ConductorServicioActivoScreenState
   GoogleMapController? _mapController;
   final ServicioTrackingService _trackingService = ServicioTrackingService();
   final ConductorServicioMapService _mapService = ConductorServicioMapService();
-  final ConductorServicioPusherController _pusherController =
-      ConductorServicioPusherController();
+  final ConductorServicioSocketController _socketController =
+      ConductorServicioSocketController();
   final ReverseGeocodingService _reverseGeocoding = ReverseGeocodingService();
   final ServicioPersistenciaService _persistencia =
       ServicioPersistenciaService();
@@ -446,17 +446,17 @@ class _ConductorServicioActivoScreenState
 
   Future<void> _suscribirEventosServicio() async {
     if (!_canUpdateUi) return;
-    await _pusherController.subscribe(
+    await _socketController.subscribe(
       servicioId: _safeServiceId(),
       onEstado: _manejarEventoEstadoServicio,
     );
   }
 
   void _desuscribirEventosServicio() {
-    _pusherController.unsubscribe(_safeServiceId());
+    _socketController.unsubscribe(_safeServiceId());
   }
 
-  void _manejarEventoEstadoServicio(ConductorServicioEstadoPusherEvent event) {
+  void _manejarEventoEstadoServicio(ConductorServicioEstadoSocketEvent event) {
     if (!mounted || _terminalNavigationInProgress) return;
 
     if (event.estadoId != null) {

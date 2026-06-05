@@ -1,20 +1,20 @@
 import 'dart:convert';
 
-import 'package:intellitaxi/config/pusher_config.dart';
+import 'package:intellitaxi/config/socket_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 
-/// Pusher: confirmación de solicitud y contraofertas globales.
-class PasajeroPusherOffersController {
+/// WebSocket: confirmación de solicitud y contraofertas globales.
+class PasajeroSocketOffersController {
   static const _solicitudesChannel = 'solicitudes-servicio';
   static const _ofertasChannel = 'ofertas-globales';
 
   Future<void> subscribeRequestConfirmation({
     required void Function(Map<String, dynamic> data) onNuevaSolicitud,
   }) async {
-    await PusherService.subscribeSecondary(_solicitudesChannel);
+    await SocketService.subscribeSecondary(_solicitudesChannel);
     for (final eventName in const ['nueva-solicitud', 'nueva_solicitud']) {
-      PusherService.registerEventHandlerSecondary(
+      SocketService.registerEventHandlerSecondary(
         '$_solicitudesChannel:$eventName',
         (data) {
           final parsed = _parseEvent(data);
@@ -27,8 +27,8 @@ class PasajeroPusherOffersController {
   Future<void> subscribeGlobalOffers({
     required void Function(Map<String, dynamic> offer) onNewOffer,
   }) async {
-    await PusherService.subscribeSecondary(_ofertasChannel);
-    PusherService.registerEventHandlerSecondary(
+    await SocketService.subscribeSecondary(_ofertasChannel);
+    SocketService.registerEventHandlerSecondary(
       '$_ofertasChannel:nueva-oferta',
       (data) {
         final parsed = _parseEvent(data);
@@ -39,17 +39,17 @@ class PasajeroPusherOffersController {
 
   void unsubscribeAll({bool includeGlobalOffers = false}) {
     for (final eventName in const ['nueva-solicitud', 'nueva_solicitud']) {
-      PusherService.unregisterEventHandlerSecondary(
+      SocketService.unregisterEventHandlerSecondary(
         '$_solicitudesChannel:$eventName',
       );
     }
-    PusherService.unsubscribeSecondary(_solicitudesChannel);
+    SocketService.unsubscribeSecondary(_solicitudesChannel);
 
     if (includeGlobalOffers) {
-      PusherService.unregisterEventHandlerSecondary(
+      SocketService.unregisterEventHandlerSecondary(
         '$_ofertasChannel:nueva-oferta',
       );
-      PusherService.unsubscribeSecondary(_ofertasChannel);
+      SocketService.unsubscribeSecondary(_ofertasChannel);
     }
   }
 
@@ -64,7 +64,7 @@ class PasajeroPusherOffersController {
         return JsonPayloadHelper.parseAndMerge(data);
       }
     } catch (e) {
-      AppLogger.e('Error parseando evento Pusher pasajero', tag: 'PusherOffers', error: e);
+      AppLogger.e('Error parseando evento socket pasajero', tag: 'SocketOffers', error: e);
     }
     return null;
   }

@@ -37,7 +37,7 @@ import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_active_service_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_nearby_drivers_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search_controller.dart';
-import 'package:intellitaxi/features/pasajero/controllers/pasajero_pusher_offers_controller.dart';
+import 'package:intellitaxi/features/pasajero/controllers/pasajero_socket_offers_controller.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/device_location_service.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
@@ -103,8 +103,8 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _isDrawingRoute = false;
   bool _isResolvingMapDestination = false;
   late final PasajeroPlacesSearchController _placesSearch;
-  final PasajeroPusherOffersController _pusherOffers =
-      PasajeroPusherOffersController();
+  final PasajeroSocketOffersController _socketOffers =
+      PasajeroSocketOffersController();
   bool _isProcessingOffer = false;
 
   // Tipo de servicio: 'taxi' o 'domicilio'
@@ -177,9 +177,9 @@ class _HomePasajeroState extends State<HomePasajero>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_createDestinationPointIcon());
     });
-    unawaited(_setupPusherConductores());
-    _setupPusherOffers();
-    _setupPusherRequestConfirmation();
+    unawaited(_setupSocketConductores());
+    _setupSocketOffers();
+    _setupSocketRequestConfirmation();
     _checkActiveService();
     _initializeLocation();
 
@@ -215,9 +215,9 @@ class _HomePasajeroState extends State<HomePasajero>
 
   void _startDriversRefreshTimer() {
     _driversRefreshTimer?.cancel();
-    final interval = _nearbyDrivers.pusherConnected
-        ? RuntimePerfFlags.driversApiRefreshWithPusher
-        : RuntimePerfFlags.driversApiRefreshWithoutPusher;
+    final interval = _nearbyDrivers.socketConnected
+        ? RuntimePerfFlags.driversApiRefreshWithSocket
+        : RuntimePerfFlags.driversApiRefreshWithoutSocket;
     _driversRefreshTimer = Timer.periodic(
       interval,
       (_) => _loadAvailableDrivers(silent: true),
@@ -261,7 +261,7 @@ class _HomePasajeroState extends State<HomePasajero>
     // Limpiar referencia al ScaffoldMessenger
     _scaffoldMessenger = null;
 
-    _pusherOffers.unsubscribeAll(
+    _socketOffers.unsubscribeAll(
       includeGlobalOffers: _enableGlobalOffersChannel,
     );
     _placesSearch.dispose();
@@ -411,8 +411,8 @@ class _HomePasajeroState extends State<HomePasajero>
 
   // ========== MÉTODOS DE CONDUCTORES DISPONIBLES ==========
 
-  Future<void> _setupPusherConductores() async {
-    await _nearbyDrivers.connectPusher(
+  Future<void> _setupSocketConductores() async {
+    await _nearbyDrivers.connectSocket(
       onDriverUpdate: (conductor) {
         if (!mounted) return;
         _ensureMarkerTickerRunning();
@@ -2161,20 +2161,20 @@ class _HomePasajeroState extends State<HomePasajero>
       );
   }
 
-  // ========== MÉTODOS DE PUSHER - CONTRAOFERTAS ==========
+  // ========== MÉTODOS DE SOCKET - CONTRAOFERTAS ==========
 
   /// Configura la conexión a Pusher para recibir la confirmación de solicitud creada
-  Future<void> _setupPusherRequestConfirmation() async {
+  Future<void> _setupSocketRequestConfirmation() async {
     try {
-      AppLogger.d('🚀 Configurando Pusher para confirmación de solicitudes...');
-      await _pusherOffers.subscribeRequestConfirmation(
+      AppLogger.d('🚀 Configurando socket para confirmación de solicitudes...');
+      await _socketOffers.subscribeRequestConfirmation(
         onNuevaSolicitud: _manejarNuevaSolicitud,
       );
       AppLogger.d(
-        '✅ Pusher configurado - Esperando confirmación en canal solicitudes-servicio',
+        '✅ Socket configurado - Esperando confirmación en canal solicitudes-servicio',
       );
     } catch (e) {
-      AppLogger.d('❌ Error configurando Pusher: $e');
+      AppLogger.d('❌ Error configurando socket: $e');
     }
   }
 
@@ -2237,20 +2237,20 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   /// Configura la conexión a Pusher para recibir contraofertas
-  Future<void> _setupPusherOffers() async {
+  Future<void> _setupSocketOffers() async {
     if (!_enableGlobalOffersChannel) {
       AppLogger.d('⏭️ Canal ofertas-globales deshabilitado');
       return;
     }
 
     try {
-      AppLogger.d('🚀 Configurando Pusher para ofertas globales...');
-      await _pusherOffers.subscribeGlobalOffers(onNewOffer: _handleNewOffer);
+      AppLogger.d('🚀 Configurando socket para ofertas globales...');
+      await _socketOffers.subscribeGlobalOffers(onNewOffer: _handleNewOffer);
       AppLogger.d(
-        '✅ Pusher configurado - Esperando ofertas en canal ofertas-globales',
+        '✅ Socket configurado - Esperando ofertas en canal ofertas-globales',
       );
     } catch (e) {
-      AppLogger.d('❌ Error configurando Pusher: $e');
+      AppLogger.d('❌ Error configurando socket: $e');
     }
   }
 
