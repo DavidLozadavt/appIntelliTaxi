@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:intellitaxi/features/conductor/services/turno_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
@@ -23,7 +22,6 @@ import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.
 import 'package:intellitaxi/features/taxi/utils/taxi_socket_channels.dart';
 import 'package:intellitaxi/config/socket_service.dart';
 
-import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/auth/services/auth_service.dart';
@@ -55,7 +53,6 @@ export 'package:intellitaxi/features/conductor/conductor_constants.dart';
 class ConductorHomeProvider extends ChangeNotifier {
   // Servicios
   final ConductorService _conductorService = ConductorService();
-  final TurnoService _turnoService = TurnoService();
   // Estado de ubicación
   Position? _currentPosition;
   bool _isLoadingLocation = true;
@@ -3361,7 +3358,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
-  /// Finaliza el turno actual (por id; si 403, intenta `finalizar-activo`).
+  /// Finaliza el turno actual (`POST /turnos/finalizar-activo`; fallback por id).
   Future<bool> finalizarTurno() async {
     if (_turnoActivo == null) return false;
 
@@ -3369,29 +3366,19 @@ class ConductorHomeProvider extends ChangeNotifier {
     final idTurno = _turnoActivo!.id;
 
     try {
-      await _conductorService.finalizarTurno(idTurno);
+      await _conductorService.finalizarTurnoActivo();
       await _limpiarTurnoActivoLocal();
       return true;
     } catch (e) {
-      AppLogger.d('❌ Error finalizando turno $idTurno: $e');
+      AppLogger.d('❌ Error finalizando turno (finalizar-activo): $e');
 
-      final dioStatus = e is DioException ? e.response?.statusCode : null;
-      final mensaje = _mensajeParaUsuario(
-        e,
-        'No se pudo finalizar el turno. Intenta de nuevo.',
-      );
-      final puedeReintentar =
-          dioStatus == 403 || dioStatus == 404 || mensaje.contains('autorizado');
-
-      if (puedeReintentar) {
-        try {
-          await _conductorService.finalizarTurnoActivo();
-          await _limpiarTurnoActivoLocal();
-          AppLogger.d('✅ Turno cerrado vía finalizar-activo');
-          return true;
-        } catch (e2) {
-          AppLogger.d('⚠️ finalizar-activo falló: $e2');
-        }
+      try {
+        await _conductorService.finalizarTurno(idTurno);
+        await _limpiarTurnoActivoLocal();
+        AppLogger.d('✅ Turno cerrado vía POST /turnos/$idTurno/finalizar');
+        return true;
+      } catch (e2) {
+        AppLogger.d('❌ Error finalizando turno $idTurno: $e2');
 
         final activo = await _conductorService.getTurnoActivo();
         if (activo == null) {
@@ -3403,7 +3390,10 @@ class ConductorHomeProvider extends ChangeNotifier {
         }
       }
 
-      _lastTurnoError = mensaje;
+      _lastTurnoError = _mensajeParaUsuario(
+        e,
+        'No se pudo finalizar el turno. Intenta de nuevo.',
+      );
       if (!_isDisposed) notifyListeners();
       return false;
     }
@@ -3607,14 +3597,16 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   Future<bool> finalizarTurnoActivoAnterior() async {
     try {
-      final finalizado = await _turnoService.finalizarTurnoActivo();
-
-      if (!finalizado) return false;
-
+      await _conductorService.finalizarTurnoActivo();
       await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
       return true;
     } catch (e) {
       AppLogger.d('❌ Error finalizando turno anterior: $e');
+      final activo = await _conductorService.getTurnoActivo();
+      if (activo == null) {
+        await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
+        return true;
+      }
       return false;
     }
   }
@@ -3630,6 +3622,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     await desconectarSocket();
     _detenerSeguimientoUbicacion();
+    _limpiarColaSolicitudesLocal();
 
     _turnoActivo = null;
     _isOnline = false;
@@ -3639,11 +3632,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (clearSelectedVehicle) {
       _vehiculoSeleccionado = null;
     }
-    _solicitudesPorId.clear();
-    _overlayOcultoPorTtl.clear();
-    _expiracionPorSolicitud.clear();
-    _tickerExpiracionUI?.cancel();
-    _tickerExpiracionUI = null;
+
+    unawaited(_actualizarBurbujaSegundoPlano());
 
     if (!_isDisposed) notifyListeners();
   }

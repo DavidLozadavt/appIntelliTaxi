@@ -304,6 +304,7 @@ class ConductorService {
       final requestData = <String, dynamic>{
         'idVehiculo': idVehiculo,
         'id_vehiculo': idVehiculo,
+        'estado': 'ACTIVO',
       };
       if (lat != null) {
         requestData['lat'] = lat;
@@ -382,6 +383,13 @@ class ConductorService {
         throw Exception('Error al finalizar turno: ${response.statusCode}');
       }
     } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 404 || status == 422) {
+        AppLogger.d(
+          'ℹ️ finalizar turno $idTurno → $status (ya cerrado en servidor)',
+        );
+        return;
+      }
       AppLogger.d('⚠️ Error finalizando turno: $e');
       throw Exception(_extractErrorMessage(e, 'No se pudo finalizar el turno'));
     } catch (e) {
@@ -390,7 +398,7 @@ class ConductorService {
     }
   }
 
-  /// Cierra el turno activo del conductor autenticado.
+  /// Cierra el turno activo del conductor autenticado (`POST /turnos/finalizar-activo`).
   Future<void> finalizarTurnoActivo() async {
     try {
       final response = await _dio.post('turnos/finalizar-activo');
@@ -401,6 +409,13 @@ class ConductorService {
         );
       }
     } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 404 || status == 422) {
+        AppLogger.d(
+          'ℹ️ finalizar-activo → $status (sin turno activo o ya cerrado)',
+        );
+        return;
+      }
       throw Exception(
         _extractErrorMessage(e, 'No se pudo finalizar el turno activo'),
       );

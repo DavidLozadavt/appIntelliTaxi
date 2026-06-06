@@ -63,7 +63,9 @@ class TurnoActivo {
     };
   }
 
-  bool get estaActivo => estado == 'ACTIVO' && horaFin == null;
+  bool get estaActivo =>
+      !['FINALIZADO', 'CANCELADO'].contains(estado.toUpperCase()) &&
+      (horaFin == null || horaFin!.trim().isEmpty);
 }
 
 int _asInt(dynamic value, [int fallback = 0]) {

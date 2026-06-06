@@ -12,6 +12,7 @@ import 'package:intellitaxi/features/conductor/widgets/vehiculo_selection_sheet.
 import 'package:intellitaxi/features/conductor/widgets/documentos_alert_dialog.dart';
 import 'package:intellitaxi/features/conductor/widgets/no_assigned_vehicles_dialog.dart';
 import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
+import 'package:intellitaxi/features/conductor/widgets/conductor_descanso_switch.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_map_servicios_tabs.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_navegacion.dart';
@@ -1076,17 +1077,59 @@ class _HomeConductorState extends State<HomeConductor>
     );
   }
 
+  Future<bool> _confirmarCerrarTurno() async {
+    final enDescanso = _provider.enDescanso;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Cerrar turno'),
+          content: Text(
+            enDescanso
+                ? '¿Deseas cerrar tu turno? Saldrás del modo descanso y '
+                    'dejarás de aparecer en el mapa.'
+                : '¿Deseas desconectarte? Dejarás de aparecer en el mapa '
+                    'y no recibirás servicios.',
+            style: TextStyle(
+              color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Cerrar turno'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmar == true;
+  }
+
   /// Cambia el estado del conductor (online/offline)
   Future<void> _cambiarEstadoConductor() async {
     if (!_provider.isOnline) {
       await _mostrarSelectorVehiculo();
     } else {
+      final confirmar = await _confirmarCerrarTurno();
+      if (!confirmar || !mounted) return;
+
       final success = await _provider.finalizarTurno();
       if (!mounted) return;
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Turno finalizado correctamente'),
+            content: Text('Turno cerrado correctamente'),
             backgroundColor: Colors.green,
           ),
         );
@@ -1218,12 +1261,60 @@ class _HomeConductorState extends State<HomeConductor>
     var h = compact ? 14.0 : 16.0;
     h += compact ? 22.0 : 24.0;
     final zona = provider.zonaActual?.trim() ?? '';
-    final enLinea = provider.isOnline && !provider.enDescanso;
-    if (enLinea && zona.isNotEmpty) {
+    if (provider.isOnline && zona.isNotEmpty) {
       h += 4;
       h += zona.length > 36 ? (compact ? 34.0 : 38.0) : (compact ? 18.0 : 20.0);
     }
     return h;
+  }
+
+  Widget _buildBotonDescansoEnChip(
+    ConductorHomeProvider provider, {
+    required bool compact,
+  }) {
+    if (!provider.isOnline) return const SizedBox.shrink();
+    if (!provider.puedeUsarModoDescanso && !provider.enDescanso) {
+      return const SizedBox.shrink();
+    }
+
+    final enDescanso = provider.enDescanso;
+    final loading = provider.cambiandoDescanso;
+    final size = compact ? 30.0 : 32.0;
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Tooltip(
+        message: enDescanso ? 'Volver a servicios' : 'Modo descanso',
+        child: Material(
+          color: Colors.white.withValues(alpha: enDescanso ? 0.28 : 0.18),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: loading
+                ? null
+                : () => ConductorDescansoSwitch.toggle(
+                      context,
+                      activar: !enDescanso,
+                    ),
+            child: SizedBox(
+              width: size,
+              height: size,
+              child: Center(
+                child: loading
+                    ? const AppBrandLoaderCompact(ringSize: 16)
+                    : Icon(
+                        enDescanso
+                            ? Icons.play_arrow_rounded
+                            : Icons.coffee_outlined,
+                        size: compact ? 17 : 18,
+                        color: Colors.white,
+                      ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildChipEstadoConductor(
@@ -1237,6 +1328,7 @@ class _HomeConductorState extends State<HomeConductor>
     final fsPlaca = compact ? 14.0 : 15.0;
 
     final enLinea = provider.isOnline && !provider.enDescanso;
+    final conTurno = provider.isOnline;
 
     return Material(
       color: _validandoTurno
@@ -1247,111 +1339,111 @@ class _HomeConductorState extends State<HomeConductor>
           ? AppColors.accent
           : Colors.grey.shade600,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-      child: InkWell(
-        onTap: _cambiarEstadoConductor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: compact ? 7 : 8,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  if (_validandoTurno) ...[
-                    const AppBrandLoaderCompact(ringSize: 16),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Validando turno',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: compact ? 7 : 8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: _cambiarEstadoConductor,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Row(
+                      children: [
+                        if (_validandoTurno) ...[
+                          const AppBrandLoaderCompact(ringSize: 16),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Validando turno',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ] else if (provider.enDescanso) ...[
+                          const Icon(
+                            Icons.nightlight_round,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Descanso',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ] else if (enLinea) ...[
+                          const Icon(
+                            Icons.check_circle,
+                            color: AppColors.green,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 5),
+                          const Text(
+                            'En línea',
+                            style: TextStyle(
+                              color: AppColors.green,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ] else ...[
+                          const Icon(
+                            Icons.power_settings_new,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Fuera de línea',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                        if (conTurno && vehiculo != null) ...[
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(
+                              '${vehiculo.placa.toUpperCase()} · Orden '
+                              '${vehiculo.asignacionPropietarios.first.afiliacion.numero}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.95),
+                                fontSize: fsPlaca,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ] else if (provider.enDescanso) ...[
-                    const Icon(
-                      Icons.nightlight_round,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Descanso',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ] else if (enLinea) ...[
-                    const Icon(
-                      Icons.check_circle,
-                      color: AppColors.green,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 5),
-                    const Text(
-                      'En línea',
-                      style: TextStyle(
-                        color: AppColors.green,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ] else ...[
-                    const Icon(Icons.power_settings_new, color: Colors.white, size: 18),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Fuera de línea',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                  if (enLinea && vehiculo != null) ...[
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: compact ? 8 : 10,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.28),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Text(
-                        vehiculo.placa.toUpperCase(),
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: fsPlaca,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      ' · Orden ${vehiculo.asignacionPropietarios.first.afiliacion.numero}',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.95),
-                        fontSize: fs,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              if (enLinea && zona.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Row(
+                  ),
+                ),
+                _buildBotonDescansoEnChip(provider, compact: compact),
+              ],
+            ),
+            if (conTurno && zona.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              InkWell(
+                onTap: _cambiarEstadoConductor,
+                borderRadius: BorderRadius.circular(6),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
@@ -1375,9 +1467,9 @@ class _HomeConductorState extends State<HomeConductor>
                     ),
                   ],
                 ),
-              ],
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );
