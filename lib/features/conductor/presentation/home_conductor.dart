@@ -71,6 +71,8 @@ class _HomeConductorState extends State<HomeConductor>
   late TabController _serviciosTabController;
   /// Solo true si aún no sabemos si hay turno (evita bloquear al volver de un viaje).
   bool _validandoTurno = false;
+  bool _selectorVehiculoAbierto = false;
+  bool _accionTurnoUiEnCurso = false;
   void _irATabEnEspera() {
     if (_serviciosTabController.index != 1) {
       _serviciosTabController.animateTo(1);
@@ -753,56 +755,95 @@ class _HomeConductorState extends State<HomeConductor>
     await _verificarDocumentos();
   }
 
+  Future<T?> _conDialogoCarga<T>(
+    String mensaje,
+    Future<T> Function() trabajo,
+  ) async {
+    if (!mounted) return null;
+    _accionTurnoUiEnCurso = true;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (dialogContext) => _DialogoCarga<T>(
+          mensaje: mensaje,
+          trabajo: trabajo,
+        ),
+      );
+    } finally {
+      _accionTurnoUiEnCurso = false;
+    }
+  }
+
   /// Muestra el selector de vehículo
   Future<void> _mostrarSelectorVehiculo() async {
-    if (!mounted) return;
-
-    // Guardar referencia al messenger antes de operaciones asíncronas
-    final messenger = ScaffoldMessenger.of(context);
-
-    // Siempre recargar: la lista del home puede quedar vacía si falló al iniciar la app.
-    await _provider.cargarVehiculos();
-    if (!mounted) return;
-
-    if (_provider.vehiculosDisponibles.isEmpty) {
-      final loadError = _provider.lastVehiculosLoadError;
-      if (loadError != null && loadError.isNotEmpty) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(loadError),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'Reintentar',
-              onPressed: () => unawaited(_mostrarSelectorVehiculo()),
-            ),
-          ),
-        );
-        return;
-      }
-
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: true,
-        builder: (_) => const NoAssignedVehiclesDialog(),
-      );
+    if (!mounted ||
+        _selectorVehiculoAbierto ||
+        _accionTurnoUiEnCurso ||
+        _provider.procesandoTurno) {
       return;
     }
 
-    final Map<int, int> vencidosPorVehiculo = {};
-    for (final vehiculo in _provider.vehiculosDisponibles) {
-      final bloqueo = await _provider.verificarBloqueoVehiculo(vehiculo.id);
-      final vencidos = (bloqueo['vencidos'] as List?)?.length ?? 0;
-      vencidosPorVehiculo[vehiculo.id] = vencidos;
-    }
+    final messenger = ScaffoldMessenger.of(context);
+
+    final preparado = await _conDialogoCarga<(List<dynamic>, Map<int, int>)?>(
+      'Cargando vehículos...',
+      () async {
+        await _provider.cargarVehiculos();
+        if (_provider.vehiculosDisponibles.isEmpty) {
+          return null;
+        }
+        final vencidosPorVehiculo = <int, int>{};
+        for (final vehiculo in _provider.vehiculosDisponibles) {
+          final bloqueo = await _provider.verificarBloqueoVehiculo(vehiculo.id);
+          vencidosPorVehiculo[vehiculo.id] =
+              (bloqueo['vencidos'] as List?)?.length ?? 0;
+        }
+        return (_provider.vehiculosDisponibles, vencidosPorVehiculo);
+      },
+    );
     if (!mounted) return;
 
-    showModalBottomSheet(
+    if (preparado == null) {
+      if (_provider.vehiculosDisponibles.isEmpty) {
+        final loadError = _provider.lastVehiculosLoadError;
+        if (loadError != null && loadError.isNotEmpty) {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(loadError),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Reintentar',
+                onPressed: () => unawaited(_mostrarSelectorVehiculo()),
+              ),
+            ),
+          );
+          return;
+        }
+
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: true,
+          builder: (_) => const NoAssignedVehiclesDialog(),
+        );
+      }
+      return;
+    }
+
+    final vencidosPorVehiculo = preparado.$2;
+    final vehiculos = _provider.vehiculosDisponibles;
+    setState(() => _selectorVehiculoAbierto = true);
+
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      isDismissible: !_provider.procesandoTurno,
+      enableDrag: !_provider.procesandoTurno,
       builder: (context) => VehiculoSelectionSheet(
-        vehiculos: _provider.vehiculosDisponibles,
+        vehiculos: vehiculos,
         vencidosPorVehiculo: vencidosPorVehiculo,
         maxVencidosBloqueo: 2,
         onRefresh: () async {
@@ -826,7 +867,7 @@ class _HomeConductorState extends State<HomeConductor>
               vencidos >= 2 || !vehiculo.puedeOperarPorVinculacion;
 
           if (bloqueado) {
-            if (!mounted) return;
+            if (!mounted) return false;
             final mensaje = !vehiculo.puedeOperarPorVinculacion
                 ? 'No puedes operar este vehículo: ${vehiculo.motivoBloqueoVinculacion}'
                 : 'No puedes seleccionar este vehículo: tiene $vencidos documentos vencidos';
@@ -837,11 +878,9 @@ class _HomeConductorState extends State<HomeConductor>
                 duration: const Duration(seconds: 4),
               ),
             );
-            return;
+            return false;
           }
 
-          // Iniciar turno; el provider sincroniza el vehículo seleccionado
-          // cuando el turno queda activo.
           final turnoIniciado = await _provider.iniciarTurno(vehiculo.id);
 
           if (turnoIniciado && mounted) {
@@ -852,71 +891,77 @@ class _HomeConductorState extends State<HomeConductor>
                 duration: const Duration(seconds: 2),
               ),
             );
-
             await _trasTurnoIniciadoConExito();
-          } else if (mounted) {
-            final errorMessage = _provider.lastTurnoError;
-            if (_esVehiculoOcupadoError(errorMessage)) {
-              final continuar = await _mostrarVehiculoOcupadoDialog(
-                errorMessage!,
-              );
+            return true;
+          }
 
-              if (continuar == true) {
-                final finalizado = await _provider
-                    .finalizarTurnoActivoAnterior();
-                if (!mounted) return;
+          if (!mounted) return false;
+          final errorMessage = _provider.lastTurnoError;
+          if (_esVehiculoOcupadoError(errorMessage)) {
+            final continuar = await _mostrarVehiculoOcupadoDialog(
+              errorMessage!,
+            );
 
-                if (finalizado) {
-                  final reintento = await _provider.iniciarTurno(vehiculo.id);
-                  if (!mounted) return;
+            if (continuar == true) {
+              final finalizado =
+                  await _provider.finalizarTurnoActivoAnterior();
+              if (!mounted) return false;
 
-                  if (reintento) {
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Turno iniciado con vehículo ${vehiculo.placa}',
-                        ),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                    await _trasTurnoIniciadoConExito();
-                  } else {
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          _provider.lastTurnoError ??
-                              'No se pudo iniciar el turno',
-                        ),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                } else {
+              if (finalizado) {
+                final reintento = await _provider.iniciarTurno(vehiculo.id);
+                if (!mounted) return false;
+
+                if (reintento) {
                   messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('No se pudo finalizar el turno anterior'),
-                      backgroundColor: Colors.red,
+                    SnackBar(
+                      content: Text(
+                        'Turno iniciado con vehículo ${vehiculo.placa}',
+                      ),
+                      backgroundColor: Colors.green,
                     ),
                   );
+                  await _trasTurnoIniciadoConExito();
+                  return true;
                 }
-              }
-            } else {
-              messenger.showSnackBar(
-                SnackBar(
-                  content: Text(
-                    errorMessage?.isNotEmpty == true
-                        ? errorMessage!
-                        : 'No se pudo iniciar el turno con este vehiculo',
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      _provider.lastTurnoError ??
+                          'No se pudo iniciar el turno',
+                    ),
+                    backgroundColor: Colors.red,
                   ),
+                );
+                return false;
+              }
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('No se pudo finalizar el turno anterior'),
                   backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 4),
                 ),
               );
+              return false;
             }
+            return false;
           }
+
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                errorMessage?.isNotEmpty == true
+                    ? errorMessage!
+                    : 'No se pudo iniciar el turno con este vehiculo',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+          return false;
         },
       ),
-    );
+    ).whenComplete(() {
+      if (mounted) setState(() => _selectorVehiculoAbierto = false);
+    });
   }
 
   bool _esVehiculoOcupadoError(String? message) {
@@ -1077,74 +1122,51 @@ class _HomeConductorState extends State<HomeConductor>
     );
   }
 
-  Future<bool> _confirmarCerrarTurno() async {
-    final enDescanso = _provider.enDescanso;
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text('Cerrar turno'),
-          content: Text(
-            enDescanso
-                ? '¿Deseas cerrar tu turno? Saldrás del modo descanso y '
-                    'dejarás de aparecer en el mapa.'
-                : '¿Deseas desconectarte? Dejarás de aparecer en el mapa '
-                    'y no recibirás servicios.',
-            style: TextStyle(
-              color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
-              height: 1.4,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Cerrar turno'),
-            ),
-          ],
-        );
-      },
-    );
-    return confirmar == true;
-  }
-
   /// Cambia el estado del conductor (online/offline)
   Future<void> _cambiarEstadoConductor() async {
+    if (_accionTurnoUiEnCurso ||
+        _provider.procesandoTurno ||
+        _selectorVehiculoAbierto) {
+      return;
+    }
+
     if (!_provider.isOnline) {
       await _mostrarSelectorVehiculo();
-    } else {
-      final confirmar = await _confirmarCerrarTurno();
-      if (!confirmar || !mounted) return;
+      return;
+    }
 
-      final success = await _provider.finalizarTurno();
-      if (!mounted) return;
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Turno cerrado correctamente'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _provider.lastTurnoError ??
-                  'No se pudo finalizar el turno. Intenta de nuevo.',
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
+    final resultado = await showDialog<_CerrarTurnoResultado>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _DialogCerrarTurno(
+        enDescanso: _provider.enDescanso,
+        onConfirmar: () async {
+          final ok = await _provider.finalizarTurno();
+          return (
+            ok,
+            _provider.lastTurnoError ??
+                'No se pudo finalizar el turno. Intenta de nuevo.',
+          );
+        },
+      ),
+    );
+    if (!mounted || resultado == null) return;
+
+    if (resultado.exito) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Turno cerrado correctamente'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else if (resultado.mensajeError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(resultado.mensajeError!),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -1290,7 +1312,7 @@ class _HomeConductorState extends State<HomeConductor>
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
-            onTap: loading
+            onTap: loading || _accionTurnoUiEnCurso || provider.procesandoTurno
                 ? null
                 : () => ConductorDescansoSwitch.toggle(
                       context,
@@ -1329,6 +1351,9 @@ class _HomeConductorState extends State<HomeConductor>
 
     final enLinea = provider.isOnline && !provider.enDescanso;
     final conTurno = provider.isOnline;
+    final procesando = provider.procesandoTurno;
+    final chipBloqueado =
+        procesando || _accionTurnoUiEnCurso || _selectorVehiculoAbierto;
 
     return Material(
       color: _validandoTurno
@@ -1353,11 +1378,24 @@ class _HomeConductorState extends State<HomeConductor>
               children: [
                 Expanded(
                   child: InkWell(
-                    onTap: _cambiarEstadoConductor,
+                    onTap: chipBloqueado ? null : _cambiarEstadoConductor,
                     borderRadius: BorderRadius.circular(6),
                     child: Row(
                       children: [
-                        if (_validandoTurno) ...[
+                        if (procesando) ...[
+                          const AppBrandLoaderCompact(ringSize: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            provider.isOnline
+                                ? 'Cerrando turno...'
+                                : 'Conectando...',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ] else if (_validandoTurno) ...[
                           const AppBrandLoaderCompact(ringSize: 16),
                           const SizedBox(width: 8),
                           const Text(
@@ -1441,7 +1479,7 @@ class _HomeConductorState extends State<HomeConductor>
             if (conTurno && zona.isNotEmpty) ...[
               const SizedBox(height: 4),
               InkWell(
-                onTap: _cambiarEstadoConductor,
+                onTap: chipBloqueado ? null : _cambiarEstadoConductor,
                 borderRadius: BorderRadius.circular(6),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1750,6 +1788,232 @@ class _HomeConductorState extends State<HomeConductor>
           ],
         );
       },
+    );
+  }
+}
+
+/// Ejecuta [trabajo] dentro del diálogo y se cierra solo al terminar (evita quedar colgado).
+class _DialogoCarga<T> extends StatefulWidget {
+  const _DialogoCarga({
+    required this.mensaje,
+    required this.trabajo,
+  });
+
+  final String mensaje;
+  final Future<T> Function() trabajo;
+
+  @override
+  State<_DialogoCarga<T>> createState() => _DialogoCargaState<T>();
+}
+
+class _DialogoCargaState<T> extends State<_DialogoCarga<T>> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_ejecutar()));
+  }
+
+  Future<void> _ejecutar() async {
+    try {
+      final result = await widget.trabajo();
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(result);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      rethrow;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const AppBrandLoaderCompact(ringSize: 32),
+              const SizedBox(height: 16),
+              Text(
+                widget.mensaje,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CerrarTurnoResultado {
+  const _CerrarTurnoResultado._({
+    required this.exito,
+    this.mensajeError,
+  });
+
+  final bool exito;
+  final String? mensajeError;
+
+  factory _CerrarTurnoResultado.cancelado() =>
+      const _CerrarTurnoResultado._(exito: false);
+
+  factory _CerrarTurnoResultado.ok() =>
+      const _CerrarTurnoResultado._(exito: true);
+
+  factory _CerrarTurnoResultado.error(String mensaje) =>
+      _CerrarTurnoResultado._(exito: false, mensajeError: mensaje);
+}
+
+class _DialogCerrarTurno extends StatefulWidget {
+  const _DialogCerrarTurno({
+    required this.enDescanso,
+    required this.onConfirmar,
+  });
+
+  final bool enDescanso;
+  final Future<(bool, String)> Function() onConfirmar;
+
+  @override
+  State<_DialogCerrarTurno> createState() => _DialogCerrarTurnoState();
+}
+
+class _DialogCerrarTurnoState extends State<_DialogCerrarTurno> {
+  bool _cerrando = false;
+
+  Future<void> _confirmar() async {
+    if (_cerrando) return;
+    setState(() => _cerrando = true);
+    try {
+      final (ok, mensaje) = await widget.onConfirmar();
+      if (!mounted) return;
+      Navigator.pop(
+        context,
+        ok ? _CerrarTurnoResultado.ok() : _CerrarTurnoResultado.error(mensaje),
+      );
+    } finally {
+      if (mounted) setState(() => _cerrando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaceColor = isDark ? AppColors.darkCard : Colors.white;
+    final bodyColor = isDark
+        ? AppColors.darkOnSurface.withValues(alpha: 0.78)
+        : Colors.black87;
+
+    return PopScope(
+      canPop: !_cerrando,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Container(
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.power_settings_new_rounded,
+                      color: Colors.red,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Text(
+                      'Cerrar turno',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                widget.enDescanso
+                    ? '¿Deseas cerrar tu turno? Saldrás del modo descanso y '
+                        'dejarás de aparecer en el mapa.'
+                    : '¿Deseas desconectarte? Dejarás de aparecer en el mapa '
+                        'y no recibirás servicios.',
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.45,
+                  color: bodyColor,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _cerrando
+                          ? null
+                          : () => Navigator.pop(
+                                context,
+                                _CerrarTurnoResultado.cancelado(),
+                              ),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 46),
+                      ),
+                      child: const Text('Cancelar'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _cerrando ? null : _confirmar,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 46),
+                      ),
+                      child: _cerrando
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Cerrar turno'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

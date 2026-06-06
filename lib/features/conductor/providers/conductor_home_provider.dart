@@ -113,6 +113,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   Future<void>? _desuscribirRecepcionFuture;
   String? _lastAcceptError;
   String? _lastTurnoError;
+  bool _procesandoTurno = false;
   bool _enDescanso = false;
   bool _recibeServicios = true;
   bool _visibleEnMapa = true;
@@ -271,6 +272,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _solicitudesPorId[solicitudId];
   String? get lastAcceptError => _lastAcceptError;
   String? get lastTurnoError => _lastTurnoError;
+  bool get procesandoTurno => _procesandoTurno;
   bool get enDescanso => _enDescanso;
   bool get visibleEnMapa => _visibleEnMapa;
   bool get recibeServicios => _recibeServicios && !_enDescanso;
@@ -3271,6 +3273,9 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Inicia un turno con el vehículo seleccionado
   Future<bool> iniciarTurno(int idVehiculo) async {
+    if (_procesandoTurno) return false;
+    _procesandoTurno = true;
+    if (!_isDisposed) notifyListeners();
     try {
       _lastTurnoError = null;
       VehiculoConductor? vehiculo;
@@ -3332,6 +3337,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       AppLogger.d('❌ Error iniciando turno: $e');
       if (!_isDisposed) notifyListeners();
       return false;
+    } finally {
+      _procesandoTurno = false;
+      if (!_isDisposed) notifyListeners();
     }
   }
 
@@ -3361,8 +3369,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Finaliza el turno actual (`POST /turnos/finalizar-activo`; fallback por id).
   Future<bool> finalizarTurno() async {
     if (_turnoActivo == null) return false;
+    if (_procesandoTurno) return false;
 
+    _procesandoTurno = true;
     _lastTurnoError = null;
+    if (!_isDisposed) notifyListeners();
     final idTurno = _turnoActivo!.id;
 
     try {
@@ -3396,6 +3407,9 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
       if (!_isDisposed) notifyListeners();
       return false;
+    } finally {
+      _procesandoTurno = false;
+      if (!_isDisposed) notifyListeners();
     }
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/features/conductor/data/vehiculo_conductor_model.dart';
 
 class VehiculoSelectionRefreshData {
@@ -18,7 +19,7 @@ class VehiculoSelectionSheet extends StatefulWidget {
   final Map<int, int> vencidosPorVehiculo;
   final int maxVencidosBloqueo;
   final Future<VehiculoSelectionRefreshData> Function()? onRefresh;
-  final Function(VehiculoConductor) onVehiculoSelected;
+  final Future<bool> Function(VehiculoConductor) onVehiculoSelected;
 
   const VehiculoSelectionSheet({
     super.key,
@@ -77,7 +78,9 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
 
     return SafeArea(
       top: false,
-      child: Container(
+      child: Stack(
+        children: [
+          Container(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.65,
         ),
@@ -159,7 +162,7 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
               child: SizedBox(
                 width: double.infinity,
                 child: TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: _selectionLocked ? null : () => Navigator.pop(context),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     backgroundColor: isDarkMode
@@ -184,6 +187,36 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
             ),
           ],
         ),
+      ),
+          if (_selectionLocked)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: backgroundColor.withValues(alpha: 0.92),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(28),
+                    topRight: Radius.circular(28),
+                  ),
+                ),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AppBrandLoaderCompact(ringSize: 28),
+                      SizedBox(height: 14),
+                      Text(
+                        'Iniciando turno...',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -404,11 +437,17 @@ class _VehiculoSelectionSheetState extends State<VehiculoSelectionSheet> {
         child: InkWell(
           onTap: bloqueado
               ? null
-              : () {
+              : () async {
                   if (_selectionLocked) return;
-                  _selectionLocked = true;
-                  Navigator.pop(context);
-                  widget.onVehiculoSelected(vehiculo);
+                  setState(() => _selectionLocked = true);
+                  try {
+                    final ok = await widget.onVehiculoSelected(vehiculo);
+                    if (ok && context.mounted) Navigator.pop(context);
+                  } finally {
+                    if (mounted) {
+                      setState(() => _selectionLocked = false);
+                    }
+                  }
                 },
           borderRadius: BorderRadius.circular(20),
           child: Padding(
