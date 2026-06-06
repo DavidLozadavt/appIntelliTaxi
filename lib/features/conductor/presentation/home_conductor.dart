@@ -66,6 +66,7 @@ class _HomeConductorState extends State<HomeConductor>
   List<Sancion> _sanciones = [];
   bool _bannerVisible = true;
   Timer? _bannerTimer;
+  Timer? _validandoTurnoTimeout;
 
   BitmapDescriptor? _dotMarker;
   late TabController _serviciosTabController;
@@ -151,7 +152,11 @@ class _HomeConductorState extends State<HomeConductor>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _provider = context.read<ConductorHomeProvider>();
-    _validandoTurno = !_provider.tieneTurnoActivo;
+    _validandoTurno = true;
+    _validandoTurnoTimeout = Timer(
+      const Duration(seconds: 20),
+      _finalizarValidacionTurno,
+    );
     _provider.addNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     _provider.addListener(_syncKeepScreenOn);
     _provider.addListener(_onProviderForNavigation);
@@ -208,23 +213,23 @@ class _HomeConductorState extends State<HomeConductor>
     return _panelServiciosVisible(provider) ? 100.0 : 24.0;
   }
 
+  void _finalizarValidacionTurno() {
+    _validandoTurnoTimeout?.cancel();
+    if (!mounted || !_validandoTurno) return;
+    setState(() => _validandoTurno = false);
+  }
+
   Future<void> _bootstrapHome() async {
     if (!mounted) return;
 
-    if (!_provider.tieneTurnoActivo) {
-      final desdeCache = await _provider.restaurarTurnoDesdeCache();
-      if (desdeCache && mounted) {
-        setState(() => _validandoTurno = false);
-      }
-    } else if (_validandoTurno && mounted) {
-      setState(() => _validandoTurno = false);
+    try {
+      await _provider.initialize();
+    } finally {
+      _finalizarValidacionTurno();
     }
-
-    await _provider.initialize();
     if (!mounted) return;
 
-    await ConductorPendingFcm.flush(context);
-    if (!mounted) return;
+    unawaited(ConductorPendingFcm.flush(context));
     _avisarSolicitudesRecibidasFueraDeLinea();
 
     _pendientesProvider.attachHome(_provider);
@@ -232,11 +237,7 @@ class _HomeConductorState extends State<HomeConductor>
     _pendientesProvider.iniciarRefrescoPeriodico();
 
     if (!mounted) return;
-    await _navigateToActiveServiceIfNeeded();
-    if (!mounted) return;
-    if (_validandoTurno) {
-      setState(() => _validandoTurno = false);
-    }
+    unawaited(_navigateToActiveServiceIfNeeded());
 
     if (!mounted) return;
     await Future<void>.delayed(const Duration(milliseconds: 700));
@@ -349,6 +350,7 @@ class _HomeConductorState extends State<HomeConductor>
     _provider.removeNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     WidgetsBinding.instance.removeObserver(this);
     _bannerTimer?.cancel();
+    _validandoTurnoTimeout?.cancel();
     _reanudarNavegacionTimer?.cancel();
     _emergencyPulseController.dispose();
     _serviciosTabController.dispose();
@@ -361,19 +363,6 @@ class _HomeConductorState extends State<HomeConductor>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_overlayService.hide());
-      if (_provider.tieneTurnoActivo) {
-        if (_validandoTurno && mounted) {
-          setState(() => _validandoTurno = false);
-        }
-      } else {
-        unawaited(
-          _provider.restaurarTurnoDesdeCache().then((restored) {
-            if (mounted && restored) {
-              setState(() => _validandoTurno = false);
-            }
-          }),
-        );
-      }
       unawaited(_provider.refrescarEnResume());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {

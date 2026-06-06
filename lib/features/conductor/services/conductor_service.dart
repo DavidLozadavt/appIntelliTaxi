@@ -517,25 +517,33 @@ class ConductorService {
     }
   }
 
-  /// Obtiene el turno activo del conductor
-  Future<TurnoActivo?> getTurnoActivo() async {
+  /// Consulta turno activo con señal explícita de "sin turno en servidor".
+  Future<TurnoActivoLookup> lookupTurnoActivo() async {
     try {
       final response = await _dio.get('turno_actual_conductor');
       if (response.statusCode != 200 || response.data == null) {
-        return null;
+        return TurnoActivoLookup.sinTurno;
       }
 
       final turnoData = _unwrapTurnoPayload(response.data);
-      if (turnoData == null) return null;
+      if (turnoData == null) return TurnoActivoLookup.sinTurno;
 
       final turno = TurnoActivo.fromJson(turnoData);
-      return turno.estaActivo ? turno : null;
+      if (!turno.estaActivo) return TurnoActivoLookup.sinTurno;
+
+      return TurnoActivoLookup(turno: turno);
     } on DioException catch (e) {
       final status = e.response?.statusCode;
       if (status == 429) {
         ApiRateLimitGuard.instance.recordHit();
       }
-      if (status == 404) return null;
+      if (status == 404) {
+        AppLogger.d(
+          'ℹ️ GET turno_actual_conductor → 404 (sin turno activo en servidor)',
+          tag: 'Turno',
+        );
+        return TurnoActivoLookup.sinTurno;
+      }
       AppLogger.d(
         '⚠️ GET turno_actual_conductor → $status '
         '(Authorization va por AuthInterceptor): '
@@ -546,6 +554,12 @@ class ConductorService {
       AppLogger.d('⚠️ Error obteniendo turno activo: $e');
       rethrow;
     }
+  }
+
+  /// Obtiene el turno activo del conductor
+  Future<TurnoActivo?> getTurnoActivo() async {
+    final lookup = await lookupTurnoActivo();
+    return lookup.turno;
   }
 
   /// Actualiza un documento del conductor

@@ -1,5 +1,20 @@
 import 'vehiculo_conductor_model.dart';
 
+/// Resultado de `GET /turno_actual_conductor`.
+class TurnoActivoLookup {
+  final TurnoActivo? turno;
+
+  /// El servidor respondió sin turno activo (404, success:false o turno finalizado).
+  final bool servidorConfirmoSinTurno;
+
+  const TurnoActivoLookup({
+    this.turno,
+    this.servidorConfirmoSinTurno = false,
+  });
+
+  static const sinTurno = TurnoActivoLookup(servidorConfirmoSinTurno: true);
+}
+
 class TurnoActivo {
   final int id;
   final int idConductor;

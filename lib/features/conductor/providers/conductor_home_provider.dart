@@ -68,7 +68,6 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _isSendingMapHeartbeat = false;
   DateTime? _lastResumeRefreshAt;
   bool _resumeRefreshInFlight = false;
-  DateTime? _turnoCacheRestauradoEn;
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
   final ConductorSolicitudEnrichmentService _solicitudEnrichment =
@@ -85,6 +84,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   List<VehiculoConductor> _vehiculosDisponibles = [];
   String? _lastVehiculosLoadError;
   TurnoActivo? _turnoActivo;
+
+  /// true tras confirmar turno (o su ausencia) con el API en esta sesión.
+  bool _turnoValidadoConServidorEnSesion = false;
 
   // Solicitudes: un mapa por servicio_id. API = verdad de lista; Pusher/FCM = merge;
   // TTL solo oculta overlay «Llegando»; el ítem sigue en mapa / «En espera».
@@ -389,12 +391,6 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Tras wake/FCM: no borrar turno local si el API aún no respondió.
-  bool _turnoProtegidoTrasWake() {
-    if (_turnoCacheRestauradoEn == null) return false;
-    return DateTime.now().difference(_turnoCacheRestauradoEn!) <
-        const Duration(seconds: 45);
-  }
-
   /// Restaura turno desde SharedPreferences (sin red) para no bloquear el home.
   Future<bool> restaurarTurnoDesdeCache() async {
     if (_turnoActivo != null) return true;
@@ -414,7 +410,6 @@ class ConductorHomeProvider extends ChangeNotifier {
         estado: 'ACTIVO',
       );
       _isOnline = true;
-      _turnoCacheRestauradoEn = DateTime.now();
       _sincronizarVehiculoSeleccionadoConTurno();
       if (!_isDisposed) notifyListeners();
       AppLogger.d('✅ Turno restaurado desde cache: $turnoId');
@@ -425,24 +420,34 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  /// Inicializar el provider
+  /// Inicializar el provider (valida turno primero; el resto no bloquea el chip).
   Future<void> initialize() async {
-    await restaurarTurnoDesdeCache();
-    await initializeLocation();
-    await cargarVehiculos();
-    if (_turnoActivo != null) {
-      _sincronizarVehiculoSeleccionadoConTurno();
+    try {
+      await bootstrapTaxiConductor().timeout(const Duration(seconds: 15));
+    } catch (e) {
+      AppLogger.d('⚠️ bootstrapTaxiConductor en arranque: $e', tag: 'Turno');
     }
-    await bootstrapTaxiConductor();
-    await cargarSolicitudesRechazadas();
     if (!_enServicio) {
-      if (_turnoActivo != null) {
-        unawaited(cargarTurnoActual());
-      } else {
-        await cargarTurnoActual();
+      try {
+        await cargarTurnoActual(restaurarCacheSiFallaRed: false).timeout(
+          const Duration(seconds: 15),
+        );
+      } catch (e) {
+        AppLogger.d('⚠️ cargarTurnoActual en arranque: $e', tag: 'Turno');
       }
     }
-    unawaited(resolverSolicitudesPendientesTrasArranque());
+    unawaited(_completarInicializacionLenta());
+  }
+
+  Future<void> _completarInicializacionLenta() async {
+    try {
+      await initializeLocation();
+      await cargarVehiculos();
+      await cargarSolicitudesRechazadas();
+      unawaited(resolverSolicitudesPendientesTrasArranque());
+    } catch (e) {
+      AppLogger.d('⚠️ _completarInicializacionLenta: $e');
+    }
   }
 
   Future<void> _marcarSolicitudesPendientesDeSync() async {
@@ -546,6 +551,20 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       if (estado != null) {
+        if (!estado.turnoActivo) {
+          final prefs = await SharedPreferences.getInstance();
+          final cacheId = prefs.getInt('turno_activo_id');
+          if (_turnoActivo != null ||
+              _isOnline ||
+              (cacheId != null && cacheId > 0)) {
+            AppLogger.d(
+              'ℹ️ estado-actual: sin turno activo; limpiando cache local',
+              tag: 'Turno',
+            );
+            await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
+          }
+        }
+
         _aplicarFlagsDescanso(
           enDescanso: estado.enDescanso,
           recibeServicios: estado.recibeServicios,
@@ -643,16 +662,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     await _sincronizarModoDescansoDesdeBackend();
 
-    // El turno sigue abierto; solo re-sincronizar en segundo plano.
-    if (_turnoActivo != null) {
-      unawaited(cargarTurnoActual());
-    } else {
-      unawaited(
-        restaurarTurnoDesdeCache().then((ok) {
-          if (ok) unawaited(cargarTurnoActual());
-        }),
-      );
-    }
+    unawaited(cargarTurnoActual());
 
     if (_isOnline && !_enDescanso && !_suscritoASocket) {
       await conectarSocket();
@@ -3092,12 +3102,14 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   /// Carga el turno actual del conductor
-  Future<void> cargarTurnoActual() async {
+  Future<void> cargarTurnoActual({bool restaurarCacheSiFallaRed = true}) async {
     if (ApiRateLimitGuard.instance.isBlocked) {
       AppLogger.d(
         '⏭️ cargarTurnoActual omitido (rate limit ${ApiRateLimitGuard.instance.secondsRemaining}s)',
       );
-      await _restaurarTurnoTrasFalloDeRed();
+      if (restaurarCacheSiFallaRed) {
+        await _restaurarTurnoTrasFalloDeRed();
+      }
       return;
     }
     final token = await AuthService.instance.getToken();
@@ -3111,14 +3123,29 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     final teniaTurnoLocal = _turnoActivo != null;
     try {
-      final turno = await _conductorService.getTurnoActivo();
+      final lookup = await _conductorService.lookupTurnoActivo();
+      final turno = lookup.turno;
 
       AppLogger.d(
-        '🔄 cargarTurnoActual: encontrado=${turno?.id ?? 'null'}',
+        '🔄 cargarTurnoActual: encontrado=${turno?.id ?? 'null'} '
+        'sinTurnoServidor=${lookup.servidorConfirmoSinTurno}',
       );
       if (turno != null) {
         await _aplicarTurnoActivoLocal(turno);
+        _turnoValidadoConServidorEnSesion = true;
         if (!_isDisposed) notifyListeners();
+      } else if (lookup.servidorConfirmoSinTurno) {
+        _turnoValidadoConServidorEnSesion = true;
+        final prefs = await SharedPreferences.getInstance();
+        final cacheId = prefs.getInt('turno_activo_id');
+        if (teniaTurnoLocal || _isOnline || (cacheId != null && cacheId > 0)) {
+          AppLogger.d(
+            'ℹ️ Servidor sin turno activo; limpiando cache local '
+            '(memoria=${_turnoActivo?.id}, prefs=$cacheId)',
+            tag: 'Turno',
+          );
+          await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
+        }
       } else if (teniaTurnoLocal || _isOnline) {
         if (_turnoActivo != null &&
             _turnoActivo!.estaActivo &&
@@ -3135,20 +3162,10 @@ class ConductorHomeProvider extends ChangeNotifier {
           if (!_isDisposed) notifyListeners();
           return;
         }
-        if (_turnoActivo != null && _turnoProtegidoTrasWake()) {
-          AppLogger.d(
-            'ℹ️ API sin turno tras wake; se conserva turno local '
-            '(id=${_turnoActivo?.id})',
-          );
-          _isOnline = true;
-          if (!_enDescanso && !_suscritoASocket) {
-            unawaited(conectarSocket());
-          }
-          if (!_isDisposed) notifyListeners();
-          return;
-        }
         AppLogger.d(
-          'ℹ️ Sin turno en servidor; limpiando cache local (id=${_turnoActivo?.id})',
+          'ℹ️ Sin turno en servidor; limpiando cache local '
+          '(id=${_turnoActivo?.id})',
+          tag: 'Turno',
         );
         await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
       }
@@ -3156,15 +3173,26 @@ class ConductorHomeProvider extends ChangeNotifier {
       ApiRateLimitGuard.instance.recordIfRateLimit(e);
       if (!ApiRateLimitGuard.looksLikeRateLimit(e)) {
         AppLogger.d(
-          '⚠️ cargarTurnoActual falló (red/servidor), se conserva turno local: '
+          '⚠️ cargarTurnoActual falló (red/servidor)'
+          '${restaurarCacheSiFallaRed ? ', se conserva turno local' : ''}: '
           '${_mensajeParaUsuario(e, 'Error al consultar turno en el servidor')}',
         );
       }
-      await _restaurarTurnoTrasFalloDeRed();
+      if (restaurarCacheSiFallaRed) {
+        await _restaurarTurnoTrasFalloDeRed();
+      }
     }
   }
 
   Future<void> _restaurarTurnoTrasFalloDeRed() async {
+    if (!_turnoValidadoConServidorEnSesion) {
+      AppLogger.d(
+        'ℹ️ Turno no validado con servidor en esta sesión; '
+        'no se restaura caché tras fallo de red',
+        tag: 'Turno',
+      );
+      return;
+    }
     if (_turnoActivo != null) {
       _isOnline = true;
       if (!_enDescanso && !_suscritoASocket) {
@@ -3231,18 +3259,13 @@ class ConductorHomeProvider extends ChangeNotifier {
         '🔄 [Resume] isOnline=$_isOnline turno=${_turnoActivo?.id} enServicio=$_enServicio',
       );
 
-      if (_turnoActivo == null) {
-        await restaurarTurnoDesdeCache();
-      }
-
       await refrescarUbicacionEnResume(soloGps: _enServicio);
 
       if (_enServicio) return;
 
-      if (_turnoActivo == null) {
-        await restaurarTurnoDesdeCache();
-      }
-      await cargarTurnoActual();
+      await cargarTurnoActual(
+        restaurarCacheSiFallaRed: _turnoValidadoConServidorEnSesion,
+      );
 
       if (_turnoActivo == null || !_isOnline) return;
 
@@ -3352,7 +3375,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     _turnoActivo = turno;
     _isOnline = true;
-    _turnoCacheRestauradoEn = DateTime.now();
+    _turnoValidadoConServidorEnSesion = true;
     _enDescanso = false;
     _recibeServicios = true;
     _visibleEnMapa = true;
@@ -3640,6 +3663,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     _turnoActivo = null;
     _isOnline = false;
+    _turnoValidadoConServidorEnSesion = true;
     _enDescanso = false;
     _recibeServicios = true;
     _visibleEnMapa = true;
