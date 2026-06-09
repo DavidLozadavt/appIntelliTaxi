@@ -644,6 +644,52 @@ class SolicitudDisplayHelper {
     return formatReadablePlaceName(place);
   }
 
+  /// Barrio y calle de recogida (todos los alias: `origen`, `origen_address`, etc.).
+  static ({String barrio, String direccion}) barrioYDireccionRecogida(
+    Map<String, dynamic> data,
+  ) {
+    final n = normalizeSolicitudMap(data);
+    var barrio = '';
+    final barrioRaw = barrioFromPayload(n);
+    if (barrioRaw != null && barrioRaw.isNotEmpty) {
+      barrio = formatReadablePlaceName(barrioRaw);
+    }
+
+    var direccion = '';
+    final raw = _pickupAddressRaw(n);
+    if (raw != null && !isPlaceholderPickup(raw)) {
+      if (looksLikeStreetAddress(raw)) {
+        final line = routeAddressSubtitle(raw);
+        direccion = formatReadablePlaceName(
+          line.isNotEmpty ? line : raw.split(',').first.trim(),
+        );
+      } else if (barrio.isEmpty) {
+        barrio = formatReadablePlaceName(placeNameFromAddress(raw));
+      } else {
+        final line = routeAddressSubtitle(raw);
+        if (line.isNotEmpty &&
+            _normalizeCompare(line) != _normalizeCompare(barrio)) {
+          direccion = formatReadablePlaceName(line);
+        }
+      }
+    }
+
+    if (direccion.isEmpty) {
+      final titulo = pickupTitleForDriver(n);
+      if (titulo.isNotEmpty &&
+          !isPlaceholderPickup(titulo) &&
+          looksLikeStreetAddress(titulo)) {
+        direccion = formatReadablePlaceName(titulo);
+      } else if (barrio.isEmpty &&
+          titulo.isNotEmpty &&
+          !isPlaceholderPickup(titulo)) {
+        barrio = formatReadablePlaceName(titulo);
+      }
+    }
+
+    return (barrio: barrio.trim(), direccion: direccion.trim());
+  }
+
   /// Calle / dirección completa cuando difiere del nombre (subtítulo).
   static String pickupSubtitle(Map<String, dynamic> data) {
     final n = normalizeSolicitudMap(data);

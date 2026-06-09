@@ -57,20 +57,15 @@ abstract final class OfertaExclusivaDisplay {
     return SolicitudDisplayHelper.necesitaEnriquecimientoGeocode(n);
   }
 
-  /// Texto cuando no hay barrio/calle tras geocode (o el API no trae coords).
+  /// Texto de respaldo cuando aún no hay geocode (nunca confundir con «sin destino»).
   static String tituloRecogidaFallback(Map<String, dynamic> data) {
+    final par = SolicitudDisplayHelper.barrioYDireccionRecogida(data);
+    if (par.barrio.isNotEmpty) return par.barrio;
+    if (par.direccion.isNotEmpty) return par.direccion;
     final n = SolicitudDisplayHelper.normalizeSolicitudMap(data);
     final hint = SolicitudDisplayHelper.pickupCoordinatesHint(n);
     if (hint != null) return hint;
-    final addr = n['origen_address']?.toString().trim() ??
-        n['origen']?.toString().trim();
-    if (addr != null && addr.isNotEmpty) {
-      return SolicitudDisplayHelper.formatReadablePlaceName(addr);
-    }
-    if (!SolicitudDisplayHelper.hasDestination(n)) {
-      return 'Servicio sin destino fijo';
-    }
-    return 'Dirección no disponible';
+    return 'Punto de recogida';
   }
 
   static OfertaUbicacionVista recogida(Map<String, dynamic> data) {
@@ -281,36 +276,23 @@ abstract final class OfertaExclusivaDisplay {
     return '';
   }
 
-  /// Título + subtítulo para tarjetas compactas del mapa (misma lógica que oferta exclusiva).
+  /// Título + subtítulo para tarjetas compactas: solo barrio y dirección de recogida.
   static ({String titulo, String subtitulo}) etiquetasListaDense(
     Map<String, dynamic> data,
   ) {
-    final vista = recogida(data);
-    final barrio = vista.barrio?.trim() ?? '';
-    final calle = vista.titulo.trim();
-    final direccion = vista.direccionVisible.trim();
+    final par = SolicitudDisplayHelper.barrioYDireccionRecogida(data);
+    var barrio = par.barrio;
+    var direccion = par.direccion;
 
-    final titulo = barrio.isNotEmpty
-        ? barrio
-        : (calle.isNotEmpty && !_tituloVacio(calle)
-            ? calle
-            : tituloRecogidaFallback(data));
+    if (barrio.isNotEmpty && _tituloVacio(barrio)) barrio = '';
+    if (direccion.isNotEmpty && _tituloVacio(direccion)) direccion = '';
 
-    String subtitulo = '';
-    if (barrio.isNotEmpty &&
-        calle.isNotEmpty &&
-        calle.toLowerCase() != barrio.toLowerCase()) {
-      subtitulo = calle;
-    } else if (direccion.isNotEmpty &&
-        direccion.toLowerCase() != titulo.trim().toLowerCase()) {
-      subtitulo = direccion;
-    }
-
-    if (subtitulo.isEmpty && !_tituloVacio(titulo)) {
-      final telefono =
-          SolicitudDisplayHelper.telefonoLlamadaVisible(data)?.trim() ?? '';
-      if (telefono.isNotEmpty) subtitulo = telefono;
-    }
+    final titulo = barrio.isNotEmpty ? barrio : direccion;
+    final subtitulo = barrio.isNotEmpty &&
+            direccion.isNotEmpty &&
+            !_igualLugar(direccion, barrio)
+        ? direccion
+        : '';
 
     return (titulo: titulo.trim(), subtitulo: subtitulo.trim());
   }

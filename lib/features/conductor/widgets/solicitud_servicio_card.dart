@@ -3,7 +3,6 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
-import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
 
@@ -77,28 +76,6 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
 
   void _dismiss(VoidCallback callback) {
     _controller.reverse().then((_) => callback());
-  }
-
-  String _denseOrigenSubtitulo({
-    required String origenSub,
-    required String? coordsHint,
-  }) {
-    if (origenSub.isNotEmpty) return origenSub;
-
-    final nombre = widget.solicitud['pasajero_nombre']?.toString().trim();
-    if (nombre != null && nombre.isNotEmpty) return nombre;
-
-    final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(
-      widget.solicitud,
-    );
-    if (id != null && id.isNotEmpty) return 'Servicio #$id';
-
-    if (coordsHint != null && coordsHint.isNotEmpty) return 'GPS: $coordsHint';
-
-    final distancia = widget.distanciaDesdeMi?.trim() ?? '';
-    if (distancia.isNotEmpty) return distancia;
-
-    return '';
   }
 
   Widget? _denseTrailingBadge({
@@ -292,22 +269,6 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                       ),
                     ),
                   ],
-                  if (distanciaMi.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      distanciaMi,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        height: 1.1,
-                        color: isDark
-                            ? Colors.lightBlueAccent
-                            : Colors.blue.shade700,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -470,19 +431,14 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         : compact
         ? SolicitudDisplayHelper.pickupPlaceLabel(widget.solicitud)
         : SolicitudDisplayHelper.pickupTitleForDriver(widget.solicitud);
-    var origenSub = denseEtiquetas?.subtitulo ??
-        SolicitudDisplayHelper.pickupDetailForDriver(widget.solicitud);
+    var origenSub = dense
+        ? (denseEtiquetas?.subtitulo ?? '')
+        : SolicitudDisplayHelper.pickupDetailForDriver(widget.solicitud);
     if (!dense && origenSub.isEmpty) {
       origenSub = SolicitudDisplayHelper.pickupSubtitle(widget.solicitud);
     }
     final coordsHint =
         SolicitudDisplayHelper.pickupCoordinatesHint(widget.solicitud);
-    if (dense && origenSub.isEmpty) {
-      origenSub = _denseOrigenSubtitulo(
-        origenSub: origenSub,
-        coordsHint: coordsHint,
-      );
-    }
     final barrio = SolicitudDisplayHelper.barrioFromPayload(widget.solicitud);
     final destinoNombre =
         SolicitudDisplayHelper.destinationName(widget.solicitud);
