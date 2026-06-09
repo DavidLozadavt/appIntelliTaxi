@@ -135,7 +135,7 @@ class ConductorMapServiciosTabs {
 
   /// Altura real aproximada de [SolicitudServicioCard] en modo `denseList`.
   static double denseCardItemExtent(BuildContext context) =>
-      pantallaCompacta(context) ? 90.0 : 96.0;
+      pantallaCompacta(context) ? 98.0 : 104.0;
 
   static const double _listGap = 8.0;
   static const double _listPadding = 12.0;

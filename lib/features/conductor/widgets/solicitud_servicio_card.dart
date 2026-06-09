@@ -113,16 +113,6 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
         ),
       );
     }
-    if (distanciaMi.isNotEmpty) {
-      return Text(
-        distanciaMi,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Colors.grey.shade600,
-        ),
-      );
-    }
     if (precio != null && precio > 0) {
       return Text(
         '\$${precio.toStringAsFixed(0)}',
@@ -266,6 +256,22 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.78)
                             : Colors.black54,
+                      ),
+                    ),
+                  ],
+                  if (distanciaMi.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      distanciaMi,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        height: 1.1,
+                        color: isDark
+                            ? Colors.lightBlueAccent
+                            : Colors.blue.shade700,
                       ),
                     ),
                   ],
