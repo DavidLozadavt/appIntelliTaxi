@@ -262,6 +262,7 @@ class ConductorMapServiciosTabs {
       try {
         await home.sincronizarSolicitudesPublicadasConductor(
           propagarError: true,
+          forzar: true,
         );
       } catch (_) {}
     }

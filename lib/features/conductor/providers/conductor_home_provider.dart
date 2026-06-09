@@ -105,6 +105,9 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? _ultimaSyncSolicitudesEn;
   Timer? _tickerExpiracionUI;
   Timer? _syncSolicitudesTimer;
+  bool _syncSolicitudesEnCurso = false;
+  DateTime? _ultimaSyncSolicitudesAt;
+  static const Duration _minIntervaloSyncSolicitudes = Duration(seconds: 3);
   bool _suscritoASocket = false;
   bool _suscritoEmergenciasFlota = false;
   bool _enServicio = false;
@@ -1171,6 +1174,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Alinea la cola local con el backend (otro conductor aceptó, realtime perdido, etc.).
   Future<void> sincronizarSolicitudesPublicadasConductor({
     bool propagarError = false,
+    bool forzar = false,
   }) async {
     if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
     if (ApiRateLimitGuard.instance.isBlocked) {
@@ -1179,6 +1183,17 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
       return;
     }
+    if (_syncSolicitudesEnCurso) {
+      AppLogger.d('⏭️ Sync solicitudes omitido (ya en curso)');
+      return;
+    }
+    final ultima = _ultimaSyncSolicitudesAt;
+    if (!forzar &&
+        ultima != null &&
+        DateTime.now().difference(ultima) < _minIntervaloSyncSolicitudes) {
+      return;
+    }
+    _syncSolicitudesEnCurso = true;
     try {
       final result = await _conductorService.getSolicitudesPendientes(
         lat: _currentPosition?.latitude,
@@ -1257,6 +1272,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       _iniciarTickerExpiracionUI();
+      _ultimaSyncSolicitudesAt = DateTime.now();
       if (!_isDisposed) notifyListeners();
     } catch (e) {
       ApiRateLimitGuard.instance.recordIfRateLimit(e);
@@ -1264,6 +1280,8 @@ class ConductorHomeProvider extends ChangeNotifier {
         AppLogger.d('⚠️ Sync solicitudes publicadas: $e');
       }
       if (propagarError) rethrow;
+    } finally {
+      _syncSolicitudesEnCurso = false;
     }
   }
 
@@ -3269,7 +3287,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       if (_turnoActivo == null || !_isOnline) return;
 
-      await sincronizarSolicitudesPublicadasConductor();
+      await sincronizarSolicitudesPublicadasConductor(forzar: true);
       await sincronizarOfertaActiva();
 
       final position = _currentPosition;

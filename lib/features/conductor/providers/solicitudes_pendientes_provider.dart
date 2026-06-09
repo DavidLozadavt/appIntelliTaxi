@@ -48,15 +48,10 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
+  /// El poll periódico vive en [ConductorHomeProvider]; aquí solo escuchamos cambios.
   void iniciarRefrescoPeriodico() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(
-      const Duration(seconds: kPollSolicitudesPendientesSegundos),
-      (_) {
-      if (!_isDisposed && !_cargando) {
-        unawaited(refrescar(silencioso: true));
-      }
-    });
+    _refreshTimer = null;
   }
 
   void detenerRefrescoPeriodico() {
@@ -66,7 +61,16 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
 
   Future<void> refrescar({bool silencioso = false}) async {
     if (_isDisposed || _home == null) return;
-    if (ApiRateLimitGuard.instance.isBlocked) return;
+    if (ApiRateLimitGuard.instance.isBlocked) {
+      if (!silencioso) {
+        final sec = ApiRateLimitGuard.instance.secondsRemaining;
+        _error = sec > 0
+            ? 'Demasiadas peticiones. Espera ${sec}s e intenta de nuevo.'
+            : 'Demasiadas peticiones. Espera un momento e intenta de nuevo.';
+        notifyListeners();
+      }
+      return;
+    }
     if (!silencioso) {
       _cargando = true;
       _error = null;
@@ -76,6 +80,7 @@ class SolicitudesPendientesProvider extends ChangeNotifier {
     try {
       await _home!.sincronizarSolicitudesPublicadasConductor(
         propagarError: !silencioso,
+        forzar: !silencioso,
       );
       _error = null;
     } catch (e) {

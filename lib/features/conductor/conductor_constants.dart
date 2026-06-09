@@ -2,7 +2,7 @@
 const int kOportunidadConductorSegundos = 120;
 
 /// Polling `GET /taxi/solicitudes-pendientes` (3–5 s recomendado).
-const int kPollSolicitudesPendientesSegundos = 4;
+const int kPollSolicitudesPendientesSegundos = 6;
 
 /// Poll `GET /taxi/oferta-activa` con pantalla exclusiva abierta (10–15 s recomendado).
 const int kPollOfertaActivaPantallaSegundos = 12;
