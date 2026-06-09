@@ -105,9 +105,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? _ultimaSyncSolicitudesEn;
   Timer? _tickerExpiracionUI;
   Timer? _syncSolicitudesTimer;
+  Timer? _syncSolicitudesDebounceTimer;
   bool _syncSolicitudesEnCurso = false;
   DateTime? _ultimaSyncSolicitudesAt;
-  static const Duration _minIntervaloSyncSolicitudes = Duration(seconds: 3);
+  static const Duration _minIntervaloSyncSolicitudes = Duration(seconds: 15);
   bool _suscritoASocket = false;
   bool _suscritoEmergenciasFlota = false;
   bool _enServicio = false;
@@ -950,7 +951,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       esNueva: true,
       forzarBeepLlegando: true,
     );
-    unawaited(sincronizarSolicitudesPublicadasConductor());
+    _programarSyncSolicitudesTrasEvento();
     if (!_isDisposed) notifyListeners();
   }
 
@@ -979,12 +980,20 @@ class ConductorHomeProvider extends ChangeNotifier {
     _detenerSeguimientoUbicacion();
     _detenerPollOfertaActiva();
     _detenerTickOfertaExclusiva();
+    SocketService.removeReconnectListener(_onSocketReconectado);
     VoiceAlertService.dispose();
     desconectarSocket();
     super.dispose();
   }
 
   // ==================== CONEXIÓN SOCKET ====================
+
+  void _onSocketReconectado() {
+    if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
+    AppLogger.d('🔄 Pusher reconectado: alinear cola con API');
+    unawaited(sincronizarSolicitudesPublicadasConductor(forzar: true));
+    _iniciarSincronizacionSolicitudes();
+  }
 
   /// Conecta a Pusher y se suscribe al canal de solicitudes
   Future<void> conectarSocket() async {
@@ -1001,6 +1010,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     try {
+      SocketService.addReconnectListener(_onSocketReconectado);
+
       if (_suscritoASocket) {
         AppLogger.d('⚠️ Ya está suscrito a solicitudes-servicio');
         return;
@@ -1147,28 +1158,64 @@ class ConductorHomeProvider extends ChangeNotifier {
       AppLogger.d('✅ Suscrito correctamente al canal de solicitudes');
     } catch (e) {
       AppLogger.d('❌ Error al conectarse al socket: $e');
+      if (_isOnline && !_enServicio && !_enDescanso) {
+        _iniciarSincronizacionSolicitudes();
+      }
     }
   }
 
   void _iniciarSincronizacionSolicitudes() {
     if (_enServicio || _enDescanso) return;
+    _programarProximoPollSolicitudes();
+  }
+
+  Duration _intervaloPollSolicitudes() {
+    if (!_suscritoASocket) {
+      return const Duration(
+        seconds: kPollSolicitudesPendientesSinSocketSegundos,
+      );
+    }
+    final tieneCola = _solicitudesPorId.isNotEmpty;
+    return Duration(
+      seconds: tieneCola
+          ? kPollSolicitudesPendientesConSocketColaSegundos
+          : kPollSolicitudesPendientesConSocketVacioSegundos,
+    );
+  }
+
+  void _programarProximoPollSolicitudes() {
     _syncSolicitudesTimer?.cancel();
-    _syncSolicitudesTimer = Timer.periodic(
-      const Duration(seconds: kPollSolicitudesPendientesSegundos),
-      (_) {
+    if (_isDisposed || _enServicio || _enDescanso) return;
+
+    _syncSolicitudesTimer = Timer(_intervaloPollSolicitudes(), () {
       if (!_isDisposed &&
-          _suscritoASocket &&
           _isOnline &&
           !_enDescanso &&
           !ApiRateLimitGuard.instance.isBlocked) {
         sincronizarSolicitudesPublicadasConductor();
       }
+      _programarProximoPollSolicitudes();
     });
+  }
+
+  /// Alineación diferida tras Pusher/FCM (el payload ya actualizó la UI).
+  void _programarSyncSolicitudesTrasEvento() {
+    if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
+    _syncSolicitudesDebounceTimer?.cancel();
+    _syncSolicitudesDebounceTimer = Timer(
+      const Duration(seconds: kSyncSolicitudesTrasEventoSegundos),
+      () {
+        if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
+        sincronizarSolicitudesPublicadasConductor();
+      },
+    );
   }
 
   void _detenerSincronizacionSolicitudes() {
     _syncSolicitudesTimer?.cancel();
     _syncSolicitudesTimer = null;
+    _syncSolicitudesDebounceTimer?.cancel();
+    _syncSolicitudesDebounceTimer = null;
   }
 
   /// Alinea la cola local con el backend (otro conductor aceptó, realtime perdido, etc.).
@@ -1912,7 +1959,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         mostrarEnOverlay: accion == ConductorSocketAccion.mergeColaCercano,
       );
       if (_isOnline) {
-        unawaited(sincronizarSolicitudesPublicadasConductor());
+        _programarSyncSolicitudesTrasEvento();
       } else {
         await _marcarSolicitudesPendientesDeSync();
       }
@@ -1920,7 +1967,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     if (_isOnline) {
-      await sincronizarSolicitudesPublicadasConductor();
+      _programarSyncSolicitudesTrasEvento();
     } else {
       await _marcarSolicitudesPendientesDeSync();
     }
@@ -2053,7 +2100,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         _limpiarOfertaExclusivaLocal(cerrarPantalla: true);
       }
       if (pasoALlegandoPublico || pasoAEspera) {
-        unawaited(sincronizarSolicitudesPublicadasConductor());
+        _programarSyncSolicitudesTrasEvento();
       }
       final reboteRealtimeALlegando = overlayEstabaOculto && !fromSync;
       final altaEnLlegando =

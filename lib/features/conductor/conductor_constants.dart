@@ -1,8 +1,17 @@
 /// TTL overlay solo si el API no envía `countdown_segundos` / `overlay_expira_en`.
 const int kOportunidadConductorSegundos = 120;
 
-/// Polling `GET /taxi/solicitudes-pendientes` (3–5 s recomendado).
-const int kPollSolicitudesPendientesSegundos = 6;
+/// Respaldo con Pusher activo y cola vacía (socket entrega solicitudes nuevas).
+const int kPollSolicitudesPendientesConSocketVacioSegundos = 60;
+
+/// Respaldo con Pusher activo y cola con ítems (alinear fases / tomadas por otros).
+const int kPollSolicitudesPendientesConSocketColaSegundos = 30;
+
+/// Sin socket: polling principal hasta reconectar.
+const int kPollSolicitudesPendientesSinSocketSegundos = 20;
+
+/// Debounce antes de sync tras evento realtime (el payload ya actualizó la UI).
+const int kSyncSolicitudesTrasEventoSegundos = 20;
 
 /// Poll `GET /taxi/oferta-activa` con pantalla exclusiva abierta (10–15 s recomendado).
 const int kPollOfertaActivaPantallaSegundos = 12;

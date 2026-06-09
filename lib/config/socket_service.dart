@@ -21,6 +21,9 @@ class SocketService {
   static bool _reconfiguringEndpoint = false;
   static Future<void>? _initFuture;
   static Completer<void>? _connectedCompleter;
+  static bool _hasConnectedOnce = false;
+  static bool _wasDisconnected = true;
+  static final List<VoidCallback> _reconnectListeners = [];
   static final Map<String, Function(dynamic)> _eventHandlers = {};
   static final Map<String, Function(dynamic)> _eventHandlersSecondary = {};
   static final Set<String> _subscribedPrimary = {};
@@ -409,16 +412,38 @@ class SocketService {
     AppLogger.d('❌ [SOCKET] Error de suscripción: $message | details=$e');
   }
 
+  static void addReconnectListener(VoidCallback listener) {
+    if (!_reconnectListeners.contains(listener)) {
+      _reconnectListeners.add(listener);
+    }
+  }
+
+  static void removeReconnectListener(VoidCallback listener) {
+    _reconnectListeners.remove(listener);
+  }
+
+  static void _notifyReconnectListeners() {
+    for (final listener in List<VoidCallback>.from(_reconnectListeners)) {
+      listener();
+    }
+  }
+
   static void _onConnectionStateChangeSecondary(
     dynamic currentState,
     dynamic previousState,
   ) {
     final state = currentState.toString().toUpperCase();
     if (state.contains('CONNECTED') && !state.contains('DISCONNECTED')) {
+      if (_hasConnectedOnce && _wasDisconnected) {
+        _notifyReconnectListeners();
+      }
+      _hasConnectedOnce = true;
+      _wasDisconnected = false;
       _markConnected();
     } else if (state.contains('DISCONNECTING')) {
       _markDisconnected(disconnecting: true);
     } else if (state.contains('DISCONNECTED')) {
+      _wasDisconnected = true;
       _markDisconnected();
     }
 
