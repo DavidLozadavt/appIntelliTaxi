@@ -40,15 +40,24 @@ class SolicitudDisplayHelper {
         m['destinationName'] ??
         m['destino_nombre'];
 
-    // Dirección completa — columnas origenAddress/destinoAddress.
+    // Dirección completa — columnas origenAddress/destinoAddress (+ alias API telefónico).
     m['origen_address'] ??= m['origenAddress'] ??
         m['origin_address'] ??
         m['originAddress'] ??
-        m['direccion_origen'];
+        m['direccion_origen'] ??
+        m['origen_direccion'] ??
+        m['origenDireccion'] ??
+        m['direccionOrigen'] ??
+        m['punto_recogida'] ??
+        m['ubicacion_recogida'] ??
+        m['recogida'];
     m['destino_address'] ??= m['destinoAddress'] ??
         m['destination_address'] ??
         m['destinationAddress'] ??
-        m['direccion_destino'];
+        m['direccion_destino'] ??
+        m['destino_direccion'] ??
+        m['destinoDireccion'] ??
+        m['direccionDestino'];
 
     // Socket legacy: "origen"/"destino" son direcciones, NO nombres de lugar.
     final legacyOrigen = m['origen']?.toString().trim();
@@ -65,6 +74,9 @@ class SolicitudDisplayHelper {
             m['destino_address'].toString().trim().isEmpty)) {
       m['destino_address'] = legacyDestino;
     }
+
+    _splitUbicacionTextoEnMapa(m, esOrigen: true);
+    _splitUbicacionTextoEnMapa(m, esOrigen: false);
 
     m['distancia_metros'] ??= m['distanciaMetros'] ?? m['distance_value'];
     m['distancia_texto'] ??= m['distanciaTexto'] ?? m['distance'];
@@ -86,6 +98,40 @@ class SolicitudDisplayHelper {
     }
 
     return m;
+  }
+
+  /// Separa «calle, barrio» cuando el API manda todo en un solo campo.
+  static void _splitUbicacionTextoEnMapa(
+    Map<String, dynamic> m, {
+    required bool esOrigen,
+  }) {
+    final texto = (esOrigen
+            ? m['origen_address'] ?? m['origen']
+            : m['destino_address'] ?? m['destino'])
+        ?.toString()
+        .trim();
+    if (texto == null || texto.isEmpty || !texto.contains(',')) return;
+
+    final partes = texto
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (partes.isEmpty) return;
+
+    final calle = partes.first;
+    final resto = partes.length > 1 ? partes.sublist(1).join(', ') : '';
+    final barrioKey = esOrigen ? 'origen_barrio' : 'destino_barrio';
+    final addrKey = esOrigen ? 'origen_address' : 'destino_address';
+    final barrioActual = m[barrioKey]?.toString().trim() ?? '';
+    final addrActual = m[addrKey]?.toString().trim() ?? '';
+
+    if (barrioActual.isEmpty) {
+      m[addrKey] = calle;
+      if (resto.isNotEmpty) m[barrioKey] = compactBarrio(resto);
+    } else if (addrActual.isEmpty || addrActual == texto) {
+      m[addrKey] = calle;
+    }
   }
 
   /// Etiqueta corta para `origen_servicio` (WHATSAPP, LLAMADA, APP_MOVIL, …).
@@ -146,8 +192,14 @@ class SolicitudDisplayHelper {
       'origenAddress',
       'origin_address',
       'originAddress',
-      'origen',
+      'origen_direccion',
+      'origenDireccion',
       'direccion_origen',
+      'direccionOrigen',
+      'punto_recogida',
+      'ubicacion_recogida',
+      'recogida',
+      'origen',
       'pickup_address',
     ]);
   }
@@ -180,6 +232,8 @@ class SolicitudDisplayHelper {
       'barrio',
       'neighborhood',
       'zona_origen',
+      'zona_recogida',
+      'comuna_origen',
     ]) {
       final value = data[key]?.toString().trim();
       if (value != null && value.isNotEmpty && !_looksLikeFullAddress(value)) {

@@ -69,6 +69,8 @@ class _HomeConductorState extends State<HomeConductor>
   Timer? _validandoTurnoTimeout;
 
   BitmapDescriptor? _dotMarker;
+  /// Fuerza recrear GoogleMap al volver del overlay/segundo plano (evita mapa negro).
+  int _mapResumeGeneration = 0;
   late TabController _serviciosTabController;
   /// Solo true si aún no sabemos si hay turno (evita bloquear al volver de un viaje).
   bool _validandoTurno = false;
@@ -362,6 +364,7 @@ class _HomeConductorState extends State<HomeConductor>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      setState(() => _mapResumeGeneration++);
       unawaited(_overlayService.hide());
       unawaited(_provider.refrescarEnResume());
     } else if (state == AppLifecycleState.paused ||
@@ -1537,6 +1540,7 @@ class _HomeConductorState extends State<HomeConductor>
         final provider = context.read<ConductorHomeProvider>();
         return RepaintBoundary(
           child: StandardMap(
+            key: ValueKey('conductor_map_$_mapResumeGeneration'),
             initialPosition: LatLng(pos.latitude, pos.longitude),
             zoom: _zoomDetenido,
             tilt: _tiltNavegacion,

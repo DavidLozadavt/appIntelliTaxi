@@ -281,6 +281,40 @@ abstract final class OfertaExclusivaDisplay {
     return '';
   }
 
+  /// Título + subtítulo para tarjetas compactas del mapa (misma lógica que oferta exclusiva).
+  static ({String titulo, String subtitulo}) etiquetasListaDense(
+    Map<String, dynamic> data,
+  ) {
+    final vista = recogida(data);
+    final barrio = vista.barrio?.trim() ?? '';
+    final calle = vista.titulo.trim();
+    final direccion = vista.direccionVisible.trim();
+
+    final titulo = barrio.isNotEmpty
+        ? barrio
+        : (calle.isNotEmpty && !_tituloVacio(calle)
+            ? calle
+            : tituloRecogidaFallback(data));
+
+    String subtitulo = '';
+    if (barrio.isNotEmpty &&
+        calle.isNotEmpty &&
+        calle.toLowerCase() != barrio.toLowerCase()) {
+      subtitulo = calle;
+    } else if (direccion.isNotEmpty &&
+        direccion.toLowerCase() != titulo.trim().toLowerCase()) {
+      subtitulo = direccion;
+    }
+
+    if (subtitulo.isEmpty && !_tituloVacio(titulo)) {
+      final telefono =
+          SolicitudDisplayHelper.telefonoLlamadaVisible(data)?.trim() ?? '';
+      if (telefono.isNotEmpty) subtitulo = telefono;
+    }
+
+    return (titulo: titulo.trim(), subtitulo: subtitulo.trim());
+  }
+
   static String distanciaTexto(double? km) {
     if (km == null || km <= 0) return '';
     if (km < 1) {

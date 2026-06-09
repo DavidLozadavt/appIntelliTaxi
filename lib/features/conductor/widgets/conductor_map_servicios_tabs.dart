@@ -133,8 +133,9 @@ class ConductorMapServiciosTabs {
   static int visibleCardsTarget(BuildContext context) =>
       pantallaCompacta(context) ? 5 : 6;
 
-  static double compactCardItemExtent(BuildContext context) =>
-      pantallaCompacta(context) ? 118.0 : 124.0;
+  /// Altura real aproximada de [SolicitudServicioCard] en modo `denseList`.
+  static double denseCardItemExtent(BuildContext context) =>
+      pantallaCompacta(context) ? 90.0 : 96.0;
 
   static const double _listGap = 8.0;
   static const double _listPadding = 12.0;
@@ -148,16 +149,23 @@ class ConductorMapServiciosTabs {
     return value;
   }
 
-  static double _listPanelHeight(
+  /// Altura del panel según cuántas tarjetas hay (máx. [visibleCardsTarget]).
+  static double listPanelHeight(
     BuildContext context, {
     required bool conBarraRefresh,
+    int? itemCount,
   }) {
-    final n = visibleCardsTarget(context);
-    final cardH = compactCardItemExtent(context);
+    final maxCards = visibleCardsTarget(context);
+    final cardH = denseCardItemExtent(context);
     final refreshH = conBarraRefresh ? _refreshBarHeight : 0.0;
-    final minH = cardH * 2 + _listGap + _listPadding + refreshH;
-    final desired =
-        cardH * n + _listGap * (n - 1) + _listPadding + refreshH;
+
+    final count = itemCount ?? maxCards;
+    final effectiveCount = count.clamp(1, maxCards);
+    final desired = cardH * effectiveCount +
+        _listGap * (effectiveCount - 1).clamp(0, maxCards) +
+        _listPadding +
+        refreshH;
+    final minH = cardH + _listPadding + refreshH;
 
     final screenH = MediaQuery.sizeOf(context).height;
     final topPad = MediaQuery.paddingOf(context).top;
@@ -173,6 +181,7 @@ class ConductorMapServiciosTabs {
   static Widget _panelShell({
     required BuildContext context,
     required Widget child,
+    int? itemCount,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
@@ -181,8 +190,15 @@ class ConductorMapServiciosTabs {
       color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        height: _listPanelHeight(context, conBarraRefresh: false),
-        child: child,
+        height: listPanelHeight(
+          context,
+          conBarraRefresh: false,
+          itemCount: itemCount,
+        ),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: child,
+        ),
       ),
     );
   }
@@ -299,17 +315,11 @@ class ConductorMapServiciosTabs {
 
     return _panelShell(
       context: context,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Expanded(
-            child: RefreshIndicator(
-              color: AppColors.accent,
-              onRefresh: onRefresh,
-              child: listBody,
-            ),
-          ),
-        ],
+      itemCount: soloAvisoEspera ? 1 : lista.length,
+      child: RefreshIndicator(
+        color: AppColors.accent,
+        onRefresh: onRefresh,
+        child: listBody,
       ),
     );
   }
@@ -328,7 +338,11 @@ class ConductorMapServiciosTabs {
         await pendientes.refrescar(silencioso: false);
       } catch (_) {}
     }
-    final panelH = _listPanelHeight(context, conBarraRefresh: true);
+    final panelH = listPanelHeight(
+      context,
+      conBarraRefresh: true,
+      itemCount: lista.isEmpty ? null : lista.length,
+    );
 
     Widget body;
     if (pendientes.cargando && lista.isEmpty) {
