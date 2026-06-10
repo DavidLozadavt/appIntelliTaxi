@@ -75,8 +75,8 @@ class _SplashScreenState extends State<SplashScreen>
       _startTypewriter();
     });
 
-    _navigationWatchdogTimer = Timer(const Duration(seconds: 8), () {
-      _navigateToLogin();
+    _navigationWatchdogTimer = Timer(const Duration(seconds: 12), () {
+      unawaited(_navigationWatchdogFallback());
     });
 
     _checkLogin();
@@ -196,6 +196,27 @@ class _SplashScreenState extends State<SplashScreen>
     } finally {
       sw.stop();
     }
+  }
+
+  Future<void> _navigationWatchdogFallback() async {
+    if (!mounted || _hasNavigated) return;
+    try {
+      final snapshot = await SessionPreload.ensureReady().timeout(
+        const Duration(seconds: 3),
+      );
+      if (!mounted || _hasNavigated) return;
+      if (snapshot.canOpenHome) {
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.hydrateFromSnapshot(snapshot);
+        if (!mounted || _hasNavigated) return;
+        _navigateToHome();
+        return;
+      }
+    } catch (_) {
+      // Continuar al login.
+    }
+    if (!mounted || _hasNavigated) return;
+    _navigateToLogin();
   }
 
   void _navigateToHome() {

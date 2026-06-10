@@ -282,22 +282,26 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
           ],
         ),
         if (muestraDestino && destinoHeadline.isNotEmpty) ...[
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           Text(
             destinoHeadline,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              height: 1.12,
+              height: 1.15,
               color: isDark
                   ? Colors.white.withValues(alpha: 0.9)
                   : Colors.black87,
             ),
           ),
-          if (destinoSub.isNotEmpty) ...[
-            const SizedBox(height: 1),
+          if (destinoSub.isNotEmpty &&
+              destinoSub.toLowerCase() != destinoHeadline.toLowerCase() &&
+              !destinoHeadline.toLowerCase().contains(
+                destinoSub.toLowerCase(),
+              )) ...[
+            const SizedBox(height: 2),
             Text(
               destinoSub,
               maxLines: 1,
@@ -330,7 +334,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
             ),
           ),
         ],
-        const SizedBox(height: 3),
+        const SizedBox(height: 4),
         _buildDenseActionButtons(compact: compact),
       ],
     );
@@ -483,7 +487,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
 
     final cardBody = Padding(
           padding: dense
-              ? const EdgeInsets.fromLTRB(10, 5, 10, 5)
+              ? const EdgeInsets.fromLTRB(10, 6, 10, 6)
               : compact
               ? const EdgeInsets.fromLTRB(12, 10, 12, 11)
               : const EdgeInsets.fromLTRB(16, 14, 16, 16),

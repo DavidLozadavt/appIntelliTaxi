@@ -34,6 +34,10 @@ class ConductorSolicitudPayloadHelper {
     for (final key in const [
       'overlay_expira_en',
       'overlayExpiraEn',
+      'exclusiva_expira_en',
+      'exclusivaExpiraEn',
+      'expira_en',
+      'expiraEn',
     ]) {
       final parsed = ServicioEsperaTimer.parseExpiraEn(solicitud[key]);
       if (parsed != null) return parsed;
@@ -41,12 +45,49 @@ class ConductorSolicitudPayloadHelper {
     return null;
   }
 
+  static DateTime? _expiraEnSegunConductorTab(Map<String, dynamic> solicitud) {
+    if (esTabEspera(solicitud)) {
+      for (final key in const [
+        'abierta_expira_en',
+        'abiertaExpiraEn',
+        'expira_en',
+        'expiraEn',
+        'expira_en_definitivo',
+        'expiraEnDefinitivo',
+      ]) {
+        final parsed = ServicioEsperaTimer.parseExpiraEn(solicitud[key]);
+        if (parsed != null) return parsed;
+      }
+    }
+    if (esTabLlegando(solicitud) || broadcastFaseLlegando(solicitud)) {
+      for (final key in const [
+        'exclusiva_expira_en',
+        'exclusivaExpiraEn',
+        'expira_en',
+        'expiraEn',
+      ]) {
+        final parsed = ServicioEsperaTimer.parseExpiraEn(solicitud[key]);
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
+  }
+
   static DateTime? _expiraColaDesdePayloadApi(Map<String, dynamic> solicitud) {
+    final segunTab = _expiraEnSegunConductorTab(solicitud);
+    if (segunTab != null) return segunTab;
+
     for (final key in const [
       'cola_expira_en',
       'colaExpiraEn',
       'servicio_expira_en',
       'servicioExpiraEn',
+      'exclusiva_expira_en',
+      'exclusivaExpiraEn',
+      'abierta_expira_en',
+      'abiertaExpiraEn',
+      'expira_en',
+      'expiraEn',
     ]) {
       final parsed = ServicioEsperaTimer.parseExpiraEn(solicitud[key]);
       if (parsed != null) return parsed;
@@ -151,6 +192,13 @@ class ConductorSolicitudPayloadHelper {
   }
 
   static int _segundosLlegandoDesdeApi(Map<String, dynamic> solicitud) {
+    final expira = _expiraEnSegunConductorTab(solicitud) ??
+        resolverOverlayExpiraEn(solicitud);
+    if (expira != null) {
+      final s = expira.difference(DateTime.now()).inSeconds;
+      if (s > 0) return s;
+    }
+
     if (broadcastFaseLlegando(solicitud)) {
       final broadcast = _parseSegundosApi(solicitud, const [
         'segundos_restantes_llegando',
@@ -173,6 +221,12 @@ class ConductorSolicitudPayloadHelper {
   }
 
   static int _segundosEsperaDesdeApi(Map<String, dynamic> solicitud) {
+    final expira = _expiraEnSegunConductorTab(solicitud);
+    if (expira != null) {
+      final s = expira.difference(DateTime.now()).inSeconds;
+      if (s > 0) return s;
+    }
+
     return _parseSegundosApi(solicitud, const [
           'segundos_restantes_espera',
           'segundosRestantesEspera',
@@ -229,9 +283,10 @@ class ConductorSolicitudPayloadHelper {
     final api = _parseSegundosApi(solicitud, const [
       'countdown_segundos',
       'countdownSegundos',
+      'segundos_restantes',
+      'segundosRestantes',
       'segundos_restantes_llegando',
       'segundosRestantesLlegando',
-      'segundos_restantes',
       'segundos_restantes_fase_exclusiva',
       'segundosRestantesFaseExclusiva',
     ]);

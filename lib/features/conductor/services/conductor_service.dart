@@ -449,6 +449,13 @@ class ConductorService {
         data: requestData,
       );
 
+      _logUbicacionApiResponse(
+        'POST taxi/conductor/ubicacion-mapa',
+        response,
+        lat: lat,
+        lng: lng,
+      );
+
       if ((response.statusCode != 200 && response.statusCode != 201) ||
           response.data is Map && response.data['success'] == false) {
         throw Exception(
@@ -483,6 +490,13 @@ class ConductorService {
         },
       );
 
+      _logUbicacionApiResponse(
+        'POST conductor/estado-disponible (fallback)',
+        response,
+        lat: lat,
+        lng: lng,
+      );
+
       if ((response.statusCode != 200 && response.statusCode != 201) ||
           response.data is Map && response.data['success'] == false) {
         throw Exception(
@@ -496,6 +510,25 @@ class ConductorService {
       AppLogger.d('⚠️ Error actualizando ubicación de mapa: $fallbackError');
       throw primaryError;
     }
+  }
+
+  void _logUbicacionApiResponse(
+    String endpoint,
+    Response<dynamic> response, {
+    double? lat,
+    double? lng,
+  }) {
+    final body = response.data;
+    final pretty = body is Map || body is List
+        ? const JsonEncoder.withIndent('  ').convert(body)
+        : body?.toString() ?? 'null';
+    final coords = lat != null && lng != null
+        ? ' | enviado lat=$lat lng=$lng'
+        : '';
+    AppLogger.d(
+      '📡 $endpoint → HTTP ${response.statusCode}$coords\n$pretty',
+      tag: 'UbicacionAPI',
+    );
   }
 
   Future<int?> _getSessionConductorId() async {
@@ -861,16 +894,24 @@ class ConductorService {
         );
       }
       if (status >= 400) {
-        throw Exception(_messageFromResponseData(response.data, fallback));
+        final msg = _messageFromResponseData(response.data, fallback);
+        final err = Exception(msg);
+        ApiRateLimitGuard.instance.recordIfRateLimit(err);
+        throw err;
       }
 
       return _parseSolicitudesPendientesResponse(response.data);
     } on DioException catch (e) {
       ApiRateLimitGuard.instance.recordIfRateLimit(e);
-      AppLogger.d('⚠️ Error listando solicitudes pendientes: $e');
+      if (!ApiRateLimitGuard.looksLikeRateLimit(e)) {
+        AppLogger.d('⚠️ Error listando solicitudes pendientes: $e');
+      }
       throw Exception(_extractErrorMessage(e, fallback));
     } catch (e) {
-      AppLogger.d('⚠️ Error listando solicitudes pendientes: $e');
+      ApiRateLimitGuard.instance.recordIfRateLimit(e);
+      if (!ApiRateLimitGuard.looksLikeRateLimit(e)) {
+        AppLogger.d('⚠️ Error listando solicitudes pendientes: $e');
+      }
       rethrow;
     }
   }

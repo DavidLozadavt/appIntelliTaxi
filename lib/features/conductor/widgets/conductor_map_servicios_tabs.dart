@@ -95,14 +95,12 @@ class ConductorMapServiciosTabs {
     required double chipAltura,
     bool avisoEsperaEnLlegando = false,
   }) {
-    final compact = pantallaCompacta(context);
     var h = 12.0;
     h += chipAltura;
     h += tabBarHeight(context);
     if (avisoEsperaEnLlegando) {
       h += 44;
     }
-    h += compact ? 4.0 : 6.0;
     return h;
   }
 
@@ -133,12 +131,18 @@ class ConductorMapServiciosTabs {
   static int visibleCardsTarget(BuildContext context) =>
       pantallaCompacta(context) ? 5 : 6;
 
-  /// Altura real aproximada de [SolicitudServicioCard] en modo `denseList`.
+  /// Tarjeta compacta sin destino (recogida + distancia + botones).
+  static double denseCardMinHeight(BuildContext context) =>
+      pantallaCompacta(context) ? 94.0 : 100.0;
+
+  /// Tarjeta compacta con destino visible.
   static double denseCardItemExtent(BuildContext context) =>
-      pantallaCompacta(context) ? 98.0 : 104.0;
+      pantallaCompacta(context) ? 122.0 : 128.0;
 
   static const double _listGap = 8.0;
   static const double _listPadding = 12.0;
+  static const double _tightPanelPadding = 8.0;
+  static const double _tightCardGap = 6.0;
   static const double _refreshBarHeight = 34.0;
 
   /// Evita `ArgumentError` de [num.clamp] cuando min > max (pantallas bajas).
@@ -161,11 +165,16 @@ class ConductorMapServiciosTabs {
 
     final count = itemCount ?? maxCards;
     final effectiveCount = count.clamp(1, maxCards);
-    final desired = cardH * effectiveCount +
+    final perCard = effectiveCount == 1
+        ? denseCardMinHeight(context)
+        : cardH;
+    final listPad =
+        effectiveCount == 1 ? _tightPanelPadding : _listPadding;
+    final desired = perCard * effectiveCount +
         _listGap * (effectiveCount - 1).clamp(0, maxCards) +
-        _listPadding +
+        listPad +
         refreshH;
-    final minH = cardH + _listPadding + refreshH;
+    final minH = perCard + listPad + refreshH;
 
     final screenH = MediaQuery.sizeOf(context).height;
     final topPad = MediaQuery.paddingOf(context).top;
@@ -178,29 +187,57 @@ class ConductorMapServiciosTabs {
     return _safeClamp(desired, minH, maxH);
   }
 
+  /// Altura del bloque flotante (mapa / posicionamiento).
+  static double panelOuterHeight(
+    BuildContext context, {
+    required bool conBarraRefresh,
+    required int itemCount,
+    bool tightPanel = false,
+  }) {
+    if (tightPanel && !conBarraRefresh && itemCount > 0) {
+      final cardH = denseCardMinHeight(context);
+      if (itemCount == 1) return cardH + _tightPanelPadding;
+      return cardH * itemCount +
+          _tightCardGap * (itemCount - 1) +
+          _tightPanelPadding;
+    }
+    return listPanelHeight(
+      context,
+      conBarraRefresh: conBarraRefresh,
+      itemCount: itemCount,
+    );
+  }
+
+  static bool usarPanelAjustadoLlegando(BuildContext context, int itemCount) =>
+      itemCount > 0 && itemCount <= visibleCardsTarget(context);
+
   static Widget _panelShell({
     required BuildContext context,
     required Widget child,
     int? itemCount,
+    bool tight = false,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Material(
+    final material = Material(
       elevation: 6,
       borderRadius: BorderRadius.circular(10),
       color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
       clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: listPanelHeight(
-          context,
-          conBarraRefresh: false,
-          itemCount: itemCount,
-        ),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: child,
-        ),
-      ),
+      child: tight
+          ? child
+          : SizedBox(
+              height: listPanelHeight(
+                context,
+                conBarraRefresh: false,
+                itemCount: itemCount,
+              ),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: child,
+              ),
+            ),
     );
+    return material;
   }
 
   static Widget panel({
@@ -290,6 +327,37 @@ class ConductorMapServiciosTabs {
           ),
         ],
       );
+    } else if (usarPanelAjustadoLlegando(context, lista.length)) {
+      listBody = RefreshIndicator(
+        color: AppColors.accent,
+        onRefresh: onRefresh,
+        child: ListView.separated(
+          shrinkWrap: true,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+          itemCount: lista.length,
+          separatorBuilder: (_, _) => const SizedBox(height: _tightCardGap),
+          itemBuilder: (context, index) {
+            final solicitud = lista[index];
+            final id =
+                ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
+            if (id == null || id.isEmpty) return const SizedBox.shrink();
+            final seg = segundosRestantes(id);
+            return SolicitudServicioCard(
+              solicitud: solicitud,
+              marginExterno: false,
+              compact: true,
+              denseList: true,
+              segundosRestantes: seg > 0 ? seg : null,
+              distanciaDesdeMi: home.distanciaDesdeConductorTexto(solicitud),
+              destacada: index == 0,
+              onAceptar: () => onAceptar(id),
+              onRechazar: () => onRechazar(id),
+            );
+          },
+        ),
+      );
+      return _panelShell(context: context, tight: true, child: listBody);
     } else {
       listBody = _serviciosListView(
         context: context,

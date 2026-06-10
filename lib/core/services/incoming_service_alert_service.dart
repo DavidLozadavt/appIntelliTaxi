@@ -26,6 +26,11 @@ class IncomingServiceAlertService {
 
     if (esLlegando && servicioId != null) {
       final now = DateTime.now();
+      final bloqueado = _beepBloqueadoHasta[servicioId];
+      if (bloqueado != null) {
+        if (now.isBefore(bloqueado)) return;
+        _beepBloqueadoHasta.remove(servicioId);
+      }
       final prev = _ultimoBeepLlegandoPorServicio[servicioId];
       if (prev != null && now.difference(prev) < _ventanaBeepLlegando) {
         return;
@@ -77,7 +82,18 @@ class IncomingServiceAlertService {
     final id = solicitudId.trim();
     if (id.isEmpty) return;
     _ultimoBeepLlegandoPorServicio.remove(id);
+    _beepBloqueadoHasta.remove(id);
   }
+
+  /// Tras descartar por radio: no repetir beep aunque llegue Pusher+FCM duplicado.
+  static void bloquearBeep(String servicioId, {Duration duracion = const Duration(minutes: 10)}) {
+    final id = servicioId.trim();
+    if (id.isEmpty) return;
+    _beepBloqueadoHasta[id] = DateTime.now().add(duracion);
+    _ultimoBeepLlegandoPorServicio[id] = DateTime.now();
+  }
+
+  static final Map<String, DateTime> _beepBloqueadoHasta = {};
 
   static Future<void> cancel() async {
     await Future.wait([

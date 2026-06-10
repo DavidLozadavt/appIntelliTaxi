@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -9,10 +10,13 @@ import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/location_tracking_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum _BgLocationMode { none, trip, map }
+
 /// Entry point del isolate de segundo plano (requerido por flutter_background_service).
 @pragma('vm:entry-point')
 Future<void> backgroundLocationOnStart(ServiceInstance service) async {
   Timer? timer;
+  _BgLocationMode mode = _BgLocationMode.none;
   int? servicioId;
   int? conductorId;
   Position? lastPosition;
@@ -27,7 +31,59 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     );
   }
 
-  Future<void> sendLocation() async {
+  Future<int?> resolveConductorId() async {
+    if (conductorId != null && conductorId! > 0) return conductorId;
+    final prefs = await SharedPreferences.getInstance();
+    final directId = prefs.getInt('conductor_id') ?? prefs.getInt('user_id');
+    if (directId != null && directId > 0) {
+      conductorId = directId;
+      return conductorId;
+    }
+    final userDataStr = prefs.getString('user_data');
+    if (userDataStr == null || userDataStr.isEmpty) return null;
+    try {
+      final userData = json.decode(userDataStr);
+      final id = userData['user']?['id'] ?? userData['id'];
+      if (id is int) {
+        conductorId = id;
+        return id;
+      }
+      if (id is num) {
+        conductorId = id.toInt();
+        return conductorId;
+      }
+      final parsed = int.tryParse(id?.toString() ?? '');
+      if (parsed != null && parsed > 0) {
+        conductorId = parsed;
+        return parsed;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<Dio?> ensureDio() async {
+    if (authToken == null || authToken!.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      authToken = prefs.getString('token');
+    }
+    if (authToken == null || authToken!.isEmpty) return null;
+
+    dio ??= Dio(
+      BaseOptions(
+        baseUrl: AppConfig.baseUrl,
+        connectTimeout: MobileNetworkConfig.httpConnectTimeout,
+        receiveTimeout: MobileNetworkConfig.httpReceiveTimeout,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $authToken',
+        },
+      ),
+    );
+    return dio;
+  }
+
+  Future<void> sendTripLocation() async {
     if (servicioId == null || conductorId == null) return;
 
     try {
@@ -52,31 +108,12 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
           position.longitude,
         );
         if (moved < LocationTrackingConfig.minDistanceMeters &&
-            position.speed < 0.8) {
+            position.speed < 0.5) {
           return;
         }
       }
 
-      if (authToken == null || authToken!.isEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        authToken = prefs.getString('token');
-      }
-      if (authToken == null || authToken!.isEmpty) return;
-
-      dio ??= Dio(
-        BaseOptions(
-          baseUrl: AppConfig.baseUrl,
-          connectTimeout: MobileNetworkConfig.httpConnectTimeout,
-          receiveTimeout: MobileNetworkConfig.httpReceiveTimeout,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $authToken',
-          },
-        ),
-      );
-
-      final dioClient = dio;
+      final dioClient = await ensureDio();
       if (dioClient == null) return;
 
       await dioClient.post(
@@ -105,6 +142,77 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     }
   }
 
+  Future<void> sendMapHeartbeat() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final resolvedId = await resolveConductorId();
+      if (resolvedId == null) return;
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+
+      final dioClient = await ensureDio();
+      if (dioClient == null) return;
+
+      await dioClient.post(
+        'taxi/conductor/ubicacion-mapa',
+        data: {
+          'conductor_id': resolvedId,
+          'idConductor': resolvedId,
+          'lat': position.latitude,
+          'lng': position.longitude,
+          'velocidad': position.speed.isFinite && position.speed >= 0
+              ? position.speed
+              : 0,
+          'direccion': position.heading.isFinite && position.heading >= 0
+              ? position.heading
+              : 0,
+          'estado': 'disponible',
+          'bg': true,
+        },
+      );
+
+      lastPosition = position;
+
+      if (service is AndroidServiceInstance) {
+        service.setForegroundNotificationInfo(
+          title: 'IntelliTaxi conductor',
+          content: 'En linea - ubicacion actualizada',
+        );
+      }
+    } catch (_) {
+      // Mantener silencioso para no tumbar el isolate.
+    }
+  }
+
+  void scheduleTimer() {
+    timer?.cancel();
+    if (mode == _BgLocationMode.none) return;
+
+    final intervalSeconds = mode == _BgLocationMode.trip
+        ? RuntimePerfFlags.backgroundLocationIntervalSeconds
+        : RuntimePerfFlags.mapHeartbeatBackgroundIntervalSeconds;
+
+    final send = mode == _BgLocationMode.trip
+        ? sendTripLocation
+        : sendMapHeartbeat;
+
+    unawaited(send());
+    timer = Timer.periodic(
+      Duration(seconds: intervalSeconds),
+      (_) => send(),
+    );
+  }
+
   service.on('startTracking').listen((event) async {
     final rawServicio = event?['servicioId'];
     final rawConductor = event?['conductorId'];
@@ -118,19 +226,45 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
 
     if (servicioId == null || conductorId == null) return;
 
+    mode = _BgLocationMode.trip;
+    lastPosition = null;
+    scheduleTimer();
+  });
+
+  service.on('startMapHeartbeat').listen((event) async {
+    if (mode == _BgLocationMode.trip) return;
+
+    final rawConductor = event?['conductorId'];
+    final parsed = rawConductor is int
+        ? rawConductor
+        : int.tryParse(rawConductor?.toString() ?? '');
+    if (parsed != null && parsed > 0) {
+      conductorId = parsed;
+    } else {
+      conductorId = await resolveConductorId();
+    }
+    if (conductorId == null) return;
+
+    servicioId = null;
+    mode = _BgLocationMode.map;
+    lastPosition = null;
+    scheduleTimer();
+  });
+
+  service.on('stopMapHeartbeat').listen((event) async {
+    if (mode != _BgLocationMode.map) return;
     timer?.cancel();
-    await sendLocation();
-    timer = Timer.periodic(
-      Duration(
-        seconds: RuntimePerfFlags.backgroundLocationIntervalSeconds,
-      ),
-      (_) => sendLocation(),
-    );
+    timer = null;
+    mode = _BgLocationMode.none;
+    servicioId = null;
+    lastPosition = null;
+    await service.stopSelf();
   });
 
   service.on('stopTracking').listen((event) async {
     timer?.cancel();
     timer = null;
+    mode = _BgLocationMode.none;
     servicioId = null;
     conductorId = null;
     lastPosition = null;
@@ -165,24 +299,41 @@ class BackgroundLocationService {
     _initialized = true;
   }
 
+  static Future<void> _ensureRunning() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!_initialized) {
+      await initialize();
+    }
+    final isRunning = await _service.isRunning();
+    if (!isRunning) {
+      await _service.startService();
+    }
+  }
+
   static Future<void> startTracking({
     required int servicioId,
     required int conductorId,
   }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    if (!_initialized) {
-      await initialize();
-    }
-
-    final isRunning = await _service.isRunning();
-    if (!isRunning) {
-      await _service.startService();
-    }
-
+    await _ensureRunning();
     _service.invoke('startTracking', {
       'servicioId': servicioId,
       'conductorId': conductorId,
     });
+  }
+
+  /// Heartbeat de mapa en segundo plano (conductor en línea, app pausada).
+  static Future<void> startMapHeartbeat({int? conductorId}) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await _ensureRunning();
+    _service.invoke('startMapHeartbeat', {
+      'conductorId': ?conductorId,
+    });
+  }
+
+  static Future<void> stopMapHeartbeat() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    _service.invoke('stopMapHeartbeat');
   }
 
   static Future<void> stopTracking() async {

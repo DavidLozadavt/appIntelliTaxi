@@ -32,6 +32,7 @@ abstract final class ConductorOfertaIndriverHelper {
     Map<String, dynamic>? anterior,
     Map<String, dynamic> actual,
   ) {
+    if (esBroadcastRebote(actual)) return false;
     if (anterior == null) return false;
     final tabAnt =
         anterior['conductor_tab']?.toString().trim().toLowerCase();
@@ -93,10 +94,19 @@ abstract final class ConductorOfertaIndriverHelper {
         m.contains('espera a que quede abierto');
   }
 
-  /// Tras 409, quitar de cola solo si el servicio ya no está disponible para nadie.
+  /// Fuera del radio de asignación (403 al aceptar).
+  static bool esErrorFueraDeRangoAsignacion(String message) {
+    final m = message.toLowerCase();
+    return m.contains('fuera del rango') ||
+        m.contains('rango permitido') ||
+        (m.contains('outside') && m.contains('range'));
+  }
+
+  /// Tras 409/403, quitar de cola solo si el servicio ya no está disponible para nadie.
   static bool debeRetirarTrasConflictoAceptacion(String message) {
     if (message.trim().isEmpty) return false;
     if (esConflictoOfertaAjena(message)) return false;
+    if (esErrorFueraDeRangoAsignacion(message)) return true;
     final m = message.toLowerCase();
     return m.contains('ya fue aceptado') ||
         m.contains('ya fue tomado') ||
@@ -104,6 +114,35 @@ abstract final class ConductorOfertaIndriverHelper {
         m.contains('tomado por otro') ||
         m.contains('no está disponible') ||
         m.contains('no esta disponible');
+  }
+
+  static bool esBroadcastNearbyDrivers(Map<String, dynamic> raw) {
+    final method = raw['assignment_method']?.toString().toUpperCase() ??
+        raw['assignmentMethod']?.toString().toUpperCase();
+    return method == 'BROADCAST_NEARBY_DRIVERS';
+  }
+
+  /// Rebote 1/2 y fases broadcast: siempre tab «Llegando», nunca «Espera».
+  static bool esBroadcastRebote(Map<String, dynamic> s) {
+    if (esBroadcastNearbyDrivers(s)) return true;
+    if (s['rebote_activo'] == true) return true;
+    final modo = s['countdown_modo']?.toString().toLowerCase() ?? '';
+    return modo == 'broadcast_llegando' || modo == 'broadcast_rebote';
+  }
+
+  static bool esActualizarFase(Map<String, dynamic> raw) {
+    final accion = raw['evento_accion']?.toString().toLowerCase() ?? '';
+    return accion == 'actualizar_fase';
+  }
+
+  static bool debeReemplazarExistente(Map<String, dynamic> raw) {
+    if (raw['reemplazar_existente'] == true) return true;
+    return esActualizarFase(raw);
+  }
+
+  static int? reboteNumero(Map<String, dynamic> raw) {
+    final n = int.tryParse(raw['rebote_numero']?.toString() ?? '');
+    return n != null && n > 0 ? n : null;
   }
 
   /// Payload de canal privado / FCM / oferta-activa (no broadcast público genérico).

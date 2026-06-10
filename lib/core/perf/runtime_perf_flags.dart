@@ -32,18 +32,37 @@ abstract final class RuntimePerfFlags {
   static const Duration conductorZonaMinInterval = Duration(seconds: 55);
 
   /// Home conductor en línea (sin viaje): GPS más espaciado = menos batería.
-  static const int conductorGpsDistanceFilterIdle = 28;
+  static const int conductorGpsDistanceFilterIdle = 20;
+  /// Metros entre lecturas GPS en movimiento (~8 m).
   static const int conductorGpsDistanceFilterActive = 8;
   static const Duration conductorGpsUiMinIntervalIdle = Duration(seconds: 4);
   static const Duration conductorGpsUiMinIntervalNav = Duration(milliseconds: 800);
   static const double conductorGpsUiMinMoveMetersIdle = 22;
   static const double conductorGpsUiMinMoveMetersNav = 10;
 
-  /// Heartbeat mapa flota (conductor en turno, sin viaje activo).
-  static const Duration mapHeartbeatMinInterval = Duration(seconds: 15);
+  /// Android: intervalo del stream GPS solo en movimiento.
+  static const Duration conductorGpsStreamIntervalDriving = Duration(seconds: 4);
+
+  /// Velocidad (m/s) a partir de la cual se trata como conducción (~5 km/h).
+  static const double conductorDrivingSpeedMps = 1.4;
+
+  /// Poll de respaldo solo si el stream GPS falla (no corre en paralelo).
+  static const Duration mapHeartbeatPollIntervalFallback = Duration(seconds: 20);
+
+  /// Heartbeat mapa flota parado.
+  static const Duration mapHeartbeatMinInterval = Duration(seconds: 30);
+
+  /// Heartbeat mapa flota en movimiento.
+  static const Duration mapHeartbeatMinIntervalDriving = Duration(seconds: 8);
+
+  /// Si se movió ≥ esto (m), enviar aunque no haya pasado el intervalo mínimo.
+  static const double mapHeartbeatMinMoveMeters = 15;
 
   /// Android: envío ubicación en servicio foreground (viaje).
-  static const int backgroundLocationIntervalSeconds = 15;
+  static const int backgroundLocationIntervalSeconds = 12;
+
+  /// Android: heartbeat mapa con conductor en línea y app en segundo plano.
+  static const int mapHeartbeatBackgroundIntervalSeconds = 45;
 
   /// Tiempo mínimo de marca en Splash (sin bloquear si la sesión tarda más).
   static const Duration splashMinDisplay = Duration(milliseconds: 550);

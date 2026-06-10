@@ -44,12 +44,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     _sessionHydrateStarted = true;
     try {
-      final snapshot = await SessionPreload.ensureReady();
+      final snapshot = await SessionPreload.ensureReady().timeout(
+        const Duration(seconds: 8),
+      );
       if (!mounted) return;
       if (snapshot.canOpenHome) {
         await auth.hydrateFromSnapshot(snapshot);
       } else if (snapshot.hasToken) {
-        await auth.loadUserFromStorage();
+        await auth.loadUserFromStorage().timeout(const Duration(seconds: 5));
       }
       if (!mounted) return;
       if (auth.user == null) {

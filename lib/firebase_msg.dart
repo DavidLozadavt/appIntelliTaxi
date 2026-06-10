@@ -156,7 +156,45 @@ Map<String, dynamic> mergeRemoteMessageData(RemoteMessage message) {
   return data;
 }
 
-/// Burbuja + alerta heads-up para ver el servicio sin tener la app abierta.
+bool _fcmEsColaEntranteEstandar(Map<String, dynamic> data) {
+  if (!_isConductorIncomingServiceNotification(data)) return false;
+  final merged = JsonPayloadHelper.parseAndMerge(data);
+  final notif = ConductorSocketPayloadRouter.notificacionTipo(merged) ?? '';
+  if (notif == 'exclusiva_indrive' ||
+      notif == 'oferta_directa' ||
+      notif.contains('exclusiva')) {
+    return false;
+  }
+  if (ConductorSocketPayloadRouter.requiereOverlayFullscreen(merged)) {
+    return false;
+  }
+  return true;
+}
+
+/// Cola normal: FCM solo notificación; Pusher/sync alimentan la UI in-app.
+Future<void> _notificarSolicitudConductorSinColaInApp(
+  Map<String, dynamic> data, {
+  bool showHeadsUp = true,
+  bool showOverlay = true,
+}) async {
+  AppLogger.d('📲 FCM conductor: solo notificación (UI vía Pusher/sync)');
+  await ConductorOverlayBadgeStore.recordIncomingFromFcm();
+  if (showHeadsUp) {
+    final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
+      ConductorSolicitudPayloadHelper.normalizarSolicitud(
+        ConductorSolicitudPayloadHelper.parsePayload(data),
+      ),
+    );
+    await IncomingServiceNotificationService.instance.showIncomingService(
+      solicitud,
+    );
+  }
+  if (showOverlay) {
+    await DriverOverlayService.instance.showFromBadgeStore(enLinea: true);
+  }
+}
+
+/// Burbuja + heads-up para oferta exclusiva / directa (pantalla fullscreen).
 Future<void> _alertConductorEnSegundoPlano(
   Map<String, dynamic> data, {
   bool showHeadsUp = true,
@@ -178,11 +216,25 @@ Future<void> _alertConductorEnSegundoPlano(
   }
 }
 
-/// Cola FCM, abre la app si aplica, sincroniza cola y muestra burbuja/heads-up.
+/// Oferta exclusiva/directa: cola FCM + sync in-app. Cola estándar: solo notificación.
 Future<void> _manejarSolicitudEntranteConductor(
   Map<String, dynamic> data, {
   bool showHeadsUp = true,
 }) async {
+  if (_fcmEsColaEntranteEstandar(data)) {
+    if (AppLifecycleHelper.isInForeground()) {
+      AppLogger.d(
+        '📲 FCM cola estándar en primer plano: omitido (Pusher gestiona UI)',
+      );
+      return;
+    }
+    await _notificarSolicitudConductorSinColaInApp(
+      data,
+      showHeadsUp: showHeadsUp,
+    );
+    return;
+  }
+
   await ConductorPendingFcm.enqueue(data);
 
   final enPrimerPlano = AppLifecycleHelper.isInForeground();
@@ -295,6 +347,11 @@ Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
     return;
   }
   if (await _shouldShowConductorIncomingAlert(data)) {
+    if (_fcmEsColaEntranteEstandar(data)) {
+      AppLogger.d('🚕 FCM tap → home (cola vía Pusher/sync)');
+      navigatorKey.currentState?.pushNamed('/home');
+      return;
+    }
     AppLogger.d('🚕 FCM → solicitud entrante (conductor)');
     await _manejarSolicitudEntranteConductor(data);
     return;

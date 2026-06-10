@@ -108,8 +108,8 @@ class ServicioTrackingService {
           position.longitude,
         );
 
-        // Si no se ha movido lo suficiente y la velocidad es baja, no enviar
-        if (distancia < _distanciaMinima && position.speed < 1.0) {
+        // En movimiento siempre envía; parado solo si casi no se movió.
+        if (distancia < _distanciaMinima && position.speed < 0.5) {
           AppLogger.d(
             '⏭️ Ubicación sin cambios significativos, omitiendo envío',
           );
@@ -117,7 +117,7 @@ class ServicioTrackingService {
         }
       }
 
-      await _dio.post(
+      final response = await _dio.post(
         'servicios/actualizar-ubicacion',
         data: {
           'servicio_id': _servicioId,
@@ -127,6 +127,15 @@ class ServicioTrackingService {
           'velocidad': position.speed,
           'direccion': position.heading,
         },
+      );
+
+      final body = response.data;
+      final pretty = body is Map || body is List
+          ? body.toString()
+          : body?.toString() ?? 'null';
+      AppLogger.d(
+        '📡 POST servicios/actualizar-ubicacion → HTTP ${response.statusCode}\n$pretty',
+        tag: 'UbicacionAPI',
       );
 
       _lastPosition = position;

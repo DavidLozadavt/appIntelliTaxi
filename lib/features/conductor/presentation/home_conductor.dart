@@ -17,6 +17,7 @@ import 'package:intellitaxi/features/conductor/widgets/conductor_map_servicios_t
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_navegacion.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/emergencias/providers/emergencia_provider.dart';
@@ -43,6 +44,8 @@ class HomeConductor extends StatefulWidget {
 class _HomeConductorState extends State<HomeConductor>
     with WidgetsBindingObserver, TickerProviderStateMixin {
   GoogleMapController? _mapController;
+  /// Evita `moveCamera` sobre un controller de un mapa ya destruido.
+  int? _mapControllerBoundGeneration;
   late ConductorHomeProvider _provider;
   late SolicitudesPendientesProvider _pendientesProvider;
   late final AnimationController _emergencyPulseController;
@@ -156,12 +159,13 @@ class _HomeConductorState extends State<HomeConductor>
     _provider = context.read<ConductorHomeProvider>();
     _validandoTurno = true;
     _validandoTurnoTimeout = Timer(
-      const Duration(seconds: 20),
+      const Duration(seconds: 10),
       _finalizarValidacionTurno,
     );
     _provider.addNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     _provider.addListener(_syncKeepScreenOn);
     _provider.addListener(_onProviderForNavigation);
+    _provider.addListener(_onProviderUiMensajes);
     unawaited(KeepScreenOnService.loadPreference().then((_) {
       if (mounted) _syncKeepScreenOn();
     }));
@@ -198,15 +202,35 @@ class _HomeConductorState extends State<HomeConductor>
     final panelVisible = _panelServiciosVisible(provider);
     final compact = ConductorMapServiciosTabs.pantallaCompacta(context);
     final chipH = _chipEstadoAltura(provider, compact: compact);
-    final top = panelVisible
+    var top = panelVisible
         ? ConductorMapServiciosTabs.headerBlockHeight(
               context,
               provider,
               chipAltura: chipH,
               avisoEsperaEnLlegando: false,
-            ) +
-            4
+            )
         : chipH + 24;
+    if (panelVisible &&
+        ConductorMapServiciosTabs.shouldShowPanel(
+          controller: _serviciosTabController,
+          home: provider,
+          pendientes: _pendientesProvider,
+        )) {
+      final items = _serviciosTabController.index == 0
+          ? provider.solicitudesOrdenadas.length
+          : _pendientesProvider.total;
+      final enLlegando = _serviciosTabController.index == 0;
+      top += ConductorMapServiciosTabs.panelOuterHeight(
+            context,
+            conBarraRefresh: !enLlegando,
+            itemCount: items > 0 ? items : 1,
+            tightPanel: enLlegando &&
+                ConductorMapServiciosTabs.usarPanelAjustadoLlegando(
+                  context,
+                  items,
+                ),
+          );
+    }
     const bottom = 100.0;
     return EdgeInsets.only(top: top, bottom: bottom, left: 20, right: 20);
   }
@@ -225,7 +249,17 @@ class _HomeConductorState extends State<HomeConductor>
     if (!mounted) return;
 
     try {
-      await _provider.initialize();
+      await _provider.initialize().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          AppLogger.d(
+            '⏱️ Conductor initialize timeout — desbloqueando home',
+            tag: 'Turno',
+          );
+        },
+      );
+    } catch (e) {
+      AppLogger.d('⚠️ _bootstrapHome initialize: $e', tag: 'Turno');
     } finally {
       _finalizarValidacionTurno();
     }
@@ -235,16 +269,22 @@ class _HomeConductorState extends State<HomeConductor>
     _avisarSolicitudesRecibidasFueraDeLinea();
 
     _pendientesProvider.attachHome(_provider);
-    unawaited(_pendientesProvider.refrescar(silencioso: true));
+    if (!ApiRateLimitGuard.instance.isBlocked) {
+      unawaited(_pendientesProvider.refrescar(silencioso: true));
+    }
     _pendientesProvider.iniciarRefrescoPeriodico();
 
     if (!mounted) return;
     unawaited(_navigateToActiveServiceIfNeeded());
 
+    // Burbuja overlay: no bloquear el arranque del mapa.
     if (!mounted) return;
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    if (!mounted) return;
-    await DriverOverlayPermissionFlow.promptOnConductorHomeEntered(context);
+    unawaited(
+      Future<void>.delayed(const Duration(seconds: 2), () async {
+        if (!mounted) return;
+        await DriverOverlayPermissionFlow.promptOnConductorHomeEntered(context);
+      }),
+    );
   }
 
   Future<void> _crearDotMarker() async {
@@ -327,9 +367,38 @@ class _HomeConductorState extends State<HomeConductor>
     return (puntos / 10).clamp(0.0, 1.0);
   }
 
+  void _invalidateMapController({bool dispose = true}) {
+    if (dispose) {
+      try {
+        _mapController?.dispose();
+      } catch (_) {
+        // Controller ya liberado por recreación del PlatformView.
+      }
+    }
+    _mapController = null;
+    _mapControllerBoundGeneration = null;
+  }
+
+  bool get _mapControllerListo =>
+      _mapController != null &&
+      _mapControllerBoundGeneration == _mapResumeGeneration;
+
   void _onProviderForNavigation() {
-    if (!_modoNavegacionActivo) return;
+    if (!_modoNavegacionActivo || !_mapControllerListo) return;
     _sincronizarCamaraNavegacion(_provider);
+  }
+
+  void _onProviderUiMensajes() {
+    if (!mounted) return;
+    final msg = _provider.takeLastRadioDismissMessage();
+    if (msg == null || msg.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   void _syncKeepScreenOn() {
@@ -348,6 +417,7 @@ class _HomeConductorState extends State<HomeConductor>
   void dispose() {
     _provider.removeListener(_syncKeepScreenOn);
     _provider.removeListener(_onProviderForNavigation);
+    _provider.removeListener(_onProviderUiMensajes);
     unawaited(KeepScreenOnService.release('conductor_turno'));
     _provider.removeNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     WidgetsBinding.instance.removeObserver(this);
@@ -356,7 +426,7 @@ class _HomeConductorState extends State<HomeConductor>
     _reanudarNavegacionTimer?.cancel();
     _emergencyPulseController.dispose();
     _serviciosTabController.dispose();
-    _mapController?.dispose();
+    _invalidateMapController();
     _pendientesProvider.dispose();
     super.dispose();
   }
@@ -364,11 +434,13 @@ class _HomeConductorState extends State<HomeConductor>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _invalidateMapController();
       setState(() => _mapResumeGeneration++);
       unawaited(_overlayService.hide());
       unawaited(_provider.refrescarEnResume());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
+      unawaited(_provider.onAppLifecyclePaused());
       if (!_overlayService.isRequestingPermission) {
         unawaited(_overlayService.syncBubbleForConductor(_provider));
       }
@@ -448,6 +520,8 @@ class _HomeConductorState extends State<HomeConductor>
   }
 
   Future<void> _aplicarCamaraNavegacion(ConductorHomeProvider provider) async {
+    if (!mounted || !_mapControllerListo) return;
+
     final pos = provider.currentPosition;
     final controller = _mapController;
     if (pos == null || controller == null) return;
@@ -474,19 +548,26 @@ class _HomeConductorState extends State<HomeConductor>
           ),
         ),
       );
+    } catch (e) {
+      AppLogger.d('⚠️ moveCamera omitido (mapa no listo): $e');
+      if (!_mapControllerListo) {
+        _invalidateMapController(dispose: false);
+      }
     } finally {
-      _moviendoCamaraProgramaticamente = false;
+      if (mounted) {
+        _moviendoCamaraProgramaticamente = false;
+      }
     }
   }
 
   void _sincronizarCamaraNavegacion(ConductorHomeProvider provider) {
-    if (!_modoNavegacionActivo) return;
+    if (!_modoNavegacionActivo || !_mapControllerListo) return;
     final pos = provider.currentPosition;
-    if (pos == null || _mapController == null) return;
+    if (pos == null) return;
     if (!_debeActualizarCamara(pos)) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_modoNavegacionActivo) return;
+      if (!mounted || !_modoNavegacionActivo || !_mapControllerListo) return;
       unawaited(_aplicarCamaraNavegacion(provider));
     });
   }
@@ -496,7 +577,7 @@ class _HomeConductorState extends State<HomeConductor>
     setState(() => _modoNavegacionActivo = false);
     _reanudarNavegacionTimer?.cancel();
     _reanudarNavegacionTimer = Timer(_reanudarNavegacionTras, () {
-      if (!mounted) return;
+      if (!mounted || !_mapControllerListo) return;
       setState(() {
         _modoNavegacionActivo = true;
         _ultimaUbicacionCamara = null;
@@ -510,7 +591,7 @@ class _HomeConductorState extends State<HomeConductor>
     if (provider.currentPosition == null) {
       await provider.initializeLocation();
     }
-    if (!mounted) return;
+    if (!mounted || !_mapControllerListo) return;
     setState(() {
       _modoNavegacionActivo = true;
       _ultimaUbicacionCamara = null;
@@ -1277,7 +1358,8 @@ class _HomeConductorState extends State<HomeConductor>
     final zona = provider.zonaActual?.trim() ?? '';
     if (provider.isOnline && zona.isNotEmpty) {
       h += 4;
-      h += zona.length > 36 ? (compact ? 34.0 : 38.0) : (compact ? 18.0 : 20.0);
+      // Reservar hasta 2 líneas («Zona: …») para no solapar el panel de tarjetas.
+      h += compact ? 36.0 : 40.0;
     }
     return h;
   }
@@ -1566,7 +1648,9 @@ class _HomeConductorState extends State<HomeConductor>
               ),
             },
             onMapCreated: (controller) {
+              _invalidateMapController();
               _mapController = controller;
+              _mapControllerBoundGeneration = _mapResumeGeneration;
               unawaited(_reanudarNavegacionAhora(provider));
             },
             onCameraMoveStarted: () {
@@ -1650,7 +1734,7 @@ class _HomeConductorState extends State<HomeConductor>
                     return const SizedBox.shrink();
                   }
                   return Positioned(
-                    top: _topPanelServicios(context, provider),
+                    top: _topPanelServicios(context, provider) - 3,
                     left: 12,
                     right: 12,
                     child: ConductorMapServiciosTabs.panel(

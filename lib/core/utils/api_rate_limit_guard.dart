@@ -5,7 +5,7 @@ class ApiRateLimitGuard {
   ApiRateLimitGuard._();
   static final ApiRateLimitGuard instance = ApiRateLimitGuard._();
 
-  static const Duration defaultBackoff = Duration(seconds: 45);
+  static const Duration defaultBackoff = Duration(seconds: 60);
 
   DateTime? _blockedUntil;
 
@@ -38,7 +38,10 @@ class ApiRateLimitGuard {
     return lower.contains('too many attempts') ||
         lower.contains('too many requests') ||
         lower.contains(' 429') ||
-        lower.contains('status code: 429');
+        lower.contains('status code: 429') ||
+        lower.contains('demasiadas consultas') ||
+        lower.contains('demasiadas peticiones') ||
+        lower.contains('reduce la frecuencia de polling');
   }
 
   void recordIfRateLimit(Object error) {
