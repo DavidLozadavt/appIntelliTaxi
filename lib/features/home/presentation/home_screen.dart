@@ -10,6 +10,7 @@ import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
+import 'package:intellitaxi/features/home/widgets/no_role_assigned_view.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/shared/optimized_image_widgets.dart';
@@ -127,24 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Si no tiene ninguno de estos roles
         else {
           AppLogger.d('⚠️ HomeScreen: Rol NO reconocido');
-          body = const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.orange),
-                SizedBox(height: 16),
-                Text(
-                  "Rol no reconocido",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  "Por favor contacta con soporte",
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          );
+          body = const NoRoleAssignedView();
         }
 
         return Scaffold(
