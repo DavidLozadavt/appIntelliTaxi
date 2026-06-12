@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/theme/optimized_text_styles.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
+import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/main.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
@@ -113,12 +114,17 @@ class _SplashScreenState extends State<SplashScreen>
     final sw = Stopwatch()..start();
     try {
       await ConductorPendingFcm.ensureLoaded();
+      final abrirUrgente = ConductorPendingFcm.hasPending ||
+          await AppForegroundService.hasPendingNativeLaunch();
+      if (!mounted || _hasNavigated) return;
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
       final minBrand = Future<void>.delayed(
-        ConductorPendingFcm.hasPending
-            ? const Duration(milliseconds: 120)
-            : RuntimePerfFlags.splashMinDisplay,
+        abrirUrgente
+            ? Duration.zero
+            : ConductorPendingFcm.hasPending
+                ? const Duration(milliseconds: 120)
+                : RuntimePerfFlags.splashMinDisplay,
       );
       final sessionFuture = SessionPreload.ensureReady();
 
@@ -126,13 +132,15 @@ class _SplashScreenState extends State<SplashScreen>
         updateAvailable: false,
         shouldBlock: false,
       );
-      try {
-        updateResult = await AppUpdateService.instance
-            .checkForUpdate()
-            .timeout(RuntimePerfFlags.splashUpdateCheckTimeout);
-      } on TimeoutException {
-        if (kDebugMode) {
-          debugPrint('⏱️ [Splash] update check timeout → home sin bloquear');
+      if (!abrirUrgente) {
+        try {
+          updateResult = await AppUpdateService.instance
+              .checkForUpdate()
+              .timeout(RuntimePerfFlags.splashUpdateCheckTimeout);
+        } on TimeoutException {
+          if (kDebugMode) {
+            debugPrint('⏱️ [Splash] update check timeout → home sin bloquear');
+          }
         }
       }
 
@@ -149,13 +157,15 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (snapshot.canOpenHome) {
         await authProvider.hydrateFromSnapshot(snapshot);
-        try {
-          await AuthService.instance
-              .ensureValidSession()
-              .timeout(const Duration(seconds: 12));
-        } on TimeoutException {
-          if (kDebugMode) {
-            debugPrint('⏱️ [Splash] refresh proactivo timeout');
+        if (!abrirUrgente) {
+          try {
+            await AuthService.instance
+                .ensureValidSession()
+                .timeout(const Duration(seconds: 12));
+          } on TimeoutException {
+            if (kDebugMode) {
+              debugPrint('⏱️ [Splash] refresh proactivo timeout');
+            }
           }
         }
         final updated = await AuthService.instance.getSavedUserData();

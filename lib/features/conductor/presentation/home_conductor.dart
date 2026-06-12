@@ -128,7 +128,7 @@ class _HomeConductorState extends State<HomeConductor>
   void _avisarSolicitudesRecibidasFueraDeLinea() {
     if (!mounted || _panelServiciosVisible(_provider)) return;
     if (_provider.tieneTurnoActivo && _provider.isOnline) return;
-    final enMapa = _provider.solicitudesOrdenadas.length;
+    final enMapa = _provider.totalSolicitudesLlegando;
     final enEspera = _provider.totalSolicitudesEnEspera;
     final total = enMapa + enEspera;
     if (total <= 0) return;
@@ -217,7 +217,7 @@ class _HomeConductorState extends State<HomeConductor>
           pendientes: _pendientesProvider,
         )) {
       final items = _serviciosTabController.index == 0
-          ? provider.solicitudesOrdenadas.length
+          ? provider.totalSolicitudesLlegando
           : _pendientesProvider.total;
       final enLlegando = _serviciosTabController.index == 0;
       top += ConductorMapServiciosTabs.panelOuterHeight(
@@ -441,9 +441,11 @@ class _HomeConductorState extends State<HomeConductor>
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       unawaited(_provider.onAppLifecyclePaused());
-      if (!_overlayService.isRequestingPermission) {
-        unawaited(_overlayService.syncBubbleForConductor(_provider));
-      }
+      DriverOverlayService.instance.syncWithAppLifecycle(
+        state,
+        context: context,
+        isConductorSession: true,
+      );
     }
   }
 
@@ -1697,7 +1699,7 @@ class _HomeConductorState extends State<HomeConductor>
                       ConductorMapServiciosTabs.tabBar(
                         context: context,
                         controller: _serviciosTabController,
-                        llegando: provider.solicitudesOrdenadas.length,
+                        llegando: provider.totalSolicitudesLlegando,
                         enEspera: provider.totalSolicitudesEnEspera,
                       ),
                     ],

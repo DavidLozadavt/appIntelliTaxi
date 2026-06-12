@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
-import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
 
 class SolicitudServicioCard extends StatefulWidget {
   final Map<String, dynamic> solicitud;
-  final VoidCallback onAceptar;
+  final VoidCallback? onAceptar;
   final VoidCallback? onRechazar;
   final int? segundosRestantes;
+  final bool enGracia;
   final bool destacada;
   /// Metadatos para lista «En espera» (distancia al conductor, antigüedad, precio).
   final String? distanciaDesdeMi;
@@ -25,9 +26,10 @@ class SolicitudServicioCard extends StatefulWidget {
   const SolicitudServicioCard({
     super.key,
     required this.solicitud,
-    required this.onAceptar,
+    this.onAceptar,
     this.onRechazar,
     this.segundosRestantes,
+    this.enGracia = false,
     this.destacada = false,
     this.distanciaDesdeMi,
     this.tiempoPublicado,
@@ -46,6 +48,13 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<Offset> _slideAnimation;
+  double _dragOffset = 0;
+  static const _swipeTrigger = 72.0;
+  static const _maxDrag = 110.0;
+
+  bool get _canSwipeLeft => widget.onRechazar != null;
+  bool get _canSwipeRight => widget.onAceptar != null;
+  bool get _hasSwipeActions => _canSwipeLeft || _canSwipeRight;
 
   @override
   void initState() {
@@ -78,23 +87,127 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     _controller.reverse().then((_) => callback());
   }
 
+  void _onSwipeDragUpdate(DragUpdateDetails details) {
+    if (!_hasSwipeActions) return;
+    setState(() {
+      var next = _dragOffset + details.delta.dx;
+      if (_canSwipeLeft && _canSwipeRight) {
+        next = next.clamp(-_maxDrag, _maxDrag);
+      } else if (_canSwipeLeft) {
+        next = next.clamp(-_maxDrag, 0);
+      } else {
+        next = next.clamp(0, _maxDrag);
+      }
+      _dragOffset = next;
+    });
+  }
+
+  void _onSwipeDragEnd(DragEndDetails details) {
+    if (!_hasSwipeActions) return;
+    if (_dragOffset <= -_swipeTrigger && _canSwipeLeft) {
+      _dismiss(widget.onRechazar!);
+      return;
+    }
+    if (_dragOffset >= _swipeTrigger && _canSwipeRight) {
+      _dismiss(widget.onAceptar!);
+      return;
+    }
+    setState(() => _dragOffset = 0);
+  }
+
+  Widget _wrapWithSwipeActions(Widget card) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          if (_canSwipeLeft)
+            Positioned.fill(
+              child: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 16),
+                color: Colors.red.shade700,
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                    SizedBox(width: 6),
+                    Text(
+                      'Rechazar',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (_canSwipeRight)
+            Positioned.fill(
+              child: Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 16),
+                color: Colors.green.shade700,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_rounded, color: Colors.white, size: 22),
+                    SizedBox(width: 6),
+                    Text(
+                      'Aceptar',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          GestureDetector(
+            onHorizontalDragUpdate: _onSwipeDragUpdate,
+            onHorizontalDragEnd: _onSwipeDragEnd,
+            child: AnimatedContainer(
+              duration: _dragOffset == 0
+                  ? const Duration(milliseconds: 180)
+                  : Duration.zero,
+              curve: Curves.easeOut,
+              transform: Matrix4.translationValues(_dragOffset, 0, 0),
+              child: card,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget? _denseTrailingBadge({
     required bool isDark,
     required int segundosRestantes,
+    required bool enGracia,
     required bool enRiesgo,
     required String tiempoPub,
     required String distanciaMi,
     required double? precio,
   }) {
-    if (segundosRestantes > 0) {
+    if (segundosRestantes > 0 || enGracia) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
         decoration: BoxDecoration(
-          color: enRiesgo ? Colors.red : Colors.black.withValues(alpha: 0.75),
+          color: enGracia || enRiesgo
+              ? Colors.red
+              : Colors.black.withValues(alpha: 0.75),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
-          ServicioEsperaTimer.formatearCuentaRegresiva(segundosRestantes),
+          ConductorSolicitudPayloadHelper.etiquetaCountdownFase(
+            segundosRestantes,
+            enGracia: enGracia,
+          ),
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w800,
@@ -161,9 +274,10 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
             ),
             SizedBox(width: compact ? 6 : 8),
           ],
-          Expanded(
-            child: ElevatedButton(
-              onPressed: () => _dismiss(widget.onAceptar),
+          if (widget.onAceptar != null)
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => _dismiss(widget.onAceptar!),
               style: btnStyle.merge(
                 ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
@@ -206,6 +320,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     required String viajeDist,
     required String viajeDur,
     required int segundosRestantes,
+    required bool enGracia,
     required bool enRiesgo,
     required String tiempoPub,
     required String distanciaMi,
@@ -215,6 +330,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     final badge = _denseTrailingBadge(
       isDark: isDark,
       segundosRestantes: segundosRestantes,
+      enGracia: enGracia,
       enRiesgo: enRiesgo,
       tiempoPub: tiempoPub,
       distanciaMi: distanciaMi,
@@ -506,6 +622,7 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   viajeDist: viajeDist,
                   viajeDur: viajeDur,
                   segundosRestantes: segundosRestantes,
+                  enGracia: widget.enGracia,
                   enRiesgo: enRiesgo,
                   tiempoPub: tiempoPub,
                   distanciaMi: distanciaMi,
@@ -624,21 +741,22 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                         ],
                       ),
                     ),
-                    if (segundosRestantes > 0)
+                    if (segundosRestantes > 0 || widget.enGracia)
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: compact ? 8 : 12,
                           vertical: compact ? 5 : 8,
                         ),
                         decoration: BoxDecoration(
-                          color: enRiesgo
+                          color: widget.enGracia || enRiesgo
                               ? Colors.red
                               : Colors.black.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(compact ? 8 : 12),
                         ),
                         child: Text(
-                          ServicioEsperaTimer.formatearCuentaRegresiva(
+                          ConductorSolicitudPayloadHelper.etiquetaCountdownFase(
                             segundosRestantes,
+                            enGracia: widget.enGracia,
                           ),
                           style: TextStyle(
                             color: Colors.white,
@@ -762,75 +880,77 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                   ),
                 ],
                 SizedBox(height: compact ? 10 : 16),
-                Row(
-                  children: [
-                    if (widget.onRechazar != null) ...[
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => _dismiss(widget.onRechazar!),
-                          style: OutlinedButton.styleFrom(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: compact ? 10 : 14,
+                if (widget.onAceptar != null || widget.onRechazar != null)
+                  Row(
+                    children: [
+                      if (widget.onRechazar != null) ...[
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => _dismiss(widget.onRechazar!),
+                            style: OutlinedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: compact ? 10 : 14,
+                              ),
+                              side: const BorderSide(color: Colors.red, width: 1.5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              visualDensity: VisualDensity.compact,
                             ),
-                            side: const BorderSide(color: Colors.red, width: 1.5),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              'Rechazar',
-                              maxLines: 1,
-                              style: TextStyle(
-                                fontSize: compact ? 13 : 15,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'Rechazar',
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize: compact ? 13 : 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                      SizedBox(width: compact ? 8 : 12),
+                        SizedBox(width: compact ? 8 : 12),
+                      ],
+                      if (widget.onAceptar != null)
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => _dismiss(widget.onAceptar!),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: EdgeInsets.symmetric(
+                                vertical: compact ? 10 : 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              elevation: 0,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Iconsax.tick_circle_copy,
+                                  size: compact ? 17 : 20,
+                                ),
+                                SizedBox(width: compact ? 6 : 8),
+                                Text(
+                                  'Aceptar',
+                                  style: TextStyle(
+                                    fontSize: compact ? 14 : 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => _dismiss(widget.onAceptar),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(
-                            vertical: compact ? 10 : 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          elevation: 0,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Iconsax.tick_circle_copy,
-                              size: compact ? 17 : 20,
-                            ),
-                            SizedBox(width: compact ? 6 : 8),
-                            Text(
-                              'Aceptar',
-                              style: TextStyle(
-                                fontSize: compact ? 14 : 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
               ],
             ),
     );
@@ -862,7 +982,10 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
       child: cardBody,
     );
 
-    if (dense) return card;
+    if (dense || compact) {
+      final wrapped = _hasSwipeActions ? _wrapWithSwipeActions(card) : card;
+      return wrapped;
+    }
 
     return SlideTransition(
       position: _slideAnimation,

@@ -5,6 +5,7 @@ import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/providers/solicitudes_pendientes_provider.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_oferta_indriver_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/widgets/solicitud_servicio_card.dart';
 
@@ -14,6 +15,30 @@ class ConductorMapServiciosTabs {
 
   static bool pantallaCompacta(BuildContext context) =>
       MediaQuery.sizeOf(context).height < 680;
+
+  static VoidCallback? _aceptarSiPermitido(
+    Map<String, dynamic> solicitud,
+    void Function(String id) onAceptar,
+  ) {
+    if (!ConductorOfertaIndriverHelper.puedeAceptarRechazar(solicitud)) {
+      return null;
+    }
+    final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
+    if (id == null || id.isEmpty) return null;
+    return () => onAceptar(id);
+  }
+
+  static VoidCallback? _rechazarSiPermitido(
+    Map<String, dynamic> solicitud,
+    void Function(String id) onRechazar,
+  ) {
+    if (!ConductorOfertaIndriverHelper.puedeAceptarRechazar(solicitud)) {
+      return null;
+    }
+    final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
+    if (id == null || id.isEmpty) return null;
+    return () => onRechazar(id);
+  }
 
   static double tabBarHeight(BuildContext context) =>
       pantallaCompacta(context) ? 30 : 34;
@@ -112,9 +137,12 @@ class ConductorMapServiciosTabs {
   }) {
     if (controller.index == 0) {
       return home.solicitudesOrdenadas.isNotEmpty ||
+          home.solicitudesEnEsperaOrdenadas.isNotEmpty ||
+          home.totalSolicitudesLlegando > 0 ||
           home.totalSolicitudesEnEspera > 0;
     }
-    return pendientes.total > 0 ||
+    return pendientes.pendientes.isNotEmpty ||
+        pendientes.total > 0 ||
         pendientes.cargando ||
         pendientes.error != null;
   }
@@ -124,12 +152,16 @@ class ConductorMapServiciosTabs {
     required ConductorHomeProvider home,
   }) =>
       controller.index == 0 &&
-      home.solicitudesOrdenadas.isEmpty &&
+      home.totalSolicitudesLlegando == 0 &&
       home.totalSolicitudesEnEspera > 0;
 
   /// Cuántas tarjetas deben verse sin hacer scroll (5 en pantallas bajas, 6 en el resto).
   static int visibleCardsTarget(BuildContext context) =>
       pantallaCompacta(context) ? 5 : 6;
+
+  /// Tarjeta compacta con destino + botones Aceptar/Rechazar.
+  static double denseCardWithActionsHeight(BuildContext context) =>
+      denseCardItemExtent(context) + 42;
 
   /// Tarjeta compacta sin destino (recogida + distancia + botones).
   static double denseCardMinHeight(BuildContext context) =>
@@ -166,7 +198,7 @@ class ConductorMapServiciosTabs {
     final count = itemCount ?? maxCards;
     final effectiveCount = count.clamp(1, maxCards);
     final perCard = effectiveCount == 1
-        ? denseCardMinHeight(context)
+        ? denseCardWithActionsHeight(context)
         : cardH;
     final listPad =
         effectiveCount == 1 ? _tightPanelPadding : _listPadding;
@@ -293,7 +325,8 @@ class ConductorMapServiciosTabs {
   }) {
     final lista = home.solicitudesOrdenadas;
     final espera = home.totalSolicitudesEnEspera;
-    final soloAvisoEspera = lista.isEmpty && espera > 0;
+    final soloAvisoEspera =
+        home.totalSolicitudesLlegando == 0 && espera > 0;
 
     Future<void> onRefresh() async {
       try {
@@ -343,16 +376,18 @@ class ConductorMapServiciosTabs {
                 ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
             if (id == null || id.isEmpty) return const SizedBox.shrink();
             final seg = segundosRestantes(id);
+            final enGracia = home.estaEnGracia(id);
             return SolicitudServicioCard(
               solicitud: solicitud,
               marginExterno: false,
               compact: true,
               denseList: true,
-              segundosRestantes: seg > 0 ? seg : null,
+              segundosRestantes: seg > 0 || enGracia ? seg : null,
+              enGracia: enGracia,
               distanciaDesdeMi: home.distanciaDesdeConductorTexto(solicitud),
               destacada: index == 0,
-              onAceptar: () => onAceptar(id),
-              onRechazar: () => onRechazar(id),
+              onAceptar: _aceptarSiPermitido(solicitud, onAceptar),
+              onRechazar: _rechazarSiPermitido(solicitud, onRechazar),
             );
           },
         ),
@@ -367,16 +402,18 @@ class ConductorMapServiciosTabs {
           final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
           if (id == null || id.isEmpty) return const SizedBox.shrink();
           final seg = segundosRestantes(id);
+          final enGracia = home.estaEnGracia(id);
           return SolicitudServicioCard(
             solicitud: solicitud,
             marginExterno: false,
             compact: true,
             denseList: true,
-            segundosRestantes: seg > 0 ? seg : null,
+            segundosRestantes: seg > 0 || enGracia ? seg : null,
+            enGracia: enGracia,
             distanciaDesdeMi: home.distanciaDesdeConductorTexto(solicitud),
             destacada: index == 0,
-            onAceptar: () => onAceptar(id),
-            onRechazar: () => onRechazar(id),
+            onAceptar: _aceptarSiPermitido(solicitud, onAceptar),
+            onRechazar: _rechazarSiPermitido(solicitud, onRechazar),
           );
         },
       );
@@ -390,6 +427,54 @@ class ConductorMapServiciosTabs {
         onRefresh: onRefresh,
         child: listBody,
       ),
+    );
+  }
+
+  static Widget _refreshBar({
+    required bool cargando,
+    required Future<void> Function() onRefresh,
+  }) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: IconButton(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.only(right: 4, top: 2),
+        constraints: const BoxConstraints(minWidth: 36, minHeight: 32),
+        onPressed: cargando ? null : () => unawaited(onRefresh()),
+        icon: const Icon(Icons.refresh_rounded, size: 18),
+        tooltip: 'Actualizar',
+      ),
+    );
+  }
+
+  static Widget _esperaServiceCard({
+    required Map<String, dynamic> item,
+    required ConductorHomeProvider home,
+    required SolicitudesPendientesProvider pendientes,
+    required void Function(String id, Map<String, dynamic> s) onAceptar,
+    void Function(String id)? onDescartar,
+  }) {
+    final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
+    if (id == null || id.isEmpty) return const SizedBox.shrink();
+    final segEspera = home.obtenerSegundosRestantes(id);
+    final enGracia = home.estaEnGracia(id);
+    return SolicitudServicioCard(
+      solicitud: item,
+      marginExterno: false,
+      compact: true,
+      denseList: true,
+      segundosRestantes: segEspera > 0 || enGracia ? segEspera : null,
+      enGracia: enGracia,
+      distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
+      tiempoPublicado: pendientes.tiempoPublicado(item),
+      precioOfertado: pendientes.precioOfertadoDe(item),
+      onAceptar: ConductorOfertaIndriverHelper.puedeAceptarRechazar(item)
+          ? () => onAceptar(id, item)
+          : null,
+      onRechazar: ConductorOfertaIndriverHelper.puedeAceptarRechazar(item) &&
+              onDescartar != null
+          ? () => onDescartar(id)
+          : null,
     );
   }
 
@@ -468,7 +553,9 @@ class ConductorMapServiciosTabs {
         ),
       );
     } else if (lista.isEmpty) {
-      const mensaje = 'Sin publicados en Popayán';
+      final mensaje = home.sinUbicacionEnApi
+          ? 'Activa el GPS para ver solicitudes cercanas'
+          : 'Sin publicados en Popayán';
       body = RefreshIndicator(
         color: AppColors.accent,
         onRefresh: onRefresh,
@@ -498,33 +585,49 @@ class ConductorMapServiciosTabs {
         ),
       );
     } else {
+      final ajustado = usarPanelAjustadoLlegando(context, lista.length);
       body = RefreshIndicator(
         color: AppColors.accent,
         onRefresh: onRefresh,
-        child: _serviciosListView(
-          context: context,
+        child: ListView.separated(
+          shrinkWrap: ajustado,
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
           itemCount: lista.length,
+          separatorBuilder: (_, _) => const SizedBox(height: _listGap),
           itemBuilder: (context, index) {
-            final item = lista[index];
-            final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(item);
-            if (id == null || id.isEmpty) return const SizedBox.shrink();
-            final segEspera = home.obtenerSegundosRestantes(id);
-            return SolicitudServicioCard(
-              solicitud: item,
-              marginExterno: false,
-              compact: true,
-              denseList: true,
-              segundosRestantes: segEspera > 0 ? segEspera : null,
-              distanciaDesdeMi: pendientes.distanciaDesdeMi(item),
-              tiempoPublicado: pendientes.tiempoPublicado(item),
-              precioOfertado: pendientes.precioOfertadoDe(item),
-              onAceptar: () => onAceptar(id, item),
-              onRechazar: onDescartar != null ? () => onDescartar(id) : null,
+            return Align(
+              alignment: Alignment.topCenter,
+              child: _esperaServiceCard(
+                item: lista[index],
+                home: home,
+                pendientes: pendientes,
+                onAceptar: onAceptar,
+                onDescartar: onDescartar,
+              ),
             );
           },
         ),
       );
+
+      if (ajustado) {
+        return Material(
+          elevation: 6,
+          borderRadius: BorderRadius.circular(10),
+          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _refreshBar(
+                cargando: pendientes.cargando,
+                onRefresh: onRefresh,
+              ),
+              body,
+            ],
+          ),
+        );
+      }
     }
 
     return Material(
@@ -536,18 +639,9 @@ class ConductorMapServiciosTabs {
         height: panelH,
         child: Column(
           children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.only(right: 4, top: 2),
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 32),
-                onPressed: pendientes.cargando
-                    ? null
-                    : () => unawaited(pendientes.refrescar(silencioso: false)),
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                tooltip: 'Actualizar',
-              ),
+            _refreshBar(
+              cargando: pendientes.cargando,
+              onRefresh: onRefresh,
             ),
             Expanded(child: body),
           ],

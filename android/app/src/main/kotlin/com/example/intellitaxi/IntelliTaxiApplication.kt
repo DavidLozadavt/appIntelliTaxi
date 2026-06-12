@@ -29,6 +29,7 @@ class IntelliTaxiApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         appInstance = this
+        MainActivity.persistMainActivityResumedOnLaunch(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityPaused(activity: Activity) {
                 if (activity is MainActivity) {

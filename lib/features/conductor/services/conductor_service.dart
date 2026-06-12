@@ -14,6 +14,7 @@ import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
+import 'package:intellitaxi/features/conductor/conductor_constants.dart';
 import 'package:intellitaxi/features/taxi/services/taxi_servicio_cancelacion_service.dart';
 
 class ConductorService {
@@ -859,7 +860,7 @@ class ConductorService {
   Future<TaxiSolicitudesPendientesResult> getSolicitudesPendientes({
     double? lat,
     double? lng,
-    int limit = 50,
+    int limit = kSolicitudesPendientesLimit,
   }) async {
     const fallback = 'No se pudieron cargar las solicitudes en espera';
     try {
@@ -921,7 +922,7 @@ class ConductorService {
   listarSolicitudesPublicadasConductor({
     double? lat,
     double? lng,
-    int limit = 50,
+    int limit = kSolicitudesPendientesLimit,
   }) async {
     try {
       final pendientes = await getSolicitudesPendientes(
@@ -948,6 +949,10 @@ class ConductorService {
       return TaxiSolicitudesPendientesResult.empty();
     }
 
+    final timing = CompanyAssignmentTiming.fromResponse(data);
+    final sinUbicacion = data['sin_ubicacion'] == true;
+    final desdeCache = data['desde_cache'] == true;
+
     final enServicio = data['en_servicio'] == true;
     final enDescanso = data['en_descanso'] == true;
     final servicioActivoId = int.tryParse(
@@ -961,15 +966,55 @@ class ConductorService {
         servicioActivoId: servicioActivoId,
         total: 0,
         pendientes: const [],
+        pendientesLlegando: const [],
+        pendientesEspera: const [],
+        totalLlegando: 0,
+        totalEspera: 0,
+        timing: timing,
+        sinUbicacion: sinUbicacion,
+        desdeCache: desdeCache,
+        queueMaxMinutes: timing.queueMaxMinutes ??
+            _parseDoubleMeta(data['queue_max_minutes']),
+        queueAbiertaMaxMinutes: timing.queueAbiertaMaxMinutes ??
+            _parseDoubleMeta(data['queue_abierta_max_minutes']),
+        ventanaListaMinutos: timing.ventanaListaMinutos ??
+            _parseDoubleMeta(data['ventana_lista_minutos']),
+        ofertaExclusivaSegundos: timing.ofertaExclusivaSegundos ??
+            _parseIntMeta(data['oferta_exclusiva_segundos']),
+        ofertaMaxIntentos: timing.ofertaMaxIntentos ??
+            _parseIntMeta(data['oferta_max_intentos']),
       );
     }
 
     final raw = data['pendientes'] ?? data['solicitudes'];
-    final list = raw is List
-        ? raw
-            .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>))
-            .toList()
-        : <Map<String, dynamic>>[];
+    final list = _parsePendientesList(raw);
+
+    var llegando = _parsePendientesList(
+      data['pendientes_llegando'] ?? data['pendientesLlegando'],
+    );
+    var espera = _parsePendientesList(
+      data['pendientes_espera'] ?? data['pendientesEspera'],
+    );
+    if (llegando.isEmpty && espera.isEmpty && list.isNotEmpty) {
+      for (final item in list) {
+        final tab =
+            item['conductor_tab']?.toString().trim().toLowerCase();
+        if (tab == 'espera') {
+          espera.add(item);
+        } else {
+          llegando.add(item);
+        }
+      }
+    }
+
+    final totalLlegando = int.tryParse(
+      (data['total_llegando'] ?? data['totalLlegando'] ?? llegando.length)
+          .toString(),
+    );
+    final totalEspera = int.tryParse(
+      (data['total_espera'] ?? data['totalEspera'] ?? espera.length)
+          .toString(),
+    );
 
     final assignmentMethod = data['assignment_method']?.toString().trim();
     final driverSearchRadiusKm = _parseDriverSearchRadiusKm(data);
@@ -982,6 +1027,10 @@ class ConductorService {
       total: int.tryParse((data['total'] ?? list.length).toString()) ??
           list.length,
       pendientes: list,
+      pendientesLlegando: llegando,
+      pendientesEspera: espera,
+      totalLlegando: totalLlegando,
+      totalEspera: totalEspera,
       actualizadoEn: data['actualizado_en']?.toString(),
       pendientesMaxEdadMinutos: int.tryParse(
         (data['pendientes_max_edad_minutos'] ??
@@ -992,15 +1041,27 @@ class ConductorService {
       listaGlobal: listaGlobal,
       assignmentMethod: assignmentMethod,
       driverSearchRadiusKm: driverSearchRadiusKm,
-      queueMaxMinutes: _parseDoubleMeta(data['queue_max_minutes']),
-      queueAbiertaMaxMinutes:
+      queueMaxMinutes:
+          timing.queueMaxMinutes ?? _parseDoubleMeta(data['queue_max_minutes']),
+      queueAbiertaMaxMinutes: timing.queueAbiertaMaxMinutes ??
           _parseDoubleMeta(data['queue_abierta_max_minutes']),
-      ventanaListaMinutos: _parseDoubleMeta(data['ventana_lista_minutos']),
-      ofertaExclusivaSegundos: _parseIntMeta(
-        data['oferta_exclusiva_segundos'],
-      ),
-      ofertaMaxIntentos: _parseIntMeta(data['oferta_max_intentos']),
+      ventanaListaMinutos: timing.ventanaListaMinutos ??
+          _parseDoubleMeta(data['ventana_lista_minutos']),
+      ofertaExclusivaSegundos: timing.ofertaExclusivaSegundos ??
+          _parseIntMeta(data['oferta_exclusiva_segundos']),
+      ofertaMaxIntentos: timing.ofertaMaxIntentos ??
+          _parseIntMeta(data['oferta_max_intentos']),
+      timing: timing,
+      sinUbicacion: sinUbicacion,
+      desdeCache: desdeCache,
     );
+  }
+
+  static List<Map<String, dynamic>> _parsePendientesList(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .map((e) => Map<String, dynamic>.from(e as Map<dynamic, dynamic>))
+        .toList();
   }
 
   static int? _parseIntMeta(dynamic raw) {

@@ -1,7 +1,5 @@
 package com.virtualt.intellitaxi
 
-import android.app.ActivityManager
-import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -17,17 +15,6 @@ class IncomingServiceLaunchReceiver : BroadcastReceiver() {
         private const val TAG = "IntelliTaxiFcmLaunch"
         private const val PREFS = "FlutterSharedPreferences"
         private const val ROLE_KEY = "flutter.active_role"
-
-        private fun isIncomingServiceData(data: Map<String, String>): Boolean {
-            val tipo = data["tipo"]?.lowercase() ?: return false
-            if (tipo.contains("oferta_servicio_exclusiva")) return true
-            if (tipo.contains("nueva_solicitud_servicio")) return true
-            if (tipo.contains("servicio_asignado")) return true
-            if (tipo.contains("nueva_solicitud") || tipo.contains("nueva-solicitud")) {
-                return true
-            }
-            return false
-        }
 
         private fun isTripUpdate(data: Map<String, String>): Boolean {
             val tipo = data["tipo"]?.lowercase() ?: return false
@@ -47,37 +34,21 @@ class IncomingServiceLaunchReceiver : BroadcastReceiver() {
                 role == "MOTORISTA" ||
                 role == "DRIVER"
         }
-
-        /** Misma heurística que firebase_messaging para «app en primer plano». */
-        private fun isApplicationForeground(context: Context): Boolean {
-            val keyguard =
-                context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-            if (keyguard?.isKeyguardLocked == true) return false
-
-            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-                ?: return false
-            val packageName = context.packageName
-            val processes = am.runningAppProcesses ?: return false
-            for (info in processes) {
-                if (info.importance ==
-                    ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
-                    info.processName == packageName
-                ) {
-                    return true
-                }
-            }
-            return false
-        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val extras = intent.extras ?: return
-        if (isApplicationForeground(context)) return
+        // Con burbuja activa el proceso sigue FOREGROUND pero MainActivity no está visible.
+        if (MainActivity.mainActivityResumed) {
+            return
+        }
 
         val message = RemoteMessage(extras)
+        if (FcmIncomingDedup.shouldSkip(context, message)) return
+
         val data = message.data
         val isIncoming = when {
-            data.isNotEmpty() -> isIncomingServiceData(data) && !isTripUpdate(data)
+            data.isNotEmpty() -> FcmIncomingDedup.isIncomingServiceData(data) && !isTripUpdate(data)
             else -> {
                 val combined = "${message.notification?.title ?: ""} " +
                     "${message.notification?.body ?: ""}".lowercase()
@@ -87,6 +58,11 @@ class IncomingServiceLaunchReceiver : BroadcastReceiver() {
             }
         }
         if (!isIncoming || !isActiveConductor(context)) return
+
+        if (MainActivity.mainActivityResumed) {
+            Log.i(TAG, "FCM solicitud entrante → skip (MainActivity visible)")
+            return
+        }
 
         Log.i(TAG, "FCM solicitud entrante → abrir MainActivity")
         MainActivity.launchMainActivity(context)

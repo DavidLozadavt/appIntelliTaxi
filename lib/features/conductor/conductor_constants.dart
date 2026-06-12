@@ -1,17 +1,14 @@
+/// `GET /taxi/solicitudes-pendientes` — límite por defecto (spec 2026-06-12 §1.2).
+const int kSolicitudesPendientesLimit = 15;
+
+/// Respaldo si el API no envía `poll_interval_segundos`.
+const int kPollIntervalSegundosFallback = 5;
+
+/// Respaldo si el API no envía `gracia_segundos`.
+const int kGraciaSegundosFallback = 10;
+
 /// TTL overlay solo si el API no envía `countdown_segundos` / `overlay_expira_en`.
 const int kOportunidadConductorSegundos = 120;
-
-/// Respaldo con Pusher activo y cola vacía (si el backend no notifica privado, el API alinea).
-const int kPollSolicitudesPendientesConSocketVacioSegundos = 30;
-
-/// Respaldo con Pusher activo y cola con ítems (alinear fases / tomadas por otros).
-const int kPollSolicitudesPendientesConSocketColaSegundos = 60;
-
-/// Sin socket: polling principal hasta reconectar.
-const int kPollSolicitudesPendientesSinSocketSegundos = 45;
-
-/// Debounce antes de sync tras evento realtime (el payload ya actualizó la UI).
-const int kSyncSolicitudesTrasEventoSegundos = 8;
 
 /// Sync inicial tras conectar Pusher (evita ráfaga con arranque / turno).
 const int kSyncSolicitudesTrasConexionSocketSegundos = 5;
@@ -25,8 +22,8 @@ const int kPollOfertaActivaPantallaSegundos = 12;
 /// Poll de respaldo cuando hay oferta activa pero la pantalla está cerrada.
 const int kPollOfertaActivaFondoSegundos = 45;
 
-/// Tras Pusher/FCM, no quitar del mapa por sync API hasta este margen (evita sonido sin tarjeta).
-const int kConservarRealtimeTrasSyncSegundos = 180;
+/// Margen corto tras Pusher/FCM antes de que el GET confirme el ítem (evita parpadeo).
+const int kConservarRealtimeTrasSyncSegundos = 15;
 
 /// Tras exclusiva→«Llegando»: fallback local si aún no llegó meta API (`oferta_exclusiva_segundos`).
 const int kMantenerLlegandoTrasExclusivaSegundos = 25;

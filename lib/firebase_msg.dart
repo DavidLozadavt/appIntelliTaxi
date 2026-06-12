@@ -2,6 +2,7 @@ import 'dart:async' show unawaited;
 import 'dart:convert';
 import 'dart:io';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
+import 'package:intellitaxi/core/services/incoming_app_launch_helper.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/core/services/pasajero_servicio_notification_helper.dart';
 import 'package:intellitaxi/features/chat/services/chat_realtime_bridge.dart';
@@ -17,18 +18,16 @@ import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/core/services/device_token_sync_service.dart';
 import 'package:intellitaxi/core/services/fcm_token_resolver.dart';
-import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
-import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
-import 'package:intellitaxi/core/utils/device_screen_helper.dart';
-import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_socket_payload_router.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:provider/provider.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_incoming_dedup_store.dart';
+import 'package:intellitaxi/core/utils/fcm_isolate_context.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _activeRoleKey = 'active_role';
@@ -81,6 +80,11 @@ bool _isServicioTripUpdateNotification(Map<String, dynamic> data) {
 int? _servicioIdDesdeFcm(Map<String, dynamic> data) {
   try {
     final merged = JsonPayloadHelper.parseAndMerge(data);
+    final fromHelper =
+        ConductorSolicitudPayloadHelper.servicioIdFromAlertaPayload(merged);
+    if (fromHelper != null && fromHelper.isNotEmpty) {
+      return int.tryParse(fromHelper);
+    }
     return JsonPayloadHelper.parseInt(
       merged['servicio_id'] ??
           merged['servicioId'] ??
@@ -91,6 +95,22 @@ int? _servicioIdDesdeFcm(Map<String, dynamic> data) {
     return JsonPayloadHelper.parseInt(
       data['servicio_id'] ?? data['servicioId'] ?? data['id'],
     );
+  }
+}
+
+String? _solicitudIdDesdePayload(Map<String, dynamic> data) {
+  final parsed = int.tryParse(_servicioIdDesdeFcm(data)?.toString() ?? '');
+  if (parsed != null) return parsed.toString();
+  try {
+    final merged = JsonPayloadHelper.parseAndMerge(data);
+    return ConductorSolicitudPayloadHelper.servicioIdFromAlertaPayload(merged) ??
+        ConductorSolicitudPayloadHelper.obtenerSolicitudId(
+          ConductorSolicitudPayloadHelper.normalizarSolicitud(
+            ConductorSolicitudPayloadHelper.parsePayload(merged),
+          ),
+        );
+  } catch (_) {
+    return null;
   }
 }
 
@@ -171,7 +191,7 @@ bool _fcmEsColaEntranteEstandar(Map<String, dynamic> data) {
   return true;
 }
 
-/// Cola normal: FCM solo notificación; Pusher/sync alimentan la UI in-app.
+/// Cola normal: FCM + burbuja; si la app está en segundo plano, abrir Activity.
 Future<void> _notificarSolicitudConductorSinColaInApp(
   Map<String, dynamic> data, {
   bool showHeadsUp = true,
@@ -179,6 +199,21 @@ Future<void> _notificarSolicitudConductorSinColaInApp(
 }) async {
   AppLogger.d('📲 FCM conductor: solo notificación (UI vía Pusher/sync)');
   await ConductorOverlayBadgeStore.recordIncomingFromFcm();
+
+  if (await IncomingAppLaunchHelper.shouldAutoOpen()) {
+    AppLogger.d('🚕 Abriendo app (solicitud estándar en segundo plano)');
+    await IncomingAppLaunchHelper.openForIncoming(
+      data: data,
+      showHeadsUp: showHeadsUp,
+      skipNativeWake: FcmIsolateContext.isBackgroundHandler,
+    );
+    if (showOverlay && !FcmIsolateContext.isBackgroundHandler) {
+      unawaited(DriverOverlayService.instance.showFromBadgeStore(enLinea: true));
+    }
+    unawaited(_triggerConductorIncomingSync(data));
+    return;
+  }
+
   if (showHeadsUp) {
     final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
       ConductorSolicitudPayloadHelper.normalizarSolicitud(
@@ -187,9 +222,10 @@ Future<void> _notificarSolicitudConductorSinColaInApp(
     );
     await IncomingServiceNotificationService.instance.showIncomingService(
       solicitud,
+      skipNativeWake: FcmIsolateContext.isBackgroundHandler,
     );
   }
-  if (showOverlay) {
+  if (showOverlay && !FcmIsolateContext.isBackgroundHandler) {
     await DriverOverlayService.instance.showFromBadgeStore(enLinea: true);
   }
 }
@@ -209,9 +245,10 @@ Future<void> _alertConductorEnSegundoPlano(
     );
     await IncomingServiceNotificationService.instance.showIncomingService(
       solicitud,
+      skipNativeWake: FcmIsolateContext.isBackgroundHandler,
     );
   }
-  if (showOverlay) {
+  if (showOverlay && !FcmIsolateContext.isBackgroundHandler) {
     await DriverOverlayService.instance.showFromBadgeStore(enLinea: true);
   }
 }
@@ -220,14 +257,36 @@ Future<void> _alertConductorEnSegundoPlano(
 Future<void> _manejarSolicitudEntranteConductor(
   Map<String, dynamic> data, {
   bool showHeadsUp = true,
+  bool systemNotificationAlreadyShown = false,
 }) async {
-  if (_fcmEsColaEntranteEstandar(data)) {
-    if (AppLifecycleHelper.isInForeground()) {
-      AppLogger.d(
-        '📲 FCM cola estándar en primer plano: omitido (Pusher gestiona UI)',
-      );
-      return;
+  final solicitudId = _solicitudIdDesdePayload(data);
+  if (await ConductorIncomingDedupStore.shouldSkipFcmFor(solicitudId)) {
+    AppLogger.d(
+      '📲 FCM omitido: solicitud $solicitudId ya mostrada por realtime/push',
+    );
+    return;
+  }
+
+  if (systemNotificationAlreadyShown) {
+    AppLogger.d(
+      '📲 FCM: sistema ya mostró push, omitiendo notificación local',
+    );
+    await ConductorIncomingDedupStore.recordPushShown(solicitudId);
+    showHeadsUp = false;
+  }
+
+  final enPrimerPlano = await AppLifecycleHelper.isInForegroundReliable();
+  if (enPrimerPlano && !await AppLifecycleHelper.shouldShowIncomingServiceAlert()) {
+    AppLogger.d(
+      '📲 FCM omitido en primer plano (Pusher gestiona UI)',
+    );
+    if (solicitudId != null) {
+      await ConductorIncomingDedupStore.recordRealtimeIncoming(solicitudId);
     }
+    return;
+  }
+
+  if (_fcmEsColaEntranteEstandar(data)) {
     await _notificarSolicitudConductorSinColaInApp(
       data,
       showHeadsUp: showHeadsUp,
@@ -237,28 +296,16 @@ Future<void> _manejarSolicitudEntranteConductor(
 
   await ConductorPendingFcm.enqueue(data);
 
-  final enPrimerPlano = AppLifecycleHelper.isInForeground();
-  final pantallaApagada = !enPrimerPlano ||
-      await AppLifecycleHelper.shouldShowIncomingServiceAlert();
-  final autoOpen =
-      RuntimePerfFlags.autoOpenAppOnIncomingService && pantallaApagada;
-
-  if (autoOpen) {
+  if (await IncomingAppLaunchHelper.shouldAutoOpen()) {
     AppLogger.d('🚕 Abriendo IntelliTaxi automáticamente (solicitud entrante)');
-    await DriverOverlayService.instance.hide();
-    await DeviceScreenHelper.wakeForIncomingService();
-    if (showHeadsUp) {
-      final solicitud = SolicitudDisplayHelper.normalizeSolicitudMap(
-        ConductorSolicitudPayloadHelper.normalizarSolicitud(
-          ConductorSolicitudPayloadHelper.parsePayload(data),
-        ),
-      );
-      await IncomingServiceNotificationService.instance.showIncomingService(
-        solicitud,
-      );
+    await IncomingAppLaunchHelper.openForIncoming(
+      data: data,
+      showHeadsUp: showHeadsUp,
+      skipNativeWake: FcmIsolateContext.isBackgroundHandler,
+    );
+    if (!FcmIsolateContext.isBackgroundHandler) {
+      unawaited(DriverOverlayService.instance.showFromBadgeStore(enLinea: true));
     }
-    await AppForegroundService.instance.openAppAggressively();
-    await _signalOverlayToOpenApp();
     unawaited(_triggerConductorIncomingSync(data));
     Future<void>.delayed(const Duration(seconds: 3), () async {
       if (AppLifecycleHelper.isInForeground()) return;
@@ -275,19 +322,6 @@ Future<void> _manejarSolicitudEntranteConductor(
   unawaited(_alertConductorEnSegundoPlano(data, showHeadsUp: showHeadsUp));
 }
 
-/// Pide al isolate del overlay que lance MainActivity (canal nativo registrado ahí).
-Future<void> _signalOverlayToOpenApp() async {
-  if (!Platform.isAndroid) return;
-  try {
-    await AppForegroundService.instance.ensureOverlayNativeChannel();
-    await FlutterOverlayWindow.shareData('open_app');
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-    await FlutterOverlayWindow.shareData('auto_open_app');
-  } catch (e) {
-    AppLogger.d('⚠️ auto_open overlay: $e');
-  }
-}
-
 Future<void> _triggerConductorIncomingSync(Map<String, dynamic> data) async {
   await ConductorPendingFcm.enqueue(data);
   try {
@@ -299,6 +333,16 @@ Future<void> _triggerConductorIncomingSync(Map<String, dynamic> data) async {
     await ConductorPendingFcm.clearAfterProcessed();
   } catch (e) {
     AppLogger.d('⚠️ FCM sync conductor fallback: $e');
+  }
+}
+
+Future<void> _reconciliarConductorTrasFcmTap(Map<String, dynamic> data) async {
+  try {
+    final context = navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    await context.read<ConductorHomeProvider>().reconciliarTrasFcm(data: data);
+  } catch (e) {
+    AppLogger.d('⚠️ FCM reconciliar tap: $e');
   }
 }
 
@@ -348,12 +392,14 @@ Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
   }
   if (await _shouldShowConductorIncomingAlert(data)) {
     if (_fcmEsColaEntranteEstandar(data)) {
-      AppLogger.d('🚕 FCM tap → home (cola vía Pusher/sync)');
+      AppLogger.d('🚕 FCM tap → home + GET pendientes');
       navigatorKey.currentState?.pushNamed('/home');
+      await _triggerConductorIncomingSync(data);
       return;
     }
     AppLogger.d('🚕 FCM → solicitud entrante (conductor)');
     await _manejarSolicitudEntranteConductor(data);
+    await _reconciliarConductorTrasFcmTap(data);
     return;
   }
   if (_isServicioTripUpdateNotification(data)) {
@@ -465,6 +511,7 @@ Future<void> handleRemoteMessageInBackground(RemoteMessage message) async {
     await _manejarSolicitudEntranteConductor(
       map,
       showHeadsUp: true,
+      systemNotificationAlreadyShown: message.notification != null,
     );
     return;
   }
@@ -626,7 +673,11 @@ class FirebaseMsg {
     if (await _shouldShowConductorIncomingAlert(data)) {
       final headsUp = await AppLifecycleHelper.shouldShowIncomingServiceAlert();
       unawaited(
-        _manejarSolicitudEntranteConductor(data, showHeadsUp: headsUp),
+        _manejarSolicitudEntranteConductor(
+          data,
+          showHeadsUp: headsUp,
+          systemNotificationAlreadyShown: message.notification != null,
+        ),
       );
       return;
     }

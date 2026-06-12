@@ -100,6 +100,77 @@ class TaxiSolicitudesPublicadasResult {
   });
 }
 
+/// Meta de tiempos (`companyAssignmentSettings` vía `GET /solicitudes-pendientes`).
+class CompanyAssignmentTiming {
+  final int? pollIntervalSegundos;
+  final int? graciaSegundos;
+  final int? servidorTimestamp;
+  final int? overlayTtlSegundos;
+  final double? queueMaxMinutes;
+  final double? queueAbiertaMaxMinutes;
+  final double? ventanaListaMinutos;
+  final int? ofertaExclusivaSegundos;
+  final int? ofertaMaxIntentos;
+  final bool? broadcastReboteFcm;
+
+  const CompanyAssignmentTiming({
+    this.pollIntervalSegundos,
+    this.graciaSegundos,
+    this.servidorTimestamp,
+    this.overlayTtlSegundos,
+    this.queueMaxMinutes,
+    this.queueAbiertaMaxMinutes,
+    this.ventanaListaMinutos,
+    this.ofertaExclusivaSegundos,
+    this.ofertaMaxIntentos,
+    this.broadcastReboteFcm,
+  });
+
+  factory CompanyAssignmentTiming.fromResponse(Map data) {
+    final nested = data['timing'];
+    final timing = nested is Map
+        ? Map<String, dynamic>.from(nested)
+        : <String, dynamic>{};
+
+    int? pickInt(String snake, [String? camel]) {
+      final raw = timing[snake] ?? timing[camel ?? ''] ?? data[snake];
+      if (raw == null) return null;
+      if (raw is int) return raw > 0 ? raw : null;
+      return int.tryParse(raw.toString());
+    }
+
+    double? pickDouble(String snake) {
+      final raw = timing[snake] ?? data[snake];
+      if (raw == null) return null;
+      if (raw is num) return raw.toDouble();
+      return double.tryParse(raw.toString());
+    }
+
+    bool? pickBool(String snake) {
+      final raw = timing[snake] ?? data[snake];
+      if (raw == null) return null;
+      if (raw is bool) return raw;
+      final s = raw.toString().toLowerCase();
+      if (s == 'true' || s == '1') return true;
+      if (s == 'false' || s == '0') return false;
+      return null;
+    }
+
+    return CompanyAssignmentTiming(
+      pollIntervalSegundos: pickInt('poll_interval_segundos', 'pollIntervalSegundos'),
+      graciaSegundos: pickInt('gracia_segundos', 'graciaSegundos'),
+      servidorTimestamp: pickInt('servidor_timestamp', 'servidorTimestamp'),
+      overlayTtlSegundos: pickInt('overlay_ttl_segundos', 'overlayTtlSegundos'),
+      queueMaxMinutes: pickDouble('queue_max_minutes'),
+      queueAbiertaMaxMinutes: pickDouble('queue_abierta_max_minutes'),
+      ventanaListaMinutos: pickDouble('ventana_lista_minutos'),
+      ofertaExclusivaSegundos: pickInt('oferta_exclusiva_segundos'),
+      ofertaMaxIntentos: pickInt('oferta_max_intentos'),
+      broadcastReboteFcm: pickBool('broadcast_rebote_fcm'),
+    );
+  }
+}
+
 /// Resultado de `GET /taxi/solicitudes-pendientes`.
 class TaxiSolicitudesPendientesResult {
   final bool enServicio;
@@ -108,10 +179,17 @@ class TaxiSolicitudesPendientesResult {
   final int? servicioActivoId;
   final int total;
   final List<Map<String, dynamic>> pendientes;
+  /// Tab Llegando — fuente principal (spec 2026-06-12 b).
+  final List<Map<String, dynamic>> pendientesLlegando;
+  /// Tab Espera — fuente principal (spec 2026-06-12 b).
+  final List<Map<String, dynamic>> pendientesEspera;
+  final int? totalLlegando;
+  final int? totalEspera;
   final String? actualizadoEn;
   /// `TAXI_PENDIENTES_MAX_EDAD_MINUTOS` en servidor (solo informativo en UI).
   final int? pendientesMaxEdadMinutos;
-  /// `NEAREST_OFFER_THEN_BROADCAST` → true; `BROADCAST_NEARBY_DRIVERS` → false.
+  /// `NEAREST_OFFER_THEN_BROADCAST` → true; `BROADCAST_NEARBY_DRIVERS` → false (filtro radio).
+  /// No implica tab Espera vacía: broadcast fase 2 usa `pendientes_espera`.
   final bool listaGlobal;
   /// Método de asignación de la empresa (`companyAssignmentSettings`).
   final String? assignmentMethod;
@@ -125,6 +203,10 @@ class TaxiSolicitudesPendientesResult {
   final int? ofertaExclusivaSegundos;
   /// `companyAssignmentSettings.oferta_max_intentos`
   final int? ofertaMaxIntentos;
+  /// Bloque `timing` + campos raíz de `companyAssignmentSettings`.
+  final CompanyAssignmentTiming? timing;
+  final bool sinUbicacion;
+  final bool desdeCache;
 
   const TaxiSolicitudesPendientesResult({
     required this.enServicio,
@@ -133,6 +215,10 @@ class TaxiSolicitudesPendientesResult {
     this.servicioActivoId,
     required this.total,
     required this.pendientes,
+    this.pendientesLlegando = const [],
+    this.pendientesEspera = const [],
+    this.totalLlegando,
+    this.totalEspera,
     this.actualizadoEn,
     this.pendientesMaxEdadMinutos,
     this.listaGlobal = true,
@@ -143,6 +229,9 @@ class TaxiSolicitudesPendientesResult {
     this.ventanaListaMinutos,
     this.ofertaExclusivaSegundos,
     this.ofertaMaxIntentos,
+    this.timing,
+    this.sinUbicacion = false,
+    this.desdeCache = false,
   });
 
   /// Alias de [driverSearchRadiusKm] para compatibilidad.
@@ -157,6 +246,10 @@ class TaxiSolicitudesPendientesResult {
       enDescanso: enDescanso,
       total: 0,
       pendientes: const [],
+      pendientesLlegando: const [],
+      pendientesEspera: const [],
+      totalLlegando: 0,
+      totalEspera: 0,
     );
   }
 }

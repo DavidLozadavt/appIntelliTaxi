@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show max;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -25,6 +26,7 @@ import 'package:intellitaxi/config/socket_service.dart';
 import 'package:intellitaxi/core/utils/api_rate_limit_guard.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:intellitaxi/features/auth/services/auth_service.dart';
+import 'package:intellitaxi/core/services/incoming_app_launch_helper.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
@@ -42,6 +44,7 @@ import 'package:intellitaxi/main.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/background_location_service.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_incoming_dedup_store.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
@@ -96,7 +99,15 @@ class ConductorHomeProvider extends ChangeNotifier {
   // Solicitudes: un mapa por servicio_id. API = verdad de lista; Pusher/FCM = merge;
   // TTL solo oculta overlay «Llegando»; el ítem sigue en mapa / «En espera».
   final Map<String, Map<String, dynamic>> _solicitudesPorId = {};
+  /// Orden de ítems en tab Llegando (`pendientes_llegando` del API).
+  List<String> _pendientesLlegandoIds = [];
+  /// Orden de ítems en tab Espera (`pendientes_espera` del API).
+  List<String> _pendientesEsperaIds = [];
+  int? _totalLlegandoApi;
+  int? _totalEsperaApi;
   final Set<String> _overlayOcultoPorTtl = {};
+  /// Overlay diferido hasta tener GPS/radio/coords evaluables.
+  final Set<String> _overlayPendienteGps = {};
   final Map<String, DateTime> _recibidaPorRealtimeEn = {};
   /// Evita procesar el mismo id 2× en ráfaga (público + privado / Pusher + FCM).
   final Map<String, DateTime> _ultimoRealtimeProcesadoPorId = {};
@@ -117,6 +128,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   Timer? _syncSolicitudesTimer;
   Timer? _syncSolicitudesDebounceTimer;
   Timer? _syncTrasHeartbeatTimer;
+  Timer? _overlayPendienteGpsTimer;
   bool _syncSolicitudesEnCurso = false;
   DateTime? _ultimaSyncSolicitudesAt;
   static const Duration _minIntervaloSyncSolicitudes = Duration(seconds: 30);
@@ -151,6 +163,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   double? _driverSearchRadiusKm;
   int? _ofertaExclusivaSegundosEmpresa;
   int? _ofertaMaxIntentosEmpresa;
+  CompanyAssignmentTiming? _assignmentTiming;
+  final Set<String> _enPeriodoGracia = {};
+  final Map<String, Timer> _timersGracia = {};
+  bool _sinUbicacionEnApi = false;
+  int? _overlayTtlSegundos;
 
   /// Oferta inDrive exclusiva (solo este conductor).
   ConductorOfertaExclusiva? _ofertaExclusiva;
@@ -220,9 +237,184 @@ class ConductorHomeProvider extends ChangeNotifier {
   double? get radioKmAsignacion => _driverSearchRadiusKm;
   int? get ofertaExclusivaSegundosEmpresa => _ofertaExclusivaSegundosEmpresa;
   int? get ofertaMaxIntentosEmpresa => _ofertaMaxIntentosEmpresa;
+  bool get sinUbicacionEnApi => _sinUbicacionEnApi;
+
+  /// Rotación inDrive (`oferta_max_intentos > 0`). Con 0 → 2 min Llegando + 2 min Espera sin pantalla exclusiva.
+  bool get tieneRotacionIndriver =>
+      ConductorOfertaIndriverHelper.tieneRotacionIndriver(
+        _ofertaMaxIntentosEmpresa ?? _assignmentTiming?.ofertaMaxIntentos,
+      );
+
+  bool estaEnGracia(String solicitudId) => _enPeriodoGracia.contains(solicitudId);
+
+  String etiquetaCountdownSolicitud(String solicitudId) {
+    final seg = obtenerSegundosRestantes(solicitudId);
+    return ConductorSolicitudPayloadHelper.etiquetaCountdownFase(
+      seg,
+      enGracia: estaEnGracia(solicitudId),
+    );
+  }
 
   int get _segundosOfertaEmpresa =>
-      _ofertaExclusivaSegundosEmpresa ?? kMantenerLlegandoTrasExclusivaSegundos;
+      _ofertaExclusivaSegundosEmpresa ??
+      _assignmentTiming?.ofertaExclusivaSegundos ??
+      kMantenerLlegandoTrasExclusivaSegundos;
+
+  int _graciaSegundosEfectiva(Map<String, dynamic>? solicitud) {
+    if (solicitud != null) {
+      final item = ConductorSolicitudPayloadHelper.graciaSegundosItem(solicitud);
+      if (item != null && item > 0) return item;
+    }
+    final api = _assignmentTiming?.graciaSegundos;
+    if (api != null && api > 0) return api;
+    return kGraciaSegundosFallback;
+  }
+
+  void _limpiarGracia(String solicitudId) {
+    _enPeriodoGracia.remove(solicitudId);
+    _timersGracia[solicitudId]?.cancel();
+    _timersGracia.remove(solicitudId);
+  }
+
+  void _iniciarPeriodoGracia(String solicitudId) {
+    if (_isDisposed || _enPeriodoGracia.contains(solicitudId)) return;
+    final solicitud = _solicitudesPorId[solicitudId];
+    if (solicitud == null) return;
+
+    _enPeriodoGracia.add(solicitudId);
+    final gracia = _graciaSegundosEfectiva(solicitud);
+    AppLogger.d('⏳ Gracia ${gracia}s → refresh API: $solicitudId');
+
+    _timersGracia[solicitudId]?.cancel();
+    _timersGracia[solicitudId] = Timer(Duration(seconds: gracia), () {
+      if (_isDisposed) return;
+      _limpiarGracia(solicitudId);
+      unawaited(_finalizarGraciaConSync(solicitudId));
+    });
+    if (!_isDisposed) notifyListeners();
+  }
+
+  Future<void> _finalizarGraciaConSync(String solicitudId) async {
+    if (_isDisposed) return;
+    await sincronizarSolicitudesPublicadasConductor(forzar: true);
+    if (_isDisposed) return;
+    // El GET reemplaza listas; no quitar localmente (spec §4.2 paso 5–6).
+    _detenerTickerSiNoHaySolicitudes();
+    if (!_isDisposed) notifyListeners();
+  }
+
+  void _aplicarTimingDesdeApi(TaxiSolicitudesPendientesResult result) {
+    _assignmentTiming = result.timing;
+    if (result.ofertaExclusivaSegundos != null) {
+      _ofertaExclusivaSegundosEmpresa = result.ofertaExclusivaSegundos;
+    }
+    if (result.ofertaMaxIntentos != null) {
+      _ofertaMaxIntentosEmpresa = result.ofertaMaxIntentos;
+    }
+    final overlayTtl = result.timing?.overlayTtlSegundos;
+    if (overlayTtl != null && overlayTtl > 0) {
+      _overlayTtlSegundos = overlayTtl;
+    }
+  }
+
+  int get _overlayTtlEfectivo =>
+      _overlayTtlSegundos ?? kOportunidadConductorSegundos;
+
+  void _aplicarSinUbicacionDesdeApi(TaxiSolicitudesPendientesResult result) {
+    _sinUbicacionEnApi = result.sinUbicacion;
+    if (!result.sinUbicacion) return;
+    AppLogger.d('📍 API sin_ubicacion: se requiere lat/lng para pendientes');
+    if (_currentPosition == null) {
+      unawaited(_getCurrentLocation());
+    }
+  }
+
+  void _reintentarPendientesTrasUbicacion() {
+    _reintentarOverlaysPendientesRadio();
+    if (_overlayPendienteGps.isNotEmpty &&
+        _currentPosition != null &&
+        _isOnline &&
+        !_enServicio &&
+        !_enDescanso) {
+      unawaited(sincronizarSolicitudesPublicadasConductor(forzar: true));
+      return;
+    }
+    if (!_sinUbicacionEnApi || _currentPosition == null) return;
+    if (!_isOnline || _enServicio || _enDescanso) return;
+    unawaited(sincronizarSolicitudesPublicadasConductor(forzar: true));
+  }
+
+  void _impulsarPrerrequisitosOverlay([String? solicitudId]) {
+    if (_currentPosition == null) {
+      unawaited(_getCurrentLocation());
+    }
+    if (_driverSearchRadiusKm == null &&
+        _isOnline &&
+        !_enServicio &&
+        !_enDescanso &&
+        !_syncSolicitudesEnCurso) {
+      unawaited(sincronizarSolicitudesPublicadasConductor(forzar: true));
+    }
+    final ids = solicitudId != null
+        ? [solicitudId]
+        : _overlayPendienteGps.toList();
+    for (final id in ids) {
+      if (!_solicitudesPorId.containsKey(id)) continue;
+      unawaited(_enriquecerDireccionesSolicitud(id).catchError((_) {}));
+    }
+  }
+
+  void _programarReintentoOverlayGps() {
+    if (_overlayPendienteGps.isEmpty) {
+      _overlayPendienteGpsTimer?.cancel();
+      _overlayPendienteGpsTimer = null;
+      return;
+    }
+    if (_overlayPendienteGpsTimer != null) return;
+    _overlayPendienteGpsTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_isDisposed) {
+        _overlayPendienteGpsTimer?.cancel();
+        return;
+      }
+      if (_overlayPendienteGps.isEmpty) {
+        _overlayPendienteGpsTimer?.cancel();
+        _overlayPendienteGpsTimer = null;
+        return;
+      }
+      _impulsarPrerrequisitosOverlay();
+      _reintentarOverlaysPendientesRadio();
+    });
+  }
+
+  /// Reconcilia cola tras abrir app por FCM (spec §7: GET pendientes / oferta-activa).
+  Future<void> reconciliarTrasFcm({Map<String, dynamic>? data}) async {
+    if (_isDisposed || _enServicio || _enDescanso) return;
+    if (!_isOnline) {
+      await _marcarSolicitudesPendientesDeSync();
+      return;
+    }
+
+    final raw = data != null
+        ? ConductorSolicitudPayloadHelper.parsePayload(data)
+        : null;
+    final notifTipo =
+        raw != null ? (ConductorSocketPayloadRouter.notificacionTipo(raw) ?? '') : '';
+    final tipo = raw?['tipo']?.toString().toLowerCase() ?? '';
+    final esOfertaExclusiva = notifTipo.contains('oferta_servicio_exclusiva') ||
+        notifTipo == 'exclusiva_indrive' ||
+        notifTipo == 'oferta_directa' ||
+        tipo.contains('oferta_servicio_exclusiva') ||
+        (raw != null &&
+            ConductorSocketPayloadRouter.requiereOverlayFullscreen(raw));
+
+    if (esOfertaExclusiva) {
+      await sincronizarOfertaActiva();
+    }
+    await sincronizarSolicitudesPublicadasConductor(forzar: true);
+    if (!esOfertaExclusiva) {
+      await sincronizarOfertaActiva();
+    }
+  }
 
   bool get _filtrarPorRadioAsignacion => !_listaGlobalSolicitudes;
 
@@ -334,77 +526,148 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   /// Reabre overlays diferidos cuando ya hay GPS, radio y coords de recogida.
   void _reintentarOverlaysPendientesRadio() {
-    if (_isDisposed || _overlayOcultoPorTtl.isEmpty) return;
+    if (_isDisposed) return;
+    if (_overlayOcultoPorTtl.isEmpty && _overlayPendienteGps.isEmpty) return;
     var cambio = false;
-    for (final id in _overlayOcultoPorTtl.toList()) {
+    for (final id in {..._overlayOcultoPorTtl, ..._overlayPendienteGps}) {
       final solicitud = _solicitudesPorId[id];
-      if (solicitud == null) continue;
-      if (!_requiereFiltroRadio(solicitud)) continue;
-      if (_veredictoRadioAsignacion(solicitud) == false) continue;
+      if (solicitud == null) {
+        _overlayPendienteGps.remove(id);
+        continue;
+      }
+      if (!_requiereFiltroRadio(solicitud)) {
+        _overlayPendienteGps.remove(id);
+        continue;
+      }
+      final veredicto = _veredictoRadioAsignacion(solicitud);
+      if (veredicto == false) {
+        _overlayPendienteGps.remove(id);
+        continue;
+      }
+      if (veredicto == null) continue;
       if (!_solicitudListaParaOverlay(solicitud)) continue;
+      _overlayPendienteGps.remove(id);
+      final forzarBeep = !_sonidoEmitidoPorSolicitudId.containsKey(id);
       _aplicarOverlayLlegando(
         id,
         solicitud: solicitud,
         esNueva: false,
+        forzarBeepLlegando: forzarBeep,
       );
       cambio = true;
     }
+    _programarReintentoOverlayGps();
     if (cambio && !_isDisposed) notifyListeners();
   }
 
   bool _esOfertaExclusivaActiva(String? solicitudId) =>
       solicitudId != null && _ofertaExclusiva?.solicitudId == solicitudId;
 
-  bool _perteneceTabEspera(Map<String, dynamic> solicitud, String id) {
-    if (_esOfertaExclusivaActiva(id) || !_visibleSegunRadio(solicitud)) {
-      return false;
+  List<Map<String, dynamic>> _resolverListaTab(List<String> ids) {
+    final out = <Map<String, dynamic>>[];
+    for (final id in ids) {
+      final s = _solicitudesPorId[id];
+      if (s == null) continue;
+      if (_esOfertaExclusivaActiva(id)) continue;
+      if (!_visibleSegunRadio(s)) continue;
+      out.add(s);
     }
-    if (ConductorOfertaIndriverHelper.esBroadcastRebote(solicitud)) {
-      return false;
-    }
-    if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitud)) {
-      return ConductorSolicitudPayloadHelper.esTabEspera(solicitud) &&
-          obtenerSegundosRestantes(id) > 0;
-    }
-    return _overlayOcultoPorTtl.contains(id) &&
-        ConductorSolicitudPayloadHelper.segundosRestantesEspera(solicitud) > 0;
+    return out;
   }
 
-  bool _perteneceTabLlegando(Map<String, dynamic> solicitud, String id) {
-    if (_esOfertaExclusivaActiva(id) || !_visibleSegunRadio(solicitud)) {
-      return false;
-    }
-    if (ConductorOfertaIndriverHelper.esBroadcastRebote(solicitud)) {
-      if (solicitud['en_lista_espera'] == true) return false;
-      final seg = obtenerSegundosRestantes(id);
-      if (seg > 0) return true;
-      return ConductorSolicitudPayloadHelper.segundosCountdownLlegando(solicitud) >
-          0;
-    }
-    if (_enMinimoLlegandoVisible(id) || _mantenerEnLlegandoTrasExclusiva(id)) {
-      return obtenerSegundosRestantes(id) > 0 || _enMinimoLlegandoVisible(id);
-    }
-    if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitud)) {
-      return ConductorSolicitudPayloadHelper.esTabLlegando(solicitud) &&
-          obtenerSegundosRestantes(id) > 0;
-    }
-    return !_overlayOcultoPorTtl.contains(id);
+  void _sacarDeListasTab(String solicitudId) {
+    _pendientesLlegandoIds.remove(solicitudId);
+    _pendientesEsperaIds.remove(solicitudId);
   }
 
-  /// Pestaña «En espera»: `conductor_tab == espera` y countdown de cola abierta.
+  static List<String> _idsDesdeListaPendientes(
+    List<Map<String, dynamic>> list,
+  ) {
+    final ids = <String>[];
+    for (final m in list) {
+      final sid = ConductorSolicitudPayloadHelper.obtenerSolicitudId(m);
+      if (sid != null && sid.isNotEmpty) ids.add(sid);
+    }
+    return ids;
+  }
+
+  /// Reemplaza tabs Llegando/Espera desde `pendientes_llegando` / `pendientes_espera`.
+  void _aplicarListasPendientesDesdeApi(TaxiSolicitudesPendientesResult result) {
+    _totalLlegandoApi = result.totalLlegando;
+    _totalEsperaApi = result.totalEspera;
+    _pendientesLlegandoIds =
+        _idsDesdeListaPendientes(result.pendientesLlegando).reversed.toList();
+    _pendientesEsperaIds =
+        _idsDesdeListaPendientes(result.pendientesEspera).reversed.toList();
+
+    final serverIds = <String>{
+      ..._pendientesLlegandoIds,
+      ..._pendientesEsperaIds,
+    };
+
+    for (final id in _solicitudesPorId.keys.toList()) {
+      if (id.startsWith('temp_')) continue;
+      if (int.tryParse(id) == null) continue;
+      if (!serverIds.contains(id)) {
+        if (_conservarEnMapaTrasSync(id)) {
+          AppLogger.d(
+            'ℹ️ Sync: conservando $id (realtime/overlay; API no lo listó)',
+          );
+          continue;
+        }
+        _removerSolicitudDelMapa(id);
+      } else {
+        final item = _solicitudesPorId[id];
+        if (item != null &&
+            _requiereFiltroRadio(item) &&
+            !ConductorSolicitudPayloadHelper.esOfertaDirecta(item) &&
+            _veredictoRadioAsignacion(item) == false) {
+          _removerSolicitudDelMapa(id);
+          _sacarDeListasTab(id);
+        }
+      }
+    }
+
+    for (final map in [
+      ...result.pendientesLlegando,
+      ...result.pendientesEspera,
+    ]) {
+      final sid = ConductorSolicitudPayloadHelper.obtenerSolicitudId(map);
+      if (sid == null) continue;
+      if (!_listaGlobalSolicitudes &&
+          !ConductorSolicitudPayloadHelper.esOfertaDirecta(map) &&
+          ConductorOfertaIndriverHelper.esFaseExclusiva(map) &&
+          !ConductorOfertaIndriverHelper.esAsignacionColaParaMi(map) &&
+          _ofertaExclusiva?.solicitudId != sid) {
+        continue;
+      }
+      final esNuevaEnMapa = !_solicitudesPorId.containsKey(sid);
+      final tuvoRealtime = _recibidaPorRealtimeEn.containsKey(sid);
+      _recibidaPorRealtimeEn.remove(sid);
+      _procesarNuevaSolicitud(map, fromSync: true);
+      if (esNuevaEnMapa && !tuvoRealtime) {
+        AppLogger.d(
+          'DIAG [sync] solicitud solo por API (sin Pusher previo) | id=$sid',
+        );
+      }
+    }
+  }
+
+  /// Pestaña «En espera»: `pendientes_espera` del API (sin filtrar por tab manual).
   List<Map<String, dynamic>> get solicitudesEnEsperaOrdenadas {
     if (_enServicio || _enDescanso) return const [];
-    final solicitudes = _solicitudesPorId.values
-        .where((s) {
-          final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-          return id != null && _perteneceTabEspera(s, id);
-        })
-        .toList();
-    solicitudes.sort(ConductorSolicitudRankingHelper.compararRecientesPrimero);
-    return solicitudes;
+    return _resolverListaTab(_pendientesEsperaIds);
   }
 
-  int get totalSolicitudesEnEspera => solicitudesEnEsperaOrdenadas.length;
+  int get totalSolicitudesEnEspera => max(
+        _totalEsperaApi ?? 0,
+        _pendientesEsperaIds.length,
+      );
+
+  int get totalSolicitudesLlegando => max(
+        _totalLlegandoApi ?? 0,
+        _pendientesLlegandoIds.length,
+      );
 
   /// «A 450 m de ti» hasta la recogida (GPS actual; API solo si no hay fix).
   String distanciaDesdeConductorTexto(Map<String, dynamic> solicitud) {
@@ -450,23 +713,14 @@ class ConductorHomeProvider extends ChangeNotifier {
       !_enServicio && !_enDescanso && _solicitudesPorId.isNotEmpty;
 
   static const _pendingSyncKey = 'conductor_pending_solicitudes_sync';
-  /// Pestaña «Llegando»: overlay activo (Pusher / servicio.cercano, TTL no expirado).
-  List<Map<String, dynamic>> get solicitudesOrdenadas =>
-      _solicitudesOrdenadasVisiblesEnOverlay();
+  /// Pestaña «Llegando»: `pendientes_llegando` del API.
+  List<Map<String, dynamic>> get solicitudesOrdenadas {
+    if (_enServicio || _enDescanso) return const [];
+    return _resolverListaTab(_pendientesLlegandoIds);
+  }
 
   List<Map<String, dynamic>> _solicitudesOrdenadasTodas() {
     final solicitudes = List<Map<String, dynamic>>.from(_solicitudesPorId.values);
-    solicitudes.sort(ConductorSolicitudRankingHelper.compararRecientesPrimero);
-    return solicitudes;
-  }
-
-  List<Map<String, dynamic>> _solicitudesOrdenadasVisiblesEnOverlay() {
-    final solicitudes = _solicitudesPorId.values
-        .where((s) {
-          final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(s);
-          return id != null && _perteneceTabLlegando(s, id);
-        })
-        .toList();
     solicitudes.sort(ConductorSolicitudRankingHelper.compararRecientesPrimero);
     return solicitudes;
   }
@@ -722,6 +976,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     rechazarSolicitud(solicitudId);
+    if (exitoRemoto) _programarSyncSolicitudesTrasEvento();
     if (!_isDisposed) notifyListeners();
     return exitoRemoto;
   }
@@ -970,6 +1225,12 @@ class ConductorHomeProvider extends ChangeNotifier {
     _timersExpiracion.clear();
     _expiracionPorSolicitud.clear();
     _overlayOcultoPorTtl.clear();
+    _overlayPendienteGps.clear();
+    for (final timer in _timersGracia.values) {
+      timer.cancel();
+    }
+    _timersGracia.clear();
+    _enPeriodoGracia.clear();
     _recibidaPorRealtimeEn.clear();
     _sonidoEmitidoPorSolicitudId.clear();
     _silenciarBeepLlegandoHasta.clear();
@@ -977,12 +1238,19 @@ class ConductorHomeProvider extends ChangeNotifier {
     _mantenerLlegandoTrasExclusivaHasta.clear();
     _vozDireccionLlegandoHecha.clear();
     _solicitudesPorId.clear();
+    _pendientesLlegandoIds = [];
+    _pendientesEsperaIds = [];
+    _totalLlegandoApi = null;
+    _totalEsperaApi = null;
     _detenerTickerSiNoHaySolicitudes();
   }
 
   void _removerSolicitudDelMapa(String solicitudId) {
+    _limpiarGracia(solicitudId);
+    _sacarDeListasTab(solicitudId);
     _solicitudesPorId.remove(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
+    _overlayPendienteGps.remove(solicitudId);
     _recibidaPorRealtimeEn.remove(solicitudId);
     _sonidoEmitidoPorSolicitudId.remove(solicitudId);
     _expiracionPorSolicitud.remove(solicitudId);
@@ -1080,11 +1348,24 @@ class ConductorHomeProvider extends ChangeNotifier {
       ),
     );
 
+    unawaited(_abrirAppSiSegundoPlano(solicitud: solicitud));
+
     if (decirNuevoServicioEnVoz &&
         textoVoz.isEmpty &&
         solicitud != null &&
         !_vozDireccionLlegandoHecha.contains(solicitudId)) {
       unawaited(_anunciarDireccionLlegandoTrasEnriquecer(solicitudId));
+    }
+  }
+
+  /// Realtime/Pusher en background: misma apertura que oferta exclusiva.
+  Future<void> _abrirAppSiSegundoPlano({Map<String, dynamic>? solicitud}) async {
+    await IncomingAppLaunchHelper.openForIncoming(
+      solicitud: solicitud,
+      showHeadsUp: solicitud != null,
+    );
+    if (!AppLifecycleHelper.isInForeground()) {
+      unawaited(_actualizarBurbujaSegundoPlano());
     }
   }
 
@@ -1149,9 +1430,13 @@ class ConductorHomeProvider extends ChangeNotifier {
     );
   }
 
-  /// Al cerrar exclusiva: una vez en «Llegando» + beep; sin rebotes ni sync a espera.
+  /// Tras cerrar exclusiva inDrive: publicar en Llegando + beep. Sin rotación → solo GET.
   void _publicarEnLlegandoTrasExclusiva(String solicitudId) {
     if (_isDisposed || _enServicio || _enDescanso || !_isOnline) return;
+    if (!tieneRotacionIndriver) {
+      _programarSyncSolicitudesTrasEvento();
+      return;
+    }
     if (!_publicadoLlegandoTrasExclusiva.add(solicitudId)) return;
 
     var solicitud = _solicitudesPorId[solicitudId];
@@ -1165,6 +1450,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     ConductorSolicitudPayloadHelper.anclarOverlayExpiraEn(
       solicitud,
       anterior: anterior,
+      minSegundosRestantes: _overlayTtlEfectivo,
     );
     _solicitudesPorId[solicitudId] = solicitud;
     _marcarMantenerEnLlegandoTrasExclusiva(solicitudId);
@@ -1179,7 +1465,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
-  /// No borrar en sync si acaba de llegar por Pusher/FCM o sigue en «Llegando».
+  /// No borrar en sync si acaba de llegar por Pusher/FCM (race API vs realtime).
   bool _conservarEnMapaTrasSync(String id) {
     final item = _solicitudesPorId[id];
     if (item != null &&
@@ -1187,9 +1473,6 @@ class ConductorHomeProvider extends ChangeNotifier {
         _requiereFiltroRadio(item) &&
         !_dentroDelRadioAsignacion(item)) {
       return false;
-    }
-    if (!_overlayOcultoPorTtl.contains(id)) {
-      return true;
     }
     final recibida = _recibidaPorRealtimeEn[id];
     if (recibida == null) return false;
@@ -1205,8 +1488,15 @@ class ConductorHomeProvider extends ChangeNotifier {
       timer.cancel();
     }
     _timersExpiracion.clear();
+    for (final timer in _timersGracia.values) {
+      timer.cancel();
+    }
+    _timersGracia.clear();
+    _enPeriodoGracia.clear();
     _tickerExpiracionUI?.cancel();
     _tickerExpiracionUI = null;
+    _overlayPendienteGpsTimer?.cancel();
+    _overlayPendienteGpsTimer = null;
     _detenerSincronizacionSolicitudes();
     _detenerSeguimientoUbicacion();
     unawaited(_detenerHeartbeatMapaSegundoPlano());
@@ -1386,17 +1676,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   Duration _intervaloPollSolicitudes() {
-    if (!_suscritoASocket) {
-      return const Duration(
-        seconds: kPollSolicitudesPendientesSinSocketSegundos,
-      );
+    final api = _assignmentTiming?.pollIntervalSegundos;
+    if (api != null && api > 0) {
+      return Duration(seconds: api.clamp(3, 120));
     }
-    final tieneCola = _solicitudesPorId.isNotEmpty;
-    return Duration(
-      seconds: tieneCola
-          ? kPollSolicitudesPendientesConSocketColaSegundos
-          : kPollSolicitudesPendientesConSocketVacioSegundos,
-    );
+    return const Duration(seconds: kPollIntervalSegundosFallback);
   }
 
   void _programarProximoPollSolicitudes() {
@@ -1433,11 +1717,12 @@ class ConductorHomeProvider extends ChangeNotifier {
   void _programarSyncSolicitudesTrasEvento() {
     if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
     _syncSolicitudesDebounceTimer?.cancel();
+    // Reconciliar pronto tras realtime; el poll periódico sigue siendo la fuente final.
     _syncSolicitudesDebounceTimer = Timer(
-      const Duration(seconds: kSyncSolicitudesTrasEventoSegundos),
+      const Duration(milliseconds: 600),
       () {
         if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
-        sincronizarSolicitudesPublicadasConductor();
+        sincronizarSolicitudesPublicadasConductor(forzar: true);
       },
     );
   }
@@ -1521,64 +1806,12 @@ class ConductorHomeProvider extends ChangeNotifier {
       _listaGlobalSolicitudes = result.listaGlobal;
       _assignmentMethod = result.assignmentMethod;
       _driverSearchRadiusKm = result.driverSearchRadiusKm;
-      _ofertaExclusivaSegundosEmpresa = result.ofertaExclusivaSegundos;
-      _ofertaMaxIntentosEmpresa = result.ofertaMaxIntentos;
+      _aplicarTimingDesdeApi(result);
+      _aplicarSinUbicacionDesdeApi(result);
+      _programarProximoPollSolicitudes();
 
-      final list = result.pendientes;
       _ultimaSyncSolicitudesEn = DateTime.now().toIso8601String();
-      final serverIds = <String>{};
-      for (final m in list) {
-        final sid = m['servicio_id'] ?? m['solicitud_id'] ?? m['id'];
-        if (sid != null) serverIds.add(sid.toString());
-      }
-
-      for (final id in _solicitudesPorId.keys.toList()) {
-        if (id.startsWith('temp_')) continue;
-        if (int.tryParse(id) == null) continue;
-        if (!serverIds.contains(id)) {
-          if (_conservarEnMapaTrasSync(id)) {
-            AppLogger.d(
-              'ℹ️ Sync: conservando $id (realtime/overlay; API no lo listó)',
-            );
-            continue;
-          }
-          _removerSolicitudDelMapa(id);
-        } else {
-          final item = _solicitudesPorId[id];
-          if (item != null &&
-              _requiereFiltroRadio(item) &&
-              !ConductorSolicitudPayloadHelper.esOfertaDirecta(item) &&
-              _veredictoRadioAsignacion(item) == false) {
-            _removerSolicitudDelMapa(id);
-          }
-        }
-      }
-
-      for (final m in list) {
-        final map = m;
-        final sid = map['servicio_id'] ?? map['solicitud_id'] ?? map['id'];
-        if (sid != null) {
-          final sidStr = sid.toString();
-          if (!_listaGlobalSolicitudes &&
-              !ConductorSolicitudPayloadHelper.esOfertaDirecta(map) &&
-              ConductorOfertaIndriverHelper.esFaseExclusiva(map) &&
-              !ConductorOfertaIndriverHelper.esAsignacionColaParaMi(map) &&
-              _ofertaExclusiva?.solicitudId != sidStr) {
-            continue;
-          }
-          final esNuevaEnMapa = !_solicitudesPorId.containsKey(sidStr);
-          final tuvoRealtime = _recibidaPorRealtimeEn.containsKey(sidStr);
-          _recibidaPorRealtimeEn.remove(sidStr);
-          _procesarNuevaSolicitud(map, fromSync: true);
-          if (esNuevaEnMapa && !tuvoRealtime) {
-            AppLogger.d(
-              'DIAG [sync] solicitud solo por API (sin Pusher previo) | id=$sidStr',
-            );
-          }
-          continue;
-        }
-        _procesarNuevaSolicitud(map, fromSync: true);
-      }
+      _aplicarListasPendientesDesdeApi(result);
 
       _purgarSolicitudesFueraDeRadio();
       _reintentarOverlaysPendientesRadio();
@@ -1739,6 +1972,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         for (final listener in List.of(_solicitudTomadaListeners)) {
           listener(servicioId);
         }
+        _programarSyncSolicitudesTrasEvento();
       }());
     } catch (e) {
       AppLogger.d('⚠️ Error procesando solicitud.tomada: $e');
@@ -1747,7 +1981,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   // ==================== OFERTA INDIRVE (EXCLUSIVA) ====================
 
-  /// Poll adaptativo: 12 s con pantalla grande abierta; 45 s si hay oferta en segundo plano.
+  /// Poll oferta-activa: intervalo del API (3–15 s pantalla) o fallback local.
   void _reprogramarPollOfertaActiva() {
     _detenerPollOfertaActiva();
     if (_isDisposed || !_isOnline || _enServicio || _enDescanso) return;
@@ -1755,8 +1989,11 @@ class ConductorHomeProvider extends ChangeNotifier {
     final pantalla = ConductorOfertaNavigation.pantallaVisible;
     if (!pantalla && _ofertaExclusiva == null) return;
 
+    final pollApi = _assignmentTiming?.pollIntervalSegundos;
     final segundos = pantalla
-        ? kPollOfertaActivaPantallaSegundos
+        ? (pollApi != null && pollApi > 0
+            ? pollApi.clamp(3, 15)
+            : kPollOfertaActivaPantallaSegundos)
         : kPollOfertaActivaFondoSegundos;
     _ofertaExclusivaPollTimer = Timer.periodic(
       Duration(seconds: segundos),
@@ -1897,6 +2134,18 @@ class ConductorHomeProvider extends ChangeNotifier {
     final oferta = ConductorOfertaExclusiva.tryFromDynamic(data);
     if (oferta == null) return;
 
+    if (!oferta.esDirecta && !tieneRotacionIndriver) {
+      AppLogger.d(
+        'ℹ️ oferta_max_intentos=0: exclusiva como tarjeta en lista (sin pantalla grande)',
+      );
+      _procesarNuevaSolicitud(
+        oferta.toSolicitudMap(),
+        isDirectOffer: false,
+        mostrarEnOverlay: true,
+      );
+      return;
+    }
+
     if (ServicioEsperaTimer.ofertaExpirada(oferta.raw)) {
       _limpiarOfertaExclusivaLocal(
         cerrarPantalla: ConductorOfertaNavigation.pantallaVisible,
@@ -1936,6 +2185,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     if (abrirPantalla && !ConductorOfertaNavigation.pantallaVisible) {
+      unawaited(_abrirAppSiSegundoPlano(solicitud: solicitud));
       unawaited(ConductorOfertaNavigation.abrirOfertaExclusiva(oferta));
     }
     if (!_isDisposed) notifyListeners();
@@ -2186,7 +2436,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  /// FCM / alerta: primero tarjeta + sonido; sync después (sin borrar overlay activo).
+  /// FCM / alerta: primero tarjeta + sonido; sync HTTP después (spec §7).
   Future<void> procesarAlertaSolicitudEntrante(Map<String, dynamic> data) async {
     if (_isDisposed || _enServicio || _enDescanso) return;
 
@@ -2197,19 +2447,20 @@ class ConductorHomeProvider extends ChangeNotifier {
         notifTipo == 'oferta_directa') {
       if (ConductorOfertaExclusiva.tryFromDynamic(raw) != null) {
         await _aplicarOfertaExclusivaDesdePayload(raw);
-      } else {
-        await sincronizarOfertaActiva();
       }
+      await reconciliarTrasFcm(data: data);
       return;
     }
 
     final accion = ConductorSocketPayloadRouter.accionParaPayload(raw);
     if (accion == ConductorSocketAccion.overlayFullscreen) {
       unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
+      await reconciliarTrasFcm(data: data);
       return;
     }
     if (accion == ConductorSocketAccion.cerrarOverlay) {
       _procesarOfertaCerrada(raw);
+      await reconciliarTrasFcm(data: data);
       return;
     }
 
@@ -2229,19 +2480,9 @@ class ConductorHomeProvider extends ChangeNotifier {
         isDirectOffer: ConductorSolicitudPayloadHelper.esOfertaDirecta(raw),
         mostrarEnOverlay: accion == ConductorSocketAccion.mergeColaCercano,
       );
-      if (_isOnline) {
-        _programarSyncSolicitudesTrasEvento();
-      } else {
-        await _marcarSolicitudesPendientesDeSync();
-      }
-      return;
     }
 
-    if (_isOnline) {
-      _programarSyncSolicitudesTrasEvento();
-    } else {
-      await _marcarSolicitudesPendientesDeSync();
-    }
+    await reconciliarTrasFcm(data: data);
   }
 
   /// Procesa una nueva solicitud (Pusher, sync API o alerta FCM).
@@ -2276,9 +2517,9 @@ class ConductorHomeProvider extends ChangeNotifier {
           !fromSync &&
           !esDirecta &&
           !ConductorSolicitudPayloadHelper.usaConductorTabApi(raw)) {
-        final abrirPantalla =
-            ConductorOfertaIndriverHelper.esPayloadOfertaExclusivaParaMi(raw) ||
-            !_listaGlobalSolicitudes;
+        final abrirPantalla = tieneRotacionIndriver &&
+            (ConductorOfertaIndriverHelper.esPayloadOfertaExclusivaParaMi(raw) ||
+                !_listaGlobalSolicitudes);
         if (abrirPantalla) {
           unawaited(_aplicarOfertaExclusivaDesdePayload(raw));
           return;
@@ -2393,6 +2634,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       final esNueva = existente == null;
       if (esNueva) {
         AppLogger.d('📩 Nueva solicitud: $solicitudId');
+        unawaited(ConductorIncomingDedupStore.recordRealtimeIncoming(solicitudId));
         if (!AppLifecycleHelper.isInForeground()) {
           unawaited(_actualizarBurbujaSegundoPlano());
         }
@@ -2408,10 +2650,6 @@ class ConductorHomeProvider extends ChangeNotifier {
         existente,
         solicitud,
       );
-      if (pasoAEspera &&
-          ConductorOfertaIndriverHelper.esBroadcastRebote(solicitud)) {
-        pasoAEspera = false;
-      }
       if (pasoALlegandoPublico &&
           _ofertaExclusiva?.solicitudId == solicitudId) {
         _limpiarOfertaExclusivaLocal(cerrarPantalla: true);
@@ -2430,16 +2668,26 @@ class ConductorHomeProvider extends ChangeNotifier {
       ConductorSolicitudPayloadHelper.anclarExpiracionCola(
         _solicitudesPorId[solicitudId]!,
         anterior: existente,
+        forzarReanclaje: debeReemplazar || esActualizarFase,
       );
       if (ConductorSolicitudPayloadHelper.tieneExpiracionColaActiva(
         _solicitudesPorId[solicitudId]!,
       )) {
+        _limpiarGracia(solicitudId);
         _iniciarTickerExpiracionUI();
       }
 
       final solicitudMap = _solicitudesPorId[solicitudId]!;
 
-      // Sync: alinear pestañas con el API (`conductor_tab`); no reabrir Llegando por TTL local.
+      if (!fromSync) {
+        final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitudMap);
+        if (id != null &&
+            ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitudMap)) {
+          _moverATabSegunApi(id, solicitudMap);
+        }
+      }
+
+      // Sync: alinear pestañas con el API (`pendientes_llegando` / `pendientes_espera`).
       if (fromSync && !mostrarEnOverlay) {
         if (esNueva) {
           if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitudMap)) {
@@ -2486,15 +2734,12 @@ class ConductorHomeProvider extends ChangeNotifier {
               _enriquecerDireccionesSolicitud(solicitudId).catchError((_) {}),
             );
           }
-        } else if (ConductorOfertaIndriverHelper.esBroadcastRebote(solicitudMap) &&
-            ConductorSolicitudPayloadHelper.esTabLlegando(solicitudMap)) {
+        } else if (ConductorOfertaIndriverHelper.esActualizarFase(solicitudMap) ||
+            ConductorOfertaIndriverHelper.debeReemplazarExistente(solicitudMap)) {
           _aplicarActualizacionFaseBroadcast(solicitudId, solicitudMap);
         } else if (ConductorSolicitudPayloadHelper.esTabLlegando(solicitudMap) &&
             (pasoALlegandoPublico ||
-                (_overlayOcultoPorTtl.contains(solicitudId) &&
-                    !ConductorOfertaIndriverHelper.esBroadcastRebote(
-                      solicitudMap,
-                    )))) {
+                _overlayOcultoPorTtl.contains(solicitudId))) {
           _aplicarOverlayLlegando(
             solicitudId,
             solicitud: solicitudMap,
@@ -2559,6 +2804,7 @@ class ConductorHomeProvider extends ChangeNotifier {
           ConductorSolicitudPayloadHelper.anclarOverlayExpiraEn(
             _solicitudesPorId[solicitudId]!,
             anterior: existente,
+            minSegundosRestantes: _overlayTtlEfectivo,
           );
         }
         _aplicarOverlayLlegando(
@@ -2647,7 +2893,22 @@ class ConductorHomeProvider extends ChangeNotifier {
     String solicitudId,
     int segundosApi, {
     bool forzar = false,
+    Map<String, dynamic>? solicitud,
   }) {
+    final map = solicitud ?? _solicitudesPorId[solicitudId];
+    if (map != null) {
+      final expiraServidor =
+          ConductorSolicitudPayloadHelper.expiraDesdeServidorTimestamp(map);
+      if (expiraServidor != null) {
+        _limpiarGracia(solicitudId);
+        final prev = _expiracionPorSolicitud[solicitudId];
+        if (forzar || prev == null || expiraServidor.isBefore(prev)) {
+          _expiracionPorSolicitud[solicitudId] = expiraServidor;
+        }
+        return;
+      }
+    }
+
     if (segundosApi <= 0) {
       _expiracionPorSolicitud.remove(solicitudId);
       return;
@@ -2662,6 +2923,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
       return;
     }
+    _limpiarGracia(solicitudId);
     _expiracionPorSolicitud[solicitudId] =
         now.add(Duration(seconds: segundosApi));
   }
@@ -2672,7 +2934,26 @@ class ConductorHomeProvider extends ChangeNotifier {
     return exp.difference(DateTime.now()).inSeconds.clamp(0, 86400);
   }
 
-  /// Rebote broadcast: actualiza countdown en la misma tarjeta (sin beep ni tab Espera).
+  void _moverATabSegunApi(String solicitudId, Map<String, dynamic> solicitud) {
+    var tab = ConductorSolicitudPayloadHelper.conductorTab(solicitud);
+    if (tab == null && solicitud['en_lista_espera'] == true) {
+      tab = 'espera';
+    }
+    if (tab == 'espera') {
+      _pendientesLlegandoIds.remove(solicitudId);
+      _pendientesEsperaIds.remove(solicitudId);
+      _pendientesEsperaIds.insert(0, solicitudId);
+    } else if (tab == 'llegando') {
+      _pendientesEsperaIds.remove(solicitudId);
+      _pendientesLlegandoIds.remove(solicitudId);
+      _pendientesLlegandoIds.insert(0, solicitudId);
+    }
+  }
+
+  int _segundosCountdownSegunTab(Map<String, dynamic> solicitud) =>
+      ConductorSolicitudPayloadHelper.segundosRestantesCountdownApi(solicitud);
+
+  /// Actualiza countdown y pestaña desde el API (mismo `servicio_id`, sin beep).
   void _aplicarActualizacionFaseBroadcast(
     String solicitudId,
     Map<String, dynamic> solicitud,
@@ -2680,21 +2961,25 @@ class ConductorHomeProvider extends ChangeNotifier {
     final rebote = ConductorOfertaIndriverHelper.reboteNumero(solicitud);
     AppLogger.d(
       rebote != null && rebote > 1
-          ? '🔄 Broadcast rebote $rebote: actualizar fase $solicitudId'
-          : '🔄 Broadcast: actualizar fase $solicitudId',
+          ? '🔄 Fase API (rebote $rebote): $solicitudId'
+          : '🔄 Fase API: $solicitudId',
     );
+    _limpiarGracia(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
-    _marcarRecibidaPorRealtime(solicitudId);
-    final seg = _segundosLlegandoAlMostrar(solicitud, primeraVista: false);
+    _moverATabSegunApi(solicitudId, solicitud);
+
+    final seg = _segundosCountdownSegunTab(solicitud);
     if (seg > 0) {
-      _reanclarCountdownLocal(solicitudId, seg, forzar: true);
-      final rest = _segundosRestantesDesdeAncla(solicitudId);
-      _configurarTimerExpiracion(
+      _reanclarCountdownLocal(
         solicitudId,
-        ttlSegundos: rest > 0 ? rest : seg,
+        seg,
+        forzar: true,
+        solicitud: solicitud,
       );
-      _iniciarTickerExpiracionUI();
     }
+    _timersExpiracion[solicitudId]?.cancel();
+    _timersExpiracion.remove(solicitudId);
+    _iniciarTickerExpiracionUI();
     unawaited(_enriquecerDireccionesSolicitud(solicitudId).catchError((_) {}));
   }
 
@@ -2704,26 +2989,18 @@ class ConductorHomeProvider extends ChangeNotifier {
     Map<String, dynamic> solicitud, {
     bool forzarReanclaje = false,
   }) {
-    if (ConductorOfertaIndriverHelper.esBroadcastRebote(solicitud)) {
-      _aplicarActualizacionFaseBroadcast(solicitudId, solicitud);
-      return;
-    }
     if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitud)) {
+      _moverATabSegunApi(solicitudId, solicitud);
       final tab = ConductorSolicitudPayloadHelper.conductorTab(solicitud)!;
       if (tab == 'llegando') {
         _overlayOcultoPorTtl.remove(solicitudId);
-        final seg =
-            ConductorSolicitudPayloadHelper.segundosCountdownLlegando(solicitud);
+        final seg = _segundosCountdownSegunTab(solicitud);
         if (seg > 0) {
           _reanclarCountdownLocal(
             solicitudId,
             seg,
             forzar: forzarReanclaje,
-          );
-          final rest = _segundosRestantesDesdeAncla(solicitudId);
-          _configurarTimerExpiracion(
-            solicitudId,
-            ttlSegundos: rest > 0 ? rest : seg,
+            solicitud: solicitud,
           );
         } else {
           _timersExpiracion[solicitudId]?.cancel();
@@ -2734,26 +3011,23 @@ class ConductorHomeProvider extends ChangeNotifier {
         _overlayOcultoPorTtl.remove(solicitudId);
         final rest = _segundosRestantesDesdeAncla(solicitudId);
         if (rest > 0) {
-          _configurarTimerExpiracion(
-            solicitudId,
-            ttlSegundos: rest,
-          );
+          _reanclarCountdownLocal(solicitudId, rest, forzar: false);
         }
       } else {
         _timersExpiracion[solicitudId]?.cancel();
         _timersExpiracion.remove(solicitudId);
-        final seg =
-            ConductorSolicitudPayloadHelper.segundosRestantesEspera(solicitud);
+        _overlayOcultoPorTtl.add(solicitudId);
+        final seg = _segundosCountdownSegunTab(solicitud);
         if (seg > 0) {
           _reanclarCountdownLocal(
             solicitudId,
             seg,
             forzar: forzarReanclaje,
+            solicitud: solicitud,
           );
         } else {
           _expiracionPorSolicitud.remove(solicitudId);
         }
-        _overlayOcultoPorTtl.add(solicitudId);
       }
       _iniciarTickerExpiracionUI();
       return;
@@ -2814,30 +3088,18 @@ class ConductorHomeProvider extends ChangeNotifier {
         AppLogger.d(
           'ℹ️ Overlay diferido: $solicitudId pendiente validación GPS/coords',
         );
+        _overlayPendienteGps.add(solicitudId);
         _overlayOcultoPorTtl.remove(solicitudId);
-        if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitud)) {
-          final seg = _segundosLlegandoAlMostrar(
-            solicitud,
-            primeraVista: esNueva,
-          );
-          if (seg > 0) {
-            _reanclarCountdownLocal(solicitudId, seg, forzar: esNueva);
-            _configurarTimerExpiracion(solicitudId, ttlSegundos: seg);
-            _iniciarTickerExpiracionUI();
-          }
-        }
+        // Sin countdown local: expiraría antes de tener GPS/radio; manda el API.
+        _impulsarPrerrequisitosOverlay(solicitudId);
+        _programarReintentoOverlayGps();
         unawaited(
           _enriquecerDireccionesSolicitud(solicitudId).then((_) {
             if (_isDisposed) return;
             final enriquecida = _solicitudesPorId[solicitudId];
             if (enriquecida == null) return;
             if (_veredictoRadioAsignacion(enriquecida) == false) return;
-            _aplicarOverlayLlegando(
-              solicitudId,
-              solicitud: enriquecida,
-              esNueva: esNueva,
-              forzarBeepLlegando: forzarBeepLlegando,
-            );
+            _reintentarOverlaysPendientesRadio();
             if (!_isDisposed) notifyListeners();
           }).catchError((_) {}),
         );
@@ -2887,6 +3149,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     _marcarRecibidaPorRealtime(solicitudId);
     _overlayOcultoPorTtl.remove(solicitudId);
+    _overlayPendienteGps.remove(solicitudId);
     if (esNueva) {
       unawaited(_notificarYEnriquecerSolicitud(solicitudId));
     } else {
@@ -2924,18 +3187,15 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (primeraVistaOverlay && seg > 0) {
         _marcarMinimoLlegandoVisible(solicitudId, seg);
       }
-      _reanclarCountdownLocal(
-        solicitudId,
-        seg,
-        forzar: primeraVistaOverlay || esNueva,
-      );
-      final rest = _segundosRestantesDesdeAncla(solicitudId);
-      if (rest > 0) {
-        _configurarTimerExpiracion(
+      if (seg > 0) {
+        _reanclarCountdownLocal(
           solicitudId,
-          ttlSegundos: rest,
+          seg,
+          forzar: primeraVistaOverlay || esNueva,
+          solicitud: solicitud,
         );
       }
+      // Countdown vía ticker + `servidor_timestamp`; sin TTL overlay local.
     } else {
       var segundosOverlay =
           ConductorSolicitudPayloadHelper.segundosRestantesOverlay(solicitud);
@@ -3044,23 +3304,24 @@ class ConductorHomeProvider extends ChangeNotifier {
   /// Configurar timer de expiración para una solicitud
   void _configurarTimerExpiracion(
     String solicitudId, {
-    int ttlSegundos = kOportunidadConductorSegundos,
+    int? ttlSegundos,
   }) {
     _timersExpiracion[solicitudId]?.cancel();
 
-    _timersExpiracion[solicitudId] = Timer(Duration(seconds: ttlSegundos), () {
+    _timersExpiracion[solicitudId] = Timer(
+      Duration(seconds: ttlSegundos ?? _overlayTtlEfectivo),
+      () {
       _expirarSolicitud(solicitudId);
-    });
+    },
+    );
   }
 
   /// TTL del overlay: oculta tarjeta en «Llegando»; el ítem sigue en el mapa (p. ej. «En espera»).
   void _expirarSolicitud(String solicitudId) {
     if (!_solicitudesPorId.containsKey(solicitudId)) return;
-    final solicitud = _solicitudesPorId[solicitudId]!;
-    if (ConductorOfertaIndriverHelper.esBroadcastRebote(solicitud)) {
-      AppLogger.d(
-        'ℹ️ TTL local omitido (broadcast; countdown lo maneja el API): $solicitudId',
-      );
+    if (ConductorSolicitudPayloadHelper.usaConductorTabApi(
+      _solicitudesPorId[solicitudId]!,
+    )) {
       return;
     }
     if (_mantenerEnLlegandoTrasExclusiva(solicitudId)) {
@@ -3070,7 +3331,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
       _configurarTimerExpiracion(
         solicitudId,
-        ttlSegundos: seg > 0 ? seg : kOportunidadConductorSegundos,
+        ttlSegundos: seg > 0 ? seg : _overlayTtlEfectivo,
       );
       return;
     }
@@ -3131,6 +3392,16 @@ class ConductorHomeProvider extends ChangeNotifier {
       // Validar que el ID no sea nulo o inválido
       if (solicitudId.isEmpty || solicitudId == 'null') {
         throw Exception('ID de servicio inválido: $solicitudId');
+      }
+
+      final solicitudLocal = _solicitudesPorId[solicitudId];
+      if (solicitudLocal != null &&
+          !ConductorOfertaIndriverHelper.puedeAceptarRechazar(solicitudLocal)) {
+        _limpiarMarcaAceptacionPropia();
+        _lastAcceptError =
+            'Este servicio aún no está disponible para aceptar. Espera la fase abierta.';
+        if (!_isDisposed) notifyListeners();
+        return null;
       }
 
       // Cancelar el timer de expiración
@@ -3325,6 +3596,8 @@ class ConductorHomeProvider extends ChangeNotifier {
             notifyListeners();
             _syncGpsConEstadoTurno();
             unawaited(_sendMapHeartbeat(last, force: true));
+            _reintentarOverlaysPendientesRadio();
+            _reintentarPendientesTrasUbicacion();
           }
         } catch (e) {
           AppLogger.d('⚠️ getLastKnownPosition en arranque: $e');
@@ -3346,6 +3619,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (!_isDisposed) notifyListeners();
       _syncGpsConEstadoTurno();
       await _sendMapHeartbeat(position, force: true);
+      _reintentarOverlaysPendientesRadio();
+      _reintentarPendientesTrasUbicacion();
       await _requestNotificationPermissionAfterLocation();
 
       AppLogger.d(
@@ -4247,6 +4522,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   int obtenerSegundosRestantes(String solicitudId) {
+    if (_enPeriodoGracia.contains(solicitudId)) return 0;
+
     if (_expiracionPorSolicitud.containsKey(solicitudId)) {
       return _segundosRestantesDesdeAncla(solicitudId);
     }
@@ -4255,12 +4532,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (solicitud == null) return 0;
 
     if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitud)) {
-      if (ConductorSolicitudPayloadHelper.esTabLlegando(solicitud)) {
-        return ConductorSolicitudPayloadHelper.segundosCountdownLlegando(
-          solicitud,
-        );
-      }
-      return ConductorSolicitudPayloadHelper.segundosRestantesEspera(solicitud);
+      return ConductorSolicitudPayloadHelper.segundosRestantesCountdownApi(
+        solicitud,
+      );
     }
 
     if (!_overlayOcultoPorTtl.contains(solicitudId)) {
@@ -4284,6 +4558,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   bool _hayCuentaRegresivaActiva() {
     if (_expiracionPorSolicitud.isNotEmpty) return true;
+    if (_enPeriodoGracia.isNotEmpty) return true;
     for (final s in _solicitudesPorId.values) {
       if (ConductorSolicitudPayloadHelper.tieneExpiracionColaActiva(s)) {
         return true;
@@ -4308,19 +4583,20 @@ class ConductorHomeProvider extends ChangeNotifier {
           .toList();
 
       for (final solicitudId in expiradas) {
+        if (_enPeriodoGracia.contains(solicitudId)) continue;
         final solicitud = _solicitudesPorId[solicitudId];
         if (solicitud != null &&
             ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitud)) {
-          if (obtenerSegundosRestantes(solicitudId) <= 0) {
-            if (ConductorSolicitudPayloadHelper.esTabEspera(solicitud)) {
-              _sincronizarPestanaOverlayDesdeApi(
-                solicitudId,
-                solicitud,
-                forzarReanclaje: true,
-              );
-            } else {
-              _expirarSolicitud(solicitudId);
-            }
+          final rest = obtenerSegundosRestantes(solicitudId);
+          if (rest <= 0) {
+            _iniciarPeriodoGracia(solicitudId);
+          } else {
+            _reanclarCountdownLocal(
+              solicitudId,
+              rest,
+              forzar: true,
+              solicitud: solicitud,
+            );
           }
           continue;
         }
@@ -4328,25 +4604,21 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
     }
 
-    final colaExpiradas = <String>[];
     for (final solicitud in _solicitudesPorId.values) {
       final id = ConductorSolicitudPayloadHelper.obtenerSolicitudId(solicitud);
-      if (id == null) continue;
+      if (id == null || _enPeriodoGracia.contains(id)) continue;
 
       if (ConductorSolicitudPayloadHelper.usaConductorTabApi(solicitud)) {
         if (obtenerSegundosRestantes(id) <= 0) {
-          colaExpiradas.add(id);
+          _iniciarPeriodoGracia(id);
         }
         continue;
       }
 
       if (!ServicioEsperaTimer.tieneDatosCola(solicitud)) continue;
       if (!ServicioEsperaTimer.colaExpirada(solicitud)) continue;
-      colaExpiradas.add(id);
-    }
-    for (final solicitudId in colaExpiradas) {
-      AppLogger.d('⏱️ Cola expirada (countdown API): $solicitudId');
-      _removerSolicitudDelMapa(solicitudId);
+      AppLogger.d('⏱️ Cola expirada (countdown API): $id');
+      _removerSolicitudDelMapa(id);
     }
   }
 
@@ -4401,7 +4673,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   Future<void> _actualizarBurbujaSegundoPlano() async {
     await ConductorOverlayBadgeStore.write(
-      llegando: solicitudesOrdenadas.length,
+      llegando: totalSolicitudesLlegando,
       enEspera: totalSolicitudesEnEspera,
     );
     await DriverOverlayService.instance.showFromBadgeStore(enLinea: _isOnline);

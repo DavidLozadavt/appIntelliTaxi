@@ -27,6 +27,7 @@ class _DriverOverlayAppState extends State<DriverOverlayApp> {
   @override
   void initState() {
     super.initState();
+    unawaited(AppForegroundService.instance.ensureOverlayNativeChannel());
     _loadLogo();
     _listenForOpenAppCommands();
   }
@@ -41,19 +42,13 @@ class _DriverOverlayAppState extends State<DriverOverlayApp> {
     _overlayCommandSubscription =
         FlutterOverlayWindow.overlayListener.listen((message) {
       final text = message?.toString() ?? '';
-      if (!text.contains('open_app') && !text.contains('auto_open_app')) {
-        return;
+      if (text.contains('launch_main') ||
+          text.contains('open_app') ||
+          text.contains('auto_open_app')) {
+        AppLogger.d('🔵 Overlay → MainActivity');
+        unawaited(AppForegroundService.instance.launchMainFromOverlay());
       }
-      AppLogger.d('🔵 Overlay auto-open → MainActivity');
-      unawaited(_openMainActivityFromOverlay());
     });
-  }
-
-  Future<void> _openMainActivityFromOverlay() async {
-    await AppForegroundService.instance.ensureOverlayNativeChannel();
-    await AppForegroundService.instance.launchNativeApp();
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    await AppForegroundService.instance.launchNativeApp();
   }
 
   Future<void> _loadLogo() async {
@@ -107,8 +102,7 @@ class DriverOverlayBubble extends StatelessWidget {
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: () {
-            // Abre la Activity desde el isolate del overlay (sin depender del listener principal).
-            unawaited(AppForegroundService.instance.launchNativeApp());
+            unawaited(AppForegroundService.instance.openFromOverlayBubble());
           },
           child: _BubbleFace(size: size, logoBytes: logoBytes),
         ),

@@ -1,5 +1,8 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
+import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 
 /// Observa lifecycle de Flutter y lo registra en [AppDiagnostics].
 class AppDiagnosticsScope extends StatefulWidget {
@@ -20,6 +23,7 @@ class _AppDiagnosticsScopeState extends State<AppDiagnosticsScope>
     final initial = WidgetsBinding.instance.lifecycleState;
     if (initial != null) {
       AppDiagnostics.handleLifecycle(initial);
+      unawaited(AppLifecycleHelper.persistLifecycleState(initial));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AppDiagnostics.phase('first_frame');
@@ -35,6 +39,7 @@ class _AppDiagnosticsScopeState extends State<AppDiagnosticsScope>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     AppDiagnostics.handleLifecycle(state);
+    unawaited(AppLifecycleHelper.persistLifecycleState(state));
   }
 
   @override

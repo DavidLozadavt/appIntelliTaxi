@@ -3,10 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
-import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
-import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
+import 'package:intellitaxi/core/utils/fcm_isolate_context.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:provider/provider.dart';
@@ -23,8 +22,12 @@ class DriverOverlayService {
   bool _listenerRegistered = false;
   StreamSubscription<dynamic>? _overlayTapSubscription;
   String? _activeMode;
+  String? _lastShareData;
+  DateTime? _lastShownAt;
   Timer? _showDebounce;
+  Future<void>? _overlayQueue;
   static const String _stableDriverMode = 'driver_bubble';
+  static const Duration _reshowMinInterval = Duration(seconds: 4);
 
   bool get _isSupported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -41,9 +44,11 @@ class DriverOverlayService {
     _overlayTapSubscription = FlutterOverlayWindow.overlayListener.listen(
       (message) {
         final text = message?.toString() ?? '';
-        if (text.contains('open_app')) {
-          AppLogger.d('🔵 Overlay tap → abrir app');
-          unawaited(AppForegroundService.instance.bringAppToForeground());
+        if (text.contains('launch_main') ||
+            text.contains('open_app') ||
+            text.contains('auto_open_app')) {
+          AppLogger.d('🔵 Overlay listener → MainActivity');
+          unawaited(AppForegroundService.instance.launchMainFromOverlay());
         }
       },
     );
@@ -64,15 +69,16 @@ class DriverOverlayService {
       return;
     }
 
-    // Solo en `paused`: en `hidden` Android 12+ suele rechazar startForeground().
-    if (state != AppLifecycleState.paused) {
+    // `hidden` (Android 12+) y `paused`: minimizar sin burbuja intermitente.
+    if (state != AppLifecycleState.paused &&
+        state != AppLifecycleState.hidden) {
       return;
     }
 
     if (_isRequestingPermission) return;
 
     _showDebounce?.cancel();
-    _showDebounce = Timer(const Duration(milliseconds: 600), () {
+    _showDebounce = Timer(const Duration(milliseconds: 300), () {
       unawaited(_showForBackgroundIfNeeded(context));
     });
   }
@@ -80,6 +86,7 @@ class DriverOverlayService {
   /// Burbuja desde prefs (válido en isolate FCM / sin [BuildContext]).
   Future<void> showFromBadgeStore({bool enLinea = true}) async {
     if (!_isSupported) return;
+    if (await _isAppInForeground()) return;
     final counts = await ConductorOverlayBadgeStore.read();
     if (counts.llegando <= 0 && counts.enEspera <= 0 && !enLinea) return;
     await showDriverBubble(
@@ -89,9 +96,45 @@ class DriverOverlayService {
     );
   }
 
-  /// Muestra o actualiza la burbuja según estado del conductor (sin exigir turno activo).
+  bool _shouldShowBubbleForConductor(ConductorHomeProvider provider) {
+    if (!provider.tieneTurnoActivo) return false;
+    if (provider.enServicio) return true;
+    if (provider.isOnline) return true;
+    return provider.totalSolicitudesLlegando + provider.totalSolicitudesEnEspera > 0;
+  }
+
+  Future<bool> _isAppInForeground() async {
+    if (FcmIsolateContext.isBackgroundHandler) return false;
+    final state = WidgetsBinding.instance.lifecycleState;
+    return state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
+  }
+
+  Future<T> _enqueueOverlayOp<T>(Future<T> Function() action) async {
+    final previous = _overlayQueue;
+    final completer = Completer<void>();
+    _overlayQueue = completer.future;
+    if (previous != null) {
+      try {
+        await previous;
+      } catch (_) {}
+    }
+    try {
+      return await action();
+    } finally {
+      completer.complete();
+    }
+  }
+
+  /// Muestra o actualiza la burbuja según estado del conductor.
   Future<void> syncBubbleForConductor(ConductorHomeProvider provider) async {
     if (!_isSupported) return;
+    if (await _isAppInForeground()) return;
+
+    if (!_shouldShowBubbleForConductor(provider)) {
+      await hide();
+      return;
+    }
 
     final granted = await hasPermission();
     if (!granted) {
@@ -107,7 +150,7 @@ class DriverOverlayService {
       }
     }
 
-    final llegando = provider.solicitudesOrdenadas.length;
+    final llegando = provider.totalSolicitudesLlegando;
     final enEspera = provider.totalSolicitudesEnEspera;
     await ConductorOverlayBadgeStore.write(
       llegando: llegando,
@@ -122,11 +165,7 @@ class DriverOverlayService {
 
   Future<void> _showForBackgroundIfNeeded(BuildContext context) async {
     if (!_isSupported) return;
-    if (RuntimePerfFlags.autoOpenAppOnIncomingService &&
-        ConductorPendingFcm.hasPending) {
-      AppLogger.d('🔵 Overlay omitido: auto-apertura por solicitud entrante');
-      return;
-    }
+    if (await _isAppInForeground()) return;
 
     try {
       ConductorHomeProvider provider;
@@ -222,71 +261,88 @@ class DriverOverlayService {
     if (!_isSupported) return;
     if (_isRequestingPermission) return;
 
-    ensureReturnListener();
+    await _enqueueOverlayOp(() async {
+      ensureReturnListener();
 
-    final granted = await hasPermission();
-    if (!granted) {
-      AppLogger.d('🔵 Overlay: permiso denegado al mostrar');
-      return;
-    }
-
-    final isActive = await FlutterOverlayWindow.isActive();
-    if (isActive &&
-        (_activeMode == mode ||
-            (_activeMode == _stableDriverMode && mode == _stableDriverMode))) {
-      if (shareData != null) {
-        await FlutterOverlayWindow.shareData(shareData);
+      final granted = await hasPermission();
+      if (!granted) {
+        AppLogger.d('🔵 Overlay: permiso denegado al mostrar');
+        return;
       }
-      return;
-    }
 
-    if (isActive && _activeMode != mode) {
-      await FlutterOverlayWindow.closeOverlay();
-      _activeMode = null;
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-    }
-
-    try {
-      await FlutterOverlayWindow.showOverlay(
-        height: _overlayWindowSize,
-        width: _overlayWindowSize,
-        enableDrag: true,
-        alignment: OverlayAlignment.centerRight,
-        overlayTitle: title,
-        overlayContent: content,
-        positionGravity: PositionGravity.right,
-      );
-
-      _activeMode = mode;
-      AppLogger.d('🔵 Overlay mostrado (modo: $mode)');
-
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      await AppForegroundService.instance.ensureOverlayNativeChannel();
-
-      if (shareData != null) {
-        await FlutterOverlayWindow.shareData(shareData);
+      final now = DateTime.now();
+      final sameMode = _activeMode == mode ||
+          (_activeMode == _stableDriverMode && mode == _stableDriverMode);
+      final isActive = await FlutterOverlayWindow.isActive();
+      final recentlyShown = _lastShownAt != null &&
+          now.difference(_lastShownAt!) < _reshowMinInterval;
+      if (isActive &&
+          sameMode &&
+          recentlyShown &&
+          shareData != null &&
+          shareData == _lastShareData) {
+        return;
       }
-    } catch (e, st) {
-      AppLogger.e(
-        'showOverlay falló',
-        tag: 'DriverOverlay',
-        error: e,
-        stackTrace: st,
-      );
-      _activeMode = null;
-    }
+
+      if (isActive && _activeMode != null && !sameMode) {
+        await FlutterOverlayWindow.closeOverlay();
+        _activeMode = null;
+        _lastShareData = null;
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+      }
+
+      try {
+        await FlutterOverlayWindow.showOverlay(
+          height: _overlayWindowSize,
+          width: _overlayWindowSize,
+          enableDrag: true,
+          alignment: OverlayAlignment.centerRight,
+          overlayTitle: title,
+          overlayContent: content,
+          positionGravity: PositionGravity.right,
+        );
+
+        _activeMode = mode;
+        _lastShownAt = DateTime.now();
+        AppLogger.d('🔵 Overlay mostrado (modo: $mode)');
+
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        if (!FcmIsolateContext.isBackgroundHandler) {
+          await AppForegroundService.instance.ensureOverlayNativeChannel();
+        }
+
+        if (shareData != null) {
+          await FlutterOverlayWindow.shareData(shareData);
+          _lastShareData = shareData;
+        }
+      } catch (e, st) {
+        AppLogger.e(
+          'showOverlay falló',
+          tag: 'DriverOverlay',
+          error: e,
+          stackTrace: st,
+        );
+        _activeMode = null;
+        _lastShareData = null;
+        _lastShownAt = null;
+      }
+    });
   }
 
   Future<void> hide() async {
     if (!_isSupported) return;
-    _showDebounce?.cancel();
-    _showDebounce = null;
-    final isActive = await FlutterOverlayWindow.isActive();
-    if (isActive) {
-      await FlutterOverlayWindow.closeOverlay();
-      AppLogger.d('🔵 Overlay ocultado');
-    }
-    _activeMode = null;
+    await _enqueueOverlayOp(() async {
+      _showDebounce?.cancel();
+      _showDebounce = null;
+      final isActive = await FlutterOverlayWindow.isActive();
+      if (isActive) {
+        await FlutterOverlayWindow.closeOverlay();
+        AppLogger.d('🔵 Overlay ocultado');
+      }
+      _activeMode = null;
+      _lastShareData = null;
+      _lastShownAt = null;
+    });
   }
 
   void dispose() {

@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
+import 'package:intellitaxi/core/utils/device_screen_helper.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/main.dart';
@@ -23,6 +25,35 @@ class AppForegroundService {
   DateTime? _lastNativeLaunchAt;
   bool _nativeLaunchInFlight = false;
   bool _nativeRetryScheduled = false;
+
+  /// Tap manual en la burbuja.
+  Future<void> openFromOverlayBubble() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!await AppLifecycleHelper.isInForegroundReliable()) {
+      await markPendingNativeLaunch();
+    }
+    await ensureOverlayNativeChannel();
+    await launchNativeApp(force: true);
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+    await launchNativeApp(force: true);
+  }
+
+  /// Lanzamiento directo desde el isolate del overlay (sin shareData recursivo).
+  Future<void> launchMainFromOverlay() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await ensureOverlayNativeChannel();
+    await launchNativeApp(force: true);
+  }
+
+  /// Lanzamiento directo vía Application (FCM / proceso en background).
+  Future<void> launchMainActivityDirect() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _channel.invokeMethod<void>('launchMainActivityDirect');
+    } catch (e) {
+      AppLogger.d('⚠️ launchMainActivityDirect: $e');
+    }
+  }
 
   /// Solo abre la Activity (válido desde el isolate del overlay).
   Future<void> launchNativeApp({bool force = false}) async {
@@ -76,16 +107,33 @@ class AppForegroundService {
     await prefs.setBool(_pendingNativeLaunchKey, true);
   }
 
+  static Future<bool> hasPendingNativeLaunch() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_pendingNativeLaunchKey) ?? false;
+  }
+
   /// Si FCM pidió abrir la app y el canal falló en background, reintenta al resume.
   static Future<void> flushPendingNativeLaunch() async {
     final prefs = await SharedPreferences.getInstance();
-    if (!(prefs.getBool(_pendingNativeLaunchKey) ?? false)) return;
-    await prefs.remove(_pendingNativeLaunchKey);
-    await AppForegroundService.instance.launchNativeApp(force: true);
+    final hadNativePending = prefs.getBool(_pendingNativeLaunchKey) ?? false;
+    if (hadNativePending) {
+      await prefs.remove(_pendingNativeLaunchKey);
+      // Evita relanzar Activity durante cold start (reiniciaba la app entera).
+      final enArranque = AppDiagnostics.wallElapsedMs < 8000;
+      final mainVisible = await AppLifecycleHelper.isMainActivityVisible();
+      if (!enArranque && !mainVisible) {
+        await AppForegroundService.instance.launchNativeApp(force: true);
+      }
+    }
+
     await ConductorPendingFcm.ensureLoaded();
+    if (!ConductorPendingFcm.hasPending) return;
     final ctx = navigatorKey.currentContext;
-    if (ctx != null && ctx.mounted) {
+    if (ctx == null || !ctx.mounted) return;
+    try {
       await ConductorPendingFcm.flush(ctx);
+    } catch (e) {
+      AppLogger.d('⚠️ ConductorPendingFcm flush: $e');
     }
   }
 
@@ -95,13 +143,33 @@ class AppForegroundService {
     _navigateHomeIfSessionReady(onlyFromLogin: true);
   }
 
-  /// FCM / solicitud entrante: una apertura suave + un reintento nativo (sin parpadeos).
+  /// FCM / Pusher en segundo plano: nativo primero, luego overlay.
   Future<void> openAppAggressively() async {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      await markPendingNativeLaunch();
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (AppLifecycleHelper.isInForeground() &&
+        !await AppLifecycleHelper.shouldShowIncomingServiceAlert()) {
+      return;
     }
+
+    await markPendingNativeLaunch();
+    await DeviceScreenHelper.wakeForIncomingService();
+
+    await launchMainActivityDirect();
+    await launchNativeApp(force: true);
+    await signalOverlayToLaunchMain();
+    await Future<void>.delayed(const Duration(milliseconds: 400));
     await launchNativeApp(force: true);
     _scheduleSingleNativeRetry();
+  }
+
+  /// Overlay: mensaje directo → launchNativeApp (sin rebote shareData).
+  Future<void> signalOverlayToLaunchMain() async {
+    try {
+      await ensureOverlayNativeChannel();
+      await FlutterOverlayWindow.shareData('launch_main');
+    } catch (e) {
+      AppLogger.d('⚠️ overlay launch_main: $e');
+    }
   }
 
   void _scheduleSingleNativeRetry() {
@@ -110,7 +178,12 @@ class AppForegroundService {
     _nativeRetryScheduled = true;
     Future<void>.delayed(const Duration(milliseconds: 900), () async {
       _nativeRetryScheduled = false;
-      if (AppLifecycleHelper.isInForeground()) return;
+      if (AppLifecycleHelper.isInForeground() &&
+          !await AppLifecycleHelper.shouldShowIncomingServiceAlert()) {
+        return;
+      }
+      await signalOverlayToLaunchMain();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
       await launchNativeApp(force: true);
     });
   }

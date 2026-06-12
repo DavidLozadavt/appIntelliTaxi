@@ -1,4 +1,5 @@
 import 'package:intellitaxi/features/conductor/data/conductor_oferta_exclusiva.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_socket_payload_router.dart';
 
 /// Reglas fase oferta inDrive (exclusiva → abierta).
 abstract final class ConductorOfertaIndriverHelper {
@@ -32,7 +33,6 @@ abstract final class ConductorOfertaIndriverHelper {
     Map<String, dynamic>? anterior,
     Map<String, dynamic> actual,
   ) {
-    if (esBroadcastRebote(actual)) return false;
     if (anterior == null) return false;
     final tabAnt =
         anterior['conductor_tab']?.toString().trim().toLowerCase();
@@ -122,12 +122,17 @@ abstract final class ConductorOfertaIndriverHelper {
     return method == 'BROADCAST_NEARBY_DRIVERS';
   }
 
-  /// Rebote 1/2 y fases broadcast: siempre tab «Llegando», nunca «Espera».
+  /// Rotación inDrive activa (`oferta_max_intentos > 0`). Con 0 → solo 2 min Llegando + 2 min Espera.
+  static bool tieneRotacionIndriver(int? ofertaMaxIntentos) =>
+      ofertaMaxIntentos != null && ofertaMaxIntentos > 0;
+
+  /// Rotación broadcast explícita (`rebote_numero` > 1). No confundir con fase Llegando/Espera normal.
   static bool esBroadcastRebote(Map<String, dynamic> s) {
-    if (esBroadcastNearbyDrivers(s)) return true;
     if (s['rebote_activo'] == true) return true;
     final modo = s['countdown_modo']?.toString().toLowerCase() ?? '';
-    return modo == 'broadcast_llegando' || modo == 'broadcast_rebote';
+    if (modo == 'broadcast_rebote') return true;
+    final rebote = int.tryParse(s['rebote_numero']?.toString() ?? '');
+    return rebote != null && rebote > 1;
   }
 
   static bool esActualizarFase(Map<String, dynamic> raw) {
@@ -154,5 +159,19 @@ abstract final class ConductorOfertaIndriverHelper {
     }
     final tipo = raw['tipo']?.toString().toLowerCase() ?? '';
     return tipo.contains('oferta_servicio_exclusiva');
+  }
+
+  /// Botones aceptar/rechazar: solo si el API indica `puede_aceptar` / `aceptar_rechazar`.
+  /// Realtime sin esas claves: exclusiva directa, rebote broadcast u oferta directa.
+  static bool puedeAceptarRechazar(Map<String, dynamic> raw) {
+    if (raw.containsKey('puede_aceptar')) {
+      return raw['puede_aceptar'] == true;
+    }
+    if (raw.containsKey('aceptar_rechazar')) {
+      return raw['aceptar_rechazar'] == true;
+    }
+    if (raw['oferta_exclusiva'] == true) return true;
+    if (ConductorSocketPayloadRouter.esOfertaDirecta(raw)) return true;
+    return false;
   }
 }

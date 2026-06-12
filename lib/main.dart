@@ -40,6 +40,7 @@ import 'package:intellitaxi/features/notifications/providers/notification_provid
 import 'package:intellitaxi/features/notifications/presentation/notification_screen.dart';
 
 import 'package:intellitaxi/core/widgets/driver_overlay_bubble.dart';
+import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/firebase_options.dart' show DefaultFirebaseOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -120,6 +121,7 @@ Future<void> main() async {
 @pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
+  unawaited(AppForegroundService.instance.ensureOverlayNativeChannel());
   runApp(const DriverOverlayApp());
 }
 

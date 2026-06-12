@@ -74,6 +74,8 @@ class AppLifecycleManager extends WidgetsBindingObserver {
 
   /// Maneja el evento cuando la app vuelve al foreground
   Future<void> _onAppResumed() async {
+    unawaited(AppForegroundService.flushPendingNativeLaunch());
+
     if (_skipNextResumeCheck) {
       _skipNextResumeCheck = false;
       AppLogger.d(
@@ -83,8 +85,6 @@ class AppLifecycleManager extends WidgetsBindingObserver {
     }
 
     AppLogger.d('🔄 [Lifecycle] App resumed - verificando servicio activo...');
-
-    unawaited(AppForegroundService.flushPendingNativeLaunch());
 
     // Evitar verificaciones múltiples simultáneas
     if (_isCheckingService) {

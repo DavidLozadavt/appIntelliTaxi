@@ -1,6 +1,9 @@
+import 'dart:math';
+
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/conductor_constants.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_oferta_indriver_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_socket_payload_router.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
@@ -29,6 +32,105 @@ class ConductorSolicitudPayloadHelper {
   static String generarSolicitudTemporalId() =>
       'temp_${DateTime.now().microsecondsSinceEpoch}';
 
+  static int? _parseServidorTimestamp(Map<String, dynamic> solicitud) {
+    for (final key in const [
+      'servidor_timestamp',
+      'servidorTimestamp',
+    ]) {
+      final raw = solicitud[key];
+      if (raw == null) continue;
+      final n = int.tryParse(raw.toString());
+      if (n != null && n > 0) return n;
+    }
+    return null;
+  }
+
+  /// Unix segundos del servidor + `countdown_segundos` (spec §5.1).
+  static DateTime? expiraDesdeServidorTimestamp(Map<String, dynamic> solicitud) {
+    final ts = _parseServidorTimestamp(solicitud);
+    if (ts == null) return null;
+    final seg = _parseSegundosApi(solicitud, const [
+      'countdown_segundos',
+      'countdownSegundos',
+      'segundos_restantes',
+      'segundosRestantes',
+    ]);
+    if (seg == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch((ts + seg) * 1000);
+  }
+
+  /// Segundos restantes recalculados desde `servidor_timestamp + countdown_segundos`.
+  static int segundosRestantesServidor(Map<String, dynamic> solicitud) {
+    final expira = expiraDesdeServidorTimestamp(solicitud);
+    if (expira == null) return -1;
+    return max(0, expira.difference(DateTime.now()).inSeconds);
+  }
+
+  static int? graciaSegundosItem(Map<String, dynamic> solicitud) {
+    final raw = solicitud['gracia_segundos'] ?? solicitud['graciaSegundos'];
+    if (raw == null) return null;
+    return int.tryParse(raw.toString());
+  }
+
+  /// Fin fase 1 + fase 2 (sin gracia) — spec ventana taxi.
+  static DateTime? resolverFinColaEn(Map<String, dynamic> solicitud) {
+    for (final key in const [
+      'fin_cola_en',
+      'finColaEn',
+      'expira_en_definitivo',
+      'expiraEnDefinitivo',
+    ]) {
+      final parsed = ServicioEsperaTimer.parseExpiraEn(solicitud[key]);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  /// Auto-cancelación (~fin cola + gracia).
+  static DateTime? resolverCancelarEn(Map<String, dynamic> solicitud) {
+    for (final key in const ['cancelar_en', 'cancelarEn']) {
+      final parsed = ServicioEsperaTimer.parseExpiraEn(solicitud[key]);
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  /// Countdown global hasta desaparecer/cancelar (spec § ventana taxi).
+  static int segundosRestantesHastaCancelar(Map<String, dynamic> solicitud) {
+    final ts = _parseServidorTimestamp(solicitud);
+    final segRaw = _parseSegundosApi(solicitud, const [
+      'segundos_restantes_hasta_cancelar',
+      'segundosRestantesHastaCancelar',
+    ]);
+    if (ts != null && segRaw != null) {
+      return max(
+        0,
+        (ts + segRaw) - DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      );
+    }
+    if (segRaw != null) return segRaw;
+
+    final cancelar = resolverCancelarEn(solicitud);
+    if (cancelar != null) {
+      return max(0, cancelar.difference(DateTime.now()).inSeconds);
+    }
+    return -1;
+  }
+
+  static int? ventanaTaxiMinutosItem(Map<String, dynamic> solicitud) {
+    final raw =
+        solicitud['ventana_taxi_minutos'] ?? solicitud['ventanaTaxiMinutos'];
+    if (raw == null) return null;
+    return int.tryParse(raw.toString());
+  }
+
+  /// Etiqueta UI: fase actual o «Venciendo…» / `0:00` (spec §5.2).
+  static String etiquetaCountdownFase(int segundos, {bool enGracia = false}) {
+    if (enGracia) return 'Venciendo…';
+    if (segundos <= 0) return '0:00';
+    return ServicioEsperaTimer.formatearCuentaRegresiva(segundos);
+  }
+
   /// `overlay_expira_en` del API (tarjeta overlay en mapa).
   static DateTime? resolverOverlayExpiraEn(Map<String, dynamic> solicitud) {
     for (final key in const [
@@ -50,6 +152,8 @@ class ConductorSolicitudPayloadHelper {
       for (final key in const [
         'abierta_expira_en',
         'abiertaExpiraEn',
+        'fin_cola_en',
+        'finColaEn',
         'expira_en',
         'expiraEn',
         'expira_en_definitivo',
@@ -63,6 +167,8 @@ class ConductorSolicitudPayloadHelper {
       for (final key in const [
         'exclusiva_expira_en',
         'exclusivaExpiraEn',
+        'fin_cola_en',
+        'finColaEn',
         'expira_en',
         'expiraEn',
       ]) {
@@ -78,6 +184,8 @@ class ConductorSolicitudPayloadHelper {
     if (segunTab != null) return segunTab;
 
     for (final key in const [
+      'fin_cola_en',
+      'finColaEn',
       'cola_expira_en',
       'colaExpiraEn',
       'servicio_expira_en',
@@ -86,6 +194,8 @@ class ConductorSolicitudPayloadHelper {
       'exclusivaExpiraEn',
       'abierta_expira_en',
       'abiertaExpiraEn',
+      'expira_en_definitivo',
+      'expiraEnDefinitivo',
       'expira_en',
       'expiraEn',
     ]) {
@@ -95,6 +205,8 @@ class ConductorSolicitudPayloadHelper {
 
     final seg = ServicioEsperaTimer.segundosCola(solicitud);
     if (seg > 0) {
+      final desdeServidor = expiraDesdeServidorTimestamp(solicitud);
+      if (desdeServidor != null) return desdeServidor;
       return DateTime.now().add(Duration(seconds: seg));
     }
     return null;
@@ -145,11 +257,40 @@ class ConductorSolicitudPayloadHelper {
   static void anclarExpiracionCola(
     Map<String, dynamic> destino, {
     Map<String, dynamic>? anterior,
+    bool forzarReanclaje = false,
   }) {
     final tabAnterior = anterior != null ? conductorTab(anterior) : null;
     final tabNuevo = conductorTab(destino);
     final cambioDePestana =
         tabAnterior != null && tabNuevo != null && tabAnterior != tabNuevo;
+    final cambioFase = forzarReanclaje ||
+        cambioDePestana ||
+        destino['reemplazar_existente'] == true ||
+        ConductorOfertaIndriverHelper.esActualizarFase(destino);
+
+    final expiraServidor = expiraDesdeServidorTimestamp(destino);
+    if (expiraServidor != null && (cambioFase || anterior == null)) {
+      destino['_cola_expira_en'] = expiraServidor.toIso8601String();
+      return;
+    }
+
+    if (expiraServidor != null && !cambioFase) {
+      final prevRaw = destino['_cola_expira_en'] ?? anterior?['_cola_expira_en'];
+      final prev = prevRaw != null ? DateTime.tryParse(prevRaw.toString()) : null;
+      if (prev != null && prev.isAfter(DateTime.now())) {
+        final restLocal = prev.difference(DateTime.now()).inSeconds;
+        final restServidor = expiraServidor.difference(DateTime.now()).inSeconds;
+        // Alinear si el servidor acorta el plazo (>2 s de diferencia).
+        if (restServidor < restLocal - 2) {
+          destino['_cola_expira_en'] = expiraServidor.toIso8601String();
+        } else {
+          destino['_cola_expira_en'] = prev.toIso8601String();
+        }
+        return;
+      }
+      destino['_cola_expira_en'] = expiraServidor.toIso8601String();
+      return;
+    }
 
     if (!cambioDePestana) {
       for (final raw in [
@@ -268,8 +409,19 @@ class ConductorSolicitudPayloadHelper {
   static bool broadcastFaseLlegando(Map<String, dynamic> solicitud) =>
       solicitud['broadcast_fase_llegando'] == true;
 
+  /// Countdown unificado: `servidor_timestamp + countdown_segundos` (spec §4.1).
+  static int segundosRestantesCountdownApi(Map<String, dynamic> solicitud) {
+    final desdeServidor = segundosRestantesServidor(solicitud);
+    if (desdeServidor >= 0) return desdeServidor;
+    if (esTabEspera(solicitud)) return segundosRestantesEspera(solicitud);
+    return segundosCountdownLlegando(solicitud);
+  }
+
   /// Pestaña Llegando: `countdown_segundos` (exclusiva) o `segundos_restantes_llegando` (BROADCAST fase 1).
   static int segundosCountdownLlegando(Map<String, dynamic> solicitud) {
+    final desdeServidor = segundosRestantesServidor(solicitud);
+    if (desdeServidor >= 0) return desdeServidor;
+
     if (broadcastFaseLlegando(solicitud)) {
       final broadcast = _parseSegundosApi(solicitud, const [
         'segundos_restantes_llegando',
@@ -297,6 +449,9 @@ class ConductorSolicitudPayloadHelper {
   /// Pestaña En espera: `segundos_restantes_espera` o `countdown_segundos` si `conductor_tab == espera`.
   static int segundosRestantesEspera(Map<String, dynamic> solicitud) {
     if (esTabEspera(solicitud)) {
+      final desdeServidor = segundosRestantesServidor(solicitud);
+      if (desdeServidor >= 0) return desdeServidor;
+
       final expira = resolverExpiraEnCola(solicitud);
       if (expira != null) {
         return expira.difference(DateTime.now()).inSeconds.clamp(0, 86400);
@@ -358,6 +513,8 @@ class ConductorSolicitudPayloadHelper {
   }
 
   static bool tieneExpiracionColaActiva(Map<String, dynamic> solicitud) {
+    if (segundosRestantesHastaCancelar(solicitud) > 0) return true;
+
     if (esTabEspera(solicitud)) {
       return segundosRestantesEspera(solicitud) > 0;
     }

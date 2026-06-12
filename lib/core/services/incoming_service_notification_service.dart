@@ -9,6 +9,7 @@ import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.da
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/utils/device_screen_helper.dart';
+import 'package:intellitaxi/features/conductor/utils/conductor_incoming_dedup_store.dart';
 
 /// Notificaciones de alta prioridad para nuevas solicitudes (Android: full-screen intent).
 class IncomingServiceNotificationService {
@@ -76,20 +77,37 @@ class IncomingServiceNotificationService {
     }
   }
 
-  Future<void> showIncomingService(Map<String, dynamic> solicitud) async {
+  Future<void> showIncomingService(
+    Map<String, dynamic> solicitud, {
+    bool skipNativeWake = false,
+  }) async {
     try {
-      final id = solicitud['solicitud_id'] ?? solicitud['id'];
-      AppDiagnostics.record(
-        'incoming',
-        'showIncomingService',
-        extra: 'id=$id',
-      );
-      await ensureInitialized();
-      await DeviceScreenHelper.wakeForIncomingService();
-
       final normalizada = SolicitudDisplayHelper.normalizeSolicitudMap(
         ConductorSolicitudPayloadHelper.normalizarSolicitud(solicitud),
       );
+      final solicitudId = ConductorSolicitudPayloadHelper.obtenerSolicitudId(
+            normalizada,
+          ) ??
+          normalizada['servicio_id']?.toString() ??
+          normalizada['id']?.toString();
+
+      if (!await ConductorIncomingDedupStore.shouldShowPush(solicitudId)) {
+        AppLogger.d(
+          '🔔 Push omitido (duplicado reciente) id=${solicitudId ?? "?"}',
+        );
+        return;
+      }
+
+      AppDiagnostics.record(
+        'incoming',
+        'showIncomingService',
+        extra: 'id=$solicitudId',
+      );
+      await ensureInitialized();
+      if (!skipNativeWake) {
+        await DeviceScreenHelper.wakeForIncomingService();
+      }
+
       final title = SolicitudDisplayHelper.notificationTitle(normalizada);
       final body = SolicitudDisplayHelper.notificationBody(normalizada);
       final payload = jsonEncode({
@@ -134,6 +152,7 @@ class IncomingServiceNotificationService {
         payload: payload,
       );
 
+      await ConductorIncomingDedupStore.recordPushShown(solicitudId);
       AppLogger.d('🔔 Notificación de servicio entrante mostrada');
     } catch (e, st) {
       AppLogger.e(

@@ -33,6 +33,43 @@ class MainActivity : FlutterActivity() {
         private val registeredMessengers = mutableSetOf<Int>()
         private var activityInstanceCounter = 0
         private var activityInstanceId = 0
+        @Volatile
+        var mainActivityResumed = false
+            private set
+        @Volatile
+        private var currentMainActivity: MainActivity? = null
+
+        /** MainActivity viva en memoria (puede estar en onCreate antes de onResume). */
+        fun isMainActivityAlive(): Boolean {
+            val activity = currentMainActivity ?: return false
+            return !activity.isFinishing && !activity.isDestroyed
+        }
+
+        private fun tryMoveTaskToFront(context: Context) {
+            try {
+                val am = context.getSystemService(Context.ACTIVITY_SERVICE)
+                    as ActivityManager
+                am.appTasks
+                    ?.firstOrNull { task ->
+                        task.taskInfo.topActivity?.packageName ==
+                            context.packageName
+                    }
+                    ?.moveToFront()
+            } catch (_: Exception) {
+            }
+        }
+
+        private fun hasMainTask(context: Context): Boolean {
+            return try {
+                val am = context.getSystemService(Context.ACTIVITY_SERVICE)
+                    as ActivityManager
+                am.appTasks?.any { task ->
+                    task.taskInfo.topActivity?.packageName == context.packageName
+                } == true
+            } catch (_: Exception) {
+                false
+            }
+        }
         private val nativeLifecycleLog = ArrayDeque<String>(40)
 
         private fun logNativeLifecycle(event: String) {
@@ -124,6 +161,11 @@ class MainActivity : FlutterActivity() {
                         launchMainActivity(context.applicationContext)
                         result.success(true)
                     }
+                    "launchMainActivityDirect" -> {
+                        logNativeLifecycle("launchMainActivityDirect")
+                        IntelliTaxiApplication.bringMainActivityToForeground()
+                        result.success(true)
+                    }
                     "getDiagnosticsSnapshot" -> {
                         result.success(buildDiagnosticsSnapshot(context.applicationContext))
                     }
@@ -179,31 +221,50 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        private const val PREFS = "FlutterSharedPreferences"
+        private const val MAIN_ACTIVITY_RESUMED_KEY = "flutter.main_activity_resumed"
+
+        private fun persistMainActivityResumed(context: Context, resumed: Boolean) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(MAIN_ACTIVITY_RESUMED_KEY, resumed)
+                .apply()
+        }
+
+        /** Arranque en frío: evita `main_activity_resumed` obsoleto si el proceso murió en onResume. */
+        fun persistMainActivityResumedOnLaunch(context: Context) {
+            persistMainActivityResumed(context, false)
+        }
+
         /** Abre MainActivity desde Application, overlay o FCM (siempre en main thread). */
         fun launchMainActivity(context: Context) {
             val appContext = context.applicationContext
-            val launch: () -> Unit = {
+            val openMain: () -> Unit = {
                 wakeForIncomingService(appContext)
-                val intent = Intent(appContext, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        addFlags(Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT)
+                if (mainActivityResumed) {
+                    logNativeLifecycle("launchMainActivity skip (resumed)")
+                } else {
+                    tryMoveTaskToFront(appContext)
+                    val intent = Intent(appContext, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            addFlags(Intent.FLAG_ACTIVITY_BROUGHT_TO_FRONT)
+                        }
+                    }
+                    try {
+                        appContext.startActivity(intent)
+                        logNativeLifecycle("launchMainActivity ok")
+                    } catch (e: Exception) {
+                        Log.w(DIAG_TAG, "launchMainActivity falló: ${e.message}")
                     }
                 }
-                try {
-                    appContext.startActivity(intent)
-                    logNativeLifecycle("launchMainActivity ok")
-                } catch (e: Exception) {
-                    Log.w(DIAG_TAG, "launchMainActivity falló: ${e.message}")
-                }
-                Unit
             }
             if (Looper.myLooper() == Looper.getMainLooper()) {
-                launch()
+                openMain()
             } else {
-                Handler(Looper.getMainLooper()).post(launch)
+                Handler(Looper.getMainLooper()).post(openMain)
             }
         }
 
@@ -235,6 +296,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         activityInstanceId = ++activityInstanceCounter
+        currentMainActivity = this
         logNativeLifecycle(
             "onCreate recreated=${savedInstanceState != null}",
         )
@@ -254,11 +316,15 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        mainActivityResumed = true
+        persistMainActivityResumed(this, true)
         logNativeLifecycle("onResume")
         registerOverlayEngineChannelIfPresent()
     }
 
     override fun onPause() {
+        mainActivityResumed = false
+        persistMainActivityResumed(this, false)
         logNativeLifecycle("onPause")
         super.onPause()
     }
@@ -270,6 +336,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         logNativeLifecycle("onDestroy isFinishing=$isFinishing")
+        if (currentMainActivity === this) {
+            currentMainActivity = null
+        }
         super.onDestroy()
     }
 
