@@ -1,12 +1,14 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/service_navigation_helper.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
+import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 
 /// Observador del ciclo de vida de la aplicación
 /// Detecta cuando la app vuelve del background y restaura servicios activos
@@ -44,7 +46,7 @@ class AppLifecycleManager extends WidgetsBindingObserver {
       DriverOverlayService.instance.syncWithAppLifecycle(
         state,
         context: context,
-        isConductorSession: _isConductorSession,
+        isConductorSession: _shouldSyncDriverOverlay(),
       );
     }
 
@@ -159,6 +161,21 @@ class AppLifecycleManager extends WidgetsBindingObserver {
     return active == null &&
         !authProvider.canSwitchRole &&
         authProvider.hasConductorRole;
+  }
+
+  /// Overlay solo con sesión conductor o turno activo (único listener de lifecycle).
+  bool _shouldSyncDriverOverlay() {
+    if (_isConductorSession) return true;
+    if (!context.mounted) return false;
+    try {
+      final provider = Provider.of<ConductorHomeProvider>(
+        context,
+        listen: false,
+      );
+      return provider.tieneTurnoActivo || provider.isOnline;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Método público para verificar servicio activo manualmente

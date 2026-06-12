@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/network/mobile_network_config.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/location_tracking_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -251,8 +252,18 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     scheduleTimer();
   });
 
-  service.on('stopMapHeartbeat').listen((event) async {
+  /// Pausa el heartbeat de mapa pero mantiene el FGS caliente (Android 14+).
+  service.on('pauseMapHeartbeat').listen((event) async {
     if (mode != _BgLocationMode.map) return;
+    timer?.cancel();
+    timer = null;
+    mode = _BgLocationMode.none;
+    servicioId = null;
+    lastPosition = null;
+  });
+
+  service.on('stopMapHeartbeat').listen((event) async {
+    if (mode == _BgLocationMode.trip) return;
     timer?.cancel();
     timer = null;
     mode = _BgLocationMode.none;
@@ -310,6 +321,17 @@ class BackgroundLocationService {
     }
   }
 
+  /// Arranca el FGS en primer plano (requerido en Android 14+ antes de ir a background).
+  static Future<void> ensureServiceRunning() async {
+    await _ensureRunning();
+  }
+
+  static Future<bool> isServiceRunning() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
+    if (!_initialized) return false;
+    return _service.isRunning();
+  }
+
   static Future<void> startTracking({
     required int servicioId,
     required int conductorId,
@@ -323,16 +345,40 @@ class BackgroundLocationService {
   }
 
   /// Heartbeat de mapa en segundo plano (conductor en línea, app pausada).
-  static Future<void> startMapHeartbeat({int? conductorId}) async {
+  static Future<void> startMapHeartbeat({
+    int? conductorId,
+    bool ensureService = true,
+  }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    await _ensureRunning();
+    if (ensureService) {
+      await _ensureRunning();
+    } else {
+      final running = await isServiceRunning();
+      if (!running) {
+        AppLogger.w(
+          '📍 [BG] Heartbeat omitido: FGS no estaba caliente. '
+          'Debe prepararse en primer plano al iniciar turno.',
+          tag: 'BackgroundLocation',
+        );
+        return;
+      }
+    }
     _service.invoke('startMapHeartbeat', {
       'conductorId': ?conductorId,
     });
   }
 
+  /// Pausa el timer de mapa al volver al foreground; el FGS sigue activo.
+  static Future<void> pauseMapHeartbeat() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!await isServiceRunning()) return;
+    _service.invoke('pauseMapHeartbeat');
+  }
+
+  /// Detiene por completo el FGS de mapa (fin de turno).
   static Future<void> stopMapHeartbeat() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (!await isServiceRunning()) return;
     _service.invoke('stopMapHeartbeat');
   }
 

@@ -28,6 +28,9 @@ class DriverOverlayService {
   Future<void>? _overlayQueue;
   static const String _stableDriverMode = 'driver_bubble';
   static const Duration _reshowMinInterval = Duration(seconds: 4);
+  AppLifecycleState? _lastOverlayLifecycle;
+  bool _backgroundShowPending = false;
+  DateTime? _lastPermissionWarnAt;
 
   bool get _isSupported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -54,7 +57,7 @@ class DriverOverlayService {
     );
   }
 
-  /// Sincroniza burbuja con el ciclo de vida global (NavigationScreen / viaje).
+  /// Sincroniza burbuja con el ciclo de vida global (único punto de entrada).
   void syncWithAppLifecycle(
     AppLifecycleState state, {
     required BuildContext context,
@@ -63,24 +66,55 @@ class DriverOverlayService {
     if (!_isSupported || !isConductorSession) return;
 
     if (state == AppLifecycleState.resumed) {
+      _lastOverlayLifecycle = state;
+      _backgroundShowPending = false;
       _showDebounce?.cancel();
       _showDebounce = null;
       unawaited(hide());
       return;
     }
 
-    // `hidden` (Android 12+) y `paused`: minimizar sin burbuja intermitente.
+    // `hidden` (Android 12+) y `paused`: una sola programación por transición.
     if (state != AppLifecycleState.paused &&
         state != AppLifecycleState.hidden) {
       return;
     }
 
-    if (_isRequestingPermission) return;
+    if (_lastOverlayLifecycle == AppLifecycleState.paused ||
+        _lastOverlayLifecycle == AppLifecycleState.hidden) {
+      return;
+    }
+    _lastOverlayLifecycle = state;
+
+    if (_isRequestingPermission) {
+      _logPermissionMissing('pidiendo permiso al usuario');
+      return;
+    }
+
+    if (_backgroundShowPending) return;
+    _backgroundShowPending = true;
 
     _showDebounce?.cancel();
     _showDebounce = Timer(const Duration(milliseconds: 300), () {
+      _backgroundShowPending = false;
       unawaited(_showForBackgroundIfNeeded(context));
     });
+  }
+
+  void _logPermissionMissing(String motivo) {
+    final now = DateTime.now();
+    if (_lastPermissionWarnAt != null &&
+        now.difference(_lastPermissionWarnAt!) <
+            const Duration(seconds: 30)) {
+      return;
+    }
+    _lastPermissionWarnAt = now;
+    AppLogger.w(
+      '🔵 OVERLAY no visible ($motivo): activa «Mostrar sobre otras apps» '
+      'en Ajustes → Apps → TaxbelUrbano. '
+      'Sin ese permiso la burbuja no aparece al minimizar.',
+      tag: 'DriverOverlay',
+    );
   }
 
   /// Burbuja desde prefs (válido en isolate FCM / sin [BuildContext]).
@@ -132,13 +166,17 @@ class DriverOverlayService {
     if (await _isAppInForeground()) return;
 
     if (!_shouldShowBubbleForConductor(provider)) {
+      AppLogger.d(
+        '🔵 Overlay omitido: sin turno en línea ni servicios pendientes',
+        tag: 'DriverOverlay',
+      );
       await hide();
       return;
     }
 
     final granted = await hasPermission();
     if (!granted) {
-      AppLogger.d('🔵 Overlay: sin permiso SYSTEM_ALERT_WINDOW');
+      _logPermissionMissing('sin permiso SYSTEM_ALERT_WINDOW');
       return;
     }
 
@@ -266,7 +304,7 @@ class DriverOverlayService {
 
       final granted = await hasPermission();
       if (!granted) {
-        AppLogger.d('🔵 Overlay: permiso denegado al mostrar');
+        _logPermissionMissing('permiso denegado al pintar burbuja');
         return;
       }
 
@@ -304,7 +342,7 @@ class DriverOverlayService {
 
         _activeMode = mode;
         _lastShownAt = DateTime.now();
-        AppLogger.d('🔵 Overlay mostrado (modo: $mode)');
+        AppLogger.i('🔵 Overlay mostrado (modo: $mode)', tag: 'DriverOverlay');
 
         await Future<void>.delayed(const Duration(milliseconds: 300));
         if (!FcmIsolateContext.isBackgroundHandler) {
@@ -337,7 +375,7 @@ class DriverOverlayService {
       final isActive = await FlutterOverlayWindow.isActive();
       if (isActive) {
         await FlutterOverlayWindow.closeOverlay();
-        AppLogger.d('🔵 Overlay ocultado');
+        AppLogger.i('🔵 Overlay ocultado (app en primer plano)', tag: 'DriverOverlay');
       }
       _activeMode = null;
       _lastShareData = null;

@@ -25,7 +25,6 @@ import 'package:intellitaxi/features/emergencias/utils/emergencia_quick_report.d
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
 import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_permission_flow.dart';
-import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
@@ -65,7 +64,6 @@ class _HomeConductorState extends State<HomeConductor>
 
   // Sanciones
   final SancionService _sancionService = SancionService();
-  final DriverOverlayService _overlayService = DriverOverlayService.instance;
   List<Sancion> _sanciones = [];
   bool _bannerVisible = true;
   Timer? _bannerTimer;
@@ -436,16 +434,10 @@ class _HomeConductorState extends State<HomeConductor>
     if (state == AppLifecycleState.resumed) {
       _invalidateMapController();
       setState(() => _mapResumeGeneration++);
-      unawaited(_overlayService.hide());
       unawaited(_provider.refrescarEnResume());
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       unawaited(_provider.onAppLifecyclePaused());
-      DriverOverlayService.instance.syncWithAppLifecycle(
-        state,
-        context: context,
-        isConductorSession: true,
-      );
     }
   }
 

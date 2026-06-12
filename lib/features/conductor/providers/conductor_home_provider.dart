@@ -3678,6 +3678,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     unawaited(_iniciarSeguimientoUbicacionConPermisos());
+    unawaited(_prepararServicioUbicacionBackground());
   }
 
   Future<void> _iniciarSeguimientoUbicacionConPermisos() async {
@@ -4199,26 +4200,51 @@ class ConductorHomeProvider extends ChangeNotifier {
     await BackgroundLocationService.stopMapHeartbeat();
   }
 
-  Future<void> _iniciarHeartbeatMapaSegundoPlano() async {
+  Future<void> _pausarHeartbeatMapaSegundoPlano() async {
+    await BackgroundLocationService.pauseMapHeartbeat();
+  }
+
+  /// Arranca el FGS en primer plano para que Android 14+ permita el heartbeat al minimizar.
+  Future<void> _prepararServicioUbicacionBackground() async {
+    if (_isDisposed || !_debeSeguirGps()) return;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await BackgroundLocationService.ensureServiceRunning();
+      AppLogger.d(
+        '📍 [BG] FGS preparado en primer plano (listo para minimizar)',
+        tag: 'BackgroundLocation',
+      );
+    } catch (e) {
+      AppLogger.w(
+        '📍 [BG] No se pudo preparar FGS en primer plano: $e',
+        tag: 'BackgroundLocation',
+      );
+    }
+  }
+
+  Future<void> _activarHeartbeatMapaEnBackground() async {
     if (_isDisposed || !_debeSeguirGps()) return;
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
 
     final ids = await ConductorSessionHelper.obtenerIdsConductorSesion();
     final conductorId = ids.isEmpty ? null : ids.first;
-    await BackgroundLocationService.startMapHeartbeat(conductorId: conductorId);
+    await BackgroundLocationService.startMapHeartbeat(
+      conductorId: conductorId,
+      ensureService: false,
+    );
     AppLogger.d('📍 [BG] Heartbeat mapa en segundo plano activo');
   }
 
-  /// Al pausar la app: mantener visible al conductor en `conductores-disponibles`.
+  /// Al pausar la app: activar heartbeat sobre el FGS ya caliente.
   Future<void> onAppLifecyclePaused() async {
     if (_isDisposed || !_debeSeguirGps()) return;
-    await _iniciarHeartbeatMapaSegundoPlano();
+    await _activarHeartbeatMapaEnBackground();
   }
 
   /// Una sola ráfaga al volver al foreground (evita 429 por llamadas duplicadas).
   Future<void> refrescarEnResume() async {
     if (_isDisposed) return;
-    await _detenerHeartbeatMapaSegundoPlano();
+    await _pausarHeartbeatMapaSegundoPlano();
     final now = DateTime.now();
     if (_lastResumeRefreshAt != null &&
         now.difference(_lastResumeRefreshAt!) < const Duration(seconds: 5)) {
