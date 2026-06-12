@@ -65,6 +65,9 @@ class ConductorPendingFcm {
     await _clearDisk();
   }
 
+  /// Descarta cola pendiente (p. ej. logout).
+  static Future<void> clear() => clearAfterProcessed();
+
   static Future<void> flush(BuildContext context) async {
     await ensureLoaded();
     final data = _pending;

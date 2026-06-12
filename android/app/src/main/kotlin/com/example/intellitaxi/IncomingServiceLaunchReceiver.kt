@@ -15,6 +15,16 @@ class IncomingServiceLaunchReceiver : BroadcastReceiver() {
         private const val TAG = "IntelliTaxiFcmLaunch"
         private const val PREFS = "FlutterSharedPreferences"
         private const val ROLE_KEY = "flutter.active_role"
+        private const val TOKEN_KEY = "flutter.token"
+
+        private fun hasActiveSession(context: Context): Boolean {
+            val token = context
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(TOKEN_KEY, "")
+                ?.trim()
+                ?: ""
+            return token.isNotEmpty()
+        }
 
         private fun isTripUpdate(data: Map<String, String>): Boolean {
             val tipo = data["tipo"]?.lowercase() ?: return false
@@ -57,7 +67,7 @@ class IncomingServiceLaunchReceiver : BroadcastReceiver() {
                     combined.contains("taxbel")
             }
         }
-        if (!isIncoming || !isActiveConductor(context)) return
+        if (!isIncoming || !hasActiveSession(context) || !isActiveConductor(context)) return
 
         if (MainActivity.mainActivityResumed) {
             Log.i(TAG, "FCM solicitud entrante → skip (MainActivity visible)")

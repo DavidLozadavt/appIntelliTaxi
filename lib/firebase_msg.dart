@@ -17,6 +17,7 @@ import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/core/services/device_token_sync_service.dart';
+import 'package:intellitaxi/core/services/fcm_session_guard.dart';
 import 'package:intellitaxi/core/services/fcm_token_resolver.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
@@ -28,9 +29,20 @@ import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.da
 import 'package:provider/provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_incoming_dedup_store.dart';
 import 'package:intellitaxi/core/utils/fcm_isolate_context.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-const _activeRoleKey = 'active_role';
+Future<bool> _shouldShowConductorIncomingAlert(
+  Map<String, dynamic> data,
+) async {
+  if (!_isConductorIncomingServiceNotification(data)) return false;
+  if (_isServicioTripUpdateNotification(data)) return false;
+  return FcmSessionGuard.shouldProcessConductorIncomingPush();
+}
+
+Future<void> _ignorePushIfNoSession(String origen) async {
+  if (await FcmSessionGuard.hasActiveSession()) return;
+  AppLogger.d('📲 FCM ignorado ($origen): sesión cerrada');
+  await IncomingServiceNotificationService.instance.dismiss();
+}
 
 /// Solo alertas de cola para conductores — no cambios de estado del viaje.
 bool _isConductorIncomingServiceNotification(Map<String, dynamic> data) {
@@ -131,27 +143,6 @@ bool _fcmIndicaCancelacion(Map<String, dynamic> data) {
     final tipo = data['tipo']?.toString().toLowerCase() ?? '';
     return tipo.contains('cancelado');
   }
-}
-
-Future<bool> _isActiveConductorRole() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final role = prefs.getString(_activeRoleKey)?.toUpperCase() ?? '';
-    return role == 'CONDUCTOR-INTELLITAXI' ||
-        role == 'CONDUCTOR' ||
-        role == 'MOTORISTA' ||
-        role == 'DRIVER';
-  } catch (_) {
-    return false;
-  }
-}
-
-Future<bool> _shouldShowConductorIncomingAlert(
-  Map<String, dynamic> data,
-) async {
-  if (!_isConductorIncomingServiceNotification(data)) return false;
-  if (_isServicioTripUpdateNotification(data)) return false;
-  return _isActiveConductorRole();
 }
 
 /// Une `data` del push con heurística del título/cuerpo (FCM solo-notification).
@@ -364,6 +355,10 @@ bool _isFleetEmergencyNotificationData(Map<String, dynamic> data) {
 }
 
 Future<void> navigateFromFcmData(Map<String, dynamic>? data) async {
+  if (!await FcmSessionGuard.hasActiveSession()) {
+    AppLogger.d('📲 FCM tap ignorado: sesión cerrada');
+    return;
+  }
   if (data == null || data.isEmpty) {
     AppLogger.d('📱 FCM sin data; fallback chat');
     navigatorKey.currentState?.pushNamed('/chat');
@@ -499,6 +494,10 @@ void onNotificationTap(NotificationResponse notificationResponse) {
 /// Procesa FCM con la app en segundo plano o cerrada (registrado en [main]).
 Future<void> handleRemoteMessageInBackground(RemoteMessage message) async {
   AppLogger.d('Notificación en segundo plano: ${message.notification?.title}');
+  if (!await FcmSessionGuard.hasActiveSession()) {
+    await _ignorePushIfNoSession('background');
+    return;
+  }
   final map = mergeRemoteMessageData(message);
   if (map.isEmpty) return;
 
@@ -516,7 +515,7 @@ Future<void> handleRemoteMessageInBackground(RemoteMessage message) async {
     return;
   }
 
-  if (!await _isActiveConductorRole() &&
+  if (!await FcmSessionGuard.isActiveConductorRole() &&
       _isConductorIncomingServiceNotification(map)) {
     await IncomingServiceNotificationService.instance.dismiss();
   }
@@ -657,6 +656,10 @@ class FirebaseMsg {
 
   Future<void> _handleForegroundNotification(RemoteMessage message) async {
     AppLogger.d('Notificación en primer plano: ${message.notification}');
+    if (!await FcmSessionGuard.hasActiveSession()) {
+      await _ignorePushIfNoSession('foreground');
+      return;
+    }
     final data = mergeRemoteMessageData(message);
     if (data.isEmpty) {
       await _showNotification(message);
@@ -682,7 +685,7 @@ class FirebaseMsg {
       return;
     }
 
-    final isConductor = await _isActiveConductorRole();
+    final isConductor = await FcmSessionGuard.isActiveConductorRole();
 
     // El pasajero no debe ver "nueva solicitud" (es eco de su propia petición).
     if (!isConductor && _isConductorIncomingServiceNotification(data)) {

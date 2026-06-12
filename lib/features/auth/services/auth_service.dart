@@ -4,6 +4,7 @@ import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/core/interceptors/retry_interceptor.dart';
 import 'package:intellitaxi/core/network/mobile_network_config.dart';
 import 'package:intellitaxi/core/services/device_token_sync_service.dart';
+import 'package:intellitaxi/core/services/fcm_logout_cleanup.dart';
 import 'package:intellitaxi/core/utils/dio_error_message.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/bootstrap/session_preload.dart';
@@ -364,6 +365,8 @@ class AuthService {
     final prefs = await sharedPreferences();
     final token = prefs.getString('token');
 
+    await DeviceTokenSyncService.instance.unregisterFromBackend();
+
     if (!skipLogoutApi && token != null && token.isNotEmpty) {
       try {
         await _dio.post(
@@ -381,7 +384,9 @@ class AuthService {
     await prefs.remove('token');
     await prefs.remove('user_data');
     await prefs.remove(_keyExpiresAt);
+    await prefs.remove('active_role');
     await DeviceTokenSyncService.instance.clearLocalCache();
+    await FcmLogoutCleanup.run();
     SessionPreload.invalidate();
   }
 

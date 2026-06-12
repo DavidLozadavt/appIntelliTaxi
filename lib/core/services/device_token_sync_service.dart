@@ -79,6 +79,40 @@ class DeviceTokenSyncService {
     _syncInFlightToken = null;
   }
 
+  /// Desvincula el token FCM del usuario en el backend (antes de borrar la sesión).
+  Future<void> unregisterFromBackend() async {
+    final prefs = await SharedPreferences.getInstance();
+    final session = prefs.getString(_sessionTokenKey)?.trim();
+    if (session == null || session.isEmpty) {
+      await clearLocalCache();
+      return;
+    }
+
+    final path = AppConfig.deviceTokenSyncPath;
+    try {
+      await DioClient.getInstance().post(
+        path,
+        data: {'device_token': null},
+        options: Options(
+          headers: {'Authorization': 'Bearer $session'},
+          sendTimeout: MobileNetworkConfig.userActionTimeout,
+          receiveTimeout: MobileNetworkConfig.userActionTimeout,
+          extra: const {'no_auth_refresh': true},
+        ),
+      );
+      AppLogger.i('device_token desvinculado en logout', tag: _tag);
+    } on DioException catch (e) {
+      AppLogger.w(
+        'No se pudo desvincular device_token (${e.response?.statusCode})',
+        tag: _tag,
+      );
+    } catch (e) {
+      AppLogger.w('No se pudo desvincular device_token: $e', tag: _tag);
+    } finally {
+      await clearLocalCache();
+    }
+  }
+
   Future<void> _syncIfNeeded(String fcmToken, {bool force = false}) async {
     if (_syncInFlightToken == fcmToken) return;
     _syncInFlightToken = fcmToken;
