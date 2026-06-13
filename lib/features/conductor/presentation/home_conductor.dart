@@ -24,6 +24,7 @@ import 'package:intellitaxi/features/emergencias/providers/emergencia_provider.d
 import 'package:intellitaxi/features/emergencias/utils/emergencia_quick_report.dart';
 import 'package:intellitaxi/features/sanciones/data/sancion_model.dart';
 import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
+import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_permission_flow.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
@@ -438,6 +439,11 @@ class _HomeConductorState extends State<HomeConductor>
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       unawaited(_provider.onAppLifecyclePaused());
+      if (_provider.tieneTurnoActivo || _provider.isOnline) {
+        DriverOverlayService.instance.requestShowWhenBackgrounded(
+          context: context,
+        );
+      }
     }
   }
 
@@ -815,10 +821,11 @@ class _HomeConductorState extends State<HomeConductor>
     }
   }
 
-  /// Tras turno OK: documentos (sin avisos extra de burbuja).
+  /// Tras turno OK: permiso overlay + documentos.
   Future<void> _trasTurnoIniciadoConExito() async {
     if (!mounted) return;
     unawaited(_reanudarNavegacionAhora(_provider));
+    unawaited(DriverOverlayPermissionFlow.promptAfterShiftStarted(context));
     await _verificarDocumentos();
   }
 

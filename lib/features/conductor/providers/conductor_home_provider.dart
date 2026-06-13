@@ -827,6 +827,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
       _isOnline = true;
       _sincronizarVehiculoSeleccionadoConTurno();
+      unawaited(DriverOverlayService.instance.onTurnStarted());
       if (!_isDisposed) notifyListeners();
       AppLogger.d('✅ Turno restaurado desde cache: $turnoId');
       return true;
@@ -3678,7 +3679,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     unawaited(_iniciarSeguimientoUbicacionConPermisos());
-    unawaited(_prepararServicioUbicacionBackground());
+    _prepararServicioUbicacionBackground();
   }
 
   Future<void> _iniciarSeguimientoUbicacionConPermisos() async {
@@ -4204,22 +4205,27 @@ class ConductorHomeProvider extends ChangeNotifier {
     await BackgroundLocationService.pauseMapHeartbeat();
   }
 
-  /// Arranca el FGS en primer plano para que Android 14+ permita el heartbeat al minimizar.
-  Future<void> _prepararServicioUbicacionBackground() async {
+  /// Arranca el FGS en primer plano (diferido para no bloquear overlay al iniciar turno).
+  void _prepararServicioUbicacionBackground() {
     if (_isDisposed || !_debeSeguirGps()) return;
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    try {
-      await BackgroundLocationService.ensureServiceRunning();
-      AppLogger.d(
-        '📍 [BG] FGS preparado en primer plano (listo para minimizar)',
-        tag: 'BackgroundLocation',
-      );
-    } catch (e) {
-      AppLogger.w(
-        '📍 [BG] No se pudo preparar FGS en primer plano: $e',
-        tag: 'BackgroundLocation',
-      );
-    }
+    unawaited(
+      Future<void>.delayed(const Duration(seconds: 2), () async {
+        if (_isDisposed || !_debeSeguirGps()) return;
+        try {
+          await BackgroundLocationService.ensureServiceRunning();
+          AppLogger.d(
+            '📍 [BG] FGS preparado en primer plano (listo para minimizar)',
+            tag: 'BackgroundLocation',
+          );
+        } catch (e) {
+          AppLogger.w(
+            '📍 [BG] No se pudo preparar FGS en primer plano: $e',
+            tag: 'BackgroundLocation',
+          );
+        }
+      }),
+    );
   }
 
   Future<void> _activarHeartbeatMapaEnBackground() async {
@@ -4392,6 +4398,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _sincronizarVehiculoSeleccionadoConTurno();
     await conectarSocket();
     _syncGpsConEstadoTurno();
+    unawaited(DriverOverlayService.instance.onTurnStarted());
     final pos = _currentPosition;
     if (pos != null) {
       unawaited(_sendMapHeartbeat(pos, force: true));
@@ -4688,7 +4695,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _vehiculoSeleccionado = null;
     }
 
-    unawaited(_actualizarBurbujaSegundoPlano());
+    unawaited(DriverOverlayService.instance.onTurnEnded());
 
     if (!_isDisposed) notifyListeners();
   }
@@ -4698,10 +4705,16 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   Future<void> _actualizarBurbujaSegundoPlano() async {
+    if (!_isOnline || _turnoActivo == null) {
+      unawaited(DriverOverlayService.instance.onTurnEnded());
+      return;
+    }
     await ConductorOverlayBadgeStore.write(
       llegando: totalSolicitudesLlegando,
       enEspera: totalSolicitudesEnEspera,
     );
-    await DriverOverlayService.instance.showFromBadgeStore(enLinea: _isOnline);
+    if (await DriverOverlayService.instance.hasPermission()) {
+      await DriverOverlayService.instance.showFromBadgeStore(enLinea: true);
+    }
   }
 }

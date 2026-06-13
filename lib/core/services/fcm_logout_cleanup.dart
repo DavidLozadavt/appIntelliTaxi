@@ -12,7 +12,7 @@ class FcmLogoutCleanup {
 
   static Future<void> run() async {
     try {
-      await DriverOverlayService.instance.hide();
+      await DriverOverlayService.instance.onTurnEnded();
       await IncomingServiceNotificationService.instance.dismiss();
       await FleetEmergencyAlertService.instance.dismiss();
       await ConductorPendingFcm.clear();

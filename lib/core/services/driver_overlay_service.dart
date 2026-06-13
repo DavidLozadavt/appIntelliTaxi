@@ -5,12 +5,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/driver_overlay_state_store.dart';
 import 'package:intellitaxi/core/utils/fcm_isolate_context.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_overlay_badge_store.dart';
 import 'package:provider/provider.dart';
 
-/// Burbuja flotante Android: solo con **turno activo** y app en segundo plano.
+/// Burbuja flotante Android: turno activo + app en segundo plano + permiso overlay.
 class DriverOverlayService {
   DriverOverlayService._();
   static final DriverOverlayService instance = DriverOverlayService._();
@@ -18,29 +19,54 @@ class DriverOverlayService {
   static const int _overlayWindowSize = 124;
   static const double bubbleVisualSize = 96;
 
+  static const Duration _backgroundShowDelay = Duration(milliseconds: 600);
+  static const Duration _backgroundRetryDelay = Duration(milliseconds: 1400);
+  static const String _stableDriverMode = 'driver_bubble';
+
   bool _isRequestingPermission = false;
   bool _listenerRegistered = false;
   StreamSubscription<dynamic>? _overlayTapSubscription;
   String? _activeMode;
   String? _lastShareData;
-  DateTime? _lastShownAt;
   Timer? _showDebounce;
   Future<void>? _overlayQueue;
-  static const String _stableDriverMode = 'driver_bubble';
-  static const Duration _reshowMinInterval = Duration(seconds: 4);
-  AppLifecycleState? _lastOverlayLifecycle;
-  bool _backgroundShowPending = false;
+  int _foregroundGeneration = 0;
+  bool _backgroundShowScheduled = false;
+  BuildContext? _pendingShowContext;
   DateTime? _lastPermissionWarnAt;
 
   bool get _isSupported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  /// Android: burbuja sobre otras apps. iOS no usa este canal.
   bool get isPlatformSupported => _isSupported;
 
   bool get isRequestingPermission => _isRequestingPermission;
 
-  /// Escucha taps en la burbuja (`open_app`) y trae la app al frente.
+  /// Llamar al iniciar / restaurar turno.
+  Future<void> onTurnStarted() async {
+    if (!_isSupported) return;
+    await DriverOverlayStateStore.setArmed(true);
+    ensureReturnListener();
+    AppLogger.i('🔵 Overlay armado (turno activo)', tag: 'DriverOverlay');
+    if (await hasPermission()) {
+      AppLogger.i('🔵 Overlay permiso OK', tag: 'DriverOverlay');
+    } else {
+      _logPermissionMissing(
+        'sin permiso al iniciar turno — actívalo antes de minimizar',
+      );
+    }
+  }
+
+  /// Llamar al finalizar turno o cerrar sesión.
+  Future<void> onTurnEnded() async {
+    if (!_isSupported) return;
+    await DriverOverlayStateStore.setArmed(false);
+    _foregroundGeneration++;
+    _cancelBackgroundShow();
+    await hide();
+    AppLogger.i('🔵 Overlay desarmado (sin turno)', tag: 'DriverOverlay');
+  }
+
   void ensureReturnListener() {
     if (!_isSupported || _listenerRegistered) return;
     _listenerRegistered = true;
@@ -57,7 +83,7 @@ class DriverOverlayService {
     );
   }
 
-  /// Sincroniza burbuja con el ciclo de vida global (único punto de entrada).
+  /// Único punto de entrada lifecycle (AppLifecycleManager).
   void syncWithAppLifecycle(
     AppLifecycleState state, {
     required BuildContext context,
@@ -66,39 +92,94 @@ class DriverOverlayService {
     if (!_isSupported || !isConductorSession) return;
 
     if (state == AppLifecycleState.resumed) {
-      _lastOverlayLifecycle = state;
-      _backgroundShowPending = false;
-      _showDebounce?.cancel();
-      _showDebounce = null;
+      _foregroundGeneration++;
+      _backgroundShowScheduled = false;
+      _pendingShowContext = null;
+      _cancelBackgroundShow();
       unawaited(hide());
       return;
     }
 
-    // `hidden` (Android 12+) y `paused`: una sola programación por transición.
     if (state != AppLifecycleState.paused &&
         state != AppLifecycleState.hidden) {
       return;
     }
-
-    if (_lastOverlayLifecycle == AppLifecycleState.paused ||
-        _lastOverlayLifecycle == AppLifecycleState.hidden) {
-      return;
-    }
-    _lastOverlayLifecycle = state;
 
     if (_isRequestingPermission) {
       _logPermissionMissing('pidiendo permiso al usuario');
       return;
     }
 
-    if (_backgroundShowPending) return;
-    _backgroundShowPending = true;
+    requestShowWhenBackgrounded(context: context);
+  }
 
+  /// Overlay: el servicio valida turno armado y permiso.
+  void requestShowWhenBackgrounded({BuildContext? context}) {
+    if (!_isSupported) return;
+    if (context != null) {
+      _pendingShowContext = context;
+    }
+    if (_backgroundShowScheduled) {
+      AppLogger.d(
+        '🔵 Overlay show ya programado (omitir duplicado)',
+        tag: 'DriverOverlay',
+      );
+      return;
+    }
+    unawaited(_armBackgroundShowIfNeeded());
+  }
+
+  Future<void> _armBackgroundShowIfNeeded() async {
+    if (!await DriverOverlayStateStore.isArmed()) {
+      AppLogger.d('🔵 Overlay no programado: turno no armado', tag: 'DriverOverlay');
+      return;
+    }
+    _backgroundShowScheduled = true;
+    _scheduleBackgroundShow();
+  }
+
+  void _cancelBackgroundShow() {
     _showDebounce?.cancel();
-    _showDebounce = Timer(const Duration(milliseconds: 300), () {
-      _backgroundShowPending = false;
-      unawaited(_showForBackgroundIfNeeded(context));
+    _showDebounce = null;
+  }
+
+  void _scheduleBackgroundShow() {
+    final generation = _foregroundGeneration;
+    _showDebounce?.cancel();
+    AppLogger.i(
+      '🔵 Overlay programado en ${_backgroundShowDelay.inMilliseconds}ms',
+      tag: 'DriverOverlay',
+    );
+    _showDebounce = Timer(_backgroundShowDelay, () {
+      unawaited(_attemptBackgroundShow(generation));
     });
+  }
+
+  Future<void> _attemptBackgroundShow(int generation) async {
+    if (generation != _foregroundGeneration) {
+      AppLogger.d('🔵 Overlay cancelado (volvió a primer plano)', tag: 'DriverOverlay');
+      return;
+    }
+
+    AppLogger.i('🔵 Overlay intentando mostrar…', tag: 'DriverOverlay');
+
+    final ctx = _pendingShowContext;
+    final first = await _showForBackgroundIfNeeded(
+      ctx != null && ctx.mounted ? ctx : null,
+    );
+    if (first || generation != _foregroundGeneration) return;
+
+    AppLogger.i(
+      '🔵 Overlay reintento en ${_backgroundRetryDelay.inMilliseconds}ms',
+      tag: 'DriverOverlay',
+    );
+    await Future<void>.delayed(_backgroundRetryDelay);
+    if (generation != _foregroundGeneration) return;
+
+    await _showForBackgroundIfNeeded(
+      ctx != null && ctx.mounted ? ctx : null,
+      isRetry: true,
+    );
   }
 
   void _logPermissionMissing(String motivo) {
@@ -111,16 +192,16 @@ class DriverOverlayService {
     _lastPermissionWarnAt = now;
     AppLogger.w(
       '🔵 OVERLAY no visible ($motivo): activa «Mostrar sobre otras apps» '
-      'en Ajustes → Apps → TaxbelUrbano. '
-      'Sin ese permiso la burbuja no aparece al minimizar.',
+      'en Ajustes → Apps → TaxbelUrbano.',
       tag: 'DriverOverlay',
     );
   }
 
-  /// Burbuja desde prefs (válido en isolate FCM / sin [BuildContext]).
   Future<void> showFromBadgeStore({bool enLinea = true}) async {
     if (!_isSupported) return;
     if (await _isAppInForeground()) return;
+    if (!await DriverOverlayStateStore.isArmed() && !enLinea) return;
+
     final counts = await ConductorOverlayBadgeStore.read();
     if (counts.llegando <= 0 && counts.enEspera <= 0 && !enLinea) return;
     await showDriverBubble(
@@ -134,14 +215,15 @@ class DriverOverlayService {
     if (!provider.tieneTurnoActivo) return false;
     if (provider.enServicio) return true;
     if (provider.isOnline) return true;
-    return provider.totalSolicitudesLlegando + provider.totalSolicitudesEnEspera > 0;
+    return provider.totalSolicitudesLlegando + provider.totalSolicitudesEnEspera >
+        0;
   }
 
+  /// Solo primer plano real; `inactive`/`paused`/`hidden` permiten burbuja.
   Future<bool> _isAppInForeground() async {
     if (FcmIsolateContext.isBackgroundHandler) return false;
     final state = WidgetsBinding.instance.lifecycleState;
-    return state == AppLifecycleState.resumed ||
-        state == AppLifecycleState.inactive;
+    return state == AppLifecycleState.resumed;
   }
 
   Future<T> _enqueueOverlayOp<T>(Future<T> Function() action) async {
@@ -160,16 +242,11 @@ class DriverOverlayService {
     }
   }
 
-  /// Muestra o actualiza la burbuja según estado del conductor.
   Future<void> syncBubbleForConductor(ConductorHomeProvider provider) async {
     if (!_isSupported) return;
     if (await _isAppInForeground()) return;
 
     if (!_shouldShowBubbleForConductor(provider)) {
-      AppLogger.d(
-        '🔵 Overlay omitido: sin turno en línea ni servicios pendientes',
-        tag: 'DriverOverlay',
-      );
       await hide();
       return;
     }
@@ -201,31 +278,87 @@ class DriverOverlayService {
     );
   }
 
-  Future<void> _showForBackgroundIfNeeded(BuildContext context) async {
+  Future<void> syncBubbleFromStorage() async {
     if (!_isSupported) return;
     if (await _isAppInForeground()) return;
 
+    if (!await DriverOverlayStateStore.isArmed()) {
+      await hide();
+      return;
+    }
+
+    final granted = await hasPermission();
+    if (!granted) {
+      _logPermissionMissing('sin permiso (storage fallback)');
+      return;
+    }
+
+    final counts = await ConductorOverlayBadgeStore.read();
+    await showDriverBubble(
+      llegando: counts.llegando,
+      enEspera: counts.enEspera,
+      enLinea: true,
+    );
+  }
+
+  /// `true` = mostrado u omitido con certeza; `false` = conviene reintentar.
+  Future<bool> _showForBackgroundIfNeeded(
+    BuildContext? context, {
+    bool isRetry = false,
+  }) async {
+    if (!_isSupported) return true;
+    if (await _isAppInForeground()) {
+      AppLogger.d(
+        '🔵 Overlay ${isRetry ? "reintento" : "intento"} omitido: app en primer plano',
+        tag: 'DriverOverlay',
+      );
+      return false;
+    }
+
+    if (!await DriverOverlayStateStore.isArmed()) {
+      AppLogger.d(
+        '🔵 Overlay omitido: turno no armado',
+        tag: 'DriverOverlay',
+      );
+      await hide();
+      return true;
+    }
+
     try {
-      ConductorHomeProvider provider;
-      try {
-        provider = context.read<ConductorHomeProvider>();
-      } catch (e) {
-        AppLogger.d('⚠️ Overlay: sin ConductorHomeProvider ($e)');
-        return;
+      ConductorHomeProvider? provider;
+      if (context != null) {
+        try {
+          if (context.mounted) {
+            provider = context.read<ConductorHomeProvider>();
+          }
+        } catch (e) {
+          AppLogger.d(
+            '⚠️ Overlay: provider no disponible ($e)',
+            tag: 'DriverOverlay',
+          );
+        }
       }
 
-      if (!provider.tieneTurnoActivo) {
-        await provider.cargarTurnoActual();
+      if (provider != null) {
+        if (!provider.tieneTurnoActivo) {
+          await provider.cargarTurnoActual();
+        }
+        if (_shouldShowBubbleForConductor(provider)) {
+          await syncBubbleForConductor(provider);
+          return true;
+        }
       }
 
-      await syncBubbleForConductor(provider);
+      await syncBubbleFromStorage();
+      return true;
     } catch (e, st) {
       AppLogger.e(
-        'Error mostrando burbuja',
+        'Error mostrando burbuja${isRetry ? " (reintento)" : ""}',
         tag: 'DriverOverlay',
         error: e,
         stackTrace: st,
       );
+      return !isRetry;
     }
   }
 
@@ -247,7 +380,6 @@ class DriverOverlayService {
     }
   }
 
-  /// Burbuja en home conductor (con o sin turno iniciado).
   Future<void> showDriverBubble({
     int llegando = 0,
     int enEspera = 0,
@@ -270,14 +402,12 @@ class DriverOverlayService {
     );
   }
 
-  /// Alias histórico (turno / segundo plano).
   Future<void> showTurnoBubble({
     int llegando = 0,
     int enEspera = 0,
   }) =>
       showDriverBubble(llegando: llegando, enEspera: enEspera, enLinea: true);
 
-  /// Burbuja durante viaje activo.
   Future<void> showTripBubble({required int servicioId}) async {
     await _showBubble(
       mode: 'trip:$servicioId',
@@ -302,23 +432,23 @@ class DriverOverlayService {
     await _enqueueOverlayOp(() async {
       ensureReturnListener();
 
+      if (await _isAppInForeground()) return;
+
       final granted = await hasPermission();
       if (!granted) {
         _logPermissionMissing('permiso denegado al pintar burbuja');
         return;
       }
 
-      final now = DateTime.now();
       final sameMode = _activeMode == mode ||
           (_activeMode == _stableDriverMode && mode == _stableDriverMode);
       final isActive = await FlutterOverlayWindow.isActive();
-      final recentlyShown = _lastShownAt != null &&
-          now.difference(_lastShownAt!) < _reshowMinInterval;
+
       if (isActive &&
           sameMode &&
-          recentlyShown &&
           shareData != null &&
           shareData == _lastShareData) {
+        AppLogger.d('🔵 Overlay ya visible (mismo contenido)', tag: 'DriverOverlay');
         return;
       }
 
@@ -326,7 +456,7 @@ class DriverOverlayService {
         await FlutterOverlayWindow.closeOverlay();
         _activeMode = null;
         _lastShareData = null;
-        await Future<void>.delayed(const Duration(milliseconds: 120));
+        await Future<void>.delayed(const Duration(milliseconds: 150));
       }
 
       try {
@@ -341,7 +471,6 @@ class DriverOverlayService {
         );
 
         _activeMode = mode;
-        _lastShownAt = DateTime.now();
         AppLogger.i('🔵 Overlay mostrado (modo: $mode)', tag: 'DriverOverlay');
 
         await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -362,7 +491,6 @@ class DriverOverlayService {
         );
         _activeMode = null;
         _lastShareData = null;
-        _lastShownAt = null;
       }
     });
   }
@@ -370,21 +498,22 @@ class DriverOverlayService {
   Future<void> hide() async {
     if (!_isSupported) return;
     await _enqueueOverlayOp(() async {
-      _showDebounce?.cancel();
-      _showDebounce = null;
+      _cancelBackgroundShow();
       final isActive = await FlutterOverlayWindow.isActive();
       if (isActive) {
         await FlutterOverlayWindow.closeOverlay();
-        AppLogger.i('🔵 Overlay ocultado (app en primer plano)', tag: 'DriverOverlay');
+        AppLogger.i(
+          '🔵 Overlay ocultado (app en primer plano)',
+          tag: 'DriverOverlay',
+        );
       }
       _activeMode = null;
       _lastShareData = null;
-      _lastShownAt = null;
     });
   }
 
   void dispose() {
-    _showDebounce?.cancel();
+    _cancelBackgroundShow();
     _overlayTapSubscription?.cancel();
     _overlayTapSubscription = null;
     _listenerRegistered = false;

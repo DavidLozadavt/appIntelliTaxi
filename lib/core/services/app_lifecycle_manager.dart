@@ -1,14 +1,12 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/service_navigation_helper.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
-import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 
 /// Observador del ciclo de vida de la aplicación
 /// Detecta cuando la app vuelve del background y restaura servicios activos
@@ -46,7 +44,7 @@ class AppLifecycleManager extends WidgetsBindingObserver {
       DriverOverlayService.instance.syncWithAppLifecycle(
         state,
         context: context,
-        isConductorSession: _shouldSyncDriverOverlay(),
+        isConductorSession: authProvider.hasConductorRole,
       );
     }
 
@@ -151,30 +149,6 @@ class AppLifecycleManager extends WidgetsBindingObserver {
     } catch (e, stackTrace) {
       AppLogger.d('⚠️ [Lifecycle] Error restaurando servicio activo: $e');
       AppLogger.d('Stack trace: $stackTrace');
-    }
-  }
-
-  bool get _isConductorSession {
-    if (!authProvider.hasConductorRole) return false;
-    final active = authProvider.activeRole;
-    if (active == AuthProvider.roleConductor) return true;
-    return active == null &&
-        !authProvider.canSwitchRole &&
-        authProvider.hasConductorRole;
-  }
-
-  /// Overlay solo con sesión conductor o turno activo (único listener de lifecycle).
-  bool _shouldSyncDriverOverlay() {
-    if (_isConductorSession) return true;
-    if (!context.mounted) return false;
-    try {
-      final provider = Provider.of<ConductorHomeProvider>(
-        context,
-        listen: false,
-      );
-      return provider.tieneTurnoActivo || provider.isOnline;
-    } catch (_) {
-      return false;
     }
   }
 
