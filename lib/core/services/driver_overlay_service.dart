@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/app_foreground_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/driver_overlay_state_store.dart';
@@ -40,21 +41,50 @@ class DriverOverlayService {
 
   bool get isPlatformSupported => _isSupported;
 
-  bool get isRequestingPermission => _isRequestingPermission;
+  void _overlayDiag(String message, {String? extra}) {
+    AppLogger.i(message, tag: 'DriverOverlay');
+    AppDiagnostics.record('overlay', message, extra: extra);
+  }
 
-  /// Llamar al iniciar / restaurar turno.
+  void _overlayDiagWarn(String message, {String? extra}) {
+    AppLogger.w(message, tag: 'DriverOverlay');
+    AppDiagnostics.record('overlay', message, extra: extra ?? 'warn');
+  }
   Future<void> onTurnStarted() async {
     if (!_isSupported) return;
     await DriverOverlayStateStore.setArmed(true);
     ensureReturnListener();
     AppLogger.i('🔵 Overlay armado (turno activo)', tag: 'DriverOverlay');
+    AppDiagnostics.record('overlay', 'armado turno activo');
     if (await hasPermission()) {
-      AppLogger.i('🔵 Overlay permiso OK', tag: 'DriverOverlay');
+      _overlayDiag('permiso OK');
     } else {
-      _logPermissionMissing(
-        'sin permiso al iniciar turno — actívalo antes de minimizar',
-      );
+      _overlayDiagWarn('sin permiso al iniciar turno');
     }
+  }
+
+  /// Idempotente: turno ya activo (login, restore API o caché) — mismo setup que al iniciar turno.
+  Future<void> ensureReadyForActiveTurn({
+    int llegando = 0,
+    int enEspera = 0,
+  }) async {
+    if (!_isSupported) return;
+    await onTurnStarted();
+    await ConductorOverlayBadgeStore.write(
+      llegando: llegando,
+      enEspera: enEspera,
+    );
+    if (!FcmIsolateContext.isBackgroundHandler) {
+      try {
+        await AppForegroundService.instance.ensureOverlayNativeChannel();
+      } catch (e) {
+        AppLogger.w(
+          '🔵 Canal nativo overlay no listo (se reintentará al minimizar): $e',
+          tag: 'DriverOverlay',
+        );
+      }
+    }
+    _overlayDiag('listo para turno activo', extra: 'llegando=$llegando espera=$enEspera');
   }
 
   /// Llamar al finalizar turno o cerrar sesión.
@@ -146,10 +176,8 @@ class DriverOverlayService {
   void _scheduleBackgroundShow() {
     final generation = _foregroundGeneration;
     _showDebounce?.cancel();
-    AppLogger.i(
-      '🔵 Overlay programado en ${_backgroundShowDelay.inMilliseconds}ms',
-      tag: 'DriverOverlay',
-    );
+    AppLogger.i('🔵 Overlay programado en ${_backgroundShowDelay.inMilliseconds}ms', tag: 'DriverOverlay');
+    AppDiagnostics.record('overlay', 'programado', extra: '${_backgroundShowDelay.inMilliseconds}ms');
     _showDebounce = Timer(_backgroundShowDelay, () {
       unawaited(_attemptBackgroundShow(generation));
     });
@@ -161,7 +189,7 @@ class DriverOverlayService {
       return;
     }
 
-    AppLogger.i('🔵 Overlay intentando mostrar…', tag: 'DriverOverlay');
+    _overlayDiag('intentando mostrar');
 
     final ctx = _pendingShowContext;
     final first = await _showForBackgroundIfNeeded(
@@ -176,6 +204,7 @@ class DriverOverlayService {
     await Future<void>.delayed(_backgroundRetryDelay);
     if (generation != _foregroundGeneration) return;
 
+    _overlayDiag('reintento mostrar');
     await _showForBackgroundIfNeeded(
       ctx != null && ctx.mounted ? ctx : null,
       isRetry: true,
@@ -471,7 +500,7 @@ class DriverOverlayService {
         );
 
         _activeMode = mode;
-        AppLogger.i('🔵 Overlay mostrado (modo: $mode)', tag: 'DriverOverlay');
+        _overlayDiag('mostrado', extra: 'modo=$mode');
 
         await Future<void>.delayed(const Duration(milliseconds: 300));
         if (!FcmIsolateContext.isBackgroundHandler) {
@@ -483,6 +512,7 @@ class DriverOverlayService {
           _lastShareData = shareData;
         }
       } catch (e, st) {
+        _overlayDiagWarn('showOverlay falló', extra: e.toString());
         AppLogger.e(
           'showOverlay falló',
           tag: 'DriverOverlay',

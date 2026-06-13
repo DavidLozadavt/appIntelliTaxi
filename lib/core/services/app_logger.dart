@@ -30,7 +30,11 @@ class AppLogger {
 
   static void _log(LogLevel level, Object? message, {String? tag}) {
     if (!kDebugMode && level == LogLevel.debug) return;
-    if (!kDebugMode && level == LogLevel.info) return;
+    // En release: INFO solo para tags críticos (overlay, GPS background).
+    if (!kDebugMode && level == LogLevel.info) {
+      const releaseInfoTags = {'DriverOverlay', 'BackgroundLocation'};
+      if (tag == null || !releaseInfoTags.contains(tag)) return;
+    }
     if (kDebugMode && !_allowVerboseInDebug && level == LogLevel.debug) return;
 
     final levelText = switch (level) {

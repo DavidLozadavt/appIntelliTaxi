@@ -31,6 +31,15 @@
 ## Preserve annotations
 -keepattributes *Annotation*,Signature,Exception
 
+## flutter_overlay_window (burbuja flotante — R8 release)
+-keep class flutter.overlay.window.flutter_overlay_window.** { *; }
+-keepclassmembers class * {
+    @pragma.vm.entry.point <methods>;
+}
+
+## App nativa (Application, MainActivity, FCM, overlay engine cache)
+-keep class com.virtualt.intellitaxi.** { *; }
+
 ## Play Core / deferred components
 -keep class com.google.android.play.core.** { *; }
 -dontwarn com.google.android.play.core.**

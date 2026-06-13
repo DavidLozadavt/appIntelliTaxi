@@ -827,7 +827,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       );
       _isOnline = true;
       _sincronizarVehiculoSeleccionadoConTurno();
-      unawaited(DriverOverlayService.instance.onTurnStarted());
+      _syncGpsConEstadoTurno();
+      unawaited(syncOverlayForActiveTurn());
       if (!_isDisposed) notifyListeners();
       AppLogger.d('✅ Turno restaurado desde cache: $turnoId');
       return true;
@@ -860,7 +861,13 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
     }
 
-    await Future.wait([bootstrapSeguro(), turnoSeguro()]);
+    // Turno antes que bootstrap: evita que estado-actual borre turno recién validado
+    // y desarme la burbuja (onTurnEnded) en paralelo con onTurnStarted.
+    await turnoSeguro();
+    await bootstrapSeguro();
+    if (_turnoActivo != null && _isOnline) {
+      unawaited(syncOverlayForActiveTurn());
+    }
   }
 
   Future<void> _completarInicializacionLenta() async {
@@ -994,18 +1001,22 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       if (estado != null) {
-        if (!estado.turnoActivo) {
+        if (!estado.turnoActivo && _turnoActivo == null) {
           final prefs = await SharedPreferences.getInstance();
           final cacheId = prefs.getInt('turno_activo_id');
-          if (_turnoActivo != null ||
-              _isOnline ||
-              (cacheId != null && cacheId > 0)) {
+          if (_isOnline || (cacheId != null && cacheId > 0)) {
             AppLogger.d(
-              'ℹ️ estado-actual: sin turno activo; limpiando cache local',
+              'ℹ️ estado-actual: sin turno activo; limpiando cache local obsoleto',
               tag: 'Turno',
             );
             await _limpiarTurnoActivoLocal(clearSelectedVehicle: false);
           }
+        } else if (!estado.turnoActivo && _turnoActivo != null) {
+          AppLogger.d(
+            'ℹ️ estado-actual sin turno pero turno_actual ya cargado '
+            '(id=${_turnoActivo!.id}); se conserva turno local',
+            tag: 'Turno',
+          );
         }
 
         _aplicarFlagsDescanso(
@@ -1018,6 +1029,9 @@ class ConductorHomeProvider extends ChangeNotifier {
           await _desuscribirRecepcionServicios();
           await _suscribirEmergenciasFlota();
           _limpiarColaSolicitudesLocal();
+          if (_turnoActivo != null) {
+            unawaited(syncOverlayForActiveTurn());
+          }
           if (!_isDisposed) notifyListeners();
           return;
         }
@@ -4162,6 +4176,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         unawaited(conectarSocket());
       }
       _syncGpsConEstadoTurno();
+      unawaited(syncOverlayForActiveTurn());
       if (!_isDisposed) notifyListeners();
       return;
     }
@@ -4398,7 +4413,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _sincronizarVehiculoSeleccionadoConTurno();
     await conectarSocket();
     _syncGpsConEstadoTurno();
-    unawaited(DriverOverlayService.instance.onTurnStarted());
+    unawaited(syncOverlayForActiveTurn());
     final pos = _currentPosition;
     if (pos != null) {
       unawaited(_sendMapHeartbeat(pos, force: true));
@@ -4704,9 +4719,19 @@ class ConductorHomeProvider extends ChangeNotifier {
     return DioErrorMessage.from(error, fallback: fallback);
   }
 
+  /// Arma overlay + FGS igual que al pulsar «Iniciar turno» (login con turno abierto, restore API/caché).
+  Future<void> syncOverlayForActiveTurn() async {
+    if (_isDisposed || _turnoActivo == null || !_isOnline) return;
+    await DriverOverlayService.instance.ensureReadyForActiveTurn(
+      llegando: totalSolicitudesLlegando,
+      enEspera: totalSolicitudesEnEspera,
+    );
+    _prepararServicioUbicacionBackground();
+  }
+
   Future<void> _actualizarBurbujaSegundoPlano() async {
     if (!_isOnline || _turnoActivo == null) {
-      unawaited(DriverOverlayService.instance.onTurnEnded());
+      await DriverOverlayService.instance.hide();
       return;
     }
     await ConductorOverlayBadgeStore.write(

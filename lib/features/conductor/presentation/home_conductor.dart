@@ -276,6 +276,12 @@ class _HomeConductorState extends State<HomeConductor>
     if (!mounted) return;
     unawaited(_navigateToActiveServiceIfNeeded());
 
+    // Turno ya activo al entrar (login / restore): mismo setup que tras «Iniciar turno».
+    if (_provider.tieneTurnoActivo && _provider.isOnline) {
+      unawaited(_provider.syncOverlayForActiveTurn());
+      unawaited(DriverOverlayPermissionFlow.promptAfterShiftStarted(context));
+    }
+
     // Burbuja overlay: no bloquear el arranque del mapa.
     if (!mounted) return;
     unawaited(
