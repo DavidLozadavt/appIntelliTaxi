@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
+import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Flujo educativo para permiso «Mostrar sobre otras apps» (burbuja al minimizar).
@@ -63,14 +65,50 @@ class DriverOverlayPermissionFlow {
 
   /// Tras iniciar turno: sin mensajes si la burbuja ya está configurada.
   static Future<void> promptAfterShiftStarted(BuildContext context) async {
+    await promptForExistingActiveTurn(context);
+  }
+
+  /// Turno ya abierto (login / restore): pedir permiso aunque antes dijera «Ahora no».
+  static Future<void> promptForExistingActiveTurn(BuildContext context) async {
     if (!context.mounted || !isSupported) return;
-    if (await DriverOverlayService.instance.hasPermission()) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_keyHomePromptDone) == true) return;
+    if (await DriverOverlayService.instance.hasPermission()) {
+      await _syncOverlayAfterPermission(context);
+      return;
+    }
 
+    if (_dialogVisible || _homePromptInFlight) return;
+    _homePromptInFlight = true;
+    try {
+      if (!context.mounted) return;
+      await _showEducationDialog(
+        context,
+        intro:
+            'Tienes un turno activo. Para ver la burbuja al salir de TaxbelUrbano '
+            '(WhatsApp, mapas, llamadas), activa «Mostrar sobre otras apps».',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyHomePromptDone, true);
+    } finally {
+      _homePromptInFlight = false;
+    }
+
+    await _syncOverlayAfterPermission(context);
+  }
+
+  static Future<void> _syncOverlayAfterPermission(BuildContext context) async {
     if (!context.mounted) return;
-    await promptOnConductorHomeEntered(context);
+    if (!await DriverOverlayService.instance.hasPermission()) return;
+
+    try {
+      final home = context.read<ConductorHomeProvider>();
+      if (home.tieneTurnoActivo && home.isOnline) {
+        home.scheduleOverlaySyncWithRetries(reason: 'permiso_ok');
+        return;
+      }
+    } catch (_) {}
+
+    await DriverOverlayService.instance.ensureReadyForActiveTurn();
   }
 
   /// Reinicia avisos (p. ej. cerrar sesión en otro dispositivo).
@@ -229,6 +267,7 @@ class DriverOverlayPermissionFlow {
     if (granted) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_keyHomePromptDone, true);
+      await _syncOverlayAfterPermission(context);
       return;
     }
 

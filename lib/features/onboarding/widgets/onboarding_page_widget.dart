@@ -31,7 +31,7 @@ class OnboardingPageWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isBrandLogo = page.imagePath.contains('logoTaxbel.webp');
+    final isBrandLogoOnly = page.imagePath.contains('logoTaxbel.webp');
 
     return Container(
       color: const Color(0xFF17130D),
@@ -48,9 +48,35 @@ class OnboardingPageWidget extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (isBrandLogo)
-                    _BrandLogoImage(isDark: isDark)
-                  else
+                  if (page.showBrandLogo) ...[
+                    _BrandLogoImage(isDark: isDark),
+                    const SizedBox(height: 20),
+                    _TitleSection(page: page),
+                    const SizedBox(height: 10),
+                    Text(
+                      page.description,
+                      textAlign: TextAlign.center,
+                      style: _descriptionStyle,
+                    ),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: Image.asset(
+                        page.imagePath,
+                        fit: BoxFit.contain,
+                        alignment: page.imageAlignment,
+                      ),
+                    ),
+                  ] else if (isBrandLogoOnly) ...[
+                    _BrandLogoImage(isDark: isDark),
+                    const SizedBox(height: 28),
+                    _TitleSection(page: page),
+                    const SizedBox(height: 10),
+                    Text(
+                      page.description,
+                      textAlign: TextAlign.center,
+                      style: _descriptionStyle,
+                    ),
+                  ] else ...[
                     Expanded(
                       flex: 3,
                       child: Padding(
@@ -62,14 +88,14 @@ class OnboardingPageWidget extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (isBrandLogo) const SizedBox(height: 28),
-                  _TitleSection(page: page),
-                  const SizedBox(height: 10),
-                  Text(
-                    page.description,
-                    textAlign: TextAlign.center,
-                    style: _descriptionStyle,
-                  ),
+                    _TitleSection(page: page),
+                    const SizedBox(height: 10),
+                    Text(
+                      page.description,
+                      textAlign: TextAlign.center,
+                      style: _descriptionStyle,
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -78,6 +78,17 @@ class _HomeConductorState extends State<HomeConductor>
   bool _validandoTurno = false;
   bool _selectorVehiculoAbierto = false;
   bool _accionTurnoUiEnCurso = false;
+  int? _lastOverlaySyncTurnoId;
+
+  void _onProviderForOverlay() {
+    if (!mounted) return;
+    final turnoId = _provider.tieneTurnoActivo ? _provider.turnoActivo?.id : null;
+    if (turnoId == null || !_provider.isOnline) return;
+    if (_lastOverlaySyncTurnoId == turnoId) return;
+    _lastOverlaySyncTurnoId = turnoId;
+    _provider.scheduleOverlaySyncWithRetries(reason: 'provider_turno');
+    unawaited(DriverOverlayPermissionFlow.promptForExistingActiveTurn(context));
+  }
   void _irATabEnEspera() {
     if (_serviciosTabController.index != 1) {
       _serviciosTabController.animateTo(1);
@@ -165,6 +176,7 @@ class _HomeConductorState extends State<HomeConductor>
     _provider.addListener(_syncKeepScreenOn);
     _provider.addListener(_onProviderForNavigation);
     _provider.addListener(_onProviderUiMensajes);
+    _provider.addListener(_onProviderForOverlay);
     unawaited(KeepScreenOnService.loadPreference().then((_) {
       if (mounted) _syncKeepScreenOn();
     }));
@@ -249,7 +261,7 @@ class _HomeConductorState extends State<HomeConductor>
 
     try {
       await _provider.initialize().timeout(
-        const Duration(seconds: 15),
+        const Duration(seconds: 25),
         onTimeout: () {
           AppLogger.d(
             '⏱️ Conductor initialize timeout — desbloqueando home',
@@ -276,13 +288,14 @@ class _HomeConductorState extends State<HomeConductor>
     if (!mounted) return;
     unawaited(_navigateToActiveServiceIfNeeded());
 
-    // Turno ya activo al entrar (login / restore): mismo setup que tras «Iniciar turno».
+    // Turno ya activo: permiso + overlay (mismo flujo que «Iniciar turno»).
     if (_provider.tieneTurnoActivo && _provider.isOnline) {
-      unawaited(_provider.syncOverlayForActiveTurn());
-      unawaited(DriverOverlayPermissionFlow.promptAfterShiftStarted(context));
+      _lastOverlaySyncTurnoId = _provider.turnoActivo?.id;
+      _provider.scheduleOverlaySyncWithRetries(reason: 'home_bootstrap');
+      unawaited(DriverOverlayPermissionFlow.promptForExistingActiveTurn(context));
     }
 
-    // Burbuja overlay: no bloquear el arranque del mapa.
+    // Recordatorio suave si aún no hay turno.
     if (!mounted) return;
     unawaited(
       Future<void>.delayed(const Duration(seconds: 2), () async {
@@ -423,6 +436,7 @@ class _HomeConductorState extends State<HomeConductor>
     _provider.removeListener(_syncKeepScreenOn);
     _provider.removeListener(_onProviderForNavigation);
     _provider.removeListener(_onProviderUiMensajes);
+    _provider.removeListener(_onProviderForOverlay);
     unawaited(KeepScreenOnService.release('conductor_turno'));
     _provider.removeNuevaSolicitudListener(_onNuevaSolicitudRecibida);
     WidgetsBinding.instance.removeObserver(this);
@@ -442,6 +456,9 @@ class _HomeConductorState extends State<HomeConductor>
       _invalidateMapController();
       setState(() => _mapResumeGeneration++);
       unawaited(_provider.refrescarEnResume());
+      if (_provider.tieneTurnoActivo && _provider.isOnline) {
+        _provider.scheduleOverlaySyncWithRetries(reason: 'lifecycle_resumed');
+      }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       unawaited(_provider.onAppLifecyclePaused());

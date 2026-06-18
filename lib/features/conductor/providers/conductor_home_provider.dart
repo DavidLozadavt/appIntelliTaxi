@@ -41,6 +41,7 @@ import 'package:intellitaxi/features/conductor/utils/conductor_socket_payload_ro
 import 'package:intellitaxi/features/conductor/services/conductor_oferta_navigation.dart';
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 import 'package:intellitaxi/main.dart';
+import 'package:intellitaxi/core/bootstrap/runtime_bootstrap.dart';
 import 'package:intellitaxi/core/diagnostics/app_diagnostics.dart';
 import 'package:intellitaxi/core/services/background_location_service.dart';
 import 'package:intellitaxi/core/utils/app_lifecycle_helper.dart';
@@ -76,6 +77,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _streamGpsActivo = false;
   DateTime? _lastResumeRefreshAt;
   bool _resumeRefreshInFlight = false;
+  int _overlaySyncGeneration = 0;
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
   final ConductorSolicitudEnrichmentService _solicitudEnrichment =
@@ -828,7 +830,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _isOnline = true;
       _sincronizarVehiculoSeleccionadoConTurno();
       _syncGpsConEstadoTurno();
-      unawaited(syncOverlayForActiveTurn());
+      scheduleOverlaySyncWithRetries(reason: 'cache');
       if (!_isDisposed) notifyListeners();
       AppLogger.d('✅ Turno restaurado desde cache: $turnoId');
       return true;
@@ -851,22 +853,86 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
 
     Future<void> turnoSeguro() async {
-      if (_enServicio) return;
       try {
-        await cargarTurnoActual(restaurarCacheSiFallaRed: false).timeout(
+        await restaurarTurnoDesdeCache();
+        await cargarTurnoActual(restaurarCacheSiFallaRed: true).timeout(
           const Duration(seconds: 15),
         );
       } catch (e) {
         AppLogger.d('⚠️ cargarTurnoActual en arranque: $e', tag: 'Turno');
+        if (_turnoActivo == null) {
+          await restaurarTurnoDesdeCache();
+        }
       }
     }
 
-    // Turno antes que bootstrap: evita que estado-actual borre turno recién validado
-    // y desarme la burbuja (onTurnEnded) en paralelo con onTurnStarted.
+    // Turno antes que bootstrap: evita que estado-actual borre turno recién validado.
     await turnoSeguro();
     await bootstrapSeguro();
     if (_turnoActivo != null && _isOnline) {
-      unawaited(syncOverlayForActiveTurn());
+      scheduleOverlaySyncWithRetries(reason: 'initialize');
+    }
+  }
+
+  /// Limpia memoria de sesión al cerrar sesión (el turno en servidor no se toca).
+  Future<void> resetForLogout() async {
+    _overlaySyncGeneration++;
+    _enServicio = false;
+    _servicioActivoId = null;
+    _servicioActivoPendienteNavegacion = null;
+    _turnoActivo = null;
+    _isOnline = false;
+    _turnoValidadoConServidorEnSesion = false;
+    _enDescanso = false;
+    _procesandoTurno = false;
+    _suscritoASocket = false;
+    await desconectarSocket();
+    _detenerSeguimientoUbicacion();
+    unawaited(_detenerHeartbeatMapaSegundoPlano());
+    if (!_isDisposed) notifyListeners();
+  }
+
+  /// Reintenta armar overlay (login con turno abierto, permisos tardíos, bootstrap lento).
+  void scheduleOverlaySyncWithRetries({String reason = ''}) {
+    if (_isDisposed || _turnoActivo == null || !_isOnline) return;
+    final turnoId = _turnoActivo!.id;
+    _overlaySyncGeneration++;
+    final gen = _overlaySyncGeneration;
+    AppLogger.i(
+      '🔵 Overlay sync programado (turno=$turnoId, $reason)',
+      tag: 'DriverOverlay',
+    );
+    unawaited(_runOverlaySyncRetries(gen, turnoId));
+  }
+
+  Future<void> _runOverlaySyncRetries(int gen, int turnoId) async {
+    if (!RuntimeBootstrap.isComplete) {
+      AppLogger.i(
+        '🔵 Overlay sync esperando bootstrap…',
+        tag: 'DriverOverlay',
+      );
+      try {
+        await RuntimeBootstrap.whenComplete.timeout(const Duration(seconds: 90));
+      } catch (_) {
+        AppLogger.w('🔵 Bootstrap timeout; sync overlay igual', tag: 'DriverOverlay');
+      }
+    }
+
+    const delays = [
+      Duration.zero,
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+      Duration(seconds: 20),
+    ];
+    for (final delay in delays) {
+      if (gen != _overlaySyncGeneration || _isDisposed) return;
+      if (_turnoActivo?.id != turnoId || !_isOnline) return;
+      if (delay > Duration.zero) {
+        await Future<void>.delayed(delay);
+      }
+      if (gen != _overlaySyncGeneration || _isDisposed) return;
+      await syncOverlayForActiveTurn();
     }
   }
 
@@ -1030,7 +1096,7 @@ class ConductorHomeProvider extends ChangeNotifier {
           await _suscribirEmergenciasFlota();
           _limpiarColaSolicitudesLocal();
           if (_turnoActivo != null) {
-            unawaited(syncOverlayForActiveTurn());
+            scheduleOverlaySyncWithRetries(reason: 'descanso');
           }
           if (!_isDisposed) notifyListeners();
           return;
@@ -4176,7 +4242,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         unawaited(conectarSocket());
       }
       _syncGpsConEstadoTurno();
-      unawaited(syncOverlayForActiveTurn());
+      scheduleOverlaySyncWithRetries(reason: 'red');
       if (!_isDisposed) notifyListeners();
       return;
     }
@@ -4299,6 +4365,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (_turnoActivo == null || !_isOnline) return;
 
       _syncGpsConEstadoTurno();
+      scheduleOverlaySyncWithRetries(reason: 'resume');
 
       await sincronizarSolicitudesPublicadasConductor(forzar: true);
       await sincronizarOfertaActiva();
@@ -4413,7 +4480,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _sincronizarVehiculoSeleccionadoConTurno();
     await conectarSocket();
     _syncGpsConEstadoTurno();
-    unawaited(syncOverlayForActiveTurn());
+    scheduleOverlaySyncWithRetries(reason: 'aplicar_turno');
     final pos = _currentPosition;
     if (pos != null) {
       unawaited(_sendMapHeartbeat(pos, force: true));

@@ -6,6 +6,7 @@ class OnboardingPageModel {
   final String description;
   final String imagePath;
   final Alignment imageAlignment;
+  final bool showBrandLogo;
 
   const OnboardingPageModel({
     required this.title,
@@ -13,6 +14,7 @@ class OnboardingPageModel {
     required this.description,
     required this.imagePath,
     this.imageAlignment = Alignment.center,
+    this.showBrandLogo = false,
   });
 }
 
@@ -30,6 +32,7 @@ final List<OnboardingPageModel> onboardingPages = [
     title: 'Eficiencia Inteligente',
     description:
         'Pide tu transporte en segundos. Rapidez y simplicidad redefinidas para tu comodidad.',
-    imagePath: 'assets/images/logoTaxbel.webp',
+    imagePath: 'assets/images/taxiOboarding.png',
+    showBrandLogo: true,
   ),
 ];

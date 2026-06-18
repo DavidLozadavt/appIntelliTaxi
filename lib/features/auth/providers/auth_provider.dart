@@ -6,6 +6,9 @@ import 'package:intellitaxi/core/bootstrap/session_snapshot.dart';
 import 'package:intellitaxi/core/services/active_service_check_cache.dart';
 import 'package:intellitaxi/core/services/device_token_sync_service.dart';
 import 'package:intellitaxi/features/rides/services/active_service_manager.dart';
+import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
+import 'package:intellitaxi/main.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../data/auth_model.dart';
@@ -100,6 +103,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> clearSessionOnExpiry() async {
     try {
       await _authService.clearSession(skipLogoutApi: true);
+      await _resetConductorSessionState();
       SessionPreload.invalidate();
       ActiveServiceCheckCache.invalidate();
       ActiveServiceManager.invalidateFetchCache();
@@ -126,6 +130,7 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
 
       await _authService.clearSession();
+      await _resetConductorSessionState();
       SessionPreload.invalidate();
       ActiveServiceCheckCache.invalidate();
       ActiveServiceManager.invalidateFetchCache();
@@ -164,6 +169,14 @@ class AuthProvider with ChangeNotifier {
 
   Future<Map<String, dynamic>?> getSavedCredentials() async {
     return await _authService.getSavedCredentials();
+  }
+
+  Future<void> _resetConductorSessionState() async {
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null) return;
+    try {
+      await ctx.read<ConductorHomeProvider>().resetForLogout();
+    } catch (_) {}
   }
 
   Future<bool> register({

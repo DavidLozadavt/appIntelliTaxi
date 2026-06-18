@@ -137,7 +137,6 @@ class DriverOverlayService {
 
     if (_isRequestingPermission) {
       _logPermissionMissing('pidiendo permiso al usuario');
-      return;
     }
 
     requestShowWhenBackgrounded(context: context);
