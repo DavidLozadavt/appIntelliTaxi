@@ -66,7 +66,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
               padding: const EdgeInsets.all(16),
               itemCount: provider.notifications.length,
               itemExtent: 76,
-              cacheExtent: 500,
+              // cacheExtent: 500,
               addAutomaticKeepAlives: false,
               itemBuilder: (context, index) {
                 final notif = provider.notifications[index];

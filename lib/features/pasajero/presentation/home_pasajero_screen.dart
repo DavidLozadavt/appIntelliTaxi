@@ -68,6 +68,9 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _isLoadingLocation = true;
   String _locationMessage =
       'Verificando tu ubicación actual con GPS de alta precisión...';
+  String _locationActionLabel = 'Reintentar ubicación';
+  IconData _locationActionIcon = Icons.refresh_rounded;
+  bool _locationNeedsSettings = false;
 
   // Para el bottom sheet con snap
   final DraggableScrollableController _sheetController =
@@ -658,8 +661,9 @@ class _HomePasajeroState extends State<HomePasajero>
                 child: LocationStatusView(
                   isLoading: _isLoadingLocation,
                   message: _locationMessage,
-                  onRetry: _initializeLocation,
-                  actionLabel: 'Reintentar ubicación',
+                  onRetry: _handleLocationRecovery,
+                  actionLabel: _locationActionLabel,
+                  actionIcon: _locationActionIcon,
                 ),
               )
             : RepaintBoundary(
@@ -1005,18 +1009,102 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
+  void _setLocationFailure({
+    required bool serviceEnabled,
+    required PermissionStatus permission,
+    String? overrideMessage,
+  }) {
+    _isLoadingLocation = false;
+    _locationMessage = overrideMessage ??
+        DeviceLocationService.messageForFailure(
+          serviceEnabled: serviceEnabled,
+          permission: permission,
+        );
+    _locationNeedsSettings = DeviceLocationService.needsSettingsRecovery(
+      serviceEnabled: serviceEnabled,
+      permission: permission,
+    );
+    _locationActionLabel = DeviceLocationService.actionLabelForFailure(
+      serviceEnabled: serviceEnabled,
+      permission: permission,
+    );
+    _locationActionIcon = _locationNeedsSettings
+        ? Icons.settings_rounded
+        : Icons.refresh_rounded;
+  }
+
+  Future<void> _handleLocationRecovery() async {
+    // Escape durante loading: detiene el spinner para que el usuario pueda
+    // reintentar o abrir ajustes sin quedar atrapado.
+    if (_isLoadingLocation) {
+      _setStateSafe(() {
+        _isLoadingLocation = false;
+        _locationMessage =
+            'El GPS tardó demasiado. Toca reintentar para continuar.';
+        _locationActionLabel = 'Reintentar ubicación';
+        _locationActionIcon = Icons.refresh_rounded;
+        _locationNeedsSettings = false;
+      });
+      return;
+    }
+
+    final serviceEnabled = await DeviceLocationService.isServiceEnabled();
+    final permission = await DeviceLocationService.locationPermissionStatus();
+
+    if (DeviceLocationService.needsSettingsRecovery(
+      serviceEnabled: serviceEnabled,
+      permission: permission,
+    )) {
+      _setStateSafe(() {
+        _setLocationFailure(
+          serviceEnabled: serviceEnabled,
+          permission: permission,
+        );
+      });
+      await DeviceLocationService.openRecoverySettings(
+        serviceEnabled: serviceEnabled,
+        permission: permission,
+      );
+      return;
+    }
+
+    await _initializeLocation();
+  }
+
   Future<void> _initializeLocation() async {
     _setStateSafe(() {
       _isLoadingLocation = true;
+      _locationNeedsSettings = false;
+      _locationActionLabel = 'Reintentar ubicación';
+      _locationActionIcon = Icons.refresh_rounded;
       _locationMessage = 'Verificando permisos...';
     });
 
+    try {
+      await _initializeLocationBody()
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      AppLogger.w('Timeout inicializando ubicación pasajero', tag: 'HomePasajero');
+      if (!mounted) return;
+      final serviceEnabled = await DeviceLocationService.isServiceEnabled();
+      final permission = await DeviceLocationService.locationPermissionStatus();
+      _setStateSafe(() {
+        _setLocationFailure(
+          serviceEnabled: serviceEnabled,
+          permission: permission,
+          overrideMessage:
+              'El GPS tardó demasiado. Toca reintentar para continuar.',
+        );
+      });
+    }
+  }
+
+  Future<void> _initializeLocationBody() async {
     if (!await DeviceLocationService.isServiceEnabled()) {
       final permission =
           await DeviceLocationService.locationPermissionStatus();
       _setStateSafe(() {
-        _isLoadingLocation = false;
-        _locationMessage = DeviceLocationService.messageForFailure(
+        _setLocationFailure(
           serviceEnabled: false,
           permission: permission,
         );
@@ -1030,8 +1118,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
     if (!permissionGranted) {
       _setStateSafe(() {
-        _isLoadingLocation = false;
-        _locationMessage = DeviceLocationService.messageForFailure(
+        _setLocationFailure(
           serviceEnabled: true,
           permission: permission,
         );
@@ -1052,8 +1139,7 @@ class _HomePasajeroState extends State<HomePasajero>
         final permission =
             await DeviceLocationService.locationPermissionStatus();
         _setStateSafe(() {
-          _isLoadingLocation = false;
-          _locationMessage = DeviceLocationService.messageForFailure(
+          _setLocationFailure(
             serviceEnabled: true,
             permission: permission,
           );
@@ -1106,8 +1192,7 @@ class _HomePasajeroState extends State<HomePasajero>
         final permission =
             await DeviceLocationService.locationPermissionStatus();
         _setStateSafe(() {
-          _isLoadingLocation = false;
-          _locationMessage = DeviceLocationService.messageForFailure(
+          _setLocationFailure(
             serviceEnabled: true,
             permission: permission,
           );

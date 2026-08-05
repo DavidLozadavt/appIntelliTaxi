@@ -49,6 +49,15 @@ abstract final class RuntimePerfFlags {
   /// Poll de respaldo solo si el stream GPS falla (no corre en paralelo).
   static const Duration mapHeartbeatPollIntervalFallback = Duration(seconds: 20);
 
+  /// Si no llega ningún fix GPS en este tiempo, reinicia stream + poll.
+  static const Duration conductorGpsStaleAfter = Duration(seconds: 25);
+
+  /// Cada cuánto se revisa si el GPS del home está estancado.
+  static const Duration conductorGpsWatchdogInterval = Duration(seconds: 15);
+
+  /// lastKnown más viejo que esto no se pinta como posición válida al resume.
+  static const Duration conductorGpsLastKnownMaxAge = Duration(minutes: 2);
+
   /// Heartbeat mapa flota parado.
   static const Duration mapHeartbeatMinInterval = Duration(seconds: 30);
 

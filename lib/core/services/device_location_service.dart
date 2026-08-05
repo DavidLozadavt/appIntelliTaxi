@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
@@ -21,24 +23,64 @@ class DeviceLocationResult {
 class DeviceLocationService {
   DeviceLocationService._();
 
+  static const Duration permissionRequestTimeout = Duration(seconds: 15);
+  static const Duration resolveTimeout = Duration(seconds: 12);
+
   static Future<bool> isServiceEnabled() => Geolocator.isLocationServiceEnabled();
 
   static Future<PermissionStatus> locationPermissionStatus() =>
       Permission.location.status;
 
-  static Future<bool> requestLocationPermission() async {
+  /// Solicita permiso de ubicación con tope duro.
+  /// Sin timeout, `Permission.location.request()` puede colgarse si el diálogo
+  /// del sistema no aparece o queda tapado por otro overlay.
+  static Future<bool> requestLocationPermission({
+    Duration timeout = permissionRequestTimeout,
+  }) async {
     if (!await isServiceEnabled()) return false;
 
     var status = await Permission.location.status;
     if (status.isGranted) return true;
+    if (status.isPermanentlyDenied) return false;
 
-    status = await Permission.location.request();
+    try {
+      status = await Permission.location.request().timeout(timeout);
+    } on TimeoutException {
+      AppLogger.w(
+        'Timeout pidiendo permiso de ubicación (${timeout.inSeconds}s)',
+        tag: 'DeviceLocation',
+      );
+      status = await Permission.location.status;
+    }
     return status.isGranted;
+  }
+
+  /// Abre ajustes de GPS o de la app según el fallo detectado.
+  static Future<void> openRecoverySettings({
+    required bool serviceEnabled,
+    required PermissionStatus permission,
+  }) async {
+    if (!serviceEnabled) {
+      await Geolocator.openLocationSettings();
+      return;
+    }
+    if (permission.isPermanentlyDenied || permission.isDenied) {
+      await openAppSettings();
+    }
+  }
+
+  /// True cuando el reintento debe abrir ajustes en lugar de volver a pedir GPS.
+  static bool needsSettingsRecovery({
+    required bool serviceEnabled,
+    required PermissionStatus permission,
+  }) {
+    if (!serviceEnabled) return true;
+    return permission.isPermanentlyDenied;
   }
 
   /// Intenta GPS actual → última conocida → (solo debug) centro de Popayán.
   static Future<DeviceLocationResult?> resolveCurrentPosition({
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = resolveTimeout,
     Duration lastKnownMaxAge = const Duration(minutes: 5),
   }) async {
     Position? lastKnown;
@@ -67,9 +109,9 @@ class DeviceLocationService {
         accuracy: LocationAccuracy.medium,
         timeLimit: timeout,
       ),
-      const LocationSettings(
+      LocationSettings(
         accuracy: LocationAccuracy.low,
-        timeLimit: Duration(seconds: 20),
+        timeLimit: timeout,
       ),
     ];
 
@@ -144,5 +186,14 @@ class DeviceLocationService {
       return 'No se pudo obtener GPS. En el emulador: Extended Controls → Location → fija Popayán, o reintenta (debug usa centro urbano).';
     }
     return 'No se pudo obtener tu ubicación. Revisa GPS y permisos.';
+  }
+
+  static String actionLabelForFailure({
+    required bool serviceEnabled,
+    required PermissionStatus permission,
+  }) {
+    if (!serviceEnabled) return 'Activar ubicación';
+    if (permission.isPermanentlyDenied) return 'Abrir ajustes';
+    return 'Reintentar ubicación';
   }
 }

@@ -1,7 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 
-class LocationStatusView extends StatelessWidget {
+class LocationStatusView extends StatefulWidget {
   final bool isLoading;
   final String message;
   final VoidCallback onRetry;
@@ -9,6 +11,10 @@ class LocationStatusView extends StatelessWidget {
   final IconData actionIcon;
   final String loadingTitle;
   final String unavailableTitle;
+
+  /// Tras este tiempo en loading, se muestra el botón de recuperación
+  /// para que el usuario no quede atrapado si el GPS/permiso se cuelga.
+  final Duration showActionWhileLoadingAfter;
 
   const LocationStatusView({
     super.key,
@@ -19,11 +25,55 @@ class LocationStatusView extends StatelessWidget {
     this.actionIcon = Icons.refresh_rounded,
     this.loadingTitle = 'Conectando GPS',
     this.unavailableTitle = 'Ubicación no disponible',
+    this.showActionWhileLoadingAfter = const Duration(seconds: 8),
   });
+
+  @override
+  State<LocationStatusView> createState() => _LocationStatusViewState();
+}
+
+class _LocationStatusViewState extends State<LocationStatusView> {
+  Timer? _escapeTimer;
+  bool _showActionWhileLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncEscapeTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant LocationStatusView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isLoading != widget.isLoading) {
+      _syncEscapeTimer();
+    }
+  }
+
+  void _syncEscapeTimer() {
+    _escapeTimer?.cancel();
+    if (!widget.isLoading) {
+      _showActionWhileLoading = false;
+      return;
+    }
+    _showActionWhileLoading = false;
+    _escapeTimer = Timer(widget.showActionWhileLoadingAfter, () {
+      if (!mounted || !widget.isLoading) return;
+      setState(() => _showActionWhileLoading = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _escapeTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isLoading = widget.isLoading;
+    final showAction = !isLoading || _showActionWhileLoading;
 
     return Container(
       decoration: BoxDecoration(
@@ -92,7 +142,7 @@ class LocationStatusView extends StatelessWidget {
             ),
             const SizedBox(height: 32),
             Text(
-              isLoading ? loadingTitle : unavailableTitle,
+              isLoading ? widget.loadingTitle : widget.unavailableTitle,
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -105,7 +155,7 @@ class LocationStatusView extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Text(
-                message,
+                widget.message,
                 style: TextStyle(
                   fontSize: 15,
                   color: colorScheme.onSurfaceVariant,
@@ -115,7 +165,7 @@ class LocationStatusView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 32),
-            if (!isLoading) ...[
+            if (showAction) ...[
               Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
@@ -128,7 +178,7 @@ class LocationStatusView extends StatelessWidget {
                   ],
                 ),
                 child: ElevatedButton(
-                  onPressed: onRetry,
+                  onPressed: widget.onRetry,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: colorScheme.primary,
                     foregroundColor: colorScheme.onPrimary,
@@ -144,10 +194,10 @@ class LocationStatusView extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(actionIcon, size: 22),
+                      Icon(widget.actionIcon, size: 22),
                       const SizedBox(width: 10),
                       Text(
-                        actionLabel,
+                        widget.actionLabel,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,

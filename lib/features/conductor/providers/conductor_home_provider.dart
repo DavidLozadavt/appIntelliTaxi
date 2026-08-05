@@ -66,6 +66,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   String? _zonaActual;
   StreamSubscription<Position>? _locationSubscription;
   Timer? _locationPollFallbackTimer;
+  Timer? _gpsStaleWatchdogTimer;
   Future<void>? _locationStreamStartFuture;
   Position? _lastAreaResolvedPosition;
   DateTime? _lastAreaResolvedAt;
@@ -73,8 +74,11 @@ class ConductorHomeProvider extends ChangeNotifier {
   Position? _lastLocationUiNotifyPosition;
   DateTime? _lastMapHeartbeatAt;
   Position? _lastMapHeartbeatPosition;
+  /// Momento local del último fix aplicado (stream/poll/resume).
+  DateTime? _lastGpsEventAt;
   bool _isSendingMapHeartbeat = false;
   bool _streamGpsActivo = false;
+  bool _gpsFreshFixInFlight = false;
   DateTime? _lastResumeRefreshAt;
   bool _resumeRefreshInFlight = false;
   int _overlaySyncGeneration = 0;
@@ -959,7 +963,7 @@ class ConductorHomeProvider extends ChangeNotifier {
             'El GPS tardó demasiado. Toca reintentar para continuar.';
       }
       if (!_isDisposed) notifyListeners();
-      AppLogger.d('⏱️ initializeLocation timeout en arranque', tag: 'Turno');
+      AppLogger.d('⏱️ initializeLocation timeout', tag: 'Turno');
     }
   }
 
@@ -1580,6 +1584,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     _overlayPendienteGpsTimer = null;
     _detenerSincronizacionSolicitudes();
     _detenerSeguimientoUbicacion();
+    _detenerPollUbicacionFallback();
+    _detenerGpsStaleWatchdog();
     unawaited(_detenerHeartbeatMapaSegundoPlano());
     _detenerPollOfertaActiva();
     _detenerTickOfertaExclusiva();
@@ -3595,7 +3601,10 @@ class ConductorHomeProvider extends ChangeNotifier {
 
     if (!permissionGranted) {
       _isLoadingLocation = false;
-      _locationMessage = 'Permisos de ubicación denegados';
+      // Mantener el mensaje ya seteado en _checkAndRequestPermissions
+      if (_locationMessage == 'Estableciendo conexión satelital...') {
+        _locationMessage = 'Permisos de ubicación denegados';
+      }
       if (!_isDisposed) notifyListeners();
       return;
     }
@@ -3605,6 +3614,17 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   Future<void> handleLocationRecoveryAction() async {
     if (_isDisposed) return;
+
+    // Escape durante loading: detiene spinner sin reabrir permisos encima.
+    if (_isLoadingLocation) {
+      _isLoadingLocation = false;
+      if (_currentPosition == null) {
+        _locationMessage =
+            'El GPS tardó demasiado. Toca reintentar para continuar.';
+      }
+      if (!_isDisposed) notifyListeners();
+      return;
+    }
 
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -3626,7 +3646,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       return;
     }
 
-    await initializeLocation();
+    await _initUbicacionConTimeout();
   }
 
   /// Verifica y solicita permisos de ubicación
@@ -3643,7 +3663,16 @@ class ConductorHomeProvider extends ChangeNotifier {
     LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+      try {
+        permission = await Geolocator.requestPermission()
+            .timeout(const Duration(seconds: 15));
+      } on TimeoutException {
+        AppLogger.w(
+          'Timeout pidiendo permiso de ubicación (conductor)',
+          tag: 'Turno',
+        );
+        permission = await Geolocator.checkPermission();
+      }
       if (permission == LocationPermission.denied) {
         _locationMessage = 'Permisos de ubicación denegados';
         if (!_isDisposed) notifyListeners();
@@ -3670,11 +3699,14 @@ class ConductorHomeProvider extends ChangeNotifier {
         // Tras instalar o primer arranque, el GPS en frío tarda; la caché del SO evita pantalla vacía.
         try {
           final last = await Geolocator.getLastKnownPosition();
-          if (last != null && !_isDisposed) {
-            _currentPosition = last;
-            _isLoadingLocation = false;
-            _locationMessage = 'Ubicación obtenida';
-            notifyListeners();
+          if (last != null &&
+              !_isDisposed &&
+              _esLastKnownUsable(last)) {
+            _aplicarPosicionLocal(
+              last,
+              forceUi: true,
+              fromCache: true,
+            );
             _syncGpsConEstadoTurno();
             unawaited(_sendMapHeartbeat(last, force: true));
             _reintentarOverlaysPendientesRadio();
@@ -3694,10 +3726,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
       if (_isDisposed) return;
 
-      _currentPosition = position;
-      _isLoadingLocation = false;
-      _locationMessage = 'Ubicación obtenida';
-      if (!_isDisposed) notifyListeners();
+      _aplicarPosicionLocal(position, forceUi: true);
       _syncGpsConEstadoTurno();
       await _sendMapHeartbeat(position, force: true);
       _reintentarOverlaysPendientesRadio();
@@ -3722,6 +3751,35 @@ class ConductorHomeProvider extends ChangeNotifier {
       _isLoadingLocation = false;
       _locationMessage = 'Error obteniendo ubicación: ${e.toString()}';
       if (!_isDisposed) notifyListeners();
+    }
+  }
+
+  bool _esLastKnownUsable(Position last) {
+    final age = DateTime.now().difference(last.timestamp);
+    if (age.isNegative) return false;
+    return age <= RuntimePerfFlags.conductorGpsLastKnownMaxAge;
+  }
+
+  void _aplicarPosicionLocal(
+    Position position, {
+    bool forceUi = false,
+    bool fromCache = false,
+  }) {
+    if (_isDisposed) return;
+    if (!fromCache) {
+      _lastGpsEventAt = DateTime.now();
+    } else {
+      _lastGpsEventAt ??= position.timestamp;
+    }
+    _currentPosition = position;
+    _isLoadingLocation = false;
+    _locationMessage = 'Ubicación obtenida';
+    if (forceUi) {
+      _lastLocationUiNotifyAt = DateTime.now();
+      _lastLocationUiNotifyPosition = position;
+      if (!_isDisposed) notifyListeners();
+    } else {
+      _notifyLocationUiIfNeeded(position);
     }
   }
 
@@ -3754,11 +3812,13 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (!_debeSeguirGps()) {
       _detenerSeguimientoUbicacion();
       _detenerPollUbicacionFallback();
+      _detenerGpsStaleWatchdog();
       unawaited(_detenerHeartbeatMapaSegundoPlano());
       return;
     }
 
     unawaited(_iniciarSeguimientoUbicacionConPermisos());
+    _iniciarGpsStaleWatchdog();
     _prepararServicioUbicacionBackground();
   }
 
@@ -3801,7 +3861,7 @@ class ConductorHomeProvider extends ChangeNotifier {
   void _iniciarPollUbicacionFallback() {
     if (_isDisposed || !_debeSeguirGps() || _streamGpsActivo) return;
     _detenerPollUbicacionFallback();
-    unawaited(_pollUbicacionUnica());
+    unawaited(_pollUbicacionUnica(forceUi: true));
     _locationPollFallbackTimer = Timer.periodic(
       RuntimePerfFlags.mapHeartbeatPollIntervalFallback,
       (_) => unawaited(_pollUbicacionUnica()),
@@ -3813,7 +3873,48 @@ class ConductorHomeProvider extends ChangeNotifier {
     _locationPollFallbackTimer = null;
   }
 
-  Future<void> _pollUbicacionUnica() async {
+  void _iniciarGpsStaleWatchdog() {
+    if (_isDisposed || !_debeSeguirGps()) return;
+    if (_gpsStaleWatchdogTimer != null) return;
+    _gpsStaleWatchdogTimer = Timer.periodic(
+      RuntimePerfFlags.conductorGpsWatchdogInterval,
+      (_) => unawaited(_verificarGpsNoEstancado()),
+    );
+  }
+
+  void _detenerGpsStaleWatchdog() {
+    _gpsStaleWatchdogTimer?.cancel();
+    _gpsStaleWatchdogTimer = null;
+  }
+
+  /// Si el stream queda “activo” pero silencioso, el pin se congela (p. ej. Barrio Modelo).
+  Future<void> _verificarGpsNoEstancado() async {
+    if (_isDisposed || !_debeSeguirGps()) return;
+
+    final lastEvent = _lastGpsEventAt;
+    if (lastEvent != null) {
+      final age = DateTime.now().difference(lastEvent);
+      if (!age.isNegative &&
+          age < RuntimePerfFlags.conductorGpsStaleAfter) {
+        return;
+      }
+    } else if (_currentPosition == null) {
+      // Sin posición aún: el arranque normal se encarga.
+      return;
+    }
+
+    AppLogger.w(
+      'GPS estancado (${lastEvent == null ? 'sin evento' : '${DateTime.now().difference(lastEvent).inSeconds}s'}): reinicio stream + poll',
+      tag: 'UbicacionAPI',
+    );
+
+    _detenerSeguimientoUbicacion();
+    await _pollUbicacionUnica(forceUi: true);
+    if (_isDisposed || !_debeSeguirGps()) return;
+    unawaited(_iniciarSeguimientoUbicacionConPermisos());
+  }
+
+  Future<void> _pollUbicacionUnica({bool forceUi = false}) async {
     if (_isDisposed || !_debeSeguirGps()) return;
     if (!await _tienePermisoUbicacionActivo()) return;
     try {
@@ -3827,7 +3928,7 @@ class ConductorHomeProvider extends ChangeNotifier {
         '📍 Poll GPS turno: ${position.latitude}, ${position.longitude}',
         tag: 'UbicacionAPI',
       );
-      _onPositionUpdate(position);
+      _onPositionUpdate(position, forceUi: forceUi);
     } catch (e) {
       AppLogger.d('⚠️ Poll ubicación fallback: $e');
     }
@@ -3887,7 +3988,7 @@ class ConductorHomeProvider extends ChangeNotifier {
     _locationSubscription = Geolocator.getPositionStream(
       locationSettings: _locationStreamSettings(),
     ).listen(
-      _onPositionUpdate,
+      (position) => _onPositionUpdate(position),
       onError: _manejarErrorStreamUbicacion,
       onDone: () {
         _streamGpsActivo = false;
@@ -3905,13 +4006,12 @@ class ConductorHomeProvider extends ChangeNotifier {
     _streamGpsActivo = false;
   }
 
-  void _onPositionUpdate(Position position) {
+  void _onPositionUpdate(Position position, {bool forceUi = false}) {
     if (_isDisposed) return;
-    _currentPosition = position;
+    _aplicarPosicionLocal(position, forceUi: forceUi);
     unawaited(_sendMapHeartbeat(position));
     _purgarSolicitudesFueraDeRadio();
     _reintentarOverlaysPendientesRadio();
-    _notifyLocationUiIfNeeded(position);
   }
 
   /// Evita rebuild del home en cada tick GPS; el mapa sigue fluido con intervalo corto.
@@ -4253,28 +4353,60 @@ class ConductorHomeProvider extends ChangeNotifier {
     }
   }
 
-  /// Al volver a la app: restaura GPS con última posición conocida para no vaciar el mapa.
+  /// Al volver a la app: no pinta lastKnown encima de un fix vivo; siempre pide GPS fresco.
   Future<void> refrescarUbicacionEnResume({bool soloGps = false}) async {
     if (_isDisposed) return;
+
+    if (_currentPosition == null) {
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          _aplicarPosicionLocal(last, forceUi: true, fromCache: true);
+        }
+      } catch (e) {
+        AppLogger.d('⚠️ getLastKnownPosition en resume: $e');
+      }
+    }
+
+    _syncGpsConEstadoTurno();
+    await _forzarFixGpsFresca(soloGps: soloGps);
+  }
+
+  Future<void> _forzarFixGpsFresca({bool soloGps = false}) async {
+    if (_isDisposed || _gpsFreshFixInFlight) return;
+    _gpsFreshFixInFlight = true;
     try {
-      final last = await Geolocator.getLastKnownPosition();
-      if (last != null) {
-        _currentPosition = last;
-        _isLoadingLocation = false;
-        _locationMessage = 'Ubicación obtenida';
-        _syncGpsConEstadoTurno();
-        if (!_isDisposed) notifyListeners();
-        if (!soloGps && _isOnline && _turnoActivo != null) {
-          unawaited(_sendMapHeartbeat(last, force: false));
+      if (!await _tienePermisoUbicacionActivo()) {
+        if (_currentPosition == null) {
+          await _initUbicacionConTimeout();
         }
         return;
       }
-    } catch (e) {
-      AppLogger.d('⚠️ getLastKnownPosition en resume: $e');
-    }
 
-    if (_currentPosition == null) {
-      await initializeLocation();
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      if (_isDisposed) return;
+
+      _aplicarPosicionLocal(position, forceUi: true);
+      _syncGpsConEstadoTurno();
+      if (!soloGps && _isOnline && _turnoActivo != null) {
+        unawaited(_sendMapHeartbeat(position, force: true));
+      }
+      AppLogger.d(
+        '📍 GPS fresco en resume: ${position.latitude}, ${position.longitude}',
+        tag: 'UbicacionAPI',
+      );
+    } catch (e) {
+      AppLogger.d('⚠️ Fix GPS fresco en resume: $e');
+      if (_currentPosition == null) {
+        await _initUbicacionConTimeout();
+      }
+    } finally {
+      _gpsFreshFixInFlight = false;
     }
   }
 
