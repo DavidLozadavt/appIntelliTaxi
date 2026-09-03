@@ -7,9 +7,27 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 class MapDotMarkerFactory {
   MapDotMarkerFactory._();
 
+  static final Map<String, Future<BitmapDescriptor>> _cache = {};
+
+  static String _cacheKey({
+    required Color color,
+    required double size,
+  }) => '${color.toARGB32()}_${size.toStringAsFixed(1)}';
+
   static Future<BitmapDescriptor> create({
     required Color color,
     double size = 36,
+  }) {
+    final key = _cacheKey(color: color, size: size);
+    return _cache.putIfAbsent(
+      key,
+      () => _createUncached(color: color, size: size),
+    );
+  }
+
+  static Future<BitmapDescriptor> _createUncached({
+    required Color color,
+    required double size,
   }) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);

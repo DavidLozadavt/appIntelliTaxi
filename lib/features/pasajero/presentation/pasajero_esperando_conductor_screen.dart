@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -40,6 +41,8 @@ class _PasajeroEsperandoConductorScreenState
   GoogleMapController? _mapController;
   bool _driverCameraCentered = false;
   String? _lastMapCameraKey;
+  DateTime? _lastCameraUpdateAt;
+  LatLng? _lastCameraDriverPosition;
   bool _terminalFlowStarted = false;
   bool _timeoutDialogShown = false;
   bool _rechazoConductorSnackShown = false;
@@ -443,12 +446,21 @@ class _PasajeroEsperandoConductorScreenState
       return;
     }
 
+    final now = DateTime.now();
+    final driver = provider.conductorUbicacion;
+    if (_lastCameraUpdateAt != null &&
+        now.difference(_lastCameraUpdateAt!) < const Duration(milliseconds: 900) &&
+        !_cameraNeedsMove(driver)) {
+      return;
+    }
+
     final cameraKey =
         '${provider.polylines.length}_'
-        '${provider.conductorUbicacion?.latitude}_'
-        '${provider.conductorUbicacion?.longitude}';
+        '${driver == null ? 'none' : '${driver.latitude.toStringAsFixed(4)}_${driver.longitude.toStringAsFixed(4)}'}';
     if (cameraKey == _lastMapCameraKey) return;
     _lastMapCameraKey = cameraKey;
+    _lastCameraUpdateAt = now;
+    _lastCameraDriverPosition = driver;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _mapController == null) return;
@@ -466,6 +478,10 @@ class _PasajeroEsperandoConductorScreenState
     if (_driverCameraCentered) return;
     if (_mapController == null) return;
     if (provider.conductorUbicacion == null) return;
+    if (!_cameraNeedsMove(provider.conductorUbicacion)) {
+      _driverCameraCentered = true;
+      return;
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
@@ -478,11 +494,25 @@ class _PasajeroEsperandoConductorScreenState
         _mapController!.animateCamera(
           CameraUpdate.newLatLngBounds(bounds, 100),
         );
+        _lastCameraUpdateAt = DateTime.now();
+        _lastCameraDriverPosition = provider.conductorUbicacion;
         _driverCameraCentered = true;
       } catch (_) {
         // Ignorar errores de cámara intermitentes durante reconstrucción del mapa.
       }
     });
+  }
+
+  bool _cameraNeedsMove(LatLng? nextDriver) {
+    final lastDriver = _lastCameraDriverPosition;
+    if (nextDriver == null || lastDriver == null) return true;
+    final movedMeters = Geolocator.distanceBetween(
+      lastDriver.latitude,
+      lastDriver.longitude,
+      nextDriver.latitude,
+      nextDriver.longitude,
+    );
+    return movedMeters >= 18;
   }
 
   Widget _buildBuscandoConductor(PasajeroServicioActivoProvider provider) {

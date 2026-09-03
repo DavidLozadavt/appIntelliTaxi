@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/rides/services/servicio_socket_service.dart';
@@ -53,6 +54,8 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   bool _isFetchingService = false;
   bool _disposed = false;
   static final Map<int, LatLng> _lastConductorLocationCache = {};
+  String? _lastRouteCacheKey;
+  DateTime? _lastServiceFetchAt;
 
   // ===== GETTERS =====
   Map<String, dynamic>? get conductor => _conductor;
@@ -457,17 +460,22 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         final lng = data['conductor_lng'] ?? data['lng'];
 
         if (lat != null && lng != null) {
+          final nextLocation = LatLng(
+            PasajeroServicioMapper.parseDouble(lat),
+            PasajeroServicioMapper.parseDouble(lng),
+          );
+          final prevLocation = _conductorUbicacion;
           _setConductorUbicacion(
-            LatLng(
-              PasajeroServicioMapper.parseDouble(lat),
-              PasajeroServicioMapper.parseDouble(lng),
-            ),
+            nextLocation,
           );
 
           if (_conductor == null) {
             _obtenerInfoServicio();
           }
           _actualizarMarcadores();
+          if (_debeRedibujarRutaPorCambioConductor(prevLocation, nextLocation)) {
+            unawaited(_dibujarRuta(force: true));
+          }
           _notifyListenersSafe();
         }
       },
@@ -494,7 +502,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         if (eraBusqueda && !isBuscando) {
           _alSalirDeBusqueda();
         }
-        _dibujarRuta();
+        unawaited(_dibujarRuta(force: true));
         _notifyListenersSafe();
       },
     );
@@ -511,7 +519,13 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
   /// 📡 Obtiene información del servicio desde la API
   Future<void> _obtenerInfoServicio() async {
     if (_disposed || _isFetchingService) return;
+    final now = DateTime.now();
+    if (_lastServiceFetchAt != null &&
+        now.difference(_lastServiceFetchAt!) < const Duration(seconds: 3)) {
+      return;
+    }
     _isFetchingService = true;
+    _lastServiceFetchAt = now;
     try {
       final dio = DioClient.getInstance();
       AppLogger.d(
@@ -598,17 +612,22 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
           if ((servicio['conductor_lat'] ?? servicio['conductorLat']) != null &&
               (servicio['conductor_lng'] ?? servicio['conductorLng']) != null) {
-            _setConductorUbicacion(
-              LatLng(
-                PasajeroServicioMapper.parseDouble(
-                  servicio['conductor_lat'] ?? servicio['conductorLat'],
-                ),
-                PasajeroServicioMapper.parseDouble(
-                  servicio['conductor_lng'] ?? servicio['conductorLng'],
-                ),
+            final prevLocation = _conductorUbicacion;
+            final nextLocation = LatLng(
+              PasajeroServicioMapper.parseDouble(
+                servicio['conductor_lat'] ?? servicio['conductorLat'],
+              ),
+              PasajeroServicioMapper.parseDouble(
+                servicio['conductor_lng'] ?? servicio['conductorLng'],
               ),
             );
+            _setConductorUbicacion(
+              nextLocation,
+            );
             _actualizarMarcadores();
+            if (_debeRedibujarRutaPorCambioConductor(prevLocation, nextLocation)) {
+              unawaited(_dibujarRuta(force: true));
+            }
           } else if (_lastConductorLocationCache.containsKey(servicioId)) {
             _conductorUbicacion = _lastConductorLocationCache[servicioId];
             _actualizarMarcadores();
@@ -656,18 +675,21 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       ),
     );
 
-    _dibujarRuta();
     _notifyListenersSafe();
   }
 
   /// 🛣️ Dibuja la ruta en el mapa
-  Future<void> _dibujarRuta() async {
+  Future<void> _dibujarRuta({bool force = false}) async {
     if (_disposed) return;
     final origen = PasajeroServicioMapper.origen(datosServicio);
     final destino = PasajeroServicioMapper.destino(datosServicio);
     if (destino == null) return;
 
+    final routeKey = _buildRouteCacheKey(origen, destino);
+    if (!force && routeKey == _lastRouteCacheKey) return;
+
     try {
+      _lastRouteCacheKey = routeKey;
       _polylines.clear();
 
       // Ruta conductor → origen (solo si está yendo a recoger)
@@ -715,6 +737,34 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     } catch (e) {
       AppLogger.d('❌ Error dibujando rutas: $e');
     }
+  }
+
+  String _buildRouteCacheKey(LatLng origen, LatLng destino) {
+    final conductor = _conductorUbicacion;
+    final conductorKey = conductor == null
+        ? 'none'
+        : '${conductor.latitude.toStringAsFixed(4)}_${conductor.longitude.toStringAsFixed(4)}';
+    return '${_estadoServicio}_'
+        '${origen.latitude.toStringAsFixed(4)}_${origen.longitude.toStringAsFixed(4)}_'
+        '${destino.latitude.toStringAsFixed(4)}_${destino.longitude.toStringAsFixed(4)}_'
+        '$conductorKey';
+  }
+
+  bool _debeRedibujarRutaPorCambioConductor(
+    LatLng? previous,
+    LatLng next,
+  ) {
+    if (previous == null) return true;
+    if (!(_estadoServicio == 'aceptado' || _estadoServicio == 'en_camino')) {
+      return false;
+    }
+    final movedMeters = Geolocator.distanceBetween(
+      previous.latitude,
+      previous.longitude,
+      next.latitude,
+      next.longitude,
+    );
+    return movedMeters >= 20;
   }
 
   /// 📏 Calcula los límites del mapa para centrar

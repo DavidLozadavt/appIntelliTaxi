@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:geolocator/geolocator.dart';
@@ -27,6 +26,7 @@ import 'package:intellitaxi/features/sanciones/services/sancion_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_service.dart';
 import 'package:intellitaxi/core/services/driver_overlay_permission_flow.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
+import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_pending_fcm.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
@@ -306,41 +306,9 @@ class _HomeConductorState extends State<HomeConductor>
   }
 
   Future<void> _crearDotMarker() async {
-    const double s = 36;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    const color = AppColors.primary;
-
-    // Sombra
-    canvas.drawCircle(
-      const Offset(s / 2, s / 2 + 1),
-      s / 3,
-      Paint()
-        ..color = color.withValues(alpha: 0.3)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-    // Borde blanco
-    canvas.drawCircle(
-      const Offset(s / 2, s / 2),
-      s / 3,
-      Paint()..color = Colors.white,
-    );
-    // Círculo interior principal
-    canvas.drawCircle(
-      const Offset(s / 2, s / 2),
-      s / 4,
-      Paint()..color = color,
-    );
-
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(s.toInt(), s.toInt());
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-
-    if (mounted) {
-      setState(() {
-        _dotMarker = BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
-      });
-    }
+    final marker = await MapDotMarkerFactory.create(color: AppColors.primary);
+    if (!mounted) return;
+    setState(() => _dotMarker = marker);
   }
 
   Future<void> _cargarSanciones() async {

@@ -33,6 +33,7 @@ import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/services/geocode_memory_cache.dart';
+import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_active_service_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_nearby_drivers_controller.dart';
@@ -601,51 +602,11 @@ class _HomePasajeroState extends State<HomePasajero>
   /// Crea un icono tipo punto para destino (sin usar pines por defecto de Google)
   Future<void> _createDestinationPointIcon() async {
     try {
-      const double size = 28;
-      const double outerRadius = 11;
-      const double innerRadius = 6;
-
-      final ui.PictureRecorder recorder = ui.PictureRecorder();
-      final Canvas canvas = Canvas(recorder);
-
-      final Paint shadowPaint = Paint()
-        ..color = Colors.black.withValues(alpha: 0.22)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-      canvas.drawCircle(
-        const Offset(size / 2 + 0.8, size / 2 + 1.2),
-        outerRadius,
-        shadowPaint,
+      final icon = await MapDotMarkerFactory.create(
+        color: Colors.black,
+        size: 28,
       );
-
-      final Paint ringPaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(
-        const Offset(size / 2, size / 2),
-        outerRadius,
-        ringPaint,
-      );
-
-      final Paint corePaint = Paint()
-        ..color = Colors.black
-        ..style = PaintingStyle.fill;
-      canvas.drawCircle(
-        const Offset(size / 2, size / 2),
-        innerRadius,
-        corePaint,
-      );
-
-      final ui.Image image = await recorder.endRecording().toImage(
-        size.toInt(),
-        size.toInt(),
-      );
-      final ByteData? bytes = await image.toByteData(
-        format: ui.ImageByteFormat.png,
-      );
-      final Uint8List? png = bytes?.buffer.asUint8List();
-      if (png == null) return;
-
-      _setStateSafe(() => _destinationPointIcon = BitmapDescriptor.bytes(png));
+      _setStateSafe(() => _destinationPointIcon = icon);
     } catch (e) {
       AppLogger.w('No se pudo crear icono punto de destino: $e');
     }
