@@ -49,6 +49,7 @@ import 'package:intellitaxi/features/conductor/utils/conductor_incoming_dedup_st
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/core/utils/json_payload_helper.dart';
 import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
+import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 
 export 'package:intellitaxi/features/conductor/conductor_constants.dart';
 
@@ -1154,6 +1155,23 @@ class ConductorHomeProvider extends ChangeNotifier {
           ServicioPayloadAdapter.unwrapNavegacionPayload(detalleNavegacion) ??
               detalleNavegacion;
       _servicioActivoPendienteNavegacion = nav;
+    }
+
+    if (_servicioActivoPendienteNavegacion == null && servicioActivoId != null) {
+      final local = await ServicioPersistenciaService().obtenerServicioActivo();
+      final datos = local?['datos'];
+      final localId = local?['servicioId'];
+      if (local != null &&
+          local['tipo']?.toString() == 'conductor' &&
+          datos is Map &&
+          (localId == null || localId.toString() == servicioActivoId.toString())) {
+        _servicioActivoPendienteNavegacion = {
+          'servicio': Map<String, dynamic>.from(datos),
+        };
+        AppLogger.d(
+          '✅ Servicio activo restaurado desde persistencia local (#$servicioActivoId)',
+        );
+      }
     }
 
     if (!_isDisposed) notifyListeners();

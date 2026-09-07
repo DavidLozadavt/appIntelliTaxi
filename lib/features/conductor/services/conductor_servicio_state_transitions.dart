@@ -45,26 +45,29 @@ class ConductorServicioStateTransitions {
   }
 
   /// Destino de navegación según el estado del viaje.
+  /// WhatsApp / sin destino: siempre el punto donde pidieron el servicio.
   static LatLng? resolveDestinoNavegacion({
     required Map<String, dynamic> servicio,
     required String estadoUi,
   }) {
+    final n = SolicitudDisplayHelper.normalizeSolicitudMap(servicio);
     final tieneDestino =
-        ConductorServicioEstadoHelper.tieneDestinoDefinido(servicio);
+        ConductorServicioEstadoHelper.tieneDestinoDefinido(n);
 
-    if ((estadoUi == 'llegue' || estadoUi == 'en_curso') && tieneDestino) {
+    if (estadoUi == 'llegue' || estadoUi == 'en_curso') {
+      if (!tieneDestino) return null;
       return LatLng(
-        ConductorServicioEstadoHelper.parseDouble(servicio['destino_lat']),
-        ConductorServicioEstadoHelper.parseDouble(servicio['destino_lng']),
+        ConductorServicioEstadoHelper.parseDouble(n['destino_lat']),
+        ConductorServicioEstadoHelper.parseDouble(n['destino_lng']),
       );
     }
 
-    if ((estadoUi == 'en_camino' || estadoUi == 'aceptado') &&
-        SolicitudDisplayHelper.origenTieneMapa(servicio)) {
-      return LatLng(
-        ConductorServicioEstadoHelper.parseDouble(servicio['origen_lat']),
-        ConductorServicioEstadoHelper.parseDouble(servicio['origen_lng']),
-      );
+    final origenLat = SolicitudDisplayHelper.parseCoordinate(n['origen_lat']);
+    final origenLng = SolicitudDisplayHelper.parseCoordinate(n['origen_lng']);
+    if (origenLat != null &&
+        origenLng != null &&
+        (origenLat.abs() > 1e-6 || origenLng.abs() > 1e-6)) {
+      return LatLng(origenLat, origenLng);
     }
 
     return null;

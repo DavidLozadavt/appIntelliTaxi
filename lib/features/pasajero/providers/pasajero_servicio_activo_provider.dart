@@ -130,9 +130,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
 
     await _cargarIconosMarcadores();
     _crearMarcadores();
-    await _dibujarRuta();
     _hidratarConductorDesdePayloadInicial();
     await _restaurarUbicacionConductorPersistida();
+    await _dibujarRuta(force: true);
     _suscribirEventos();
     unawaited(PasajeroServicioNotificationHelper.clearForServicio(servicioId));
     if (isBuscando) {
@@ -440,30 +440,28 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         _alSalirDeBusqueda();
         unawaited(PasajeroServicioNotificationHelper.clearForServicio(servicioId));
 
-        _conductor = data;
-        if (data['conductor_lat'] != null && data['conductor_lng'] != null) {
-          _setConductorUbicacion(
-            LatLng(
-              PasajeroServicioMapper.parseDouble(data['conductor_lat']),
-              PasajeroServicioMapper.parseDouble(data['conductor_lng']),
-            ),
-          );
+        _conductor = PasajeroServicioMapper.conductorResumen(data) ?? data;
+        final ubicacion = PasajeroServicioMapper.conductorUbicacion(
+          data,
+          allowGenericLatLng: true,
+        );
+        if (ubicacion != null) {
+          _setConductorUbicacion(ubicacion);
         }
         _estadoServicio = 'aceptado';
         _actualizarMarcadores();
+        unawaited(_dibujarRuta(force: true));
         _notifyListenersSafe();
       },
       onUbicacionActualizada: (data) {
         if (_disposed) return;
         AppLogger.d('📍 Ubicación actualizada: $data');
-        final lat = data['conductor_lat'] ?? data['lat'];
-        final lng = data['conductor_lng'] ?? data['lng'];
+        final nextLocation = PasajeroServicioMapper.conductorUbicacion(
+          data,
+          allowGenericLatLng: true,
+        );
 
-        if (lat != null && lng != null) {
-          final nextLocation = LatLng(
-            PasajeroServicioMapper.parseDouble(lat),
-            PasajeroServicioMapper.parseDouble(lng),
-          );
+        if (nextLocation != null) {
           final prevLocation = _conductorUbicacion;
           _setConductorUbicacion(
             nextLocation,
@@ -610,29 +608,32 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
             vehiculo: vehiculoData,
           );
 
-          if ((servicio['conductor_lat'] ?? servicio['conductorLat']) != null &&
-              (servicio['conductor_lng'] ?? servicio['conductorLng']) != null) {
-            final prevLocation = _conductorUbicacion;
-            final nextLocation = LatLng(
-              PasajeroServicioMapper.parseDouble(
-                servicio['conductor_lat'] ?? servicio['conductorLat'],
-              ),
-              PasajeroServicioMapper.parseDouble(
-                servicio['conductor_lng'] ?? servicio['conductorLng'],
-              ),
-            );
-            _setConductorUbicacion(
-              nextLocation,
-            );
+          final prevLocation = _conductorUbicacion;
+          final nextLocation = PasajeroServicioMapper.conductorUbicacion({
+            ...servicio,
+            'conductor': conductorData,
+          });
+          if (nextLocation != null) {
+            _setConductorUbicacion(nextLocation);
             _actualizarMarcadores();
-            if (_debeRedibujarRutaPorCambioConductor(prevLocation, nextLocation)) {
+            if (!_tienePolylineConductorOrigen() ||
+                _debeRedibujarRutaPorCambioConductor(
+                  prevLocation,
+                  nextLocation,
+                )) {
               unawaited(_dibujarRuta(force: true));
             }
           } else if (_lastConductorLocationCache.containsKey(servicioId)) {
             _conductorUbicacion = _lastConductorLocationCache[servicioId];
             _actualizarMarcadores();
+            if (!_tienePolylineConductorOrigen()) {
+              unawaited(_dibujarRuta(force: true));
+            }
           } else {
             await _restaurarUbicacionConductorPersistida();
+            if (_conductorUbicacion != null && !_tienePolylineConductorOrigen()) {
+              unawaited(_dibujarRuta(force: true));
+            }
           }
 
           _notifyListenersSafe();
@@ -678,12 +679,25 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     _notifyListenersSafe();
   }
 
+  bool _vaARecogerPasajero() {
+    return _estadoServicio == 'aceptado' ||
+        _estadoServicio == 'en_camino' ||
+        _estadoServicio == 'llegue';
+  }
+
+  bool _tienePolylineConductorOrigen() {
+    return _polylines.any((p) => p.polylineId.value == 'conductor_origen');
+  }
+
+  bool _origenValido(LatLng origen) {
+    return origen.latitude != 0.0 && origen.longitude != 0.0;
+  }
+
   /// 🛣️ Dibuja la ruta en el mapa
   Future<void> _dibujarRuta({bool force = false}) async {
     if (_disposed) return;
     final origen = PasajeroServicioMapper.origen(datosServicio);
     final destino = PasajeroServicioMapper.destino(datosServicio);
-    if (destino == null) return;
 
     final routeKey = _buildRouteCacheKey(origen, destino);
     if (!force && routeKey == _lastRouteCacheKey) return;
@@ -692,61 +706,72 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
       _lastRouteCacheKey = routeKey;
       _polylines.clear();
 
-      // Ruta conductor → origen (solo si está yendo a recoger)
+      // Mientras va a recoger: SOLO carro → cliente (punto del servicio).
       if (_conductorUbicacion != null &&
-          (_estadoServicio == 'aceptado' || _estadoServicio == 'en_camino')) {
+          _vaARecogerPasajero() &&
+          _origenValido(origen)) {
         final rutaConductorOrigen = await _routesService.getRoute(
           origin: _conductorUbicacion!,
           destination: origen,
         );
+        final puntos = (rutaConductorOrigen != null &&
+                rutaConductorOrigen.polylinePoints.isNotEmpty)
+            ? rutaConductorOrigen.polylinePoints
+            : <LatLng>[_conductorUbicacion!, origen];
 
-        if (rutaConductorOrigen != null) {
-          _polylines.add(
-            Polyline(
-              polylineId: const PolylineId('conductor_origen'),
-              points: rutaConductorOrigen.polylinePoints,
-              color: Colors.blue,
-              width: 4,
-            ),
-          );
-        }
-      }
-
-      // Ruta origen → destino
-      final rutaOrigenDestino = await _routesService.getRoute(
-        origin: origen,
-        destination: destino,
-      );
-
-      if (rutaOrigenDestino != null) {
         _polylines.add(
           Polyline(
-            polylineId: const PolylineId('origen_destino'),
-            points: rutaOrigenDestino.polylinePoints,
-            color: Colors.deepOrange,
+            polylineId: const PolylineId('conductor_origen'),
+            points: puntos,
+            color: Colors.blue,
             width: 5,
             startCap: Cap.roundCap,
             endCap: Cap.roundCap,
             jointType: JointType.round,
           ),
         );
+      } else if (destino != null &&
+          _origenValido(origen) &&
+          _estadoServicio == 'en_curso') {
+        final origenRuta = _conductorUbicacion ?? origen;
+        final rutaViaje = await _routesService.getRoute(
+          origin: origenRuta,
+          destination: destino,
+        );
+
+        if (rutaViaje != null && rutaViaje.polylinePoints.isNotEmpty) {
+          _polylines.add(
+            Polyline(
+              polylineId: const PolylineId('origen_destino'),
+              points: rutaViaje.polylinePoints,
+              color: Colors.deepOrange,
+              width: 5,
+              startCap: Cap.roundCap,
+              endCap: Cap.roundCap,
+              jointType: JointType.round,
+            ),
+          );
+        }
       }
 
       _notifyListenersSafe();
-      AppLogger.d('✅ PROVIDER: Polylines dibujadas');
+      AppLogger.d('✅ PROVIDER: Polylines dibujadas (${_polylines.length})');
     } catch (e) {
       AppLogger.d('❌ Error dibujando rutas: $e');
     }
   }
 
-  String _buildRouteCacheKey(LatLng origen, LatLng destino) {
+  String _buildRouteCacheKey(LatLng origen, LatLng? destino) {
     final conductor = _conductorUbicacion;
     final conductorKey = conductor == null
         ? 'none'
         : '${conductor.latitude.toStringAsFixed(4)}_${conductor.longitude.toStringAsFixed(4)}';
+    final destinoKey = destino == null
+        ? 'none'
+        : '${destino.latitude.toStringAsFixed(4)}_${destino.longitude.toStringAsFixed(4)}';
     return '${_estadoServicio}_'
         '${origen.latitude.toStringAsFixed(4)}_${origen.longitude.toStringAsFixed(4)}_'
-        '${destino.latitude.toStringAsFixed(4)}_${destino.longitude.toStringAsFixed(4)}_'
+        '${destinoKey}_'
         '$conductorKey';
   }
 
@@ -755,7 +780,7 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     LatLng next,
   ) {
     if (previous == null) return true;
-    if (!(_estadoServicio == 'aceptado' || _estadoServicio == 'en_camino')) {
+    if (!_vaARecogerPasajero()) {
       return false;
     }
     final movedMeters = Geolocator.distanceBetween(
@@ -775,13 +800,21 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
     final lats = <double>[origen.latitude];
     final lngs = <double>[origen.longitude];
 
-    if (destino != null) {
-      lats.add(destino.latitude);
-      lngs.add(destino.longitude);
-    }
-    if (_conductorUbicacion != null) {
-      lats.add(_conductorUbicacion!.latitude);
-      lngs.add(_conductorUbicacion!.longitude);
+    // Al recoger, encuadrar solo carro + cliente (no el destino del viaje).
+    if (_vaARecogerPasajero()) {
+      if (_conductorUbicacion != null) {
+        lats.add(_conductorUbicacion!.latitude);
+        lngs.add(_conductorUbicacion!.longitude);
+      }
+    } else {
+      if (destino != null) {
+        lats.add(destino.latitude);
+        lngs.add(destino.longitude);
+      }
+      if (_conductorUbicacion != null) {
+        lats.add(_conductorUbicacion!.latitude);
+        lngs.add(_conductorUbicacion!.longitude);
+      }
     }
 
     return LatLngBounds(

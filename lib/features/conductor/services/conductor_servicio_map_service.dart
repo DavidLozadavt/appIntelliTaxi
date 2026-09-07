@@ -33,17 +33,19 @@ class ConductorServicioMapService {
     required BitmapDescriptor? carIcon,
     double? miBearing,
   }) {
-    final origenEnMapa = SolicitudDisplayHelper.origenTieneMapa(servicio);
-    final origenLat =
-        ConductorServicioEstadoHelper.parseDouble(servicio['origen_lat']);
-    final origenLng =
-        ConductorServicioEstadoHelper.parseDouble(servicio['origen_lng']);
+    final n = SolicitudDisplayHelper.normalizeSolicitudMap(servicio);
+    final origenLat = SolicitudDisplayHelper.parseCoordinate(n['origen_lat']);
+    final origenLng = SolicitudDisplayHelper.parseCoordinate(n['origen_lng']);
+    final origenEnMapa =
+        origenLat != null &&
+        origenLng != null &&
+        (origenLat.abs() > 1e-6 || origenLng.abs() > 1e-6);
     final destinoLat =
-        ConductorServicioEstadoHelper.parseDouble(servicio['destino_lat']);
+        ConductorServicioEstadoHelper.parseDouble(n['destino_lat']);
     final destinoLng =
-        ConductorServicioEstadoHelper.parseDouble(servicio['destino_lng']);
+        ConductorServicioEstadoHelper.parseDouble(n['destino_lng']);
     final tieneDestino =
-        ConductorServicioEstadoHelper.tieneDestinoDefinido(servicio);
+        ConductorServicioEstadoHelper.tieneDestinoDefinido(n);
 
     final markers = <Marker>{};
     if (origenEnMapa) {
@@ -54,7 +56,7 @@ class ConductorServicioMapService {
           icon: recogidaDot ?? BitmapDescriptor.defaultMarker,
           infoWindow: InfoWindow(
             title: 'Punto de Recogida',
-            snippet: servicio['origen_address']?.toString(),
+            snippet: n['origen_address']?.toString(),
           ),
           anchor: const Offset(0.5, 0.5),
         ),
@@ -70,7 +72,7 @@ class ConductorServicioMapService {
           infoWindow: InfoWindow(
             title: 'Destino Final',
             snippet:
-                servicio['destino_address']?.toString() ?? 'Destino no definido',
+                n['destino_address']?.toString() ?? 'Destino no definido',
           ),
           anchor: const Offset(0.5, 0.5),
         ),
@@ -118,11 +120,16 @@ class ConductorServicioMapService {
         );
       }
       AppLogger.d(
-        '⚠️ No se recibió polilínea válida; se conserva la ruta anterior',
+        '⚠️ OSRM sin ruta; se dibuja línea directa conductor → solicitud',
       );
     } catch (e) {
       AppLogger.d('❌ Error dibujando ruta: $e');
     }
-    return null;
+    return Polyline(
+      polylineId: const PolylineId('ruta_actual'),
+      points: [origin, destination],
+      color: color,
+      width: 5,
+    );
   }
 }

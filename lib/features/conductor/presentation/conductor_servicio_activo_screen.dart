@@ -93,10 +93,10 @@ class _ConductorServicioActivoScreenState
 
   bool get _canUpdateUi => mounted && !_terminalNavigationInProgress;
 
-  // 📏 Control de altura del BottomSheet
-  double _sheetHeight = 0.74;
-  final double _minHeight = 0.58;
-  final double _maxHeight = 0.90;
+  // 📏 Control de altura del BottomSheet (deja ver carro → cliente)
+  double _sheetHeight = 0.32;
+  final double _minHeight = 0.26;
+  final double _maxHeight = 0.50;
 
   @override
   void initState() {
@@ -236,13 +236,41 @@ class _ConductorServicioActivoScreenState
     }
   }
 
+  void _hidratarCoordenadasSolicitud() {
+    final n = SolicitudDisplayHelper.normalizeSolicitudMap(widget.servicio);
+    widget.servicio.addAll(n);
+  }
+
+  /// Punto donde pidieron el servicio (recogida). WhatsApp no trae destino.
+  LatLng? _puntoSolicitud() {
+    final n = SolicitudDisplayHelper.normalizeSolicitudMap(widget.servicio);
+    final lat = SolicitudDisplayHelper.parseCoordinate(n['origen_lat']);
+    final lng = SolicitudDisplayHelper.parseCoordinate(n['origen_lng']);
+    if (lat == null || lng == null) return null;
+    if (lat.abs() < 1e-6 && lng.abs() < 1e-6) return null;
+    return LatLng(lat, lng);
+  }
+
   void _actualizarDestinoSegunEstado(String? ui) {
     if (ui == null) return;
     _destinoActual = ConductorServicioStateTransitions.resolveDestinoNavegacion(
       servicio: widget.servicio,
       estadoUi: ui,
-    ) ??
-        _destinoActual;
+    );
+    if (_destinoActual == null &&
+        (ui == 'aceptado' || ui == 'en_camino')) {
+      _destinoActual = _puntoSolicitud();
+    }
+  }
+
+  bool _debeTrazarRutaAlPunto() {
+    if (_estadoUiEfectivo == 'aceptado' || _estadoUiEfectivo == 'en_camino') {
+      return true;
+    }
+    if (_estadoUiEfectivo == 'llegue' || _estadoUiEfectivo == 'en_curso') {
+      return _tieneDestinoDefinido();
+    }
+    return false;
   }
 
   Future<void> _salirPorServicioCerradoRemoto() async {
@@ -418,19 +446,14 @@ class _ConductorServicioActivoScreenState
     );
     if (!_canUpdateUi) return;
 
-    // Destino inicial según estado restaurado.
-    final origenLat = _parseDouble(widget.servicio['origen_lat']);
-    final origenLng = _parseDouble(widget.servicio['origen_lng']);
-    final destinoLat = _parseDouble(widget.servicio['destino_lat']);
-    final destinoLng = _parseDouble(widget.servicio['destino_lng']);
-
-    final tieneDestino = _tieneDestinoDefinido();
+    // WhatsApp / sin destino: la línea va de mi carro al punto de la solicitud.
+    _hidratarCoordenadasSolicitud();
     _safeSetState(() {
-      if (_estadoUiEfectivo == 'en_curso' && tieneDestino) {
-        _destinoActual = LatLng(destinoLat, destinoLng);
-      } else {
-        _destinoActual = LatLng(origenLat, origenLng);
-      }
+      _destinoActual = ConductorServicioStateTransitions.resolveDestinoNavegacion(
+            servicio: widget.servicio,
+            estadoUi: _estadoUiEfectivo,
+          ) ??
+          _puntoSolicitud();
     });
 
     // Obtener ubicación actual
@@ -552,8 +575,7 @@ class _ConductorServicioActivoScreenState
       _actualizarMarcadores();
       _dibujarRuta();
 
-      // Centrar cámara
-      _mapController?.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
+      _ajustarCamaraARuta();
 
       // Iniciar escucha continua de ubicación
       _iniciarStreamUbicacion();
@@ -586,9 +608,6 @@ class _ConductorServicioActivoScreenState
             _ultimoRedibujoRuta = ahora;
             _dibujarRuta();
           }
-
-          // Seguir al conductor en el mapa
-          _mapController?.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
         });
   }
 
@@ -644,9 +663,21 @@ class _ConductorServicioActivoScreenState
   }
 
   Future<void> _dibujarRuta() async {
+    if (!_debeTrazarRutaAlPunto()) {
+      if (!_canUpdateUi) return;
+      _safeSetState(_polylines.clear);
+      if (_miUbicacion != null) {
+        _mapController?.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
+      }
+      return;
+    }
+
+    _destinoActual ??= _puntoSolicitud();
     if (_miUbicacion == null || _destinoActual == null) return;
 
-    final color = _estadoUiEfectivo == 'en_curso' ? Colors.green : Colors.blue;
+    final color = _estadoUiEfectivo == 'en_curso' && _tieneDestinoDefinido()
+        ? Colors.green
+        : Colors.blue;
     final polyline = await _mapService.buildRoutePolyline(
       origin: _miUbicacion!,
       destination: _destinoActual!,
@@ -660,6 +691,43 @@ class _ConductorServicioActivoScreenState
         ..clear()
         ..add(polyline);
     });
+    _ajustarCamaraARuta();
+  }
+
+  void _ajustarCamaraARuta() {
+    if (_mapController == null || _miUbicacion == null) return;
+    final destino = _destinoActual;
+    if (destino == null) {
+      _mapController!.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
+      return;
+    }
+
+    final south = _miUbicacion!.latitude < destino.latitude
+        ? _miUbicacion!.latitude
+        : destino.latitude;
+    final north = _miUbicacion!.latitude > destino.latitude
+        ? _miUbicacion!.latitude
+        : destino.latitude;
+    final west = _miUbicacion!.longitude < destino.longitude
+        ? _miUbicacion!.longitude
+        : destino.longitude;
+    final east = _miUbicacion!.longitude > destino.longitude
+        ? _miUbicacion!.longitude
+        : destino.longitude;
+
+    try {
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(south, west),
+            northeast: LatLng(north, east),
+          ),
+          56,
+        ),
+      );
+    } catch (_) {
+      _mapController!.animateCamera(CameraUpdate.newLatLng(_miUbicacion!));
+    }
   }
 
   Future<void> _cambiarEstado(String nuevoEstado) async {
@@ -1098,14 +1166,20 @@ class _ConductorServicioActivoScreenState
         body: Stack(
           children: [
             // Mapa
-            if (_miUbicacion != null && _destinoActual != null)
+            if (_miUbicacion != null)
               StandardMap(
                 initialPosition: _miUbicacion!,
                 zoom: 15,
                 markers: _markers,
                 polylines: _polylines,
+                mapPadding: EdgeInsets.only(
+                  top: 12,
+                  bottom:
+                      MediaQuery.sizeOf(context).height * _sheetHeight + 8,
+                ),
                 onMapCreated: (controller) {
                   _mapController = controller;
+                  _ajustarCamaraARuta();
                 },
               )
             else
@@ -1183,9 +1257,9 @@ class _ConductorServicioActivoScreenState
                         onTap: () {
                           if (!_canUpdateUi) return;
                           _safeSetState(() {
-                            _sheetHeight = _sheetHeight < 0.66
-                                ? 0.74
-                                : _minHeight;
+                            _sheetHeight = _sheetHeight > _minHeight + 0.02
+                                ? _minHeight
+                                : 0.32;
                           });
                         },
                         child: Container(

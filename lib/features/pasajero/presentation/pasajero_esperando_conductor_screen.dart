@@ -49,10 +49,8 @@ class _PasajeroEsperandoConductorScreenState
   /// Evita que el post-frame dispare salida remota mientras cancelamos manualmente (misma petición).
   bool _cancelacionManualEnCurso = false;
 
-  // 📏 Control de altura del BottomSheet
-  double _sheetHeight = 0.45;
-  final double _minHeight = 0.25;
-  final double _maxHeight = 0.70;
+  // 📏 Bottom sheet: se ajusta al contenido (el mapa ocupa el resto).
+  bool _sheetExpandido = false;
 
   @override
   void initState() {
@@ -375,6 +373,10 @@ class _PasajeroEsperandoConductorScreenState
                     zoom: 14,
                     markers: provider.markers,
                     polylines: provider.polylines,
+                    mapPadding: EdgeInsets.only(
+                      top: 12,
+                      bottom: _mapBottomPadding(provider),
+                    ),
                     onMapCreated: (controller) {
                       _mapController = controller;
                       _lastMapCameraKey = null;
@@ -382,44 +384,13 @@ class _PasajeroEsperandoConductorScreenState
                     },
                   ),
 
-                  // Panel de información draggable
+                  // Panel de información: altura = contenido, no % de pantalla
                   if (!provider.isBuscando)
                     Positioned(
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      child: GestureDetector(
-                        onVerticalDragUpdate: (details) {
-                          setState(() {
-                            final screenHeight = MediaQuery.of(
-                              context,
-                            ).size.height;
-                            final delta = -details.primaryDelta! / screenHeight;
-                            _sheetHeight = (_sheetHeight + delta).clamp(
-                              _minHeight,
-                              _maxHeight,
-                            );
-                          });
-                        },
-                        onVerticalDragEnd: (details) {
-                          final velocity = details.primaryVelocity ?? 0;
-                          if (velocity.abs() > 500) {
-                            setState(() {
-                              if (velocity > 0) {
-                                _sheetHeight = _minHeight;
-                              } else {
-                                _sheetHeight = _maxHeight;
-                              }
-                            });
-                          }
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          height:
-                              MediaQuery.of(context).size.height * _sheetHeight,
-                          child: _buildPanelInfo(provider),
-                        ),
-                      ),
+                      child: _buildPanelInfo(provider),
                     ),
 
                   // Loading mientras busca conductor
@@ -438,6 +409,11 @@ class _PasajeroEsperandoConductorScreenState
         },
       ),
     );
+  }
+
+  double _mapBottomPadding(PasajeroServicioActivoProvider provider) {
+    if (provider.isBuscando) return 200;
+    return _sheetExpandido ? 260 : 200;
   }
 
   void _tryUpdateMapCamera(PasajeroServicioActivoProvider provider) {
@@ -466,7 +442,7 @@ class _PasajeroEsperandoConductorScreenState
       if (!mounted || _mapController == null) return;
       try {
         _mapController!.animateCamera(
-          CameraUpdate.newLatLngBounds(provider.calcularBounds(), 90),
+          CameraUpdate.newLatLngBounds(provider.calcularBounds(), 56),
         );
       } catch (_) {
         // Ignorar errores de cámara intermitentes durante reconstrucción del mapa.
@@ -492,7 +468,7 @@ class _PasajeroEsperandoConductorScreenState
       try {
         final bounds = provider.calcularBounds();
         _mapController!.animateCamera(
-          CameraUpdate.newLatLngBounds(bounds, 100),
+          CameraUpdate.newLatLngBounds(bounds, 56),
         );
         _lastCameraUpdateAt = DateTime.now();
         _lastCameraDriverPosition = provider.conductorUbicacion;
@@ -525,12 +501,10 @@ class _PasajeroEsperandoConductorScreenState
     final cs = theme.colorScheme;
     final origenAddr =
         widget.datosServicio['origen_address']?.toString().trim() ?? '';
-    final destinoAddr =
-        widget.datosServicio['destino_address']?.toString().trim() ?? '';
     final cerca = provider.conductoresCercanosCount;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -625,9 +599,7 @@ class _PasajeroEsperandoConductorScreenState
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _buildPasosBusqueda(provider.elapsedSeconds),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           if (origenAddr.isNotEmpty) ...[
             _buildDireccionResumen(
               label: 'Recogida',
@@ -635,33 +607,17 @@ class _PasajeroEsperandoConductorScreenState
               color: AppColors.green,
               icon: Iconsax.location_copy,
             ),
-            if (destinoAddr.isNotEmpty &&
-                destinoAddr != 'Destino no definido') ...[
-              const SizedBox(height: 8),
-              _buildDireccionResumen(
-                label: 'Destino',
-                address: destinoAddr,
-                color: AppColors.primary,
-                icon: Iconsax.routing_2_copy,
-              ),
-            ],
-            const SizedBox(height: 14),
+            const SizedBox(height: 8),
           ],
           Text(
             provider.mensajeActividadBusqueda,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            provider.subtituloActividadBusqueda,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.78),
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 4),
           TextButton.icon(
             onPressed: () => _cancelarServicio(provider),
             icon: const Icon(Iconsax.close_circle_copy, size: 18),
@@ -715,76 +671,6 @@ class _PasajeroEsperandoConductorScreenState
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildPasosBusqueda(int elapsedSeconds) {
-    final step = elapsedSeconds < 8
-        ? 0
-        : elapsedSeconds < 40
-        ? 1
-        : 2;
-    const labels = [
-      'Solicitud enviada',
-      'Avisando conductores',
-      'Esperando respuesta',
-    ];
-
-    return Row(
-      children: List.generate(labels.length * 2 - 1, (i) {
-        if (i.isOdd) {
-          final lineDone = (i ~/ 2) < step;
-          return Expanded(
-            child: Container(
-              height: 2,
-              margin: const EdgeInsets.only(bottom: 18),
-              color: lineDone
-                  ? AppColors.green
-                  : AppColors.primary.withValues(alpha: 0.2),
-            ),
-          );
-        }
-        final index = i ~/ 2;
-        final done = index < step;
-        final active = index == step;
-        return Expanded(
-          child: Column(
-            children: [
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: done || active
-                      ? (done ? AppColors.green : AppColors.accent)
-                      : AppColors.primary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  done
-                      ? Icons.check
-                      : active
-                      ? Icons.more_horiz
-                      : Icons.circle,
-                  size: done ? 16 : 10,
-                  color: done || active ? Colors.white : AppColors.grey,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                labels[index],
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: active ? FontWeight.w800 : FontWeight.w500,
-                  color: active ? AppColors.accent : AppColors.grey,
-                ),
-              ),
-            ],
-          ),
-        );
-      }),
     );
   }
 
@@ -872,45 +758,42 @@ class _PasajeroEsperandoConductorScreenState
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle draggable
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _sheetHeight = _sheetHeight < 0.4 ? 0.45 : _minHeight;
-              });
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Container(
-                width: 50,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(3),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  setState(() => _sheetExpandido = !_sheetExpandido);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              _buildEstadoRow(info, provider),
+              if (_sheetExpandido) ...[
+                const SizedBox(height: 8),
+                _buildConductorInfo(provider),
+                const SizedBox(height: 4),
+                _buildCancelarButton(provider),
+              ] else ...[
+                const SizedBox(height: 6),
+                _buildConductorInfo(provider),
+              ],
+            ],
           ),
-
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildEstadoRow(info, provider),
-                  const SizedBox(height: 12),
-                  _buildConductorInfo(provider),
-                  const SizedBox(height: 12),
-                  _buildCancelarButton(provider),
-                ],
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

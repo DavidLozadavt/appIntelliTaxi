@@ -4,6 +4,7 @@ import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/features/conductor/presentation/conductor_servicio_activo_screen.dart';
 import 'package:intellitaxi/features/conductor/providers/conductor_home_provider.dart';
 import 'package:intellitaxi/features/conductor/services/conductor_service.dart';
+import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/main.dart';
 
 /// Navegación a pantalla de servicio activo tras aceptar (mapa / exclusiva / fullscreen).
@@ -28,9 +29,11 @@ abstract final class ConductorServicioNavegacion {
         ? ServicioPayloadAdapter.servicioIdDesdeAceptacion(acceptResponse)
         : null;
 
+    final sidRespaldo = home.servicioActivoId ?? servicioId;
+
     if (nav == null &&
         (home.enServicio || aceptacionOk) &&
-        (home.servicioActivoId != null || servicioId != null)) {
+        sidRespaldo != null) {
       try {
         nav = await ConductorService().getServicioActivoConductor();
       } catch (e) {
@@ -38,11 +41,18 @@ abstract final class ConductorServicioNavegacion {
       }
     }
 
-    if (nav == null && aceptacionOk && servicioId != null) {
+    if (nav == null && (home.enServicio || aceptacionOk)) {
+      nav = await _navDesdePersistenciaLocal(servicioId: sidRespaldo);
+    }
+
+    if (nav == null && (home.enServicio || aceptacionOk) && sidRespaldo != null) {
+      AppLogger.d(
+        '⚠️ API/local incompletos; abriendo servicio #$sidRespaldo con payload mínimo',
+      );
       nav = {
         'servicio': {
-          'id': servicioId,
-          'servicio_id': servicioId,
+          'id': sidRespaldo,
+          'servicio_id': sidRespaldo,
         },
       };
     }
@@ -88,6 +98,33 @@ abstract final class ConductorServicioNavegacion {
       await Navigator.of(navCtx).pushReplacement(route);
     } else {
       await Navigator.of(navCtx).push(route);
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _navDesdePersistenciaLocal({
+    int? servicioId,
+  }) async {
+    try {
+      final local = await ServicioPersistenciaService().obtenerServicioActivo();
+      if (local == null || local['tipo']?.toString() != 'conductor') {
+        return null;
+      }
+      final localId = local['servicioId'];
+      if (servicioId != null &&
+          localId != null &&
+          localId.toString() != servicioId.toString()) {
+        AppLogger.d(
+          '⚠️ Persistencia local es otro servicio ($localId != $servicioId)',
+        );
+        return null;
+      }
+      final datos = local['datos'];
+      if (datos is! Map) return null;
+      AppLogger.d('✅ Restaurando servicio activo desde persistencia local');
+      return {'servicio': Map<String, dynamic>.from(datos)};
+    } catch (e) {
+      AppLogger.d('⚠️ Persistencia local de servicio: $e');
+      return null;
     }
   }
 

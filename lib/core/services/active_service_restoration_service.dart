@@ -3,6 +3,7 @@ import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/active_service_check_cache.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
+import 'package:intellitaxi/features/rides/services/servicio_persistencia_service.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_servicio_estado.dart';
 
 /// Servicio centralizado para verificar y restaurar servicios activos
@@ -80,9 +81,34 @@ class ActiveServiceRestorationService {
       AppLogger.d(
         '⚠️ [Restoration] Error verificando servicio conductor: ${e.message}',
       );
-      return null;
+      return _servicioConductorDesdePersistenciaLocal();
     } catch (e) {
       AppLogger.d('⚠️ [Restoration] Error verificando servicio conductor: $e');
+      return _servicioConductorDesdePersistenciaLocal();
+    }
+  }
+
+  Future<Map<String, dynamic>?> _servicioConductorDesdePersistenciaLocal() async {
+    try {
+      final local = await ServicioPersistenciaService().obtenerServicioActivo();
+      if (local == null || local['tipo']?.toString() != 'conductor') {
+        return null;
+      }
+      final datos = local['datos'];
+      if (datos is! Map) return null;
+      final servicio = _normalizarServicio(Map<String, dynamic>.from(datos));
+      if (!esServicioActivo(servicio)) return null;
+      AppLogger.d(
+        '✅ [Restoration] Servicio conductor restaurado desde persistencia local',
+      );
+      return {
+        'tipo': 'conductor',
+        'en_servicio': true,
+        'servicio': servicio,
+        'estado': servicio['idEstado'],
+      };
+    } catch (e) {
+      AppLogger.d('⚠️ [Restoration] Persistencia local conductor: $e');
       return null;
     }
   }

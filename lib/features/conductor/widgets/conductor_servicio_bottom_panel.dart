@@ -52,8 +52,14 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     final recogidaActiva = !soloDestino;
 
     final etiquetaEstado = enCurso
-        ? 'VIAJE EN CURSO'
-        : (llegue ? 'ESPERANDO PASAJERO' : null);
+        ? (SolicitudDisplayHelper.hasDestination(servicio)
+            ? 'VIAJE EN CURSO'
+            : 'DIRIGIÉNDOSE AL LUGAR DEL USUARIO')
+        : (llegue
+            ? (SolicitudDisplayHelper.hasDestination(servicio)
+                ? 'ESPERANDO PASAJERO'
+                : 'DIRIGIÉNDOSE AL LUGAR DEL USUARIO')
+            : null);
 
     final recogidaHeadline =
         SolicitudDisplayHelper.pickupHeadline(servicio);
@@ -134,39 +140,12 @@ class ConductorServicioBottomPanel extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (accion != null)
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: isLoading ? null : onAccionPrincipal,
-                    icon: isLoading
-                        ? const AppBrandLoaderCompact(
-                            ringSize: 22,
-                            theme: AppLoaderTheme.dark,
-                          )
-                        : Icon(accion.icon, size: 22),
-                    label: Text(
-                      accion.label,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      softWrap: true,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 56),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
+                _BotonAccionPrincipal(
+                  label: accion.label,
+                  icon: accion.icon,
+                  isLoading: isLoading,
+                  onPressed: onAccionPrincipal,
+                  palpita: llegue && !isLoading,
                 ),
               if (estadoUi != 'en_curso' &&
                   estadoUi != 'finalizado' &&
@@ -230,6 +209,125 @@ class _AccionPrincipal {
   const _AccionPrincipal(this.label, this.icon);
   final String label;
   final IconData icon;
+}
+
+class _BotonAccionPrincipal extends StatefulWidget {
+  const _BotonAccionPrincipal({
+    required this.label,
+    required this.icon,
+    required this.isLoading,
+    required this.onPressed,
+    required this.palpita,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool isLoading;
+  final VoidCallback onPressed;
+  final bool palpita;
+
+  @override
+  State<_BotonAccionPrincipal> createState() => _BotonAccionPrincipalState();
+}
+
+class _BotonAccionPrincipalState extends State<_BotonAccionPrincipal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _syncPulse();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BotonAccionPrincipal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.palpita != widget.palpita) {
+      _syncPulse();
+    }
+  }
+
+  void _syncPulse() {
+    if (widget.palpita) {
+      _pulse.repeat(reverse: true);
+    } else {
+      _pulse
+        ..stop()
+        ..value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final boton = SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: widget.isLoading ? null : widget.onPressed,
+        icon: widget.isLoading
+            ? const AppBrandLoaderCompact(
+                ringSize: 22,
+                theme: AppLoaderTheme.dark,
+              )
+            : Icon(widget.icon, size: 22),
+        label: Text(
+          widget.label,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          softWrap: true,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(double.infinity, 56),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+
+    if (!widget.palpita) return boton;
+
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) {
+        final t = _pulse.value;
+        return Transform.scale(
+          scale: 1 + (t * 0.045),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.22 + (t * 0.28)),
+                  blurRadius: 10 + (t * 16),
+                  spreadRadius: 1 + (t * 4),
+                ),
+              ],
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: boton,
+    );
+  }
 }
 
 class _EstadoYOrigenBar extends StatelessWidget {

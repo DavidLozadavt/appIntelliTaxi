@@ -34,11 +34,46 @@ class PasajeroServicioMapper {
     return pick(data, ['conductor_id', 'idConductor', 'conductorId']) != null;
   }
 
-  static LatLng? conductorUbicacion(Map<String, dynamic> data) {
-    final lat = pick(data, ['conductor_lat', 'conductorLat', 'lat_conductor']);
-    final lng = pick(data, ['conductor_lng', 'conductorLng', 'lng_conductor']);
-    if (lat == null || lng == null) return null;
-    return LatLng(parseDouble(lat), parseDouble(lng));
+  static LatLng? conductorUbicacion(
+    Map<String, dynamic> data, {
+    bool allowGenericLatLng = false,
+  }) {
+    final lat = pick(data, [
+      'conductor_lat',
+      'conductorLat',
+      'lat_conductor',
+      if (allowGenericLatLng) ...['lat', 'latitude'],
+    ]);
+    final lng = pick(data, [
+      'conductor_lng',
+      'conductorLng',
+      'lng_conductor',
+      if (allowGenericLatLng) ...['lng', 'longitude'],
+    ]);
+    if (lat != null && lng != null) {
+      final parsed = LatLng(parseDouble(lat), parseDouble(lng));
+      if (parsed.latitude != 0.0 || parsed.longitude != 0.0) {
+        return parsed;
+      }
+    }
+
+    final conductor = data['conductor'];
+    if (conductor is Map) {
+      final nested = conductorUbicacion(
+        Map<String, dynamic>.from(conductor),
+        allowGenericLatLng: true,
+      );
+      if (nested != null) return nested;
+    }
+
+    final ubicacion = data['ubicacion'];
+    if (ubicacion is Map) {
+      return conductorUbicacion(
+        Map<String, dynamic>.from(ubicacion),
+        allowGenericLatLng: true,
+      );
+    }
+    return null;
   }
 
   static Map<String, dynamic>? conductorResumen(
