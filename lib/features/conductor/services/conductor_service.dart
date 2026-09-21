@@ -152,15 +152,40 @@ class ConductorService {
 
       if (response.statusCode == 200) {
         final rawList = _extractJsonList(response.data);
+        if (rawList.isNotEmpty && rawList.first is Map) {
+          final sample = Map<String, dynamic>.from(rawList.first as Map);
+          AppLogger.d(
+            '🚗 [Vinculación] RAW primer vehículo: '
+            '${sample.toString().replaceAll(RegExp(r'\s+'), ' ')}',
+          );
+        }
         final vehiculos = <VehiculoConductor>[];
         for (final item in rawList) {
           if (item is! Map) continue;
           try {
-            vehiculos.add(
-              VehiculoConductor.fromJson(
-                Map<String, dynamic>.from(item),
-              ),
+            final vehiculo = VehiculoConductor.fromJson(
+              Map<String, dynamic>.from(item),
             );
+            final asignaciones = vehiculo.asignacionPropietarios;
+            if (asignaciones.isEmpty) {
+              AppLogger.w(
+                '⚠️ [Vinculación] ${vehiculo.placa} sin asignaciones en API. '
+                'Claves del objeto: '
+                '${item.containsKey('asignacionPropietarios') ? 'asignacionPropietarios=SÍ' : 'asignacionPropietarios=NO'} | '
+                '${item.containsKey('asignacion_propietarios') ? 'asignacion_propietarios=SÍ' : 'asignacion_propietarios=NO'}',
+              );
+            } else {
+              for (final a in asignaciones) {
+                AppLogger.d(
+                  '🔗 [Vinculación] ${vehiculo.placa} '
+                  'admin=${a.administrador} '
+                  'asig.estado=${a.estado.trim().isEmpty ? '(vacío)' : a.estado} '
+                  'afil.id=${a.afiliacion.id} '
+                  'afil.estado=${a.afiliacion.estado ?? '(null)'}',
+                );
+              }
+            }
+            vehiculos.add(vehiculo);
           } catch (e) {
             AppLogger.w('⚠️ Vehículo omitido por error de parseo: $e');
           }

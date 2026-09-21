@@ -1523,7 +1523,7 @@ class _HomeConductorState extends State<HomeConductor>
                           Flexible(
                             child: Text(
                               '${vehiculo.placa.toUpperCase()} · Orden '
-                              '${vehiculo.asignacionPropietarios.first.afiliacion.numero}',
+                              '${vehiculo.asignacionPrincipal?.afiliacion.numero ?? '-'}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

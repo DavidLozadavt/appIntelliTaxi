@@ -87,12 +87,26 @@ class VehiculoConductor {
           ? TipoVehiculo.fromJson(json['tipo_vehiculo'])
           : null,
       estado: json['estado'] != null ? Estado.fromJson(json['estado']) : null,
-      asignacionPropietarios:
-          (json['asignacion_propietarios'] as List?)
-              ?.map((e) => AsignacionPropietario.fromJson(e))
-              .toList() ??
-          [],
+      asignacionPropietarios: _parseAsignaciones(json),
     );
+  }
+
+  static List<AsignacionPropietario> _parseAsignaciones(
+    Map<String, dynamic> json,
+  ) {
+    final dynamic raw;
+    if (json['asignacionPropietarios'] is List) {
+      raw = json['asignacionPropietarios'];
+    } else {
+      raw = json['asignacion_propietarios'];
+    }
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => AsignacionPropietario.fromJson(
+              Map<String, dynamic>.from(e),
+            ))
+        .toList();
   }
 
   Map<String, dynamic> toJson() {
@@ -147,9 +161,16 @@ class VehiculoConductor {
   }
 
   String get estadoVinculacion {
-    final estado =
-        asignacionPrincipal?.afiliacion.estado?.trim().toUpperCase() ??
-        asignacionPrincipal?.estado.trim().toUpperCase();
+    final afi = asignacionPrincipal?.afiliacion.estado?.trim().toUpperCase();
+    final prop = asignacionPrincipal?.estado.trim().toUpperCase();
+    final String? estado;
+    if (afi != null && afi.isNotEmpty) {
+      estado = afi;
+    } else if (prop != null && prop.isNotEmpty) {
+      estado = prop;
+    } else {
+      estado = null;
+    }
     return estado == null || estado.isEmpty ? 'SIN VINCULACION' : estado;
   }
 
