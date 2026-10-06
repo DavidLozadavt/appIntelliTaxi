@@ -37,7 +37,8 @@ class PasajeroEsperandoConductorScreen extends StatefulWidget {
 }
 
 class _PasajeroEsperandoConductorScreenState
-    extends State<PasajeroEsperandoConductorScreen> {
+    extends State<PasajeroEsperandoConductorScreen>
+    with WidgetsBindingObserver {
   GoogleMapController? _mapController;
   bool _driverCameraCentered = false;
   String? _lastMapCameraKey;
@@ -49,12 +50,17 @@ class _PasajeroEsperandoConductorScreenState
   /// Evita que el post-frame dispare salida remota mientras cancelamos manualmente (misma petición).
   bool _cancelacionManualEnCurso = false;
 
+  /// Provider creado en build: se guarda referencia para refrescarlo al
+  /// volver del background (el State vive encima del ChangeNotifierProvider).
+  PasajeroServicioActivoProvider? _servicioProvider;
+
   // 📏 Bottom sheet: se ajusta al contenido (el mapa ocupa el resto).
   bool _sheetExpandido = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     ActiveServiceScreenRegistry.markVisible(
       type: 'pasajero',
       serviceId: widget.servicioId,
@@ -62,6 +68,16 @@ class _PasajeroEsperandoConductorScreenState
     unawaited(
       PasajeroServicioNotificationHelper.clearForServicio(widget.servicioId),
     );
+  }
+
+  /// Al volver del background: el estado del servicio pudo cambiar
+  /// (aceptación, rechazo, cancelación remota) sin eventos Pusher.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    final provider = _servicioProvider;
+    if (provider == null) return;
+    unawaited(provider.refrescarManual());
   }
 
   Future<void> _mostrarDialogoFinalizado(
@@ -283,10 +299,14 @@ class _PasajeroEsperandoConductorScreenState
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => PasajeroServicioActivoProvider(
-        servicioId: widget.servicioId,
-        datosServicio: widget.datosServicio,
-      ),
+      create: (_) {
+        final provider = PasajeroServicioActivoProvider(
+          servicioId: widget.servicioId,
+          datosServicio: widget.datosServicio,
+        );
+        _servicioProvider = provider;
+        return provider;
+      },
       child: Consumer<PasajeroServicioActivoProvider>(
         builder: (context, provider, _) {
           _tryUpdateMapCamera(provider);
@@ -1019,6 +1039,7 @@ class _PasajeroEsperandoConductorScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ActiveServiceScreenRegistry.markHidden(
       type: 'pasajero',
       serviceId: widget.servicioId,

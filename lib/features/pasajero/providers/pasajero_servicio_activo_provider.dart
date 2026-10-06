@@ -451,6 +451,9 @@ class PasajeroServicioActivoProvider extends ChangeNotifier {
         _estadoServicio = 'aceptado';
         _actualizarMarcadores();
         unawaited(_dibujarRuta(force: true));
+        // Refresca vehículo/ruta/estado completos desde la API (evento solo
+        // trae datos parciales del conductor).
+        unawaited(_obtenerInfoServicio());
         _notifyListenersSafe();
       },
       onUbicacionActualizada: (data) {

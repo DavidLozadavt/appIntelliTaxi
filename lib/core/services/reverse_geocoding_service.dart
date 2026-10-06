@@ -8,6 +8,7 @@ import 'package:intellitaxi/config/maps_config.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/geocode_memory_cache.dart';
+import 'package:intellitaxi/features/taxi/data/taxi_maps_models.dart';
 import 'package:intellitaxi/features/taxi/services/taxi_maps_api_service.dart';
 
 class ReverseGeocodingService {
@@ -31,6 +32,27 @@ class ReverseGeocodingService {
     caseSensitive: false,
   );
 
+  /// Distancia máxima (m) entre el punto consultado y la respuesta del proxy
+  /// para aceptar su barrio: si está más lejos, el sector es de otra zona.
+  static const double _proxyMaxAcceptableDistanceMeters = 750;
+
+  bool _proxyResultIsAligned(
+    double lat,
+    double lng,
+    TaxiReverseGeocodeResult r,
+  ) {
+    final meters = Geolocator.distanceBetween(lat, lng, r.lat, r.lng);
+    if (meters <= _proxyMaxAcceptableDistanceMeters) return true;
+    if (kDebugMode) {
+      AppLogger.d(
+        'Proxy geocode desalineado (${meters.round()} m) lat=$lat lng=$lng '
+        '→ se usa Google en su lugar',
+        tag: 'ReverseGeocode',
+      );
+    }
+    return false;
+  }
+
   Future<String?> resolveAreaName({
     required double lat,
     required double lng,
@@ -42,11 +64,13 @@ class ReverseGeocodingService {
       if (cached != null) return cached;
       final r = await _taxiMaps.reverseGeocode(lat, lng);
       final barrio = r?.barrio?.trim();
-      if (barrio != null && barrio.isNotEmpty) {
+      if (barrio != null &&
+          barrio.isNotEmpty &&
+          _proxyResultIsAligned(lat, lng, r!)) {
         _cache.put(labelKey, barrio, _zonaLabelCacheTtl);
         return barrio;
       }
-      return null;
+      // Sin barrio o sector desalineado: se cae a Google más abajo.
     }
 
     final labelKey =
@@ -62,7 +86,7 @@ class ReverseGeocodingService {
 
     final results = await _fetchGeocodeResults(lat: lat, lng: lng);
     if (results == null) return null;
-    var area = _extractAreaFromResults(results);
+    var area = _extractAreaFromResults(results, lat: lat, lng: lng);
     if (area != null) {
       _cache.put(labelKey, area, _zonaLabelCacheTtl);
       return area;
@@ -76,7 +100,7 @@ class ReverseGeocodingService {
       logLabel: 'neighborhood',
     );
     if (neighborhoodResults == null) return null;
-    area = _extractAreaFromResults(neighborhoodResults);
+    area = _extractAreaFromResults(neighborhoodResults, lat: lat, lng: lng);
     if (area != null) _cache.put(labelKey, area, _zonaLabelCacheTtl);
     return area;
   }
@@ -511,18 +535,20 @@ class ReverseGeocodingService {
 
     if (MapsConfig.useBackendProxy) {
       final r = await _taxiMaps.reverseGeocode(lat, lng);
-      if (r == null) return fallback;
-      final addr = r.address?.trim() ?? '';
-      final barrio = r.barrio?.trim();
-      final street = addr.isNotEmpty ? addr.split(',').first.trim() : '';
-      final name = street.isNotEmpty
-          ? street
-          : (barrio?.isNotEmpty == true ? barrio! : fallback.name);
-      return MapDestinationLabel(
-        name: name,
-        address: addr.isNotEmpty ? addr : name,
-        area: barrio,
-      );
+      if (r != null && _proxyResultIsAligned(lat, lng, r)) {
+        final addr = r.address?.trim() ?? '';
+        final barrio = r.barrio?.trim();
+        final street = addr.isNotEmpty ? addr.split(',').first.trim() : '';
+        final name = street.isNotEmpty
+            ? street
+            : (barrio?.isNotEmpty == true ? barrio! : fallback.name);
+        return MapDestinationLabel(
+          name: name,
+          address: addr.isNotEmpty ? addr : name,
+          area: barrio,
+        );
+      }
+      // Sin respuesta o sector desalineado: se intenta con Google más abajo.
     }
 
     final results = await _fetchGeocodeResults(lat: lat, lng: lng);
@@ -557,7 +583,7 @@ class ReverseGeocodingService {
         results.first['formatted_address']?.toString() ??
         '';
     final cleaned = _stripPlusCodes(fullAddress);
-    var area = _extractAreaFromResults(results);
+    var area = _extractAreaFromResults(results, lat: lat, lng: lng);
     area ??= await resolveAreaName(lat: lat, lng: lng);
 
     if (streetLine != null && streetLine.trim().isNotEmpty) {
@@ -641,8 +667,11 @@ class ReverseGeocodingService {
         fallback: fallback,
         preferStreet: true,
       );
-      _putCachedLocationData(cacheKey, data);
-      return data;
+      if (data != null) {
+        _putCachedLocationData(cacheKey, data);
+        return data;
+      }
+      // Proxy desalineado/sin dato: se intenta con Google más abajo.
     }
 
     final cacheKey =
@@ -662,7 +691,7 @@ class ReverseGeocodingService {
     final streetLine = _extractStreetLineFromResults(results);
     final fullAddress = _extractFormattedAddress(results) ??
         results.first['formatted_address']?.toString();
-    var area = _extractAreaFromResults(results);
+    var area = _extractAreaFromResults(results, lat: lat, lng: lng);
     area ??= _areaFromCachedFetch(lat, lng);
 
     final name = (streetLine != null && streetLine.trim().isNotEmpty)
@@ -711,8 +740,11 @@ class ReverseGeocodingService {
       final cached = _getCachedLocationData(cacheKey);
       if (cached != null) return cached;
       final data = await _locationDataFromBackend(lat, lng, fallback: fallback);
-      _putCachedLocationData(cacheKey, data);
-      return data;
+      if (data != null) {
+        _putCachedLocationData(cacheKey, data);
+        return data;
+      }
+      // Proxy desalineado/sin dato: se intenta con Google más abajo.
     }
 
     final cacheKey =
@@ -723,7 +755,7 @@ class ReverseGeocodingService {
     final results = await _fetchGeocodeResults(lat: lat, lng: lng);
     if (results == null || results.isEmpty) return fallback;
 
-    var area = _extractAreaFromResults(results);
+    var area = _extractAreaFromResults(results, lat: lat, lng: lng);
     if (area == null) {
       final neighborhoodResults = await _fetchGeocodeResults(
         lat: lat,
@@ -733,7 +765,11 @@ class ReverseGeocodingService {
         logLabel: 'neighborhood',
       );
       if (neighborhoodResults != null && neighborhoodResults.isNotEmpty) {
-        area = _extractAreaFromResults(neighborhoodResults);
+        area = _extractAreaFromResults(
+          neighborhoodResults,
+          lat: lat,
+          lng: lng,
+        );
       }
     }
 
@@ -770,14 +806,16 @@ class ReverseGeocodingService {
     return data;
   }
 
-  Future<CurrentLocationData> _locationDataFromBackend(
+  Future<CurrentLocationData?> _locationDataFromBackend(
     double lat,
     double lng, {
     required CurrentLocationData fallback,
     bool preferStreet = false,
   }) async {
     final r = await _taxiMaps.reverseGeocode(lat, lng);
-    if (r == null) return fallback;
+    // Sin respuesta o sector desalineado con el punto consultado: que decida
+    // Google (el caller conserva el proxy como respaldo si Google falla).
+    if (r == null || !_proxyResultIsAligned(lat, lng, r)) return null;
 
     final addr = r.address?.trim() ?? '';
     final barrio = r.barrio?.trim();
@@ -812,7 +850,7 @@ class ReverseGeocodingService {
         'fetch|${GeocodeMemoryCache.gridKey(lat, lng)}||default';
     final cached = _cache.get<List<Map<String, dynamic>>>(fetchKey);
     if (cached == null) return null;
-    return _extractAreaFromResults(cached);
+    return _extractAreaFromResults(cached, lat: lat, lng: lng);
   }
 
   CurrentLocationData? _getCachedLocationData(String key) {
@@ -913,7 +951,11 @@ class ReverseGeocodingService {
     }
   }
 
-  String? _extractAreaFromResults(List<Map<String, dynamic>> results) {
+  String? _extractAreaFromResults(
+    List<Map<String, dynamic>> results, {
+    double? lat,
+    double? lng,
+  }) {
     const barrioTypes = [
       'neighborhood',
       'sublocality',
@@ -923,7 +965,18 @@ class ReverseGeocodingService {
       'administrative_area_level_3',
     ];
 
-    for (final result in results) {
+    var ordered = results;
+    if (lat != null && lng != null && results.length > 1) {
+      // Google mezcla barrios de localidades vecinas en el mismo listado:
+      // se ordena por cercanía real al punto consultado antes de elegir.
+      final ranked = <MapEntry<double, Map<String, dynamic>>>[
+        for (final r in results)
+          MapEntry(_geocodeResultProximityScore(r, lat: lat, lng: lng), r),
+      ]..sort((a, b) => a.key.compareTo(b.key));
+      ordered = ranked.map((e) => e.value).toList();
+    }
+
+    for (final result in ordered) {
       final resultTypes = (result['types'] as List<dynamic>? ?? [])
           .map((e) => e.toString())
           .toList();

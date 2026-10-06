@@ -33,6 +33,10 @@ class ActiveServiceScreenRegistry {
     return _activeType == type && _activeServiceId == serviceId;
   }
 
+  /// true si hay alguna pantalla de servicio activo visible de ese tipo
+  /// (sin importar el id), para no apilar la misma pantalla al volver.
+  static bool isAnyVisible({required String type}) => _activeType == type;
+
   /// Notifica a la pantalla activa (si coincide) que el servicio cerró en servidor.
   static bool notifyRemoteTerminal({
     required int serviceId,

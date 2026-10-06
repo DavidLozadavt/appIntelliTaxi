@@ -20,7 +20,8 @@ class HistorialServiciosPasajeroScreen extends StatefulWidget {
 }
 
 class _HistorialServiciosPasajeroScreenState
-    extends State<HistorialServiciosPasajeroScreen> {
+    extends State<HistorialServiciosPasajeroScreen>
+    with WidgetsBindingObserver {
   final HistorialServicioService _historialService = HistorialServicioService();
   final ScrollController _scrollController = ScrollController();
 
@@ -34,12 +35,23 @@ class _HistorialServiciosPasajeroScreenState
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
+    _cargarDatos();
+  }
+
+  /// Al volver del background: el historial pudo cambiar (servicios nuevos
+  /// terminados o calificaciones) mientras la app estaba suspendida.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    if (_isLoading || _isLoadingMore) return;
     _cargarDatos();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
   }

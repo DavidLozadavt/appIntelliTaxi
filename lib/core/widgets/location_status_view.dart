@@ -16,6 +16,11 @@ class LocationStatusView extends StatefulWidget {
   /// para que el usuario no quede atrapado si el GPS/permiso se cuelga.
   final Duration showActionWhileLoadingAfter;
 
+  /// Acción secundaria para cuando el GPS falla: permite al usuario
+  /// escribir su dirección sin depender de la geolocalización.
+  final String? secondaryActionLabel;
+  final VoidCallback? onSecondaryAction;
+
   const LocationStatusView({
     super.key,
     required this.isLoading,
@@ -26,6 +31,8 @@ class LocationStatusView extends StatefulWidget {
     this.loadingTitle = 'Conectando GPS',
     this.unavailableTitle = 'Ubicación no disponible',
     this.showActionWhileLoadingAfter = const Duration(seconds: 8),
+    this.secondaryActionLabel,
+    this.onSecondaryAction,
   });
 
   @override
@@ -205,6 +212,30 @@ class _LocationStatusViewState extends State<LocationStatusView> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+            ],
+            if (showAction &&
+                !isLoading &&
+                widget.secondaryActionLabel != null &&
+                widget.onSecondaryAction != null) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: widget.onSecondaryAction,
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 20),
+                label: Text(
+                  widget.secondaryActionLabel!,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: colorScheme.primary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
                   ),
                 ),
               ),
