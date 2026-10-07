@@ -1258,7 +1258,7 @@ class _HomePasajeroState extends State<HomePasajero>
     _gpsStreamSub = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 25,
+        distanceFilter: 10,
       ),
     ).listen(
       _onGpsStreamPosition,
@@ -2172,6 +2172,55 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
+  /// Fix GPS fresco y preciso justo antes de enviar el pedido de taxi.
+  ///
+  /// Solo se aplica si la recogida sigue siendo "Mi ubicación" (si el usuario
+  /// escribió/pidió un punto, no se mueve). Si el fix sale imposiblemente
+  /// lejos del punto mostrado (>200 m), se conserva el original.
+  Future<TripLocation> _originForRequest(TripLocation origin) async {
+    if (_originLockedByUser || !origin.isCurrentLocation) return origin;
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      ).timeout(const Duration(seconds: 9));
+      if (!mounted || _isDisposed) return origin;
+
+      final drift = Geolocator.distanceBetween(
+        origin.lat,
+        origin.lng,
+        position.latitude,
+        position.longitude,
+      );
+      if (drift > 200) {
+        AppLogger.d(
+          'Fix de recogida descartado (desplazamiento ${drift.round()} m)',
+          tag: 'HomePasajero',
+        );
+        return origin;
+      }
+
+      final precise = TripLocation.currentLocation(
+        lat: position.latitude,
+        lng: position.longitude,
+        name: origin.name,
+        address: origin.address,
+      );
+      _setStateSafe(() {
+        _currentPosition = position;
+        _selectedOrigin = precise;
+      });
+      _syncMarkersOnMap(force: true);
+      return precise;
+    } catch (e) {
+      AppLogger.d('Fix fresco al pedir taxi: $e', tag: 'HomePasajero');
+      return origin;
+    }
+  }
+
   Future<void> _handleRideConfirmation() async {
     if (_isSubmittingRide) return;
 
@@ -2226,18 +2275,22 @@ class _HomePasajeroState extends State<HomePasajero>
     _setStateSafe(() => _isSubmittingRide = true);
 
     try {
+      // Recogida por GPS: toma un fix fresco de máxima precisión para que el
+      // conductor reciba el punto exacto (el último puede tener minutos).
+      final preciseOrigin = await _originForRequest(origin);
+
       final response = isDirectFlow
           ? await _rideRequestService.sendDirectOffer(
               conductorId: selectedConductor!.conductorId,
               pasajeroId: pasajeroId,
-              origin: origin,
+              origin: preciseOrigin,
               destination: destination,
               distancia: route?.distance,
               duracionEstimada: route?.duration,
               precioOfrecido: 0,
             )
           : await _rideRequestService.requestRide(
-              origin: origin,
+              origin: preciseOrigin,
               destination: destination,
               distance: route?.distance,
               distanceValue: route?.distanceValue,

@@ -590,11 +590,11 @@ class _ConductorServicioActivoScreenState
     _locationSubscription?.cancel();
     _locationSubscription =
         Geolocator.getPositionStream(
-          locationSettings: LocationSettings(
-            accuracy: _estadoActual == 'en_curso'
-                ? LocationAccuracy.high
-                : LocationAccuracy.medium,
-            distanceFilter: 18,
+          locationSettings: const LocationSettings(
+            // Siempre máxima precisión: "dónde estoy" debe verse exacto
+            // aunque el viaje aún no esté en curso.
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 6,
           ),
         ).listen((position) {
           if (!_canUpdateUi) return;

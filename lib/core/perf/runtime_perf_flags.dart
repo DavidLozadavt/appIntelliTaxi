@@ -33,12 +33,13 @@ abstract final class RuntimePerfFlags {
 
   /// Home conductor en línea (sin viaje): GPS más espaciado = menos batería.
   static const int conductorGpsDistanceFilterIdle = 20;
-  /// Metros entre lecturas GPS en movimiento (~8 m).
-  static const int conductorGpsDistanceFilterActive = 8;
+  /// Metros entre lecturas GPS en movimiento (más fino: la posición del
+  /// conductor debe verse precisa al pasajero).
+  static const int conductorGpsDistanceFilterActive = 5;
   static const Duration conductorGpsUiMinIntervalIdle = Duration(seconds: 4);
   static const Duration conductorGpsUiMinIntervalNav = Duration(milliseconds: 800);
-  static const double conductorGpsUiMinMoveMetersIdle = 22;
-  static const double conductorGpsUiMinMoveMetersNav = 10;
+  static const double conductorGpsUiMinMoveMetersIdle = 10;
+  static const double conductorGpsUiMinMoveMetersNav = 5;
 
   /// Android: intervalo del stream GPS solo en movimiento.
   static const Duration conductorGpsStreamIntervalDriving = Duration(seconds: 4);

@@ -79,9 +79,15 @@ class DeviceLocationService {
   }
 
   /// Intenta GPS actual → última conocida → (solo debug) centro de Popayán.
+  ///
+  /// Prioriza **precisión máxima**: primero pide un fix fresco con
+  /// `LocationAccuracy.high` (GNSS) y solo cae a precisión menor si falla.
+  /// La última ubicación conocida ya no se usa si es vieja o imprecisa:
+  /// era la causa de que el punto de recogida llegara desplazado al conductor.
   static Future<DeviceLocationResult?> resolveCurrentPosition({
     Duration timeout = resolveTimeout,
-    Duration lastKnownMaxAge = const Duration(minutes: 5),
+    Duration lastKnownMaxAge = const Duration(seconds: 30),
+    double lastKnownMaxAccuracyMeters = 30,
   }) async {
     Position? lastKnown;
     try {
@@ -90,11 +96,17 @@ class DeviceLocationService {
       AppLogger.d('getLastKnownPosition: $e', tag: 'DeviceLocation');
     }
 
+    // Atajo solo si el fix es reciente Y preciso; si no, vale más pena
+    // esperar un GPS fresco antes de mandar un punto equivocado.
     if (lastKnown != null) {
       final age = DateTime.now().difference(lastKnown.timestamp);
-      if (!age.isNegative && age <= lastKnownMaxAge) {
+      if (!age.isNegative &&
+          age <= lastKnownMaxAge &&
+          lastKnown.accuracy <= lastKnownMaxAccuracyMeters) {
         AppLogger.d(
-          '📍 lastKnown (${age.inSeconds}s): ${lastKnown.latitude}, ${lastKnown.longitude}',
+          '📍 lastKnown fresco (${age.inSeconds}s, '
+          '±${lastKnown.accuracy.round()}m): '
+          '${lastKnown.latitude}, ${lastKnown.longitude}',
           tag: 'DeviceLocation',
         );
         return DeviceLocationResult(
@@ -102,17 +114,19 @@ class DeviceLocationService {
           usedLastKnown: true,
         );
       }
+      AppLogger.d(
+        'lastKnown descartado (edad ${age.inSeconds}s, '
+        '±${lastKnown.accuracy.round()}m) → pidiendo GPS fresco',
+        tag: 'DeviceLocation',
+      );
     }
 
+    // De mayor a menor precisión: high = GNSS (máxima), best ≈ GPS,
+    // medium/balanceado y low solo como último recurso. Con poco tiempo
+    // (emergencias) se recorta la cadena para no demorar el reporte.
     final attempts = <LocationSettings>[
-      LocationSettings(
-        accuracy: LocationAccuracy.medium,
-        timeLimit: timeout,
-      ),
-      LocationSettings(
-        accuracy: LocationAccuracy.low,
-        timeLimit: timeout,
-      ),
+      for (final accuracy in _accuracyFallbackChain(timeout))
+        LocationSettings(accuracy: accuracy, timeLimit: timeout),
     ];
 
     for (final settings in attempts) {
@@ -121,7 +135,9 @@ class DeviceLocationService {
           locationSettings: settings,
         ).timeout(timeout + const Duration(seconds: 2));
         AppLogger.d(
-          '📍 GPS: ${position.latitude}, ${position.longitude}',
+          '📍 GPS (${settings.accuracy}): '
+          '${position.latitude}, ${position.longitude} '
+          '±${position.accuracy.round()}m',
           tag: 'DeviceLocation',
         );
         return DeviceLocationResult(position: position);
@@ -151,6 +167,19 @@ class DeviceLocationService {
     }
 
     return null;
+  }
+
+  /// Cadena de precisión de mayor a menor según el tiempo disponible.
+  static List<LocationAccuracy> _accuracyFallbackChain(Duration timeout) {
+    if (timeout <= const Duration(seconds: 5)) {
+      return const [LocationAccuracy.high, LocationAccuracy.medium];
+    }
+    return const [
+      LocationAccuracy.high,
+      LocationAccuracy.best,
+      LocationAccuracy.medium,
+      LocationAccuracy.low,
+    ];
   }
 
   /// Ubicación de prueba dentro del urbano de Popayán (desarrollo).
