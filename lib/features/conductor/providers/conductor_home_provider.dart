@@ -77,6 +77,12 @@ class ConductorHomeProvider extends ChangeNotifier {
   Position? _lastMapHeartbeatPosition;
   /// Momento local del último fix aplicado (stream/poll/resume).
   DateTime? _lastGpsEventAt;
+
+  /// Último refresco suave de posición con el conductor detenido.
+  DateTime? _ultimoRefrescoSuaveAt;
+
+  /// Timer que mantiene el heartbeat con el conductor detenido.
+  Timer? _timerHeartbeatEnReposo;
   bool _isSendingMapHeartbeat = false;
   bool _streamGpsActivo = false;
   bool _gpsFreshFixInFlight = false;
@@ -3974,6 +3980,27 @@ class ConductorHomeProvider extends ChangeNotifier {
       return;
     }
 
+    // Conductor quieto: el proveedor Android no emite eventos porque el
+    // `distanceFilter` no se cumple. Eso NO es GPS estancado: el stream
+    // está vivo y la posición es correcta. Antes esto reiniciaba el stream
+    // cada ~30 s (encender/apagar GNSS en cada reinicio) y de paso inundaba
+    // el log de "GPS estancado".
+    if (_gpsEnReposo()) {
+      final now = DateTime.now();
+      final ultimo = _ultimoRefrescoSuaveAt;
+      if (ultimo != null &&
+          now.difference(ultimo) < RuntimePerfFlags.conductorGpsIdleRefreshMinInterval) {
+        return;
+      }
+      _ultimoRefrescoSuaveAt = now;
+      AppLogger.d(
+        'GPS en reposo: refresco suave (sin reiniciar stream)',
+        tag: 'UbicacionAPI',
+      );
+      unawaited(_pollUbicacionUnica());
+      return;
+    }
+
     AppLogger.w(
       'GPS estancado (${lastEvent == null ? 'sin evento' : '${DateTime.now().difference(lastEvent).inSeconds}s'}): reinicio stream + poll',
       tag: 'UbicacionAPI',
@@ -3983,6 +4010,17 @@ class ConductorHomeProvider extends ChangeNotifier {
     await _pollUbicacionUnica(forceUi: true);
     if (_isDisposed || !_debeSeguirGps()) return;
     unawaited(_iniciarSeguimientoUbicacionConPermisos());
+  }
+
+  /// El conductor está detenido: el GPS no tiene por qué emitir eventos.
+  bool _gpsEnReposo() {
+    final pos = _currentPosition;
+    if (pos == null) return false;
+    if (pos.speed.isFinite &&
+        pos.speed >= RuntimePerfFlags.conductorDrivingSpeedMps) {
+      return false;
+    }
+    return true;
   }
 
   Future<void> _pollUbicacionUnica({bool forceUi = false}) async {
@@ -4069,12 +4107,35 @@ class ConductorHomeProvider extends ChangeNotifier {
       },
     );
     _streamGpsActivo = true;
+
+    _iniciarTimerHeartbeatEnReposo();
   }
 
   void _detenerSeguimientoUbicacion() {
     _locationSubscription?.cancel();
     _locationSubscription = null;
     _streamGpsActivo = false;
+    _timerHeartbeatEnReposo?.cancel();
+    _timerHeartbeatEnReposo = null;
+  }
+
+  /// Con el conductor detenido el stream GPS no emite eventos (`distanceFilter`),
+  /// así que el heartbeat al backend no se disparaba nunca: la posición del
+  /// conductor en el mapa quedaba congelada y para refrescarla el watchdog
+  /// tenía que matar y recrear el stream cada 30 s.
+  ///
+  /// Este timer cubre el caso "quieto" sin tocar el stream: pide un fix
+  /// puntual y lo enruta por el mismo camino que el stream.
+  void _iniciarTimerHeartbeatEnReposo() {
+    _timerHeartbeatEnReposo?.cancel();
+    _timerHeartbeatEnReposo = Timer.periodic(
+      RuntimePerfFlags.conductorGpsIdleHeartbeatInterval,
+      (_) {
+        if (_isDisposed || !_debeSeguirGps()) return;
+        if (!_gpsEnReposo()) return; // en movimiento ya llega el stream
+        unawaited(_pollUbicacionUnica());
+      },
+    );
   }
 
   void _onPositionUpdate(Position position, {bool forceUi = false}) {
