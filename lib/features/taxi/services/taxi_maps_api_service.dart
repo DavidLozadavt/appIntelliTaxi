@@ -10,6 +10,14 @@ class TaxiMapsApiService {
 
   static const _base = 'taxi';
 
+  /// Máximo de resultados que aceptan los endpoints del backend.
+  ///
+  /// `taxi/places-autocomplete` y `taxi/geocode` validan este parámetro: con
+  /// un valor mayor responden `success: false` y
+  /// "The limit must not be greater than 10", y la búsqueda del cliente
+  /// queda vacía sin error visible.
+  static const int maxResultsPerRequest = 10;
+
   /// Cache corta del reverse-geocode.
   ///
   /// El mismo punto se consulta varias veces seguidas (barrio, etiqueta de
@@ -62,7 +70,10 @@ class TaxiMapsApiService {
         queryParameters: {'q': q, 'limit': limit},
       );
       final data = res.data;
-      if (data is! Map || data['success'] != true) return [];
+      if (data is! Map || data['success'] != true) {
+        _logProxyRejection('places-autocomplete', data);
+        return [];
+      }
       final list = data['predictions'] as List? ?? [];
       return list
           .whereType<Map>()
@@ -91,7 +102,10 @@ class TaxiMapsApiService {
         queryParameters: {'q': q, 'limit': limit},
       );
       final data = res.data;
-      if (data is! Map || data['success'] != true) return [];
+      if (data is! Map || data['success'] != true) {
+        _logProxyRejection('geocode', data);
+        return [];
+      }
       final list = data['results'] as List? ?? [];
       return list
           .whereType<Map>()
@@ -138,6 +152,27 @@ class TaxiMapsApiService {
       _logProxyError('ruta-osrm', e);
       return null;
     }
+  }
+
+  /// El backend respondió `success: false`.
+  ///
+  /// Estos endpoints validan sus parámetros (por ejemplo `limit` no puede
+  /// superar 10) y responden con un mensaje. Sin este log el fallo era
+  /// invisible: la búsqueda simplemente salía vacía.
+  void _logProxyRejection(String op, dynamic data) {
+    final message = data is Map ? data['message']?.toString() : null;
+    if (message == null || message.isEmpty) {
+      // Sin mensaje: el backend no encontró coincidencias para la consulta.
+      AppLogger.d(
+        'Maps proxy $op: sin coincidencias',
+        tag: 'TaxiMapsProxy',
+      );
+      return;
+    }
+    AppLogger.w(
+      'Maps proxy $op: rechazado por el backend → $message',
+      tag: 'TaxiMapsProxy',
+    );
   }
 
   void _logProxyError(String op, DioException e) {

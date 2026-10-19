@@ -21,10 +21,16 @@ class PlacesService {
   static const Duration _sessionTtl = Duration(minutes: 3);
   static const Uuid _uuid = Uuid();
 
-  /// Cuántos candidatos pide al geocoder: se piden más de los que se
-  /// muestran para poder descartar los que caen fuera del área y aun así
-  /// tener sugerencias locales.
-  static const int _backendCandidateLimit = 12;
+  /// Cuántos candidatos pide al geocoder.
+  ///
+  /// El backend valida el límite: `taxi/places-autocomplete` y `taxi/geocode`
+  /// rechazan con "The limit must not be greater than 10" cualquier valor
+  /// mayor, y responden `success: false` sin predicciones (la búsqueda
+  /// quedaba vacía sin error visible).
+  ///
+  /// Se piden más de los que se muestran para poder descartar los que caen
+  /// fuera del área y aun así tener sugerencias locales.
+  static const int _backendCandidateLimit = TaxiMapsApiService.maxResultsPerRequest;
 
   /// Máximo de sugerencias que se devuelven al usuario.
   static const int _maxResults = 5;
@@ -119,10 +125,11 @@ class PlacesService {
     final cached = _getCached(_searchCache, cacheKey);
     if (cached != null) return cached;
 
-    // El texto solo ("carrera 5") lo resuelve el geocoder en Bogotá.
-    // Anclar la consulta a la zona hace que vuelva lo de aquí.
+    // El backend ya ancla la búsqueda a Popayán (verificado: "carrera 5"
+    // devuelve 10 resultados locales). Aquí solo se filtran los que caen
+    // fuera del área y se ordenan por cercanía.
     final results = await _taxiMaps.forwardGeocode(
-      PlacePrecision.withAreaContext(normalized),
+      normalized,
       limit: _backendCandidateLimit,
     );
 
@@ -226,7 +233,7 @@ class PlacesService {
 
     AppLogger.d('🔍 Autocomplete backend: "$normalized"');
     final dtos = await _taxiMaps.autocomplete(
-      PlacePrecision.withAreaContext(normalized),
+      normalized,
       limit: _backendCandidateLimit,
     );
     _metrics.autocompleteApiCalls++;
@@ -251,6 +258,17 @@ class PlacesService {
     }
 
     final ranked = _rankPredictionsByProximity(predictions);
+    if (ranked.isNotEmpty) {
+      final detalle = ranked
+          .take(3)
+          .map(
+            (p) =>
+                '${p.mainText}'
+                '${p.distanceMeters == null ? '' : ' (${PlacePrecision.formatDistance(p.distanceMeters!)})'}',
+          )
+          .join(' · ');
+      AppLogger.d('   → $detalle');
+    }
     _autocompleteCache[cacheKey] = _CacheEntry(
       value: ranked,
       expiresAt: DateTime.now().add(_cacheTtl),

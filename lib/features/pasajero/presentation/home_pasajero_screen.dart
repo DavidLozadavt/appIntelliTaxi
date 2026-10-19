@@ -1873,6 +1873,35 @@ class _HomePasajeroState extends State<HomePasajero>
     }
   }
 
+  /// Ajusta la altura de la hoja para que la lista de sugerencias quede
+  /// visible sobre el teclado.
+  ///
+  /// Con la hoja a la mitad, la lista se dibuja detrás del teclado y el
+  /// usuario escribe sin ver nada: parecía que la búsqueda no encontraba
+  /// destinos. Al aparecer sugerencias la hoja sube; al desaparecer,
+  /// vuelve a su tamaño normal.
+  Future<void> _ajustarHojaParaSugerencias(bool haySugerencias) async {
+    if (!_sheetController.isAttached || !mounted) return;
+    final actual = _sheetController.size;
+    if (haySugerencias) {
+      if (actual < _sheetMaxSize - 0.02) {
+        await _sheetController.animateTo(
+          _sheetMaxSize,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+    if (actual > _sheetMidSize + 0.02 && actual < _sheetMaxSize - 0.02) {
+      await _sheetController.animateTo(
+        _sheetMidSize,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
   void _onOriginChanged() {
     if (!mounted) return;
     _originEditedByUser = true;
@@ -1889,6 +1918,7 @@ class _HomePasajeroState extends State<HomePasajero>
           _originPredictions = predictions;
           _isSearchingOrigin = searching;
         });
+        unawaited(_ajustarHojaParaSugerencias(predictions.isNotEmpty));
       },
     );
   }
@@ -1908,6 +1938,7 @@ class _HomePasajeroState extends State<HomePasajero>
           _destinationPredictions = predictions;
           _isSearchingDestination = searching;
         });
+        unawaited(_ajustarHojaParaSugerencias(predictions.isNotEmpty));
       },
     );
   }
@@ -1952,6 +1983,7 @@ class _HomePasajeroState extends State<HomePasajero>
       _originEditedByUser = true;
     });
     _originController.addListener(_onOriginChanged);
+    unawaited(_ajustarHojaParaSugerencias(false));
 
     if (_selectedDestination != null) {
       await _drawRoute();
@@ -1999,6 +2031,7 @@ class _HomePasajeroState extends State<HomePasajero>
       _isSearchingDestination = false;
       _upsertDestinationMarker(destination);
     });
+    unawaited(_ajustarHojaParaSugerencias(false));
 
     if (mounted) {
       unawaited(_saveRecentDestination(destination));
