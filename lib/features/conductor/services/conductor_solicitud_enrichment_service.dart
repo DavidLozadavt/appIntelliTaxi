@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
@@ -43,16 +44,26 @@ class ConductorSolicitudEnrichmentService {
     }
     if (nearby == null || nearby.name.trim().isEmpty) return false;
 
+    final nearbyName = nearby.name.trim();
+    // Un nombre de calle ("Cra. 5") es menos útil que el título de calle con
+    // número que resuelve el geocoder después: solo se usa como nombre si es
+    // un comercio real.
+    final esComercio = !SolicitudDisplayHelper.looksLikeStreetAddress(
+      nearbyName,
+    );
+
     var changed = false;
-    solicitud['origen_name'] = nearby.name.trim();
-    changed = true;
+    if (esComercio) {
+      solicitud['origen_name'] = nearbyName;
+      changed = true;
+    }
 
     if (!ConductorSolicitudPayloadHelper.hasMeaningfulAddress(
       solicitud['origen_address']?.toString(),
     )) {
       solicitud['origen_address'] = nearby.address.trim().isNotEmpty
           ? nearby.address
-          : nearby.name;
+          : nearbyName;
       changed = true;
     }
     if (nearby.placeId.isNotEmpty) {
@@ -78,6 +89,62 @@ class ConductorSolicitudEnrichmentService {
     }
   }
 
+  /// ¿La dirección del payload concuerda con el barrio que trae?
+  ///
+  /// Si la dirección menciona el barrio ("Cra 5 #12-34, Las Palmas, ...") es
+  /// consistente. Si no lo menciona puede ser una calle sintetizada por
+  /// Google, y hay que verificarla contra las coordenadas.
+  static bool _payloadEsCoherente(
+    Map<String, dynamic> solicitud, {
+    required bool esOrigen,
+  }) {
+    return SolicitudDisplayHelper.direccionCoincideConBarrio(
+      solicitud,
+      esOrigen: esOrigen,
+    );
+  }
+
+  /// Descarta una dirección de calle que el geocoder no respalda.
+  ///
+  /// Google sintetiza calles y numeración donde no hay cobertura y las
+  /// devuelve como `ROOFTOP` (ej. "Cl. 15 # 37-222" para un punto de Los
+  /// Alamos de Occidente, cuyo barrio real es "Los Alamos de Occidente").
+  /// Cuando el punto no cae sobre una calle mapeada, la dirección del
+  /// payload es una invención: se reemplaza por el barrio, que sí es real.
+  ///
+  /// Devuelve `true` si se modificó la solicitud.
+  bool _descartarDireccionFabricada(
+    Map<String, dynamic> solicitud,
+    CurrentLocationData label, {
+    required bool esOrigen,
+  }) {
+    final calleReal = label.streetLine?.trim() ?? '';
+    if (calleReal.isNotEmpty) return false;
+
+    final barrio = label.area?.trim() ?? '';
+    if (barrio.isEmpty) return false;
+
+    final claveDir = esOrigen ? 'origen_address' : 'destino_address';
+    final claveNombre = esOrigen ? 'origen_name' : 'destino_name';
+    final direccionActual = solicitud[claveDir]?.toString().trim() ?? '';
+    if (direccionActual.isEmpty) return false;
+    if (!SolicitudDisplayHelper.looksLikeStreetAddress(direccionActual)) {
+      return false;
+    }
+
+    final direccionLimpia = label.address.trim().isNotEmpty
+        ? label.address.trim()
+        : barrio;
+    solicitud[claveDir] = direccionLimpia;
+    solicitud[claveNombre] = barrio;
+
+    AppLogger.d(
+      '🧭 Dirección de calle descartada (sin calle mapeada) → barrio "$barrio"',
+      tag: 'SolicitudEnrich',
+    );
+    return true;
+  }
+
   Future<bool> _enrichImpl(
     Map<String, dynamic> solicitud, {
     bool forzarBarrio = false,
@@ -98,7 +165,9 @@ class ConductorSolicitudEnrichmentService {
     }) async {
       try {
       if (isDestino) {
-        if (SolicitudDisplayHelper.tieneDestinoCompletoParaMapa(solicitud)) {
+        if (SolicitudDisplayHelper.tieneDestinoCompletoParaMapa(solicitud) &&
+            _payloadEsCoherente(solicitud, esOrigen: false) &&
+            !forzarBarrio) {
           return;
         }
       } else {
@@ -108,7 +177,13 @@ class ConductorSolicitudEnrichmentService {
           SolicitudDisplayHelper.normalizeSolicitudMap(solicitud),
         );
         final barrioOk = barrio != null && barrio.isNotEmpty;
-        if (origenCompleto && barrioOk && !forzarBarrio) {
+        // Solo se salta la geocodificación si el payload es coherente: la
+        // dirección menciona el barrio. Si no lo menciona puede ser una
+        // calle inventada, y hay que verificarla contra el punto.
+        if (origenCompleto &&
+            barrioOk &&
+            _payloadEsCoherente(solicitud, esOrigen: true) &&
+            !forzarBarrio) {
           return;
         }
       }
@@ -124,6 +199,9 @@ class ConductorSolicitudEnrichmentService {
             );
 
       if (isDestino) {
+        if (_descartarDireccionFabricada(solicitud, label, esOrigen: false)) {
+          changed = true;
+        }
         if (!ConductorSolicitudPayloadHelper.hasMeaningfulPlaceName(
               solicitud['destino_name']?.toString(),
             ) &&
@@ -143,6 +221,16 @@ class ConductorSolicitudEnrichmentService {
       } else {
         final driverTitle = label.driverTitle;
         final driverSub = label.driverSubtitle;
+
+        // La dirección del payload puede ser una calle que Google inventó en
+        // una zona sin cobertura ("Cl. 15 # 37-222" en Los Alamos de
+        // Occidente, marcada como ROOFTOP). Si el geocoder dice que el punto
+        // NO está sobre una calle real, esa dirección no existe: se
+        // descarta y se muestra el barrio.
+        if (_descartarDireccionFabricada(solicitud, label, esOrigen: true)) {
+          changed = true;
+        }
+
         if (!ConductorSolicitudPayloadHelper.hasMeaningfulPlaceName(
               solicitud['origen_name']?.toString(),
             ) &&

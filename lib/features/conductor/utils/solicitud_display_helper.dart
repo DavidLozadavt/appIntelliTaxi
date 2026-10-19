@@ -1,3 +1,5 @@
+import 'package:intellitaxi/core/geo/place_precision.dart';
+
 /// Textos de solicitud orientados a lectura rápida al volante.
 class SolicitudDisplayHelper {
   SolicitudDisplayHelper._();
@@ -247,6 +249,11 @@ class SolicitudDisplayHelper {
     return null;
   }
 
+  /// Compacta el texto de barrio para mostrarlo: toma la parte antes de la
+  /// primera coma y normaliza el nombre.
+  ///
+  /// «Barrio solidaridad, Comuna 7» → «Solidaridad»
+  /// «Ciudad jardin» → «Ciudad Jardín»
   static String compactBarrio(String? value) {
     if (value == null || value.trim().isEmpty) return '';
     final parts = value
@@ -255,8 +262,8 @@ class SolicitudDisplayHelper {
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .toList();
-    if (parts.isEmpty) return value.trim();
-    return parts.first;
+    if (parts.isEmpty) return '';
+    return PlacePrecision.normalizeNeighborhood(parts.first);
   }
 
   /// Convierte una dirección completa en un "nombre corto" legible para alertas.
@@ -473,7 +480,36 @@ class SolicitudDisplayHelper {
     if (!tieneDestinoCompletoParaMapa(solicitud)) return true;
     final barrio = barrioFromPayload(normalizeSolicitudMap(solicitud));
     if ((barrio == null || barrio.isEmpty) && forzarBarrio) return true;
+    // La dirección y el barrio no coinciden: puede ser una calle que Google
+    // inventó ("Cl 15 # 37-222" sin ciudad, en un punto sin calle mapeada).
+    // Hay que verificarla contra las coordenadas antes de mostrarla.
+    if (barrio != null && barrio.isNotEmpty) {
+      if (!direccionCoincideConBarrio(solicitud, esOrigen: true)) return true;
+      if (!direccionCoincideConBarrio(solicitud, esOrigen: false)) return true;
+    }
     return false;
+  }
+
+  /// ¿La dirección del payload concuerda con el barrio que trae?
+  ///
+  /// Si la dirección menciona el barrio ("Cra 5 #12-34, Las Palmas, ...") es
+  /// consistente. Si no lo menciona puede ser una calle sintetizada por
+  /// Google en zonas sin cobertura, y hay que verificarla contra el punto.
+  static bool direccionCoincideConBarrio(
+    Map<String, dynamic> data, {
+    required bool esOrigen,
+  }) {
+    final n = normalizeSolicitudMap(data);
+    final barrio = barrioFromPayload(n);
+    if (barrio == null || barrio.trim().isEmpty) return true;
+
+    final direccion =
+        (esOrigen ? _pickupAddressRaw(n) : _destinationAddressRaw(n))
+            ?.trim() ??
+        '';
+    if (direccion.isEmpty) return true;
+
+    return direccion.toLowerCase().contains(barrio.trim().toLowerCase());
   }
 
   /// Título en tarjeta/alerta: punto de referencia primero; calle como respaldo.

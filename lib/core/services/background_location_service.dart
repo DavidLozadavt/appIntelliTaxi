@@ -13,14 +13,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum _BgLocationMode { none, trip, map }
 
+/// Antigüedad máxima (s) de un fix para considerarse vigente.
+const Duration _kFreshFixMaxAge = Duration(seconds: 20);
+
 /// Entry point del isolate de segundo plano (requerido por flutter_background_service).
 @pragma('vm:entry-point')
 Future<void> backgroundLocationOnStart(ServiceInstance service) async {
   Timer? timer;
+  StreamSubscription<Position>? positionSub;
   _BgLocationMode mode = _BgLocationMode.none;
   int? servicioId;
   int? conductorId;
+  /// Fix más reciente del stream.
   Position? lastPosition;
+  DateTime? lastFixAt;
+  /// Última posición realmente enviada al backend (para el filtro de distancia).
+  Position? lastSentPosition;
   String? authToken;
   Dio? dio;
 
@@ -84,6 +92,75 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     return dio;
   }
 
+  Future<void> stopPositionStream() async {
+    await positionSub?.cancel();
+    positionSub = null;
+  }
+
+  /// Stream GPS continuo.
+  ///
+  /// Antes cada envío abría su propia sesión GNSS (`getCurrentPosition`),
+  /// que en segundo plano tarda 8-12 s y a veces expira: el backend recibía
+  /// un fix viejo o nada. Con el stream abierto hay un fix fresco siempre
+  /// disponible y el envío es instantáneo.
+  Future<void> startPositionStream() async {
+    await stopPositionStream();
+
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      positionSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+        ),
+      ).listen(
+        (position) {
+          lastPosition = position;
+          lastFixAt = DateTime.now();
+        },
+        onError: (Object _) {
+          // Si el stream muere, el envío periódico sigue con fix puntual.
+        },
+        cancelOnError: false,
+      );
+    } catch (_) {
+      // Sin stream: se usará fix puntual.
+    }
+  }
+
+  /// Fix vigente: primero el del stream, si no está viejo.
+  Future<Position?> resolveFreshPosition() async {
+    final streamed = lastPosition;
+    final streamedAt = lastFixAt;
+    if (streamed != null && streamedAt != null) {
+      final age = DateTime.now().difference(streamedAt);
+      if (!age.isNegative && age <= _kFreshFixMaxAge) {
+        return streamed;
+      }
+    }
+
+    try {
+      final fresh = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      lastPosition = fresh;
+      lastFixAt = DateTime.now();
+      return fresh;
+    } catch (_) {
+      // Sin fix nuevo: se prefiere no enviar nada antes que enviar un
+      // punto viejo que teletransporte al conductor en el mapa.
+      return null;
+    }
+  }
+
   Future<void> sendTripLocation() async {
     if (servicioId == null || conductorId == null) return;
 
@@ -94,17 +171,13 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
-        ),
-      );
+      final position = await resolveFreshPosition();
+      if (position == null) return;
 
-      if (lastPosition != null) {
+      if (lastSentPosition != null) {
         final moved = Geolocator.distanceBetween(
-          lastPosition!.latitude,
-          lastPosition!.longitude,
+          lastSentPosition!.latitude,
+          lastSentPosition!.longitude,
           position.latitude,
           position.longitude,
         );
@@ -124,13 +197,17 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
           'conductor_id': conductorId,
           'lat': position.latitude,
           'lng': position.longitude,
-          'velocidad': position.speed,
-          'direccion': position.heading,
+          'velocidad': position.speed.isFinite && position.speed >= 0
+              ? position.speed
+              : 0,
+          'direccion': position.heading.isFinite && position.heading >= 0
+              ? position.heading
+              : 0,
           'bg': true,
         },
       );
 
-      lastPosition = position;
+      lastSentPosition = position;
 
       if (service is AndroidServiceInstance) {
         service.setForegroundNotificationInfo(
@@ -154,12 +231,8 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
       final resolvedId = await resolveConductorId();
       if (resolvedId == null) return;
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
-        ),
-      );
+      final position = await resolveFreshPosition();
+      if (position == null) return;
 
       final dioClient = await ensureDio();
       if (dioClient == null) return;
@@ -182,7 +255,7 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
         },
       );
 
-      lastPosition = position;
+      lastSentPosition = position;
 
       if (service is AndroidServiceInstance) {
         service.setForegroundNotificationInfo(
@@ -229,6 +302,9 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
 
     mode = _BgLocationMode.trip;
     lastPosition = null;
+    lastFixAt = null;
+    lastSentPosition = null;
+    await startPositionStream();
     scheduleTimer();
   });
 
@@ -249,6 +325,9 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     servicioId = null;
     mode = _BgLocationMode.map;
     lastPosition = null;
+    lastFixAt = null;
+    lastSentPosition = null;
+    await startPositionStream();
     scheduleTimer();
   });
 
@@ -260,6 +339,9 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     mode = _BgLocationMode.none;
     servicioId = null;
     lastPosition = null;
+    lastFixAt = null;
+    lastSentPosition = null;
+    await stopPositionStream();
   });
 
   service.on('stopMapHeartbeat').listen((event) async {
@@ -269,6 +351,9 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     mode = _BgLocationMode.none;
     servicioId = null;
     lastPosition = null;
+    lastFixAt = null;
+    lastSentPosition = null;
+    await stopPositionStream();
     await service.stopSelf();
   });
 
@@ -279,8 +364,11 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
     servicioId = null;
     conductorId = null;
     lastPosition = null;
+    lastFixAt = null;
+    lastSentPosition = null;
     authToken = null;
     dio = null;
+    await stopPositionStream();
     await service.stopSelf();
   });
 }

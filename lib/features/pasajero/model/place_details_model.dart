@@ -59,6 +59,10 @@ class PlacePrediction {
   final double? lat;
   final double? lng;
 
+  /// Distancia real al punto de referencia del usuario (metros).
+  /// Se usa para ordenar y para mostrar «A 250 m».
+  final double? distanceMeters;
+
   PlacePrediction({
     required this.placeId,
     required this.description,
@@ -66,9 +70,27 @@ class PlacePrediction {
     required this.secondaryText,
     this.lat,
     this.lng,
+    this.distanceMeters,
   });
 
   bool get hasCoordinates => lat != null && lng != null;
+
+  PlacePrediction copyWith({
+    String? description,
+    String? mainText,
+    String? secondaryText,
+    double? distanceMeters,
+  }) {
+    return PlacePrediction(
+      placeId: placeId,
+      description: description ?? this.description,
+      mainText: mainText ?? this.mainText,
+      secondaryText: secondaryText ?? this.secondaryText,
+      lat: lat,
+      lng: lng,
+      distanceMeters: distanceMeters ?? this.distanceMeters,
+    );
+  }
 
   factory PlacePrediction.fromJson(Map<String, dynamic> json) {
     if (json.containsKey('structured_formatting')) {

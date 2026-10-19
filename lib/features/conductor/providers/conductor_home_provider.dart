@@ -2590,6 +2590,46 @@ class ConductorHomeProvider extends ChangeNotifier {
     await reconciliarTrasFcm(data: data);
   }
 
+  /// Registra cómo llega la recogida de una solicitud nueva.
+  ///
+  /// Sirve para verificar de dónde sale la dirección que ve el conductor
+  /// (payload del backend vs. geocodificación local) cuando no coincide con
+  /// el barrio real del punto.
+  void _logRecogidaDeSolicitud(Map<String, dynamic> solicitud) {
+    try {
+      final n = SolicitudDisplayHelper.normalizeSolicitudMap(solicitud);
+      AppLogger.d(
+        '   📍 origen: name="${n['origen_name'] ?? ''}" '
+        'address="${n['origen_address'] ?? ''}" '
+        'barrio="${n['origen_barrio'] ?? ''}" '
+        'barrioAlt="${n['barrio'] ?? ''}" '
+        'zona="${n['zona'] ?? ''}" '
+        'lat=${n['origen_lat'] ?? ''} lng=${n['origen_lng'] ?? ''}',
+        tag: 'SolicitudIn',
+      );
+    } catch (_) {
+      // Log best-effort: nunca debe romper la llegada de la solicitud.
+    }
+  }
+
+  /// Registra cómo quedó la recogida tras el enriquecimiento.
+  void _logRecogidaEnriquecida(String solicitudId) {
+    try {
+      final solicitud = _solicitudesPorId[solicitudId];
+      if (solicitud == null) return;
+      final n = SolicitudDisplayHelper.normalizeSolicitudMap(solicitud);
+      AppLogger.d(
+        '   ✅ origen: name="${n['origen_name'] ?? ''}" '
+        'address="${n['origen_address'] ?? ''}" '
+        'barrio="${n['origen_barrio'] ?? ''}" '
+        '→ título="${SolicitudDisplayHelper.pickupTitleForDriver(solicitud)}"',
+        tag: 'SolicitudIn',
+      );
+    } catch (_) {
+      // Log best-effort: nunca debe romper la llegada de la solicitud.
+    }
+  }
+
   /// Procesa una nueva solicitud (Pusher, sync API o alerta FCM).
   void _procesarNuevaSolicitud(
     dynamic data, {
@@ -2739,6 +2779,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       final esNueva = existente == null;
       if (esNueva) {
         AppLogger.d('📩 Nueva solicitud: $solicitudId');
+        _logRecogidaDeSolicitud(solicitud);
         unawaited(ConductorIncomingDedupStore.recordRealtimeIncoming(solicitudId));
         if (!AppLifecycleHelper.isInForeground()) {
           unawaited(_actualizarBurbujaSegundoPlano());
@@ -3327,7 +3368,18 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   Future<void> _notificarYEnriquecerSolicitud(String solicitudId) async {
     try {
-      final solicitud = _solicitudesPorId[solicitudId];
+      var solicitud = _solicitudesPorId[solicitudId];
+      if (solicitud == null || _isDisposed) return;
+
+      // La dirección del backend puede ser una calle que Google inventó en
+      // una zona sin cobertura ("Cl 15 # 37-222"). Se enriquece ANTES de
+      // armar la notificación para que el conductor no lea una dirección
+      // que no existe. Con tope de 2,5 s: si la red falla, se notifica igual.
+      await _enriquecerDireccionesSolicitud(solicitudId).timeout(
+        const Duration(milliseconds: 2500),
+        onTimeout: () {},
+      );
+      solicitud = _solicitudesPorId[solicitudId];
       if (solicitud == null || _isDisposed) return;
 
       final showAlert = await AppLifecycleHelper.shouldShowIncomingServiceAlert();
@@ -3400,6 +3452,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       final changed = await _solicitudEnrichment.enrich(solicitud);
+      if (changed) _logRecogidaEnriquecida(solicitudId);
       if (changed && !_isDisposed) notifyListeners();
     } catch (_) {
       // Red/timeout: la tarjeta ya tiene datos del API.

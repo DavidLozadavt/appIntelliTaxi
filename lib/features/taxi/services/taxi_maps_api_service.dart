@@ -10,10 +10,24 @@ class TaxiMapsApiService {
 
   static const _base = 'taxi';
 
+  /// Cache corta del reverse-geocode.
+  ///
+  /// El mismo punto se consulta varias veces seguidas (barrio, etiqueta de
+  /// calle, lugar cercano) y cada consulta es un viaje al backend.
+  static const Duration _reverseGeocodeTtl = Duration(seconds: 90);
+  final Map<String, _ReverseGeocodeEntry> _reverseGeocodeCache = {};
+
   Future<TaxiReverseGeocodeResult?> reverseGeocode(
     double lat,
     double lng,
   ) async {
+    final key = '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}';
+    final cached = _reverseGeocodeCache[key];
+    if (cached != null) {
+      if (DateTime.now().isBefore(cached.expiresAt)) return cached.value;
+      _reverseGeocodeCache.remove(key);
+    }
+
     try {
       final res = await _dio.get(
         '$_base/reverse-geocode',
@@ -21,9 +35,14 @@ class TaxiMapsApiService {
       );
       final data = res.data;
       if (data is! Map || data['success'] != true) return null;
-      return TaxiReverseGeocodeResult.fromJson(
+      final result = TaxiReverseGeocodeResult.fromJson(
         Map<String, dynamic>.from(data),
       );
+      _reverseGeocodeCache[key] = _ReverseGeocodeEntry(
+        value: result,
+        expiresAt: DateTime.now().add(_reverseGeocodeTtl),
+      );
+      return result;
     } on DioException catch (e) {
       _logProxyError('reverse-geocode', e);
       return null;
@@ -142,4 +161,11 @@ class TaxiMapsApiService {
       tag: 'TaxiMapsProxy',
     );
   }
+}
+
+class _ReverseGeocodeEntry {
+  final TaxiReverseGeocodeResult value;
+  final DateTime expiresAt;
+
+  const _ReverseGeocodeEntry({required this.value, required this.expiresAt});
 }

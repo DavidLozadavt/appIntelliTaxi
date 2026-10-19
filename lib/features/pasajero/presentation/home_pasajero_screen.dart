@@ -1210,6 +1210,12 @@ class _HomePasajeroState extends State<HomePasajero>
         _locationMessage = 'Obteniendo dirección...';
       });
 
+      // Ancla de la búsqueda: los lugares se ordenan por cercanía a este punto.
+      _placesService.updateSearchContext(
+        lat: position.latitude,
+        lng: position.longitude,
+      );
+
       await _refineOriginAddress(position);
 
       if (!mounted) return;
@@ -1289,6 +1295,12 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!mounted || _isDisposed) return;
     // Fix con error de precisión demasiado grande: no confiar en él.
     if (position.accuracy.isFinite && position.accuracy > 120) return;
+
+    // La búsqueda de lugares se ordena por cercanía a este punto.
+    _placesService.updateSearchContext(
+      lat: position.latitude,
+      lng: position.longitude,
+    );
 
     // GPS recuperado y el usuario aún no escribió nada → modo manual caduca.
     if (_manualMode &&

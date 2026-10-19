@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/config/maps_config.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/core/geo/place_precision.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
@@ -19,6 +20,17 @@ class PlacesService {
   static const Duration _cacheTtl = Duration(minutes: 45);
   static const Duration _sessionTtl = Duration(minutes: 3);
   static const Uuid _uuid = Uuid();
+
+  /// Cuántos candidatos pide al geocoder: se piden más de los que se
+  /// muestran para poder descartar los que caen fuera del área y aun así
+  /// tener sugerencias locales.
+  static const int _backendCandidateLimit = 12;
+
+  /// Máximo de sugerencias que se devuelven al usuario.
+  static const int _maxResults = 5;
+
+  /// Vigencia de la posición del usuario usada para ordenar por cercanía.
+  static const Duration _searchContextTtl = Duration(minutes: 10);
 
   final TaxiMapsApiService _taxiMaps;
 
@@ -39,8 +51,57 @@ class PlacesService {
   String? _autocompleteSessionToken;
   DateTime? _autocompleteSessionStartedAt;
 
+  /// Posición del usuario: define el "acá" contra el que se ordenan los
+  /// resultados para que salgan primero los lugares más cercanos.
+  double? _contextLat;
+  double? _contextLng;
+  DateTime? _contextUpdatedAt;
+
   int get _minAutocompleteChars =>
       MapsConfig.useBackendProxy ? MapsConfig.autocompleteMinChars : 2;
+
+  /// Actualiza el punto de referencia para ordenar resultados por cercanía.
+  ///
+  /// Se llama cuando el GPS entrega una posición (pasajero o conductor).
+  /// Si el usuario se aleja mucho, el contexto se re-anchoriza solo.
+  void updateSearchContext({required double lat, required double lng}) {
+    if (!lat.isFinite || !lng.isFinite) return;
+    if (!PopayanUrbanArea.contains(lat, lng)) {
+      // Fuera del área de servicio: el contexto no sirve para ordenar.
+      _contextLat = null;
+      _contextLng = null;
+      _contextUpdatedAt = null;
+      return;
+    }
+    final previousLat = _contextLat;
+    final previousLng = _contextLng;
+    if (previousLat != null && previousLng != null) {
+      final drift = PlacePrecision.distanceMeters(
+        previousLat,
+        previousLng,
+        lat,
+        lng,
+      );
+      // Re-anchoriza solo si se movió lo suficiente como para cambiar el orden.
+      if (drift < 150) {
+        _contextUpdatedAt = DateTime.now();
+        return;
+      }
+    }
+    _contextLat = lat;
+    _contextLng = lng;
+    _contextUpdatedAt = DateTime.now();
+  }
+
+  /// Contexto de búsqueda vigente (si no está vencido).
+  ({double lat, double lng})? get _searchContext {
+    final lat = _contextLat;
+    final lng = _contextLng;
+    final updatedAt = _contextUpdatedAt;
+    if (lat == null || lng == null || updatedAt == null) return null;
+    if (DateTime.now().difference(updatedAt) > _searchContextTtl) return null;
+    return (lat: lat, lng: lng);
+  }
 
   /// Búsqueda por texto (forward geocode en backend).
   Future<List<PlaceResult>> searchPlaces(String query) async {
@@ -58,25 +119,33 @@ class PlacesService {
     final cached = _getCached(_searchCache, cacheKey);
     if (cached != null) return cached;
 
-    final results = await _taxiMaps.forwardGeocode(normalized);
-    final places = results
-        .where((r) => PopayanUrbanArea.contains(r.lat, r.lng))
-        .map(
-          (r) => PlaceResult(
-            placeId: r.placeId,
-            name: r.name.isNotEmpty ? r.name : r.address.split(',').first,
-            address: r.address,
-            lat: r.lat,
-            lng: r.lng,
-          ),
-        )
-        .toList();
+    // El texto solo ("carrera 5") lo resuelve el geocoder en Bogotá.
+    // Anclar la consulta a la zona hace que vuelva lo de aquí.
+    final results = await _taxiMaps.forwardGeocode(
+      PlacePrecision.withAreaContext(normalized),
+      limit: _backendCandidateLimit,
+    );
 
+    final places = <PlaceResult>[];
+    for (final r in results) {
+      if (!_isInsideServiceArea(r.lat, r.lng, r.address)) continue;
+      places.add(
+        PlaceResult(
+          placeId: r.placeId,
+          name: r.name.isNotEmpty ? r.name : r.address.split(',').first,
+          address: r.address,
+          lat: r.lat,
+          lng: r.lng,
+        ),
+      );
+    }
+
+    final ranked = _rankByProximity(places);
     _searchCache[cacheKey] = _CacheEntry(
-      value: places,
+      value: ranked,
       expiresAt: DateTime.now().add(_cacheTtl),
     );
-    return places;
+    return ranked;
   }
 
   Future<List<PlaceResult>> _searchPlacesGoogle(String normalized) async {
@@ -87,7 +156,7 @@ class PlacesService {
     try {
       final url = Uri.parse(
         '$_googleBaseUrl/place/textsearch/json?'
-        'query=${Uri.encodeComponent('$normalized Popayán')}'
+        'query=${Uri.encodeComponent(PlacePrecision.withAreaContext(normalized))}'
         '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
         '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
         '&key=${AppConfig.googleMapsApiKey}'
@@ -101,11 +170,12 @@ class PlacesService {
               .map((place) => PlaceResult.fromJson(place))
               .where((p) => PopayanUrbanArea.contains(p.lat, p.lng))
               .toList();
+          final ranked = _rankByProximity(results);
           _searchCache[cacheKey] = _CacheEntry(
-            value: results,
+            value: ranked,
             expiresAt: DateTime.now().add(_cacheTtl),
           );
-          return results;
+          return ranked;
         }
       }
     } catch (e) {
@@ -155,28 +225,37 @@ class PlacesService {
     }
 
     AppLogger.d('🔍 Autocomplete backend: "$normalized"');
-    final dtos = await _taxiMaps.autocomplete(normalized);
+    final dtos = await _taxiMaps.autocomplete(
+      PlacePrecision.withAreaContext(normalized),
+      limit: _backendCandidateLimit,
+    );
     _metrics.autocompleteApiCalls++;
 
-    final predictions = dtos
-        .map(
-          (d) => PlacePrediction.fromBackendJson({
-            'place_id': d.placeId,
-            'description': d.description,
-            'address': d.address,
-            'name': d.name,
-            'lat': d.lat,
-            'lng': d.lng,
-          }),
-        )
-        .where((p) => PopayanUrbanArea.isPredictionAllowed(p.description))
-        .toList();
+    final predictions = <PlacePrediction>[];
+    for (final d in dtos) {
+      // Filtro por coordenadas reales: el texto puede no mencionar la
+      // ciudad y el geocoder igual devuelve un punto de Cali o Bogotá.
+      if (!_isInsideServiceArea(d.lat, d.lng, d.description)) continue;
+      if (!PopayanUrbanArea.isPredictionAllowed(d.description)) continue;
 
+      predictions.add(
+        PlacePrediction.fromBackendJson({
+          'place_id': d.placeId,
+          'description': d.description,
+          'address': d.address,
+          'name': d.name,
+          'lat': d.lat,
+          'lng': d.lng,
+        }),
+      );
+    }
+
+    final ranked = _rankPredictionsByProximity(predictions);
     _autocompleteCache[cacheKey] = _CacheEntry(
-      value: predictions,
+      value: ranked,
       expiresAt: DateTime.now().add(_cacheTtl),
     );
-    return predictions;
+    return ranked;
   }
 
   Future<List<PlacePrediction>> _autocompleteGoogle(
@@ -193,7 +272,7 @@ class PlacesService {
     try {
       final url = Uri.parse(
         '$_googleBaseUrl/place/autocomplete/json?'
-        'input=${Uri.encodeComponent(normalized)}'
+        'input=${Uri.encodeComponent(PlacePrecision.withAreaContext(normalized))}'
         '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
         '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
         '&bounds=${PopayanUrbanArea.autocompleteBounds}'
@@ -226,14 +305,21 @@ class PlacesService {
     return [];
   }
 
-  /// Sin Places nearby en modo proxy (evita Google).
+  /// Lugar cercano al punto, para nombrar el punto de recogida.
+  ///
+  /// En modo proxy no hay Places Nearby, así que se resuelve con el
+  /// reverse-geocode del backend: devuelve la vía/comercio del punto.
+  /// Antes de esto devolvía `null` y el conductor nunca recibía el nombre
+  /// del lugar de recogida.
   Future<PlaceResult?> findNearestPlaceAt(
     double lat,
     double lng, {
     double maxDistanceMeters = 130,
   }) async {
-    if (MapsConfig.useBackendProxy) return null;
     if (!PopayanUrbanArea.contains(lat, lng)) return null;
+    if (MapsConfig.useBackendProxy) {
+      return _findNearestPlaceViaProxy(lat, lng, maxDistanceMeters);
+    }
 
     try {
       final url = Uri.parse(
@@ -277,6 +363,58 @@ class PlacesService {
       AppLogger.d('❌ Error nearby: $e');
       return null;
     }
+  }
+
+  /// Versión proxy de [findNearestPlaceAt]: usa el reverse-geocode del
+  /// backend para nombrar el punto (vía + comercio cuando aparece).
+  Future<PlaceResult?> _findNearestPlaceViaProxy(
+    double lat,
+    double lng,
+    double maxDistanceMeters,
+  ) async {
+    final result = await _taxiMaps.reverseGeocode(lat, lng);
+    if (result == null) return null;
+
+    // El backend devuelve el punto que realmente geocodificó: si está
+    // lejos del consultado, es otro sector y no sirve.
+    final drift = PlacePrecision.distanceMeters(
+      lat,
+      lng,
+      result.lat,
+      result.lng,
+    );
+    if (drift > maxDistanceMeters) {
+      AppLogger.d(
+        '🗺️ Reverse proxy desalineado (${drift.round()} m) para nearby',
+        tag: 'PlacesService',
+      );
+      return null;
+    }
+
+    final address = result.address?.trim() ?? '';
+    final zona = result.zona?.trim() ?? '';
+    final barrio = result.barrio?.trim() ?? '';
+
+    // El nombre corto es el comercio o la vía; la dirección completa es
+    // todo lo que devolvió el backend.
+    var name = address.isNotEmpty ? address.split(',').first.trim() : '';
+    if (name.isEmpty) name = zona;
+    if (name.isEmpty) name = barrio;
+    if (name.isEmpty) return null;
+
+    final fullAddress = address.isNotEmpty
+        ? address
+        : [zona, barrio].where((e) => e.isNotEmpty).join(', ');
+
+    return PlaceResult(
+      placeId: result.provider != null && result.provider!.isNotEmpty
+          ? 'nominatim:${result.lat},${result.lng}'
+          : '',
+      name: name,
+      address: fullAddress.isEmpty ? name : fullAddress,
+      lat: lat,
+      lng: lng,
+    );
   }
 
   /// Predicción del backend ya trae lat/lng — sin place details extra.
@@ -373,6 +511,85 @@ class PlacesService {
       return null;
     }
     return entry.value;
+  }
+
+  /// El punto tiene que estar realmente dentro del área de servicio.
+  ///
+  /// El filtro por texto (que busca el nombre de la ciudad) no alcanza: hay
+  /// direcciones que no mencionan la ciudad y aun así pertenecen a otra.
+  bool _isInsideServiceArea(double lat, double lng, String? description) {
+    if (!lat.isFinite || !lng.isFinite) return false;
+    if (!PopayanUrbanArea.contains(lat, lng)) return false;
+    if (description == null || description.isEmpty) return true;
+    return PopayanUrbanArea.isPredictionAllowed(description);
+  }
+
+  /// Ordena los resultados de búsqueda por cercanía al usuario.
+  List<PlaceResult> _rankByProximity(List<PlaceResult> places) {
+    if (places.isEmpty) return places;
+
+    final deduped = PlacePrecision.dedupeByProximity(
+      places,
+      latOf: (p) => p.lat,
+      lngOf: (p) => p.lng,
+      keyOf: (p) => p.name.isNotEmpty ? p.name : p.address,
+    );
+
+    final context = _searchContext;
+    if (context == null) {
+      return deduped.take(_maxResults).toList();
+    }
+
+    final sorted = PlacePrecision.sortByProximity(
+      deduped,
+      originLat: context.lat,
+      originLng: context.lng,
+      latOf: (p) => p.lat,
+      lngOf: (p) => p.lng,
+    );
+    return sorted.take(_maxResults).toList();
+  }
+
+  /// Igual que [_rankByProximity] pero además deja la distancia calculada
+  /// en cada predicción para poder mostrarla en la lista.
+  List<PlacePrediction> _rankPredictionsByProximity(
+    List<PlacePrediction> predictions,
+  ) {
+    if (predictions.isEmpty) return predictions;
+
+    final context = _searchContext;
+    final withDistance = <PlacePrediction>[];
+    for (final p in predictions) {
+      if (context == null || !p.hasCoordinates) {
+        withDistance.add(p);
+        continue;
+      }
+      final meters = PlacePrecision.distanceMeters(
+        context.lat,
+        context.lng,
+        p.lat!,
+        p.lng!,
+      );
+      withDistance.add(p.copyWith(distanceMeters: meters));
+    }
+
+    final deduped = PlacePrecision.dedupeByProximity(
+      withDistance,
+      latOf: (p) => p.lat ?? double.nan,
+      lngOf: (p) => p.lng ?? double.nan,
+      keyOf: (p) => p.mainText.isNotEmpty ? p.mainText : p.description,
+    );
+
+    if (context == null) return deduped.take(_maxResults).toList();
+
+    final sorted = PlacePrecision.sortByProximity(
+      deduped,
+      originLat: context.lat,
+      originLng: context.lng,
+      latOf: (p) => p.lat ?? double.nan,
+      lngOf: (p) => p.lng ?? double.nan,
+    );
+    return sorted.take(_maxResults).toList();
   }
 }
 

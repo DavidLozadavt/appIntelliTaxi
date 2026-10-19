@@ -454,6 +454,8 @@ class TravelAssistantController extends ChangeNotifier {
           accuracy: LocationAccuracy.high,
         ),
       );
+      // Las sugerencias de origen/destino se ordenan por cercanía a este punto.
+      _places.updateSearchContext(lat: pos.latitude, lng: pos.longitude);
       final addr = await _reverseGeocode(pos.latitude, pos.longitude);
       origin = TripLocation.currentLocation(
         lat: pos.latitude,

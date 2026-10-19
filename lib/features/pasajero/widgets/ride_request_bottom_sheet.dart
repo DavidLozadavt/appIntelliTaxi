@@ -52,6 +52,11 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
         lng: widget.currentPosition!.longitude,
       );
       _originController.text = 'Mi ubicación actual';
+      // Las sugerencias se ordenan por cercanía a este punto.
+      _placesService.updateSearchContext(
+        lat: widget.currentPosition!.latitude,
+        lng: widget.currentPosition!.longitude,
+      );
     }
 
     // Animación de altura

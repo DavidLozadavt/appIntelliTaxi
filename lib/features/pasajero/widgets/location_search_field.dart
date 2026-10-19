@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intellitaxi/core/geo/place_precision.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
@@ -163,6 +164,15 @@ class LocationSearchField extends StatelessWidget {
                             const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final prediction = predictions[index];
+                          final meters = prediction.distanceMeters;
+                          final distance = meters == null
+                              ? ''
+                              : PlacePrecision.formatDistance(meters);
+                          final subtitle = distance.isEmpty
+                              ? prediction.secondaryText
+                              : (prediction.secondaryText.isEmpty
+                                    ? 'A $distance'
+                                    : '${prediction.secondaryText} · A $distance');
                           return ListTile(
                             leading: Icon(
                               Iconsax.location_copy,
@@ -175,7 +185,7 @@ class LocationSearchField extends StatelessWidget {
                               ),
                             ),
                             subtitle: Text(
-                              prediction.secondaryText,
+                              subtitle,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey.shade600,

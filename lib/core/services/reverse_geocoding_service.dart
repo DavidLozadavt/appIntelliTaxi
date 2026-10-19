@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
 import 'package:intellitaxi/config/maps_config.dart';
 import 'package:intellitaxi/core/dio_client.dart';
+import 'package:intellitaxi/core/geo/place_precision.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/geocode_memory_cache.dart';
 import 'package:intellitaxi/features/taxi/data/taxi_maps_models.dart';
@@ -33,8 +34,19 @@ class ReverseGeocodingService {
   );
 
   /// Distancia máxima (m) entre el punto consultado y la respuesta del proxy
-  /// para aceptar su barrio: si está más lejos, el sector es de otra zona.
-  static const double _proxyMaxAcceptableDistanceMeters = 750;
+  /// para aceptar su barrio.
+  ///
+  /// El geocoder del backend engancha el punto a la vía más cercana (10-60 m
+  /// normalmente). Con 750 m se aceptaban barrios de otros sectores; con
+  /// 150 m solo se acepta el barrio real del punto.
+  static const double _proxyMaxAcceptableDistanceMeters = 150;
+
+  /// Distancia (m) dentro de la cual se reutiliza un barrio ya resuelto en
+  /// lugar de volver a preguntar. Evita una llamada por cada 11 m recorridos.
+  static const double _areaLabelReuseMeters = 60;
+
+  /// Barrios ya resueltos, para reutilizar el más cercano.
+  final List<({double lat, double lng, String barrio})> _areaLabelPoints = [];
 
   bool _proxyResultIsAligned(
     double lat,
@@ -57,37 +69,54 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
+    // Cuadrícula fina (~11 m): un barrio de Popayán puede medir 200 m y
+    // una celda de 111 m cruzaba la frontera entre dos barrios.
+    final labelKey =
+        'area|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
+    final cached = _cache.get<String>(labelKey);
+    if (cached != null) return cached;
+
+    // Reutiliza el barrio ya conocido más cercano (misma zona, sin gastar
+    // una llamada de red por cada pocos metros recorridos).
+    final nearby = _nearestKnownAreaLabel(lat, lng);
+    if (nearby != null) {
+      _cache.put(labelKey, nearby, _zonaLabelCacheTtl);
+      return nearby;
+    }
+
+    // Etiqueta de zona del proxy ("Centro", "Comuna 4"): sirve de respaldo
+    // si ninguna fuente da un barrio real, pero nunca gana contra uno.
+    String? weakArea;
+
     if (MapsConfig.useBackendProxy) {
-      final labelKey =
-          'area|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
-      final cached = _cache.get<String>(labelKey);
-      if (cached != null) return cached;
       final r = await _taxiMaps.reverseGeocode(lat, lng);
-      final barrio = r?.barrio?.trim();
-      if (barrio != null &&
-          barrio.isNotEmpty &&
+      final barrio = PlacePrecision.normalizeNeighborhood(r?.barrio);
+      if (barrio.isNotEmpty &&
+          PlacePrecision.isPlausibleNeighborhood(barrio) &&
           _proxyResultIsAligned(lat, lng, r!)) {
+        _rememberAreaLabel(lat, lng, barrio);
         _cache.put(labelKey, barrio, _zonaLabelCacheTtl);
         return barrio;
+      }
+      if (PlacePrecision.isPlausibleZoneLabel(barrio)) {
+        weakArea = barrio;
       }
       // Sin barrio o sector desalineado: se cae a Google más abajo.
     }
 
-    final labelKey =
-        'area|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
-    final cachedLabel = _cache.get<String>(labelKey);
-    if (cachedLabel != null) return cachedLabel;
-
+    // Google ya consultado en esta celda (sin gastar otra llamada).
     final fromCachedFetch = _areaFromCachedFetch(lat, lng);
     if (fromCachedFetch != null) {
+      _rememberAreaLabel(lat, lng, fromCachedFetch);
       _cache.put(labelKey, fromCachedFetch, _zonaLabelCacheTtl);
       return fromCachedFetch;
     }
 
     final results = await _fetchGeocodeResults(lat: lat, lng: lng);
-    if (results == null) return null;
+    if (results == null) return weakArea;
     var area = _extractAreaFromResults(results, lat: lat, lng: lng);
     if (area != null) {
+      _rememberAreaLabel(lat, lng, area);
       _cache.put(labelKey, area, _zonaLabelCacheTtl);
       return area;
     }
@@ -99,10 +128,41 @@ class ReverseGeocodingService {
           'neighborhood|sublocality|sublocality_level_1|sublocality_level_2|sublocality_level_3|administrative_area_level_3',
       logLabel: 'neighborhood',
     );
-    if (neighborhoodResults == null) return null;
+    if (neighborhoodResults == null) return weakArea;
     area = _extractAreaFromResults(neighborhoodResults, lat: lat, lng: lng);
-    if (area != null) _cache.put(labelKey, area, _zonaLabelCacheTtl);
-    return area;
+    if (area != null) {
+      _rememberAreaLabel(lat, lng, area);
+      _cache.put(labelKey, area, _zonaLabelCacheTtl);
+      return area;
+    }
+    return weakArea;
+  }
+
+  /// Barrio ya resuelto más cercano al punto (dentro de [_areaLabelReuseMeters]).
+  String? _nearestKnownAreaLabel(double lat, double lng) {
+    String? best;
+    var bestDistance = double.infinity;
+    for (final point in _areaLabelPoints) {
+      final distance = PlacePrecision.distanceMeters(
+        lat,
+        lng,
+        point.lat,
+        point.lng,
+      );
+      if (distance > _areaLabelReuseMeters) continue;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = point.barrio;
+      }
+    }
+    return best;
+  }
+
+  void _rememberAreaLabel(double lat, double lng, String barrio) {
+    _areaLabelPoints.add((lat: lat, lng: lng, barrio: barrio));
+    if (_areaLabelPoints.length > 60) {
+      _areaLabelPoints.removeAt(0);
+    }
   }
 
   /// Chip «Tu zona» del conductor: el nombre más útil entre varias etiquetas del mapa.
@@ -119,36 +179,40 @@ class ReverseGeocodingService {
       final cachedZona = _cache.get<String>(zonaKey);
       if (cachedZona != null) return cachedZona;
 
-      final r = await _taxiMaps.reverseGeocode(lat, lng);
-      if (r == null) return null;
+      final response = await _taxiMaps.reverseGeocode(lat, lng);
+      if (response == null) return null;
 
-      String? label = r.zona?.trim();
+      // Si el backend geocodificó otro punto, la zona no es de aquí.
+      final r = _proxyResultIsAligned(lat, lng, response) ? response : null;
+
+      String? label = r?.zona?.trim();
       if (label != null && label.isNotEmpty) {
         label = compactStreetLabelForZona(label);
       } else {
         label = null;
       }
 
-      final addr = r.address?.trim() ?? '';
-      if (label == null || label.isEmpty) {
+      final addr = r?.address?.trim() ?? '';
+      var candidate = label ?? '';
+      if (candidate.isEmpty) {
         if (addr.isNotEmpty) {
           final first = addr.split(',').first.trim();
           if (_looksLikeStreetName(first)) {
-            label = compactStreetLabelForZona(first);
+            candidate = compactStreetLabelForZona(first);
           }
         }
-        label ??= r.barrio?.trim();
-      }
-      if (label == null || label.isEmpty) {
-        if (addr.isNotEmpty) {
-          label = compactStreetLabelForZona(
-            addr.split(',').take(2).join(', '),
-          );
+        if (candidate.isEmpty) {
+          candidate = PlacePrecision.normalizeNeighborhood(r?.barrio);
         }
       }
-      if (label == null || label.isEmpty) return null;
-      _cache.put(zonaKey, label, _zonaLabelCacheTtl);
-      return label;
+      if (candidate.isEmpty && addr.isNotEmpty) {
+        candidate = compactStreetLabelForZona(
+          addr.split(',').take(2).join(', '),
+        );
+      }
+      if (candidate.isEmpty) return null;
+      _cache.put(zonaKey, candidate, _zonaLabelCacheTtl);
+      return candidate;
     }
 
     // Cuadrícula fina (~11 m) para calles distintas; caché evita repetir la API.
@@ -200,7 +264,7 @@ class ReverseGeocodingService {
       _logGeocodeRawResponse(lat: lat, lng: lng, results: results);
     }
 
-    final streetLine = _extractStreetLineFromResults(results);
+    final streetLine = _extractStreetLineFromResults(results, lat: lat, lng: lng);
     if (streetLine != null && streetLine.trim().isNotEmpty) {
       final compact = compactStreetLabelForZona(streetLine);
       _cache.put(zonaKey, compact, _zonaLabelCacheTtl);
@@ -239,7 +303,7 @@ class ReverseGeocodingService {
       }
     }
 
-    final formatted = _extractFormattedAddress(results);
+    final formatted = _extractFormattedAddress(results, lat: lat, lng: lng);
     if (formatted != null && formatted.trim().isNotEmpty) {
       final first = formatted.split(',').first.trim();
       if (first.length >= 3 && !_plusCodeRegex.hasMatch(first)) {
@@ -537,15 +601,15 @@ class ReverseGeocodingService {
       final r = await _taxiMaps.reverseGeocode(lat, lng);
       if (r != null && _proxyResultIsAligned(lat, lng, r)) {
         final addr = r.address?.trim() ?? '';
-        final barrio = r.barrio?.trim();
+        final barrio = PlacePrecision.normalizeNeighborhood(r.barrio);
         final street = addr.isNotEmpty ? addr.split(',').first.trim() : '';
         final name = street.isNotEmpty
             ? street
-            : (barrio?.isNotEmpty == true ? barrio! : fallback.name);
+            : (barrio.isNotEmpty ? barrio : fallback.name);
         return MapDestinationLabel(
           name: name,
           address: addr.isNotEmpty ? addr : name,
-          area: barrio,
+          area: barrio.isEmpty ? null : barrio,
         );
       }
       // Sin respuesta o sector desalineado: se intenta con Google más abajo.
@@ -577,11 +641,8 @@ class ReverseGeocodingService {
       }
     }
 
-    final streetLine = _extractStreetLineFromResults(results);
-    final fullAddress =
-        _extractFormattedAddress(results) ??
-        results.first['formatted_address']?.toString() ??
-        '';
+    final streetLine = _extractStreetLineFromResults(results, lat: lat, lng: lng);
+    final fullAddress = _fullAddressFor(results, lat: lat, lng: lng) ?? '';
     final cleaned = _stripPlusCodes(fullAddress);
     var area = _extractAreaFromResults(results, lat: lat, lng: lng);
     area ??= await resolveAreaName(lat: lat, lng: lng);
@@ -688,9 +749,8 @@ class ReverseGeocodingService {
     results ??= await _fetchGeocodeResults(lat: lat, lng: lng);
     if (results == null || results.isEmpty) return fallback;
 
-    final streetLine = _extractStreetLineFromResults(results);
-    final fullAddress = _extractFormattedAddress(results) ??
-        results.first['formatted_address']?.toString();
+    final streetLine = _extractStreetLineFromResults(results, lat: lat, lng: lng);
+    final fullAddress = _fullAddressFor(results, lat: lat, lng: lng);
     var area = _extractAreaFromResults(results, lat: lat, lng: lng);
     area ??= _areaFromCachedFetch(lat, lng);
 
@@ -773,8 +833,8 @@ class ReverseGeocodingService {
       }
     }
 
-    final streetLine = _extractStreetLineFromResults(results);
-    final fullAddress = _extractFormattedAddress(results);
+    final streetLine = _extractStreetLineFromResults(results, lat: lat, lng: lng);
+    final fullAddress = _fullAddressFor(results, lat: lat, lng: lng);
 
     if (kDebugMode) {
       _logResolvedLocation(
@@ -818,19 +878,25 @@ class ReverseGeocodingService {
     if (r == null || !_proxyResultIsAligned(lat, lng, r)) return null;
 
     final addr = r.address?.trim() ?? '';
-    final barrio = r.barrio?.trim();
+    final barrio = PlacePrecision.normalizeNeighborhood(r.barrio);
     final zona = r.zona?.trim();
     final street = addr.isNotEmpty ? addr.split(',').first.trim() : '';
+    // En zonas sin calle mapeada la dirección arranca con el barrio
+    // ("Los Alamos de Occidente, Popayán, ..."). Eso no es una calle: si se
+    // tomara como tal, el conductor vería el barrio disfrazado de dirección.
+    final streetIsStreet = street.isNotEmpty && _looksLikeStreetName(street);
 
     String name;
     if (zona != null && zona.isNotEmpty) {
       name = zona;
-    } else if (preferStreet && street.isNotEmpty && _looksLikeStreetName(street)) {
+    } else if (preferStreet && streetIsStreet) {
       name = street;
-    } else if (barrio != null && barrio.isNotEmpty && !preferStreet) {
+    } else if (barrio.isNotEmpty && !preferStreet) {
       name = barrio;
-    } else if (street.isNotEmpty) {
+    } else if (streetIsStreet) {
       name = street;
+    } else if (barrio.isNotEmpty) {
+      name = barrio;
     } else if (addr.isNotEmpty) {
       name = placeNameFromAddressForDriver(addr);
     } else {
@@ -840,8 +906,8 @@ class ReverseGeocodingService {
     return CurrentLocationData(
       name: name,
       address: addr.isNotEmpty ? addr : name,
-      area: barrio,
-      streetLine: street.isNotEmpty ? street : null,
+      area: barrio.isEmpty ? null : barrio,
+      streetLine: streetIsStreet ? street : null,
     );
   }
 
@@ -951,70 +1017,168 @@ class ReverseGeocodingService {
     }
   }
 
+  /// Extrae el barrio de los resultados de geocode.
+  ///
+  /// Google en Popayán devuelve el barrio real como `neighborhood`
+  /// ("Ciudad Jardín", "Barrio Pandiguando") y la zona como
+  /// `sublocality_level_1` ("Centro", "Santa Teresa"). Se prioriza el
+  /// componente más específico y se descartan las etiquetas de zona:
+  /// es preferible sin barrio antes que con el barrio equivocado.
   String? _extractAreaFromResults(
     List<Map<String, dynamic>> results, {
     double? lat,
     double? lng,
   }) {
-    const barrioTypes = [
-      'neighborhood',
-      'sublocality',
-      'sublocality_level_1',
-      'sublocality_level_2',
-      'sublocality_level_3',
-      'administrative_area_level_3',
-    ];
+    final ordered = _orderByProximity(results, lat: lat, lng: lng);
 
-    var ordered = results;
-    if (lat != null && lng != null && results.length > 1) {
-      // Google mezcla barrios de localidades vecinas en el mismo listado:
-      // se ordena por cercanía real al punto consultado antes de elegir.
-      final ranked = <MapEntry<double, Map<String, dynamic>>>[
-        for (final r in results)
-          MapEntry(_geocodeResultProximityScore(r, lat: lat, lng: lng), r),
-      ]..sort((a, b) => a.key.compareTo(b.key));
-      ordered = ranked.map((e) => e.value).toList();
+    // 1) Barrio real (`neighborhood`) del resultado más cercano.
+    for (final result in ordered) {
+      final value = _bestNeighborhoodComponent(result, preferSpecific: true);
+      if (value != null && _isValidBarrioCandidate(value)) {
+        return PlacePrecision.normalizeNeighborhood(value);
+      }
     }
 
+    // 2) Cualquier tipo de barrio (`sublocality_level_*`) del más cercano.
+    for (final result in ordered) {
+      final value = _bestNeighborhoodComponent(result, preferSpecific: false);
+      if (value != null && _isValidBarrioCandidate(value)) {
+        return PlacePrecision.normalizeNeighborhood(value);
+      }
+    }
+
+    // 3) Resultado filtrado por result_type=neighborhood: formatted_address.
     for (final result in ordered) {
       final resultTypes = (result['types'] as List<dynamic>? ?? [])
           .map((e) => e.toString())
           .toList();
-
-      if (resultTypes.contains('plus_code') ||
-          resultTypes.contains('postal_code')) {
-        continue;
-      }
-
-      final components = result['address_components'] as List<dynamic>? ?? [];
-      for (final item in components) {
-        final component = item is Map<String, dynamic>
-            ? item
-            : Map<String, dynamic>.from(item as Map);
-        final types = (component['types'] as List<dynamic>? ?? [])
-            .map((e) => e.toString())
-            .toList();
-        final isBarrioType = barrioTypes.any(types.contains);
-        if (!isBarrioType) continue;
-
-        final value =
-            component['long_name']?.toString() ??
-            component['short_name']?.toString();
-        if (_isValidBarrioCandidate(value)) {
-          return value!.trim();
-        }
-      }
-
-      // Resultado filtrado por result_type=neighborhood: usar formatted_address.
-      if (resultTypes.any(barrioTypes.contains)) {
-        final formatted = result['formatted_address']?.toString();
-        if (_isValidBarrioCandidate(formatted)) {
-          return formatted!.split(',').first.trim();
-        }
+      if (!resultTypes.any(_barrioTypes.contains)) continue;
+      final formatted = result['formatted_address']?.toString();
+      if (_isValidBarrioCandidate(formatted)) {
+        return PlacePrecision.normalizeNeighborhood(
+          formatted!.split(',').first.trim(),
+        );
       }
     }
 
     return null;
+  }
+
+  /// Ordena los resultados por cercanía real al punto consultado.
+  ///
+  /// Google mezcla barrios de localidades vecinas en el mismo listado.
+  List<Map<String, dynamic>> _orderByProximity(
+    List<Map<String, dynamic>> results, {
+    double? lat,
+    double? lng,
+  }) {
+    if (lat == null || lng == null || results.length < 2) return results;
+    final ranked = <MapEntry<double, Map<String, dynamic>>>[
+      for (final r in results)
+        MapEntry(_geocodeResultProximityScore(r, lat: lat, lng: lng), r),
+    ]..sort((a, b) => a.key.compareTo(b.key));
+    return ranked.map((e) => e.value).toList();
+  }
+
+  /// ¿El punto consultado está sobre una calle realmente mapeada?
+  ///
+  /// Google inventa direcciones (calle + número) donde no hay cobertura y
+  /// las marca como `ROOFTOP`. Si el resultado más cercano no trae `route`,
+  /// ninguna de esas direcciones sirve: se muestra el barrio.
+  bool _puntoTieneCalleReal(
+    List<Map<String, dynamic>> results, {
+    double? lat,
+    double? lng,
+  }) {
+    if (results.isEmpty) return false;
+    return PlacePrecision.hasMappedStreet(
+      _orderByProximity(results, lat: lat, lng: lng),
+    );
+  }
+
+  /// Dirección formateada del punto, o `null` si no hay una real.
+  ///
+  /// Google sintetiza direcciones en zonas sin cobertura y las marca como
+  /// `ROOFTOP` ("Cl. 15 # 37-222" en Los Alamos de Occidente). Cuando el
+  /// punto no está sobre una calle mapeada, esas direcciones no sirven:
+  /// se devuelve `null` y el barrio queda como referencia.
+  String? _fullAddressFor(
+    List<Map<String, dynamic>> results, {
+    double? lat,
+    double? lng,
+  }) {
+    final extracted = _extractFormattedAddress(results, lat: lat, lng: lng);
+    if (extracted != null) return extracted;
+    if (!_puntoTieneCalleReal(results, lat: lat, lng: lng)) return null;
+    return results.first['formatted_address']?.toString();
+  }
+
+  /// Tipos de componente que pueden contener un barrio.
+  static const List<String> _barrioTypes = [
+    'neighborhood',
+    'sublocality',
+    'sublocality_level_1',
+    'sublocality_level_2',
+    'sublocality_level_3',
+    'administrative_area_level_3',
+  ];
+
+  /// Peso de especificidad: mientras más alto, más granular es el barrio.
+  static const Map<String, int> _barrioSpecificity = {
+    'neighborhood': 60,
+    'sublocality_level_3': 50,
+    'sublocality_level_2': 40,
+    'sublocality_level_1': 30,
+    'sublocality': 20,
+    'administrative_area_level_3': 10,
+  };
+
+  /// Mejor componente de barrio de un resultado de geocode.
+  ///
+  /// Con [preferSpecific] solo acepta `neighborhood` (el barrio real);
+  /// sin él, acepta cualquier nivel de sublocalidad.
+  String? _bestNeighborhoodComponent(
+    Map<String, dynamic> result, {
+    required bool preferSpecific,
+  }) {
+    final resultTypes = (result['types'] as List<dynamic>? ?? [])
+        .map((e) => e.toString())
+        .toList();
+    if (resultTypes.contains('plus_code') ||
+        resultTypes.contains('postal_code')) {
+      return null;
+    }
+
+    final components = result['address_components'] as List<dynamic>? ?? [];
+    String? best;
+    var bestScore = -1;
+    for (final item in components) {
+      final component = item is Map<String, dynamic>
+          ? item
+          : Map<String, dynamic>.from(item as Map);
+      final types = (component['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+
+      var score = 0;
+      for (final type in types) {
+        final weight = _barrioSpecificity[type];
+        if (weight == null) continue;
+        if (preferSpecific && type != 'neighborhood') continue;
+        if (weight > score) score = weight;
+      }
+      if (score <= 0) continue;
+
+      final value =
+          component['long_name']?.toString() ??
+          component['short_name']?.toString();
+      if (value == null || value.trim().isEmpty) continue;
+      if (score > bestScore) {
+        bestScore = score;
+        best = value.trim();
+      }
+    }
+    return best;
   }
 
   String? _extractHumanAreaFromCompoundCode(String? compoundCode) {
@@ -1028,7 +1192,15 @@ class ReverseGeocodingService {
     return firstToken;
   }
 
-  String? _extractStreetLineFromResults(List<Map<String, dynamic>> results) {
+  String? _extractStreetLineFromResults(
+    List<Map<String, dynamic>> results, {
+    double? lat,
+    double? lng,
+  }) {
+    // Sin calle realmente mapeada, Google inventa la dirección: mejor el
+    // barrio que un "Cl. 15 # 37-222" que no existe.
+    if (!_puntoTieneCalleReal(results, lat: lat, lng: lng)) return null;
+
     String? streetName;
     String? streetNumber;
 
@@ -1091,7 +1263,14 @@ class ReverseGeocodingService {
     return _formatStreetLine(streetName, streetNumber);
   }
 
-  String? _extractFormattedAddress(List<Map<String, dynamic>> results) {
+  String? _extractFormattedAddress(
+    List<Map<String, dynamic>> results, {
+    double? lat,
+    double? lng,
+  }) {
+    // Dirección inventada por Google en zonas sin calle mapeada: no sirve.
+    if (!_puntoTieneCalleReal(results, lat: lat, lng: lng)) return null;
+
     for (final result in results) {
       final resultTypes = (result['types'] as List<dynamic>? ?? [])
           .map((e) => e.toString())
@@ -1144,6 +1323,8 @@ class ReverseGeocodingService {
     if (_looksLikeStreetName(v)) return false;
     if (_looksLikeSubpremise(v)) return false;
     if (RegExp(r'^\d+$').hasMatch(v)) return false;
+    // "Centro", "Comuna 4", "Perímetro Urbano Popayán" son zonas, no barrios.
+    if (!PlacePrecision.isPlausibleNeighborhood(v)) return false;
     return true;
   }
 
@@ -1241,8 +1422,11 @@ class ReverseGeocodingService {
   bool _looksLikeStreetName(String value) {
     final v = value.trim().toLowerCase();
     if (v.isEmpty) return false;
+    // Formas abreviadas que devuelve el backend: "Cra. 5", "Cl. 2", "Av 6N",
+    // "Tv. 20", "Kra 12". Sin "cra"/"kra"/"tv" estas NO se detectaban y el
+    // barrio terminaba reemplazando a la calle.
     return RegExp(
-      r'^(calle|carrera|cr\.?|cl\.?|av\.?|avenida|diag\.?|diagonal|trans\.?|transversal|km\.?)\b',
+      r'^(calle|carrera|cra|cr|cl|cll|avenida|av|diag|diagonal|trans|transversal|tv|km|kra|kr|via|vía|carretera)(?![a-záéíóúüñ])',
     ).hasMatch(v);
   }
 
