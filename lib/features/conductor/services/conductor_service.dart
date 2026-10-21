@@ -330,7 +330,6 @@ class ConductorService {
       final requestData = <String, dynamic>{
         'idVehiculo': idVehiculo,
         'id_vehiculo': idVehiculo,
-        'estado': 'ACTIVO',
       };
       if (lat != null) {
         requestData['lat'] = lat;
@@ -365,6 +364,8 @@ class ConductorService {
       throw Exception(message);
     } on DioException catch (e) {
       AppLogger.d('⚠️ Error iniciando turno: $e');
+      AppLogger.d('   status: ${e.response?.statusCode}');
+      AppLogger.d('   body: ${e.response?.data}');
       throw Exception(_extractErrorMessage(e, 'No se pudo iniciar el turno'));
     } catch (e) {
       AppLogger.d('⚠️ Error iniciando turno: $e');
