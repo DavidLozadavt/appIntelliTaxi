@@ -1,4 +1,5 @@
-/// Mapas: geocode / autocomplete / rutas vía backend (Nominatim + OSRM).
+/// Mapas: geocode / autocomplete / rutas vía backend (Google Places + OSRM).
+/// Si el proxy no resuelve, la app cae a Google Maps con la API key local.
 /// El [google_maps_flutter] SDK sigue para el mapa visual.
 abstract final class MapsConfig {
   static const bool useBackendProxy = bool.fromEnvironment(

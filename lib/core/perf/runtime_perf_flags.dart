@@ -31,18 +31,16 @@ abstract final class RuntimePerfFlags {
   /// Mismo orden de magnitud que antes (~50 s): al moverse o cada minuto.
   static const Duration conductorZonaMinInterval = Duration(seconds: 55);
 
-  /// Home conductor en línea (sin viaje): GPS más espaciado = menos batería.
-  static const int conductorGpsDistanceFilterIdle = 20;
-  /// Metros entre lecturas GPS en movimiento (más fino: la posición del
-  /// conductor debe verse precisa al pasajero).
-  static const int conductorGpsDistanceFilterActive = 5;
-  static const Duration conductorGpsUiMinIntervalIdle = Duration(seconds: 4);
-  static const Duration conductorGpsUiMinIntervalNav = Duration(milliseconds: 800);
-  static const double conductorGpsUiMinMoveMetersIdle = 10;
-  static const double conductorGpsUiMinMoveMetersNav = 5;
+  /// GPS local (sin HTTP): pin suave. El servidor se actualiza aparte.
+  static const int conductorGpsDistanceFilterIdle = 8;
+  static const int conductorGpsDistanceFilterActive = 2;
+  static const Duration conductorGpsUiMinIntervalIdle = Duration(seconds: 1);
+  static const Duration conductorGpsUiMinIntervalNav = Duration(milliseconds: 400);
+  static const double conductorGpsUiMinMoveMetersIdle = 4;
+  static const double conductorGpsUiMinMoveMetersNav = 2;
 
-  /// Android: intervalo del stream GPS solo en movimiento.
-  static const Duration conductorGpsStreamIntervalDriving = Duration(seconds: 4);
+  /// Stream GNSS en el dispositivo (no es petición al ERP).
+  static const Duration conductorGpsStreamIntervalDriving = Duration(seconds: 1);
 
   /// Velocidad (m/s) a partir de la cual se trata como conducción (~5 km/h).
   static const double conductorDrivingSpeedMps = 1.4;
@@ -55,7 +53,7 @@ abstract final class RuntimePerfFlags {
   /// Por encima de [conductorGpsIdleHeartbeatInterval] a propósito: el timer
   /// de reposo ya refresca, así que un umbral menor haría que el watchdog
   /// compitiese con él.
-  static const Duration conductorGpsStaleAfter = Duration(seconds: 25);
+  static const Duration conductorGpsStaleAfter = Duration(seconds: 20);
 
   /// Con el conductor detenido el GPS no emite eventos (distanceFilter), así
   /// que no se reinicia el stream: basta con refrescar la posición de vez en
@@ -64,32 +62,33 @@ abstract final class RuntimePerfFlags {
     seconds: 40,
   );
 
-  /// Heartbeat al backend con el conductor detenido: el stream no emite
-  /// eventos, así que un timer pide un fix puntual para que la posición del
-  /// conductor no se congele en el mapa del pasajero.
+  /// HTTP al ERP con el conductor parado. No bajar de esto: 12 s ≈ 5 req/min.
   static const Duration conductorGpsIdleHeartbeatInterval = Duration(
-    seconds: 12,
+    seconds: 15,
   );
 
-  /// Cada cuánto se revisa si el GPS del home está estancado.
+  /// Cada cuánto se revisa si el GPS del home está estancado (local).
   static const Duration conductorGpsWatchdogInterval = Duration(seconds: 15);
 
   /// lastKnown más viejo que esto no se pinta como posición válida al resume.
   static const Duration conductorGpsLastKnownMaxAge = Duration(minutes: 2);
 
-  /// Heartbeat mapa flota parado.
-  static const Duration mapHeartbeatMinInterval = Duration(seconds: 12);
+  /// HTTP mapa: parado. 15 s ≈ 4 req/min por conductor.
+  static const Duration mapHeartbeatMinInterval = Duration(seconds: 15);
 
-  /// Heartbeat mapa flota en movimiento.
-  static const Duration mapHeartbeatMinIntervalDriving = Duration(seconds: 4);
+  /// HTTP mapa: en movimiento. 8 s ≈ 7–8 req/min (el pin local sigue a 1 Hz).
+  static const Duration mapHeartbeatMinIntervalDriving = Duration(seconds: 8);
 
-  /// Si se movió ≥ esto (m), enviar aunque no haya pasado el intervalo mínimo.
-  static const double mapHeartbeatMinMoveMeters = 8;
+  /// Nunca más rápido que esto, aunque se haya movido. Evita ráfagas y 429.
+  static const Duration mapHeartbeatAbsoluteMinInterval = Duration(seconds: 4);
 
-  /// Android: envío ubicación en servicio foreground (viaje).
-  static const int backgroundLocationIntervalSeconds = 6;
+  /// Adelantar el HTTP solo si avanzó un tramo real, no por jitter GPS.
+  static const double mapHeartbeatMinMoveMeters = 18;
 
-  /// Android: heartbeat mapa con conductor en línea y app en segundo plano.
+  /// Android viaje: envío al ERP (no el stream GNSS).
+  static const int backgroundLocationIntervalSeconds = 8;
+
+  /// Android en línea en segundo plano.
   static const int mapHeartbeatBackgroundIntervalSeconds = 20;
 
   /// Tiempo mínimo de marca en Splash (sin bloquear si la sesión tarda más).

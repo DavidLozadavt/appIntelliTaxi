@@ -4069,10 +4069,10 @@ class ConductorHomeProvider extends ChangeNotifier {
   }
 
   LocationSettings _locationStreamSettings() {
-    const filter = RuntimePerfFlags.conductorGpsDistanceFilterActive;
     return PreciseGps.stream(
       use: PreciseGpsUse.navigation,
-      distanceFilter: filter,
+      distanceFilter: RuntimePerfFlags.conductorGpsDistanceFilterActive,
+      interval: RuntimePerfFlags.conductorGpsStreamIntervalDriving,
     );
   }
 
@@ -4185,6 +4185,9 @@ class ConductorHomeProvider extends ChangeNotifier {
     final lastSentAt = _lastMapHeartbeatAt;
     if (!force && lastSentAt != null) {
       final elapsed = now.difference(lastSentAt);
+      if (elapsed < RuntimePerfFlags.mapHeartbeatAbsoluteMinInterval) {
+        return;
+      }
       final minInterval = _mapHeartbeatIntervalPara(position);
       if (elapsed < minInterval) {
         final lastPos = _lastMapHeartbeatPosition;

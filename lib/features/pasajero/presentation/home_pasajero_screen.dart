@@ -1265,7 +1265,7 @@ class _HomePasajeroState extends State<HomePasajero>
     _gpsStreamSub = Geolocator.getPositionStream(
       locationSettings: PreciseGps.stream(
         use: PreciseGpsUse.pickup,
-        distanceFilter: 3,
+        distanceFilter: 2,
       ),
     ).listen(
       _onGpsStreamPosition,

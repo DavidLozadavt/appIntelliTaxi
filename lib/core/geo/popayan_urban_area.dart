@@ -9,19 +9,19 @@ class PopayanUrbanArea {
   static const double centerLat = 2.4419;
   static const double centerLng = -76.6063;
 
-  /// Esquina suroeste del rectángulo de cobertura.
-  static const double southWestLat = 2.4120;
-  static const double southWestLng = -76.6600;
+  /// Esquina suroeste del rectángulo de cobertura (alineado al bbox del backend).
+  static const double southWestLat = 2.32;
+  static const double southWestLng = -76.82;
 
-  /// Esquina noreste del rectángulo de cobertura.
-  static const double northEastLat = 2.4780;
-  static const double northEastLng = -76.5580;
+  /// Esquina noreste: incluye Calibío, Terra Plaza, veredas.
+  static const double northEastLat = 2.58;
+  static const double northEastLng = -76.42;
 
-  /// Radio máximo desde el centro (~6 km) como respaldo al rectángulo.
-  static const double maxRadiusKm = 6.0;
+  /// Radio máximo desde el centro (~20 km) como las apps de transporte.
+  static const double maxRadiusKm = 20.0;
 
   static const String searchNotice =
-      'Servicio disponible en Popayán y zonas cercanas (hasta ~6 km del centro).';
+      'Servicio disponible en Popayán y zonas cercanas (hasta ~20 km del centro).';
 
   /// Parámetro `bounds` de Places Autocomplete (legacy): sw|ne.
   static const String autocompleteBounds =

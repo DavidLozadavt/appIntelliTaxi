@@ -13,7 +13,7 @@ enum EstadoConductor { disponible, ocupado, desconectado }
 /// Servicio para enviar la ubicación del conductor en tiempo real
 class ConductorLocationService {
   final Dio _dio = DioClient.getInstance();
-  static const double _minDistanceMeters = 20;
+  static const double _minDistanceMeters = 15;
   static const Duration _minSendInterval = Duration(seconds: 5);
   final _LocationMetrics _metrics = _LocationMetrics();
   Timer? _locationTimer;
@@ -34,8 +34,8 @@ class ConductorLocationService {
   EstadoConductor get estado => _estado;
 
   /// Inicia el envío periódico de ubicación
-  /// [intervalSeconds] - Intervalo en segundos entre cada envío (default: 10)
-  Future<void> startSendingLocation({int intervalSeconds = 10}) async {
+  /// [intervalSeconds] - Intervalo en segundos entre cada envío (default: 8)
+  Future<void> startSendingLocation({int intervalSeconds = 8}) async {
     if (_isActive) {
       AppLogger.d('⚠️ El servicio de ubicación ya está activo');
       return;

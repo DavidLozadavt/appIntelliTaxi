@@ -1152,9 +1152,20 @@ class ConductorService {
   String _messageFromResponseData(dynamic data, String fallback) {
     if (data is Map) {
       final map = Map<String, dynamic>.from(data);
-      final message = map['message'] ?? map['error'] ?? map['mensaje'];
-      if (message != null && message.toString().trim().isNotEmpty) {
-        return message.toString().trim();
+      final error = map['error']?.toString().trim();
+      final message = (map['message'] ?? map['mensaje'])?.toString().trim();
+      if (error != null &&
+          error.isNotEmpty &&
+          message != null &&
+          message.isNotEmpty &&
+          error != message) {
+        return '$message ($error)';
+      }
+      if (error != null && error.isNotEmpty) {
+        return error;
+      }
+      if (message != null && message.isNotEmpty) {
+        return message;
       }
 
       final errors = map['errors'];

@@ -593,7 +593,7 @@ class _ConductorServicioActivoScreenState
         Geolocator.getPositionStream(
           locationSettings: PreciseGps.stream(
             use: PreciseGpsUse.navigation,
-            distanceFilter: 3,
+            distanceFilter: 2,
           ),
         ).listen((position) {
           if (!_canUpdateUi) return;

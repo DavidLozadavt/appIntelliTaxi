@@ -115,7 +115,9 @@ class PlacesService {
     if (normalized.isEmpty) return [];
 
     if (MapsConfig.useBackendProxy) {
-      return _searchPlacesBackend(normalized);
+      final backend = await _searchPlacesBackend(normalized);
+      if (backend.isNotEmpty) return backend;
+      return _searchPlacesGoogle(normalized);
     }
     return _searchPlacesGoogle(normalized);
   }
@@ -194,7 +196,6 @@ class PlacesService {
   String? get currentAutocompleteSessionToken => _autocompleteSessionToken;
 
   void startAutocompleteSession() {
-    if (MapsConfig.useBackendProxy) return;
     final now = DateTime.now();
     final isExpired =
         _autocompleteSessionStartedAt == null ||
@@ -218,7 +219,9 @@ class PlacesService {
     if (normalized.length < _minAutocompleteChars) return [];
 
     if (MapsConfig.useBackendProxy) {
-      return _autocompleteBackend(normalized);
+      final backend = await _autocompleteBackend(normalized);
+      if (backend.isNotEmpty) return backend;
+      return _autocompleteGoogle(normalized, sessionToken);
     }
     return _autocompleteGoogle(normalized, sessionToken);
   }
@@ -294,7 +297,6 @@ class PlacesService {
         '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
         '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
         '&bounds=${PopayanUrbanArea.autocompleteBounds}'
-        '&strictbounds=true'
         '&components=country:co'
         '${activeSessionToken == null ? '' : '&sessiontoken=$activeSessionToken'}'
         '&key=${AppConfig.googleMapsApiKey}'
@@ -336,7 +338,12 @@ class PlacesService {
   }) async {
     if (!PopayanUrbanArea.contains(lat, lng)) return null;
     if (MapsConfig.useBackendProxy) {
-      return _findNearestPlaceViaProxy(lat, lng, maxDistanceMeters);
+      final viaProxy = await _findNearestPlaceViaProxy(
+        lat,
+        lng,
+        maxDistanceMeters,
+      );
+      if (viaProxy != null) return viaProxy;
     }
 
     try {

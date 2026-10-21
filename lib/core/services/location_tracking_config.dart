@@ -1,7 +1,7 @@
 class LocationTrackingConfig {
-  // Intervalo para enviar ubicacion al backend durante servicio activo.
-  static const int sendIntervalSeconds = 6;
+  /// Envío al ERP en viaje. El mapa del conductor usa GPS local más rápido.
+  static const int sendIntervalSeconds = 8;
 
-  // Distancia minima para considerar que vale la pena enviar un update.
-  static const double minDistanceMeters = 5.0;
+  /// No postear jitter de 2–3 m: solo si avanzó de verdad o va en marcha.
+  static const double minDistanceMeters = 12.0;
 }

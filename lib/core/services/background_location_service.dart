@@ -15,7 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum _BgLocationMode { none, trip, map }
 
 /// Antigüedad máxima (s) de un fix para considerarse vigente.
-const Duration _kFreshFixMaxAge = Duration(seconds: 8);
+const Duration _kFreshFixMaxAge = Duration(seconds: 4);
 
 /// Entry point del isolate de segundo plano (requerido por flutter_background_service).
 @pragma('vm:entry-point')
@@ -117,7 +117,7 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
       positionSub = Geolocator.getPositionStream(
         locationSettings: PreciseGps.stream(
           use: PreciseGpsUse.navigation,
-          distanceFilter: 3,
+          distanceFilter: 2,
         ),
       ).listen(
         (position) {
@@ -234,6 +234,18 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
 
       final position = await resolveFreshPosition();
       if (position == null) return;
+
+      if (lastSentPosition != null) {
+        final moved = Geolocator.distanceBetween(
+          lastSentPosition!.latitude,
+          lastSentPosition!.longitude,
+          position.latitude,
+          position.longitude,
+        );
+        if (moved < 15 && position.speed < 0.5) {
+          return;
+        }
+      }
 
       final dioClient = await ensureDio();
       if (dioClient == null) return;

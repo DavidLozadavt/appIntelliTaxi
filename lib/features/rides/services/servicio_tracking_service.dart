@@ -51,7 +51,6 @@ class ServicioTrackingService {
       return;
     }
 
-    // Actualizar ubicación cada 12 segundos (más eficiente)
     _locationTimer?.cancel();
     _locationTimer = Timer.periodic(
       const Duration(seconds: _intervaloActualizacion),

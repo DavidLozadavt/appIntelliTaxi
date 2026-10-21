@@ -87,7 +87,7 @@ abstract final class PreciseGps {
 
   static LocationSettings stream({
     PreciseGpsUse use = PreciseGpsUse.navigation,
-    int distanceFilter = 3,
+    int distanceFilter = 2,
     Duration interval = const Duration(seconds: 1),
   }) {
     return platform(

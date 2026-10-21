@@ -30,6 +30,8 @@ class ServicioActivoProvider extends ChangeNotifier {
   final Set<Polyline> _polylines = {};
   BitmapDescriptor? _carIcon;
   Timer? _uiLocationTimer;
+  StreamSubscription<Position>? _uiLocationSub;
+  Position? _lastUiPosition;
 
   // Getters
   Map<String, dynamic>? get servicioData => _servicioData;
@@ -57,6 +59,7 @@ class ServicioActivoProvider extends ChangeNotifier {
   @override
   void dispose() {
     _uiLocationTimer?.cancel();
+    unawaited(_uiLocationSub?.cancel());
     _trackingService.detenerSeguimiento();
     super.dispose();
   }
@@ -209,31 +212,25 @@ class ServicioActivoProvider extends ChangeNotifier {
       conductorId: _conductorId!,
     );
 
-    // Android: el FGS ya envía ubicación; evitar GPS duplicado cada 5 s.
+    // Android: el FGS ya envía ubicación; en iOS el pin sigue el stream 1 Hz.
     _uiLocationTimer?.cancel();
+    await _uiLocationSub?.cancel();
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return;
     }
 
-    _uiLocationTimer = Timer.periodic(const Duration(seconds: 6), (timer) async {
-      if (_servicioData == null) {
-        timer.cancel();
-        return;
-      }
-
-      try {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: PreciseGps.currentPosition(
-            timeLimit: const Duration(seconds: 10),
-          ),
-        );
-
-        _miUbicacion = LatLng(position.latitude, position.longitude);
-        await _actualizarMarcadores();
-        await _dibujarRuta();
-      } catch (e) {
-        AppLogger.d('❌ Error actualizando ubicación: $e');
-      }
+    _uiLocationSub = Geolocator.getPositionStream(
+      locationSettings: PreciseGps.stream(
+        use: PreciseGpsUse.navigation,
+        distanceFilter: 2,
+        interval: const Duration(seconds: 1),
+      ),
+    ).listen((position) {
+      if (_servicioData == null) return;
+      if (!PreciseGps.shouldAccept(position, _lastUiPosition)) return;
+      _lastUiPosition = position;
+      _miUbicacion = LatLng(position.latitude, position.longitude);
+      unawaited(_actualizarMarcadores());
     });
   }
 
