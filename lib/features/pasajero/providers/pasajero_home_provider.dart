@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 
 /// Provider para gestionar toda la lógica del home del pasajero
 /// Incluye: ubicación, búsqueda, rutas, solicitudes, Pusher, conductores
@@ -64,9 +65,9 @@ class PasajeroHomeProvider extends ChangeNotifier {
       notifyListeners();
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 10),
+          use: PreciseGpsUse.pickup,
         ),
       );
 

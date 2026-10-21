@@ -33,6 +33,7 @@ import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/geo/map_marker_bearing_helper.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
 
@@ -70,6 +71,7 @@ class _ConductorServicioActivoScreenState
       ActiveServiceRestorationService();
 
   String _estadoActual = 'aceptado';
+  Position? _lastGpsPosition;
   LatLng? _miUbicacion;
   double _miBearing = 0;
   bool _miBearingInicializado = false;
@@ -560,9 +562,8 @@ class _ConductorServicioActivoScreenState
   Future<void> _obtenerUbicacionActual() async {
     try {
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 12),
         ),
       );
 
@@ -590,14 +591,14 @@ class _ConductorServicioActivoScreenState
     _locationSubscription?.cancel();
     _locationSubscription =
         Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
-            // Siempre máxima precisión: "dónde estoy" debe verse exacto
-            // aunque el viaje aún no esté en curso.
-            accuracy: LocationAccuracy.high,
-            distanceFilter: 6,
+          locationSettings: PreciseGps.stream(
+            use: PreciseGpsUse.navigation,
+            distanceFilter: 3,
           ),
         ).listen((position) {
           if (!_canUpdateUi) return;
+          if (!PreciseGps.shouldAccept(position, _lastGpsPosition)) return;
+          _lastGpsPosition = position;
 
           _aplicarUbicacionConductor(position);
           _actualizarMarcadores();

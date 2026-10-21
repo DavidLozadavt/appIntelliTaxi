@@ -42,6 +42,7 @@ import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_socket_offers_controller.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/device_location_service.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/utils/safe_image_decode.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
@@ -1262,9 +1263,9 @@ class _HomePasajeroState extends State<HomePasajero>
   void _startGpsStream() {
     if (_gpsStreamSub != null || _isDisposed) return;
     _gpsStreamSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
+      locationSettings: PreciseGps.stream(
+        use: PreciseGpsUse.pickup,
+        distanceFilter: 3,
       ),
     ).listen(
       _onGpsStreamPosition,
@@ -1279,9 +1280,9 @@ class _HomePasajeroState extends State<HomePasajero>
   Future<void> _refreshPositionOnce() async {
     try {
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 10),
+          use: PreciseGpsUse.pickup,
         ),
       ).timeout(const Duration(seconds: 12));
       if (!mounted || _isDisposed) return;
@@ -1293,8 +1294,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
   void _onGpsStreamPosition(Position position) {
     if (!mounted || _isDisposed) return;
-    // Fix con error de precisión demasiado grande: no confiar en él.
-    if (position.accuracy.isFinite && position.accuracy > 120) return;
+    if (!PreciseGps.shouldAccept(position, _currentPosition)) return;
 
     // La búsqueda de lugares se ordena por cercanía a este punto.
     _placesService.updateSearchContext(
@@ -2226,12 +2226,17 @@ class _HomePasajeroState extends State<HomePasajero>
     if (_originLockedByUser || !origin.isCurrentLocation) return origin;
 
     try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 8),
-        ),
-      ).timeout(const Duration(seconds: 9));
+      final position = await PreciseGps.waitForReliableFix(
+            timeout: const Duration(seconds: 8),
+            maxAccuracyMeters: PreciseGps.maxPickupAccuracyMeters,
+            use: PreciseGpsUse.pickup,
+          ) ??
+          await Geolocator.getCurrentPosition(
+            locationSettings: PreciseGps.currentPosition(
+              timeLimit: const Duration(seconds: 8),
+              use: PreciseGpsUse.pickup,
+            ),
+          ).timeout(const Duration(seconds: 9));
       if (!mounted || _isDisposed) return origin;
 
       final drift = Geolocator.distanceBetween(

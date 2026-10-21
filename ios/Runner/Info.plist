@@ -38,6 +38,11 @@
 	<string>Esta aplicación necesita acceso continuo a tu ubicación para rastrear viajes y recibir solicitudes incluso cuando no estés usando la app.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Esta aplicación necesita acceder a tu ubicación para mostrarte en el mapa y conectarte con pasajeros cercanos.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>PrecisePickup</key>
+		<string>Necesitamos ubicación precisa para que el taxi te recoja en el punto exacto y el conductor te vea en el mapa.</string>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

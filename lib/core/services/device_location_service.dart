@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Resultado de intentar obtener la ubicación del dispositivo.
@@ -80,14 +81,13 @@ class DeviceLocationService {
 
   /// Intenta GPS actual → última conocida → (solo debug) centro de Popayán.
   ///
-  /// Prioriza **precisión máxima**: primero pide un fix fresco con
-  /// `LocationAccuracy.high` (GNSS) y solo cae a precisión menor si falla.
-  /// La última ubicación conocida ya no se usa si es vieja o imprecisa:
-  /// era la causa de que el punto de recogida llegara desplazado al conductor.
+  /// Prioriza **precisión máxima**: GNSS de navegación y un stream hasta
+  /// que el radio de error baje de ~25 m. Nunca cae a GPS aproximado
+  /// (medium/low): ese era el pin desplazado una o dos cuadras.
   static Future<DeviceLocationResult?> resolveCurrentPosition({
     Duration timeout = resolveTimeout,
     Duration lastKnownMaxAge = const Duration(seconds: 30),
-    double lastKnownMaxAccuracyMeters = 30,
+    double lastKnownMaxAccuracyMeters = 25,
   }) async {
     Position? lastKnown;
     try {
@@ -121,30 +121,36 @@ class DeviceLocationService {
       );
     }
 
-    // De mayor a menor precisión: high = GNSS (máxima), best ≈ GPS,
-    // medium/balanceado y low solo como último recurso. Con poco tiempo
-    // (emergencias) se recorta la cadena para no demorar el reporte.
-    final attempts = <LocationSettings>[
-      for (final accuracy in _accuracyFallbackChain(timeout))
-        LocationSettings(accuracy: accuracy, timeLimit: timeout),
-    ];
+    final streamed = await PreciseGps.waitForReliableFix(
+      timeout: timeout,
+      maxAccuracyMeters: PreciseGps.maxPickupAccuracyMeters,
+      use: PreciseGpsUse.pickup,
+    );
+    if (streamed != null) {
+      AppLogger.d(
+        '📍 GPS preciso: ${streamed.latitude}, ${streamed.longitude} '
+        '±${streamed.accuracy.round()}m',
+        tag: 'DeviceLocation',
+      );
+      return DeviceLocationResult(position: streamed);
+    }
 
-    for (final settings in attempts) {
-      try {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: settings,
-        ).timeout(timeout + const Duration(seconds: 2));
-        AppLogger.d(
-          '📍 GPS (${settings.accuracy}): '
-          '${position.latitude}, ${position.longitude} '
-          '±${position.accuracy.round()}m',
-          tag: 'DeviceLocation',
-        );
-        return DeviceLocationResult(position: position);
-      } catch (e) {
-        AppLogger.d('getCurrentPosition (${settings.accuracy}): $e',
-            tag: 'DeviceLocation');
-      }
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: timeout,
+          use: PreciseGpsUse.pickup,
+        ),
+      ).timeout(timeout + const Duration(seconds: 2));
+      AppLogger.d(
+        '📍 GPS (bestForNavigation): '
+        '${position.latitude}, ${position.longitude} '
+        '±${position.accuracy.round()}m',
+        tag: 'DeviceLocation',
+      );
+      return DeviceLocationResult(position: position);
+    } catch (e) {
+      AppLogger.d('getCurrentPosition: $e', tag: 'DeviceLocation');
     }
 
     if (lastKnown != null) {
@@ -167,19 +173,6 @@ class DeviceLocationService {
     }
 
     return null;
-  }
-
-  /// Cadena de precisión de mayor a menor según el tiempo disponible.
-  static List<LocationAccuracy> _accuracyFallbackChain(Duration timeout) {
-    if (timeout <= const Duration(seconds: 5)) {
-      return const [LocationAccuracy.high, LocationAccuracy.medium];
-    }
-    return const [
-      LocationAccuracy.high,
-      LocationAccuracy.best,
-      LocationAccuracy.medium,
-      LocationAccuracy.low,
-    ];
   }
 
   /// Ubicación de prueba dentro del urbano de Popayán (desarrollo).

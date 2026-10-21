@@ -7,6 +7,7 @@ import 'package:intellitaxi/features/rides/services/servicio_tracking_service.da
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 
 /// Provider para gestionar la lógica del servicio activo del conductor
 /// Incluye: tracking GPS, cambio de estados, manejo de marcadores y rutas
@@ -105,9 +106,8 @@ class ServicioActivoProvider extends ChangeNotifier {
     try {
       // Obtener ubicación actual del conductor
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 12),
         ),
       );
 
@@ -223,9 +223,8 @@ class ServicioActivoProvider extends ChangeNotifier {
 
       try {
         final position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 10),
+          locationSettings: PreciseGps.currentPosition(
+            timeLimit: const Duration(seconds: 10),
           ),
         );
 

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 
 /// Servicio para gestionar los turnos del conductor
 class TurnoService {
@@ -163,9 +164,8 @@ class TurnoService {
 
       // Obtener ubicación actual
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 12),
         ),
       );
 

@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 
 /// Estados posibles del conductor
 enum EstadoConductor { disponible, ocupado, desconectado }
@@ -111,9 +112,8 @@ class ConductorLocationService {
 
       // Obtener ubicación actual con alta precisión
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 10),
         ),
       );
 

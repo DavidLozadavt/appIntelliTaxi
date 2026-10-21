@@ -11,6 +11,7 @@ import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/config/maps_config.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/services/voice_alert_service.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
@@ -1282,9 +1283,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       var position = _currentPosition;
       if (position == null) {
         position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 8),
+          locationSettings: PreciseGps.currentPosition(
+            timeLimit: const Duration(seconds: 8),
           ),
         );
         _currentPosition = position;
@@ -3795,9 +3795,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       Position position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 10),
         ),
       );
 
@@ -4028,9 +4027,8 @@ class ConductorHomeProvider extends ChangeNotifier {
     if (!await _tienePermisoUbicacionActivo()) return;
     try {
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 10),
         ),
       );
       AppLogger.d(
@@ -4072,21 +4070,8 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   LocationSettings _locationStreamSettings() {
     const filter = RuntimePerfFlags.conductorGpsDistanceFilterActive;
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return AndroidSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: filter,
-      );
-    }
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
-      return AppleSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: filter,
-        pauseLocationUpdatesAutomatically: false,
-      );
-    }
-    return LocationSettings(
-      accuracy: LocationAccuracy.high,
+    return PreciseGps.stream(
+      use: PreciseGpsUse.navigation,
       distanceFilter: filter,
     );
   }
@@ -4140,6 +4125,10 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   void _onPositionUpdate(Position position, {bool forceUi = false}) {
     if (_isDisposed) return;
+    if (!forceUi &&
+        !PreciseGps.shouldAccept(position, _currentPosition)) {
+      return;
+    }
     _aplicarPosicionLocal(position, forceUi: forceUi);
     unawaited(_sendMapHeartbeat(position));
     _purgarSolicitudesFueraDeRadio();
@@ -4516,9 +4505,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       }
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 10),
         ),
       );
       if (_isDisposed) return;
@@ -4693,9 +4681,8 @@ class ConductorHomeProvider extends ChangeNotifier {
       if (position == null) {
         try {
           position = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 5),
+            locationSettings: PreciseGps.currentPosition(
+              timeLimit: const Duration(seconds: 8),
             ),
           );
         } catch (e) {

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intellitaxi/core/dio_client.dart';
 import 'package:intellitaxi/core/services/background_location_service.dart';
 import 'package:intellitaxi/core/services/location_tracking_config.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 
 /// Servicio para rastrear la ubicación del conductor durante un servicio activo
@@ -93,9 +94,8 @@ class ServicioTrackingService {
 
     try {
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 10),
         ),
       );
 

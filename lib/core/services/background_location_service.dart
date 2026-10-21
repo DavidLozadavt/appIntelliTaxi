@@ -9,6 +9,7 @@ import 'package:intellitaxi/core/network/mobile_network_config.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/location_tracking_config.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum _BgLocationMode { none, trip, map }
@@ -114,12 +115,13 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
       }
 
       positionSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 5,
+        locationSettings: PreciseGps.stream(
+          use: PreciseGpsUse.navigation,
+          distanceFilter: 3,
         ),
       ).listen(
         (position) {
+          if (!PreciseGps.shouldAccept(position, lastPosition)) return;
           lastPosition = position;
           lastFixAt = DateTime.now();
         },
@@ -146,9 +148,8 @@ Future<void> backgroundLocationOnStart(ServiceInstance service) async {
 
     try {
       final fresh = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 12),
         ),
       );
       lastPosition = fresh;

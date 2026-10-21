@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:intellitaxi/config/app_config.dart';
+import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 import 'package:intellitaxi/features/pasajero/services/ride_request_service.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
@@ -449,11 +450,16 @@ class TravelAssistantController extends ChangeNotifier {
         notifyListeners();
         return false;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
+      final pos = await PreciseGps.waitForReliableFix(
+            timeout: const Duration(seconds: 10),
+            maxAccuracyMeters: PreciseGps.maxPickupAccuracyMeters,
+            use: PreciseGpsUse.pickup,
+          ) ??
+          await Geolocator.getCurrentPosition(
+            locationSettings: PreciseGps.currentPosition(
+              use: PreciseGpsUse.pickup,
+            ),
+          );
       // Las sugerencias de origen/destino se ordenan por cercanía a este punto.
       _places.updateSearchContext(lat: pos.latitude, lng: pos.longitude);
       final addr = await _reverseGeocode(pos.latitude, pos.longitude);
