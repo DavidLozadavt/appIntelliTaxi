@@ -177,7 +177,7 @@ class ReverseGeocodingService {
     // barrio que a veces manda el ERP. Se llama poco (caché + umbral de metros).
 
     // Cuadrícula fina (~11 m) para calles distintas; caché evita repetir la API.
-    final zonaKey = 'zona|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
+    final zonaKey = 'zona2|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
     final cachedZona = _cache.get<String>(zonaKey);
     if (cachedZona != null) return cachedZona;
 
@@ -194,15 +194,23 @@ class ReverseGeocodingService {
         lng: lng,
       );
       if (streetLine != null && streetLine.trim().isNotEmpty) {
-        final compact = compactStreetLabelForZona(streetLine);
+        final barrio = await _barrioLabelForZona(
+          lat: lat,
+          lng: lng,
+          already: streetResults,
+        );
+        final label = _composeConductorZonaChip(
+          street: streetLine,
+          barrio: barrio,
+        );
         if (kDebugMode) {
           AppLogger.d(
-            'Zona conductor (calle GPS): $compact ← $streetLine lat=$lat lng=$lng',
+            'Zona conductor: $label ← $streetLine lat=$lat lng=$lng',
             tag: 'ZonaConductor',
           );
         }
-        _cache.put(zonaKey, compact, _zonaLabelCacheTtl);
-        return compact;
+        _cache.put(zonaKey, label, _zonaLabelCacheTtl);
+        return label;
       }
     }
 
@@ -227,9 +235,17 @@ class ReverseGeocodingService {
 
     final streetLine = _extractStreetLineFromResults(results, lat: lat, lng: lng);
     if (streetLine != null && streetLine.trim().isNotEmpty) {
-      final compact = compactStreetLabelForZona(streetLine);
-      _cache.put(zonaKey, compact, _zonaLabelCacheTtl);
-      return compact;
+      final barrio = await _barrioLabelForZona(
+        lat: lat,
+        lng: lng,
+        already: results,
+      );
+      final label = _composeConductorZonaChip(
+        street: streetLine,
+        barrio: barrio,
+      );
+      _cache.put(zonaKey, label, _zonaLabelCacheTtl);
+      return label;
     }
 
     final candidates = <String>{};
@@ -283,6 +299,50 @@ class ReverseGeocodingService {
     }
 
     return null;
+  }
+
+  /// «Cl. 15 · Los Alamos de Occidente» cuando hay barrio; si no, solo la calle.
+  String _composeConductorZonaChip({
+    required String street,
+    String? barrio,
+  }) {
+    final compact = compactStreetLabelForZona(street);
+    final b = PlacePrecision.normalizeNeighborhood(barrio);
+    if (b.isEmpty || !PlacePrecision.isPlausibleNeighborhood(b)) {
+      return compact;
+    }
+    final streetFold = compact.toLowerCase();
+    final barrioFold = b.toLowerCase();
+    if (streetFold.contains(barrioFold) || barrioFold.contains(streetFold)) {
+      return compact;
+    }
+    return '$compact · $b';
+  }
+
+  Future<String?> _barrioLabelForZona({
+    required double lat,
+    required double lng,
+    List<Map<String, dynamic>>? already,
+  }) async {
+    final fromStreet = already == null || already.isEmpty
+        ? null
+        : _extractAreaFromResults(already, lat: lat, lng: lng);
+    if (fromStreet != null &&
+        PlacePrecision.isPlausibleNeighborhood(fromStreet)) {
+      return fromStreet;
+    }
+
+    final neighborhoodResults = await _fetchGeocodeResults(
+      lat: lat,
+      lng: lng,
+      resultType:
+          'neighborhood|sublocality|sublocality_level_1|sublocality_level_2|sublocality_level_3|administrative_area_level_3',
+      logLabel: 'zona_barrio',
+    );
+    if (neighborhoodResults == null || neighborhoodResults.isEmpty) {
+      return fromStreet;
+    }
+    return _extractAreaFromResults(neighborhoodResults, lat: lat, lng: lng);
   }
 
   /// Etiqueta corta para chip «Zona:» (ej. Carrera 20b → Cra. 20b).

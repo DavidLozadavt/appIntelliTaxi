@@ -10,7 +10,6 @@ import 'package:intellitaxi/core/services/incoming_service_alert_service.dart';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/config/maps_config.dart';
-import 'package:intellitaxi/core/geo/place_precision.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
@@ -4239,14 +4238,7 @@ class ConductorHomeProvider extends ChangeNotifier {
       _lastMapHeartbeatAt = DateTime.now();
       _lastMapHeartbeatPosition = position;
 
-      final zonaServidor = ubicacion?.displayZona.trim() ?? '';
-      if (zonaServidor.isNotEmpty &&
-          PlacePrecision.looksLikeStreetLabel(zonaServidor) &&
-          !PlacePrecision.isPlusCodeLabel(zonaServidor)) {
-        _aplicarZonaDesdeServidor(zonaServidor, position: position);
-      } else {
-        await _actualizarZonaActual(position, force: true);
-      }
+      await _actualizarZonaActual(position, force: force);
       _programarSyncTrasHeartbeatUbicacion();
     } catch (e) {
       ApiRateLimitGuard.instance.recordIfRateLimit(e);
@@ -4257,16 +4249,6 @@ class ConductorHomeProvider extends ChangeNotifier {
     } finally {
       _isSendingMapHeartbeat = false;
     }
-  }
-
-  void _aplicarZonaDesdeServidor(String label, {required Position position}) {
-    final trimmed = label.trim();
-    if (trimmed.isEmpty) return;
-    _lastAreaResolvedPosition = position;
-    _lastAreaResolvedAt = DateTime.now();
-    if (_zonaActual == trimmed) return;
-    _zonaActual = trimmed;
-    if (!_isDisposed) notifyListeners();
   }
 
   /// Chip «Tu zona: Cra. 20b» (primordial para el conductor). Nunca se desactiva;
