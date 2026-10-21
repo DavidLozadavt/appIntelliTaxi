@@ -215,7 +215,7 @@ class ServicioActivoProvider extends ChangeNotifier {
       return;
     }
 
-    _uiLocationTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+    _uiLocationTimer = Timer.periodic(const Duration(seconds: 6), (timer) async {
       if (_servicioData == null) {
         timer.cancel();
         return;

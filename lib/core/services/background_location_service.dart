@@ -15,7 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum _BgLocationMode { none, trip, map }
 
 /// Antigüedad máxima (s) de un fix para considerarse vigente.
-const Duration _kFreshFixMaxAge = Duration(seconds: 20);
+const Duration _kFreshFixMaxAge = Duration(seconds: 8);
 
 /// Entry point del isolate de segundo plano (requerido por flutter_background_service).
 @pragma('vm:entry-point')

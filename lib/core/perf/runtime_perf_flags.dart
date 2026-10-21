@@ -48,27 +48,27 @@ abstract final class RuntimePerfFlags {
   static const double conductorDrivingSpeedMps = 1.4;
 
   /// Poll de respaldo solo si el stream GPS falla (no corre en paralelo).
-  static const Duration mapHeartbeatPollIntervalFallback = Duration(seconds: 20);
+  static const Duration mapHeartbeatPollIntervalFallback = Duration(seconds: 10);
 
   /// Si no llega ningún fix GPS en este tiempo, revisa el stream.
   ///
-  /// Por encima de [conductorGpsIdleHeartbeatInterval] (30 s) a propósito:
-  /// el timer de reposo refresca la posición cada 30 s, así que un umbral
-  /// menor haría que el watchdog compitiese con él.
-  static const Duration conductorGpsStaleAfter = Duration(seconds: 45);
+  /// Por encima de [conductorGpsIdleHeartbeatInterval] a propósito: el timer
+  /// de reposo ya refresca, así que un umbral menor haría que el watchdog
+  /// compitiese con él.
+  static const Duration conductorGpsStaleAfter = Duration(seconds: 25);
 
   /// Con el conductor detenido el GPS no emite eventos (distanceFilter), así
   /// que no se reinicia el stream: basta con refrescar la posición de vez en
   /// cuando para evitar la deriva.
   static const Duration conductorGpsIdleRefreshMinInterval = Duration(
-    minutes: 2,
+    seconds: 40,
   );
 
   /// Heartbeat al backend con el conductor detenido: el stream no emite
   /// eventos, así que un timer pide un fix puntual para que la posición del
   /// conductor no se congele en el mapa del pasajero.
   static const Duration conductorGpsIdleHeartbeatInterval = Duration(
-    seconds: 30,
+    seconds: 12,
   );
 
   /// Cada cuánto se revisa si el GPS del home está estancado.
@@ -78,19 +78,19 @@ abstract final class RuntimePerfFlags {
   static const Duration conductorGpsLastKnownMaxAge = Duration(minutes: 2);
 
   /// Heartbeat mapa flota parado.
-  static const Duration mapHeartbeatMinInterval = Duration(seconds: 30);
+  static const Duration mapHeartbeatMinInterval = Duration(seconds: 12);
 
   /// Heartbeat mapa flota en movimiento.
-  static const Duration mapHeartbeatMinIntervalDriving = Duration(seconds: 8);
+  static const Duration mapHeartbeatMinIntervalDriving = Duration(seconds: 4);
 
   /// Si se movió ≥ esto (m), enviar aunque no haya pasado el intervalo mínimo.
-  static const double mapHeartbeatMinMoveMeters = 15;
+  static const double mapHeartbeatMinMoveMeters = 8;
 
   /// Android: envío ubicación en servicio foreground (viaje).
-  static const int backgroundLocationIntervalSeconds = 12;
+  static const int backgroundLocationIntervalSeconds = 6;
 
   /// Android: heartbeat mapa con conductor en línea y app en segundo plano.
-  static const int mapHeartbeatBackgroundIntervalSeconds = 45;
+  static const int mapHeartbeatBackgroundIntervalSeconds = 20;
 
   /// Tiempo mínimo de marca en Splash (sin bloquear si la sesión tarda más).
   static const Duration splashMinDisplay = Duration(milliseconds: 550);
