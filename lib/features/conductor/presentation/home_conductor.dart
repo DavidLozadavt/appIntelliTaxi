@@ -202,6 +202,12 @@ class _HomeConductorState extends State<HomeConductor>
     _crearDotMarker();
   }
 
+  Future<void> _crearDotMarker() async {
+    final marker = await MapDotMarkerFactory.create(color: AppColors.primary);
+    if (!mounted) return;
+    setState(() => _dotMarker = marker);
+  }
+
   bool _panelServiciosVisible(ConductorHomeProvider provider) =>
       provider.isOnline &&
       !provider.enServicio &&
@@ -303,12 +309,6 @@ class _HomeConductorState extends State<HomeConductor>
         await DriverOverlayPermissionFlow.promptOnConductorHomeEntered(context);
       }),
     );
-  }
-
-  Future<void> _crearDotMarker() async {
-    final marker = await MapDotMarkerFactory.create(color: AppColors.primary);
-    if (!mounted) return;
-    setState(() => _dotMarker = marker);
   }
 
   Future<void> _cargarSanciones() async {

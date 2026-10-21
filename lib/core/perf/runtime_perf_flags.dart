@@ -70,8 +70,9 @@ abstract final class RuntimePerfFlags {
   /// Cada cuánto se revisa si el GPS del home está estancado (local).
   static const Duration conductorGpsWatchdogInterval = Duration(seconds: 15);
 
-  /// lastKnown más viejo que esto no se pinta como posición válida al resume.
-  static const Duration conductorGpsLastKnownMaxAge = Duration(minutes: 2);
+  /// lastKnown más viejo o impreciso no se pinta: 2 min era otra cuadra.
+  static const Duration conductorGpsLastKnownMaxAge = Duration(seconds: 20);
+  static const double conductorGpsLastKnownMaxAccuracyMeters = 25;
 
   /// HTTP mapa: parado. 15 s ≈ 4 req/min por conductor.
   static const Duration mapHeartbeatMinInterval = Duration(seconds: 15);

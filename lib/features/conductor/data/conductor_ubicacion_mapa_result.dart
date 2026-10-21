@@ -1,3 +1,5 @@
+import 'package:intellitaxi/core/geo/place_precision.dart';
+
 /// Respuesta de `POST taxi/conductor/ubicacion-mapa` (y fallback legacy).
 ///
 /// El backend puede devolver la zona ya resuelta (Nominatim en servidor) para
@@ -21,15 +23,20 @@ class ConductorUbicacionMapaResult {
   bool get hasZona => displayZona.trim().isNotEmpty;
 
   String get displayZona {
-    final z = zonaLabel?.trim();
-    if (z != null && z.isNotEmpty) return z;
-    final b = barrio?.trim();
-    if (b != null && b.isNotEmpty) return b;
-    final addr = address?.trim();
-    if (addr != null && addr.isNotEmpty) {
-      return addr.split(',').first.trim();
+    String? street;
+    String? fallback;
+    for (final raw in [zonaLabel, address, barrio]) {
+      final v = raw?.trim() ?? '';
+      if (v.isEmpty) continue;
+      final first = v.split(',').first.trim();
+      if (PlacePrecision.isPlusCodeLabel(first)) continue;
+      if (PlacePrecision.looksLikeStreetLabel(first)) {
+        street ??= first;
+      } else {
+        fallback ??= first;
+      }
     }
-    return '';
+    return street ?? fallback ?? '';
   }
 
   static ConductorUbicacionMapaResult? tryFromResponse(dynamic data) {

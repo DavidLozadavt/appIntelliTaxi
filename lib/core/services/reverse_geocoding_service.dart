@@ -173,47 +173,8 @@ class ReverseGeocodingService {
     required double lat,
     required double lng,
   }) async {
-    if (MapsConfig.useBackendProxy) {
-      final zonaKey =
-          'zona|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
-      final cachedZona = _cache.get<String>(zonaKey);
-      if (cachedZona != null) return cachedZona;
-
-      final response = await _taxiMaps.reverseGeocode(lat, lng);
-      if (response == null) return null;
-
-      // Si el backend geocodificó otro punto, la zona no es de aquí.
-      final r = _proxyResultIsAligned(lat, lng, response) ? response : null;
-
-      String? label = r?.zona?.trim();
-      if (label != null && label.isNotEmpty) {
-        label = compactStreetLabelForZona(label);
-      } else {
-        label = null;
-      }
-
-      final addr = r?.address?.trim() ?? '';
-      var candidate = label ?? '';
-      if (candidate.isEmpty) {
-        if (addr.isNotEmpty) {
-          final first = addr.split(',').first.trim();
-          if (_looksLikeStreetName(first)) {
-            candidate = compactStreetLabelForZona(first);
-          }
-        }
-        if (candidate.isEmpty) {
-          candidate = PlacePrecision.normalizeNeighborhood(r?.barrio);
-        }
-      }
-      if (candidate.isEmpty && addr.isNotEmpty) {
-        candidate = compactStreetLabelForZona(
-          addr.split(',').take(2).join(', '),
-        );
-      }
-      if (candidate.isEmpty) return null;
-      _cache.put(zonaKey, candidate, _zonaLabelCacheTtl);
-      return candidate;
-    }
+    // El chip debe coincidir con inDrive: Google Geocoding (calle), no el
+    // barrio que a veces manda el ERP. Se llama poco (caché + umbral de metros).
 
     // Cuadrícula fina (~11 m) para calles distintas; caché evita repetir la API.
     final zonaKey = 'zona|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
@@ -348,12 +309,19 @@ class ReverseGeocodingService {
   }
 
   /// Calle del resultado de geocode más cercano al GPS (no la vía vecina del texto).
+  /// Calle del **punto GPS**, no de la vía cuyo centroide queda más cerca.
+  ///
+  /// Google ordena `results` por relevancia a ese lat/lng. Si se elige la
+  /// geometría más cercana, el chip salta a otra calle (p. ej. Cl. 15) aunque
+  /// el teléfono esté en la cuadra de al lado.
+  static const double _maxStreetSnapMeters = 80;
+
   String? _extractStreetFromNearestGeocodeResult(
     List<Map<String, dynamic>> results, {
     required double lat,
     required double lng,
   }) {
-    final ranked = <MapEntry<double, Map<String, dynamic>>>[];
+    String? fallback;
 
     for (final result in results) {
       final types = (result['types'] as List<dynamic>? ?? [])
@@ -368,29 +336,36 @@ class ReverseGeocodingService {
       );
       if (route == null || route.trim().isEmpty) continue;
 
-      final score = _geocodeResultProximityScore(result, lat: lat, lng: lng);
-      if (!score.isFinite) continue;
-      ranked.add(MapEntry(score, result));
-    }
-
-    if (ranked.isEmpty) return null;
-    ranked.sort((a, b) => a.key.compareTo(b.key));
-
-    for (final entry in ranked) {
-      final components =
-          entry.value['address_components'] as List<dynamic>? ?? [];
-      final route = _firstComponentValue(
-        components,
-        acceptedTypes: const ['route'],
-      );
       final number = _firstComponentValue(
         components,
         acceptedTypes: const ['street_number'],
       );
       final line = _formatStreetLine(route, number);
-      if (line != null && line.trim().isNotEmpty) return line;
+      if (line == null || line.trim().isEmpty) continue;
+      fallback ??= line;
+
+      final meters = _geocodeResultRawMeters(result, lat: lat, lng: lng);
+      if (meters.isFinite && meters <= _maxStreetSnapMeters) {
+        return line;
+      }
     }
-    return null;
+
+    return fallback;
+  }
+
+  double _geocodeResultRawMeters(
+    Map<String, dynamic> result, {
+    required double lat,
+    required double lng,
+  }) {
+    final geo = result['geometry'];
+    if (geo is! Map) return double.infinity;
+    final loc = geo['location'];
+    if (loc is! Map) return double.infinity;
+    final rLat = (loc['lat'] as num?)?.toDouble();
+    final rLng = (loc['lng'] as num?)?.toDouble();
+    if (rLat == null || rLng == null) return double.infinity;
+    return Geolocator.distanceBetween(lat, lng, rLat, rLng);
   }
 
   double _geocodeResultProximityScore(

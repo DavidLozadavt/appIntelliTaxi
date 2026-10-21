@@ -282,4 +282,17 @@ void main() {
       expect(PlacePrecision.hasMappedStreet(const []), isFalse);
     });
   });
+
+  group('PlacePrecision.looksLikeInventedGridStreet', () {
+    test('detecta nomenclatura interpolada de Google', () {
+      expect(
+        PlacePrecision.looksLikeInventedGridStreet('Cl. 15 # 37-222'),
+        isTrue,
+      );
+      expect(
+        PlacePrecision.looksLikeInventedGridStreet('Aguas Vivas'),
+        isFalse,
+      );
+    });
+  });
 }

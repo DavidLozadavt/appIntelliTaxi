@@ -45,6 +45,36 @@ abstract final class PlacePrecision {
     caseSensitive: false,
   );
 
+  /// Calle/carrera al estilo inDrive (`Cl. 15`, `Cra. 20b`).
+  static bool looksLikeStreetLabel(String? value) {
+    if (value == null) return false;
+    final first = value.trim().split(',').first.trim();
+    if (first.isEmpty || isPlusCodeLabel(first)) return false;
+    return _streetRegex.hasMatch(first);
+  }
+
+  /// Google a veces pone el Plus Code (`C9X6+JV`) como “dirección”.
+  static bool isPlusCodeLabel(String? value) {
+    if (value == null) return false;
+    final first = value.trim().split(',').first.trim();
+    if (first.isEmpty) return false;
+    return _plusCodeRegex.hasMatch(first);
+  }
+
+  /// Calle/carrera numerada con # que Google inventa en zonas sin nomenclatura
+  /// (ej. `Cl. 15 # 37-222` cuando el mapa dice Aguas Vivas).
+  static bool looksLikeInventedGridStreet(String? value) {
+    if (value == null) return false;
+    final first = value.trim().split(',').first.trim();
+    if (first.isEmpty || isPlusCodeLabel(first)) return false;
+    final numbered = RegExp(
+      r'^(cl\.?|calle|cra\.?|cr\.?|carrera|diag\.?|dg\.?|diagonal|trans\.?|tv\.?|transversal)\s*\d',
+      caseSensitive: false,
+    );
+    if (!numbered.hasMatch(first)) return false;
+    return first.contains('#') || RegExp(r'\d+\s*-\s*\d+').hasMatch(first);
+  }
+
   static final RegExp _onlyDigits = RegExp(r'^\d+$');
 
   /// Números de casa, rangos y códigos postales ("9-27", "190003", "12 # 4").

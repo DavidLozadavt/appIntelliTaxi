@@ -109,17 +109,17 @@ class PlacesService {
     return (lat: lat, lng: lng);
   }
 
-  /// Búsqueda por texto (forward geocode en backend).
+  /// Búsqueda por texto: Google Places (POIs) primero; Nominatim solo si Google no da.
   Future<List<PlaceResult>> searchPlaces(String query) async {
     final normalized = query.trim();
     if (normalized.isEmpty) return [];
 
+    final google = await _searchPlacesGoogle(normalized);
+    if (google.isNotEmpty) return google;
     if (MapsConfig.useBackendProxy) {
-      final backend = await _searchPlacesBackend(normalized);
-      if (backend.isNotEmpty) return backend;
-      return _searchPlacesGoogle(normalized);
+      return _searchPlacesBackend(normalized);
     }
-    return _searchPlacesGoogle(normalized);
+    return [];
   }
 
   Future<List<PlaceResult>> _searchPlacesBackend(String normalized) async {
@@ -218,12 +218,51 @@ class PlacesService {
     final normalized = input.trim();
     if (normalized.length < _minAutocompleteChars) return [];
 
+    final googleAuto = _autocompleteGoogle(normalized, sessionToken);
+    final googlePoi = _predictionsFromGoogleTextSearch(normalized);
+    final google = _mergePredictions([
+      await googlePoi,
+      await googleAuto,
+    ]);
+    if (google.isNotEmpty) return google;
     if (MapsConfig.useBackendProxy) {
-      final backend = await _autocompleteBackend(normalized);
-      if (backend.isNotEmpty) return backend;
-      return _autocompleteGoogle(normalized, sessionToken);
+      return _autocompleteBackend(normalized);
     }
-    return _autocompleteGoogle(normalized, sessionToken);
+    return [];
+  }
+
+  Future<List<PlacePrediction>> _predictionsFromGoogleTextSearch(
+    String normalized,
+  ) async {
+    final places = await _searchPlacesGoogle(normalized);
+    return [
+      for (final p in places)
+        PlacePrediction(
+          placeId: p.placeId,
+          description: p.address.isNotEmpty ? '${p.name}, ${p.address}' : p.name,
+          mainText: p.name,
+          secondaryText: p.address,
+          lat: p.lat,
+          lng: p.lng,
+        ),
+    ];
+  }
+
+  List<PlacePrediction> _mergePredictions(
+    List<List<PlacePrediction>> buckets,
+  ) {
+    final seen = <String>{};
+    final merged = <PlacePrediction>[];
+    for (final bucket in buckets) {
+      for (final p in bucket) {
+        final key = p.placeId.trim().isNotEmpty
+            ? p.placeId.trim()
+            : p.mainText.trim().toLowerCase();
+        if (key.isEmpty || !seen.add(key)) continue;
+        merged.add(p);
+      }
+    }
+    return _rankPredictionsByProximity(merged);
   }
 
   Future<List<PlacePrediction>> _autocompleteBackend(String normalized) async {
@@ -305,19 +344,25 @@ class PlacesService {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['status'] == 'OK') {
-          final predictions = (data['predictions'] as List)
-              .map((pred) => PlacePrediction.fromGoogleJson(pred))
-              .where(
-                (pred) => PopayanUrbanArea.isPredictionAllowed(pred.description),
-              )
-              .toList();
-          _autocompleteCache[cacheKey] = _CacheEntry(
-            value: predictions,
-            expiresAt: DateTime.now().add(_cacheTtl),
+        final status = data['status']?.toString() ?? 'UNKNOWN';
+        if (status != 'OK') {
+          AppLogger.w(
+            'Places autocomplete status=$status error=${data['error_message']}',
+            tag: 'PlacesService',
           );
-          return predictions;
+          return [];
         }
+        final predictions = (data['predictions'] as List)
+            .map((pred) => PlacePrediction.fromGoogleJson(pred))
+            .where(
+              (pred) => PopayanUrbanArea.isPredictionAllowed(pred.description),
+            )
+            .toList();
+        _autocompleteCache[cacheKey] = _CacheEntry(
+          value: predictions,
+          expiresAt: DateTime.now().add(_cacheTtl),
+        );
+        return predictions;
       }
     } catch (e) {
       AppLogger.d('❌ Error en autocomplete Google: $e');

@@ -10,6 +10,7 @@ import 'package:intellitaxi/core/services/incoming_service_alert_service.dart';
 import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/config/maps_config.dart';
+import 'package:intellitaxi/core/geo/place_precision.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
@@ -3794,7 +3795,13 @@ class ConductorHomeProvider extends ChangeNotifier {
         }
       }
 
-      Position position = await Geolocator.getCurrentPosition(
+      await PreciseGps.requestFullAccuracyIfNeeded();
+      Position? position = await PreciseGps.waitForReliableFix(
+        timeout: const Duration(seconds: 12),
+        maxAccuracyMeters: PreciseGps.maxAccuracyMeters,
+        use: PreciseGpsUse.navigation,
+      );
+      position ??= await Geolocator.getCurrentPosition(
         locationSettings: PreciseGps.currentPosition(
           timeLimit: const Duration(seconds: 10),
         ),
@@ -3833,7 +3840,13 @@ class ConductorHomeProvider extends ChangeNotifier {
   bool _esLastKnownUsable(Position last) {
     final age = DateTime.now().difference(last.timestamp);
     if (age.isNegative) return false;
-    return age <= RuntimePerfFlags.conductorGpsLastKnownMaxAge;
+    if (age > RuntimePerfFlags.conductorGpsLastKnownMaxAge) return false;
+    if (last.accuracy.isFinite &&
+        last.accuracy >
+            RuntimePerfFlags.conductorGpsLastKnownMaxAccuracyMeters) {
+      return false;
+    }
+    return true;
   }
 
   void _aplicarPosicionLocal(
@@ -4078,6 +4091,7 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   void _iniciarSeguimientoUbicacion() {
     _detenerSeguimientoUbicacion();
+    unawaited(PreciseGps.requestFullAccuracyIfNeeded());
 
     _locationSubscription = Geolocator.getPositionStream(
       locationSettings: _locationStreamSettings(),
@@ -4225,10 +4239,13 @@ class ConductorHomeProvider extends ChangeNotifier {
       _lastMapHeartbeatAt = DateTime.now();
       _lastMapHeartbeatPosition = position;
 
-      if (ubicacion != null && ubicacion.hasZona) {
-        _aplicarZonaDesdeServidor(ubicacion.displayZona, position: position);
+      final zonaServidor = ubicacion?.displayZona.trim() ?? '';
+      if (zonaServidor.isNotEmpty &&
+          PlacePrecision.looksLikeStreetLabel(zonaServidor) &&
+          !PlacePrecision.isPlusCodeLabel(zonaServidor)) {
+        _aplicarZonaDesdeServidor(zonaServidor, position: position);
       } else {
-        await _actualizarZonaActual(position, force: force);
+        await _actualizarZonaActual(position, force: true);
       }
       _programarSyncTrasHeartbeatUbicacion();
     } catch (e) {
