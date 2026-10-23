@@ -18,6 +18,7 @@ import 'package:intellitaxi/main.dart';
 import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero_helper.dart';
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
+import 'package:intellitaxi/features/conductor/widgets/origen_servicio_badge.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/taxi/utils/servicio_espera_timer.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
@@ -492,6 +493,7 @@ class _ConductorOfertaExclusivaScreenState
               Scaffold(
                 backgroundColor: Colors.black,
                 body: _VistaOfertaIa(
+                solicitud: solicitud,
                 recogida: recogida,
                 destino: destino,
                 precio: precio,
@@ -695,6 +697,7 @@ class _ConductorOfertaExclusivaScreenState
                 Expanded(
                   flex: 48,
                   child: _PanelInferior(
+                    solicitud: solicitud,
                     recogida: recogida,
                     destino: destino,
                     precio: precio,
@@ -723,6 +726,7 @@ class _ConductorOfertaExclusivaScreenState
 /// Oferta exclusiva sin mapa: servicios web / gestionados por IA (solo barrio y datos).
 class _VistaOfertaIa extends StatelessWidget {
   const _VistaOfertaIa({
+    required this.solicitud,
     required this.recogida,
     this.destino,
     this.precio,
@@ -742,6 +746,7 @@ class _VistaOfertaIa extends StatelessWidget {
     required this.onAceptar,
   });
 
+  final Map<String, dynamic> solicitud;
   final OfertaUbicacionVista recogida;
   final OfertaUbicacionVista? destino;
   final double? precio;
@@ -813,6 +818,19 @@ class _VistaOfertaIa extends StatelessWidget {
                 texto: etiquetaIa ?? 'Servicio gestionado por IA',
               ),
             ),
+            if (SolicitudDisplayHelper.etiquetaOrigenServicio(solicitud) !=
+                null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: OrigenServicioBadge(
+                    solicitud: solicitud,
+                    onDark: true,
+                    mostrarTelefono: true,
+                  ),
+                ),
+              ),
             if (intento != null && maxIntentos != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
@@ -1324,6 +1342,7 @@ class _TimerFlotante extends StatelessWidget {
 
 class _PanelInferior extends StatelessWidget {
   const _PanelInferior({
+    required this.solicitud,
     required this.recogida,
     this.destino,
     this.precio,
@@ -1338,6 +1357,7 @@ class _PanelInferior extends StatelessWidget {
     required this.onAceptar,
   });
 
+  final Map<String, dynamic> solicitud;
   final OfertaUbicacionVista recogida;
   final OfertaUbicacionVista? destino;
   final double? precio;
@@ -1439,6 +1459,18 @@ class _PanelInferior extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (SolicitudDisplayHelper.etiquetaOrigenServicio(solicitud) !=
+                        null) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OrigenServicioBadge(
+                          solicitud: solicitud,
+                          onDark: true,
+                          mostrarTelefono: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     _TarjetaRuta(
                       recogida: recogida,
                       destino: destino,

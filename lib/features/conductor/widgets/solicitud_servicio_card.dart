@@ -5,6 +5,7 @@ import 'package:intellitaxi/features/conductor/utils/conductor_solicitud_payload
 import 'package:intellitaxi/features/conductor/utils/oferta_exclusiva_display.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_nota_recogida_ia.dart';
+import 'package:intellitaxi/features/conductor/widgets/origen_servicio_badge.dart';
 
 class SolicitudServicioCard extends StatefulWidget {
   final Map<String, dynamic> solicitud;
@@ -327,6 +328,8 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     required double? precio,
     required bool compact,
   }) {
+    final canalOrigen =
+        SolicitudDisplayHelper.etiquetaOrigenServicio(widget.solicitud);
     final badge = _denseTrailingBadge(
       isDark: isDark,
       segundosRestantes: segundosRestantes,
@@ -348,16 +351,30 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    recogidaHeadline,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      height: 1.15,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
+                  Row(
+                    children: [
+                      if (canalOrigen != null) ...[
+                        OrigenServicioBadge(
+                          solicitud: widget.solicitud,
+                          compact: true,
+                          onDark: isDark,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Expanded(
+                        child: Text(
+                          recogidaHeadline,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            height: 1.15,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   if (origenSub.isNotEmpty) ...[
                     const SizedBox(height: 1),
@@ -583,8 +600,6 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
     final viajeDur = SolicitudDisplayHelper.tripDurationText(widget.solicitud);
     final canalOrigen =
         SolicitudDisplayHelper.etiquetaOrigenServicio(widget.solicitud);
-    final telefonoLlamada =
-        SolicitudDisplayHelper.telefonoLlamadaVisible(widget.solicitud);
     final mostrarAvisoSinMapa =
         OfertaExclusivaDisplay.mostrarAvisoSinMapa(widget.solicitud);
     final textoAvisoSinMapa =
@@ -667,31 +682,11 @@ class _SolicitudServicioCardState extends State<SolicitudServicioCard>
                             ),
                             SizedBox(height: compact ? 6 : 10),
                           ],
-                          if (canalOrigen != null &&
-                              canalOrigen != 'App móvil') ...[
-                            Row(
-                              children: [
-                                Icon(
-                                  canalOrigen == 'WhatsApp'
-                                      ? Iconsax.message
-                                      : Iconsax.call,
-                                  size: 14,
-                                  color: AppColors.accent,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  telefonoLlamada != null
-                                      ? '$canalOrigen · $telefonoLlamada'
-                                      : canalOrigen,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: isDark
-                                        ? Colors.white70
-                                        : Colors.black54,
-                                  ),
-                                ),
-                              ],
+                          if (canalOrigen != null) ...[
+                            OrigenServicioBadge(
+                              solicitud: widget.solicitud,
+                              onDark: isDark,
+                              mostrarTelefono: true,
                             ),
                             SizedBox(height: compact ? 6 : 8),
                           ],

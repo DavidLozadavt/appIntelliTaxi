@@ -4,6 +4,7 @@ import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/chat/widgets/chat_badge_wrap.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/features/conductor/widgets/origen_servicio_badge.dart';
 import 'package:intellitaxi/shared/widgets/whatsapp_brand_icon.dart';
 import 'package:intellitaxi/shared/optimized_image_widgets.dart';
 /// Panel inferior del viaje activo del conductor (contacto, ruta, acciones).
@@ -75,6 +76,8 @@ class ConductorServicioBottomPanel extends StatelessWidget {
         SolicitudDisplayHelper.destinationSubtitle(servicio);
 
     final telefono = telefonoPasajero?.trim() ?? '';
+    final canalOrigen =
+        SolicitudDisplayHelper.etiquetaOrigenServicio(servicio);
     final accion = _accionPrincipal(estadoUi);
     final muestraDestino = SolicitudDisplayHelper.hasDestination(servicio);
     final tieneContenidoRuta =
@@ -97,6 +100,17 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                   esGestionadoPorIa: esGestionadoPorIa,
                   soloDestino: soloDestino,
                 ),
+                if (canalOrigen != null) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OrigenServicioBadge(
+                      solicitud: servicio,
+                      onDark: isDark,
+                      mostrarTelefono: true,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 _ContactoCard(
                   nombre: nombrePasajero,
