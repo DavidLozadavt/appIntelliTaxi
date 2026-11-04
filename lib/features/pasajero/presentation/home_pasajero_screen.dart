@@ -37,6 +37,7 @@ import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_active_service_controller.dart';
+import 'package:intellitaxi/features/rides/data/servicio_activo_model.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_nearby_drivers_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search_controller.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_socket_offers_controller.dart';
@@ -168,6 +169,7 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _originEditedByUser = false;
 
   bool _activeServiceCheckInFlight = false;
+  int? _viajeActivoId;
 
   bool get _isExpanded => _sheetVisualState != _SheetVisualState.compact;
 
@@ -428,48 +430,77 @@ class _HomePasajeroState extends State<HomePasajero>
     _activeServiceCheckInFlight = true;
     try {
       final servicio = await _activeServiceController.fetchActiveServiceIfAny();
-      if (servicio == null || !mounted) return;
-
-      // Ya hay una pantalla de servicio visible: no apilar otra encima.
-      if (ActiveServiceScreenRegistry.isAnyVisible(type: 'pasajero')) return;
-
-      final raw = Map<String, dynamic>.from(servicio.toJson());
-      final datos = ServicioPayloadAdapter.normalize(
-        servicio: raw,
-        conductor: servicio.conductor != null
-            ? {
-                'id': servicio.conductor!.id,
-                'nombre': servicio.conductor!.nombre,
-                'telefono': servicio.conductor!.telefono,
-                'foto': servicio.conductor!.foto,
-                'calificacion': servicio.conductor!.calificacion,
-                'lat': servicio.conductor!.lat,
-                'lng': servicio.conductor!.lng,
-              }
-            : null,
-        vehiculo: servicio.vehiculo != null
-            ? {
-                'marca': servicio.vehiculo!.marca,
-                'modelo': servicio.vehiculo!.modelo,
-                'placa': servicio.vehiculo!.placa,
-                'color': servicio.vehiculo!.color,
-              }
-            : null,
-      );
-
       if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PasajeroEsperandoConductorScreen(
-            servicioId: servicio.id,
-            datosServicio: datos,
-          ),
-        ),
-      );
+      if (servicio == null) {
+        if (_viajeActivoId != null) {
+          _setStateSafe(() => _viajeActivoId = null);
+        }
+        return;
+      }
+
+      _setStateSafe(() => _viajeActivoId = servicio.id);
+
+      // Solo se omite si ESA pantalla ya está encima. Un registro viejo
+      // no puede dejar al pasajero atrapado en el home.
+      if (ActiveServiceScreenRegistry.isShowing(
+        type: 'pasajero',
+        serviceId: servicio.id,
+      )) {
+        return;
+      }
+
+      await _abrirViajeActivo(servicio);
     } finally {
       _activeServiceCheckInFlight = false;
     }
+  }
+
+  Future<void> _entrarAlViajeActivo() async {
+    final servicio = await _activeServiceController.fetchActiveServiceIfAny();
+    if (servicio == null || !mounted) {
+      if (mounted) _setStateSafe(() => _viajeActivoId = null);
+      return;
+    }
+    _setStateSafe(() => _viajeActivoId = servicio.id);
+    await _abrirViajeActivo(servicio);
+  }
+
+  Future<void> _abrirViajeActivo(ServicioActivo servicio) async {
+    if (!mounted) return;
+    final raw = Map<String, dynamic>.from(servicio.toJson());
+    final datos = ServicioPayloadAdapter.normalize(
+      servicio: raw,
+      conductor: servicio.conductor != null
+          ? {
+              'id': servicio.conductor!.id,
+              'nombre': servicio.conductor!.nombre,
+              'telefono': servicio.conductor!.telefono,
+              'foto': servicio.conductor!.foto,
+              'calificacion': servicio.conductor!.calificacion,
+              'lat': servicio.conductor!.lat,
+              'lng': servicio.conductor!.lng,
+            }
+          : null,
+      vehiculo: servicio.vehiculo != null
+          ? {
+              'marca': servicio.vehiculo!.marca,
+              'modelo': servicio.vehiculo!.modelo,
+              'placa': servicio.vehiculo!.placa,
+              'color': servicio.vehiculo!.color,
+            }
+          : null,
+    );
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PasajeroEsperandoConductorScreen(
+          servicioId: servicio.id,
+          datosServicio: datos,
+        ),
+      ),
+    );
   }
 
   // ========== MÉTODOS DE CONDUCTORES DISPONIBLES ==========
@@ -752,6 +783,41 @@ class _HomePasajeroState extends State<HomePasajero>
                     ),
                   );
                 },
+              ),
+            ),
+          ),
+
+        if (_viajeActivoId != null)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 8,
+            left: 12,
+            right: 12,
+            child: Material(
+              elevation: 4,
+              color: AppColors.accent,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                onTap: () => unawaited(_entrarAlViajeActivo()),
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.local_taxi, color: Colors.white),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Tienes un viaje en curso. Toca para entrar.',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, color: Colors.white),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -2428,6 +2494,7 @@ class _HomePasajeroState extends State<HomePasajero>
             context,
             detalle,
             Provider.of<AuthProvider>(context, listen: false),
+            force: true,
           );
         } else {
           await Navigator.of(context).pushReplacement(
@@ -2771,6 +2838,7 @@ class _HomePasajeroState extends State<HomePasajero>
             context,
             detalle,
             Provider.of<AuthProvider>(context, listen: false),
+            force: true,
           );
         } else {
           await Navigator.of(context).pushReplacement(

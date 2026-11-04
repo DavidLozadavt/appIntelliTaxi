@@ -1444,7 +1444,11 @@ class _HomeConductorState extends State<HomeConductor>
               children: [
                 Expanded(
                   child: InkWell(
-                    onTap: chipBloqueado ? null : _cambiarEstadoConductor,
+                    onTap: chipBloqueado
+                        ? null
+                        : (provider.enServicio
+                            ? () => unawaited(_navigateToActiveServiceIfNeeded())
+                            : _cambiarEstadoConductor),
                     borderRadius: BorderRadius.circular(6),
                     child: Row(
                       children: [
@@ -1481,6 +1485,21 @@ class _HomeConductorState extends State<HomeConductor>
                           const SizedBox(width: 6),
                           const Text(
                             'Descanso',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ] else if (provider.enServicio) ...[
+                          const Icon(
+                            Icons.local_taxi,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'En servicio · tocar para entrar',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 14,
@@ -1545,7 +1564,11 @@ class _HomeConductorState extends State<HomeConductor>
             if (conTurno && zona.isNotEmpty) ...[
               const SizedBox(height: 4),
               InkWell(
-                onTap: chipBloqueado ? null : _cambiarEstadoConductor,
+                onTap: chipBloqueado
+                    ? null
+                    : (provider.enServicio
+                        ? () => unawaited(_navigateToActiveServiceIfNeeded())
+                        : _cambiarEstadoConductor),
                 borderRadius: BorderRadius.circular(6),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,

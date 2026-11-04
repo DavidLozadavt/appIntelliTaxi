@@ -13,16 +13,21 @@ class ServiceNavigationHelper {
   static Future<void> navigateToActiveService(
     BuildContext context,
     Map<String, dynamic> servicioData,
-    AuthProvider authProvider,
-  ) async {
+    AuthProvider authProvider, {
+    bool force = false,
+  }) async {
     final tipo = servicioData['tipo'];
     final servicio = servicioData['servicio'];
-    final servicioIdRaw = servicio?['id'];
+    if (servicio is! Map) {
+      AppLogger.d('⚠️ [Navigation] Servicio activo sin payload');
+      return;
+    }
+    final servicioIdRaw = servicio['id'];
     final servicioId = servicioIdRaw is int
         ? servicioIdRaw
         : int.tryParse(servicioIdRaw?.toString() ?? '');
 
-    if (tipo is String && servicioId != null) {
+    if (!force && tipo is String && servicioId != null) {
       if (ActiveServiceScreenRegistry.isShowing(
         type: tipo,
         serviceId: servicioId,
@@ -136,7 +141,9 @@ class ServiceNavigationHelper {
   /// basándose en el estado del servicio
   static bool shouldShowActiveService(Map<String, dynamic> servicioData) {
     final tipo = servicioData['tipo']?.toString().toLowerCase();
-    final servicio = servicioData['servicio'];
+    final raw = servicioData['servicio'];
+    if (raw is! Map) return false;
+    final servicio = Map<String, dynamic>.from(raw);
     final idEstado = servicio['idEstado'];
     final estadoNombre =
         (servicio['estado'] is Map ? servicio['estado']['estado'] : null)
