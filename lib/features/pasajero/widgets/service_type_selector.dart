@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
-/// Widget para seleccionar el tipo de servicio (Taxi o Domicilio)
+/// Taxi o Domicilio, como tarjetas sueltas (no un segmento).
 class ServiceTypeSelector extends StatelessWidget {
   final String selectedType;
   final Function(String) onTypeChanged;
@@ -15,47 +15,33 @@ class ServiceTypeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.08)
-            : AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ServiceTypeButton(
-              type: 'taxi',
-              icon: Iconsax.car_copy,
-              title: 'Taxi',
-              subtitle: 'Viaje rápido',
-              isSelected: selectedType == 'taxi',
-              onTap: () => onTypeChanged('taxi'),
-            ),
+    return Row(
+      children: [
+        Expanded(
+          child: _ServiceTypeButton(
+            icon: Iconsax.car_copy,
+            title: 'Taxi',
+            subtitle: 'Viaje rápido',
+            isSelected: selectedType == 'taxi',
+            onTap: () => onTypeChanged('taxi'),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ServiceTypeButton(
-              type: 'domicilio',
-              icon: Iconsax.shopping_bag_copy,
-              title: 'Domicilio',
-              subtitle: 'Envío rápido',
-              isSelected: selectedType == 'domicilio',
-              onTap: () => onTypeChanged('domicilio'),
-            ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _ServiceTypeButton(
+            icon: Iconsax.shopping_bag_copy,
+            title: 'Domicilio',
+            subtitle: 'Envío rápido',
+            isSelected: selectedType == 'domicilio',
+            onTap: () => onTypeChanged('domicilio'),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
 class _ServiceTypeButton extends StatelessWidget {
-  final String type;
   final IconData icon;
   final String title;
   final String subtitle;
@@ -63,7 +49,6 @@ class _ServiceTypeButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ServiceTypeButton({
-    required this.type,
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -73,88 +58,111 @@ class _ServiceTypeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final activeColor = type == 'taxi' ? AppColors.primary : AppColors.secondary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final wine = AppColors.primary;
+    final card = isSelected
+        ? wine.withValues(alpha: isDark ? 0.22 : 0.10)
+        : (isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white);
+    final titleColor = isSelected
+        ? (isDark ? Colors.white : wine)
+        : (isDark ? Colors.grey.shade200 : const Color(0xFF2A2A2A));
+    final subtitleColor = isSelected
+        ? (isDark ? Colors.white70 : wine.withValues(alpha: 0.72))
+        : (isDark ? Colors.grey.shade500 : Colors.grey.shade600);
 
-    return InkWell(
-      onTap: onTap,
+    return Material(
+      color: card,
+      elevation: isSelected ? 0 : (isDark ? 0 : 0.4),
+      shadowColor: Colors.black.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(18),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? activeColor.withValues(alpha: isDark ? 0.18 : 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(18),
-          border: isSelected
-              ? Border.all(color: activeColor.withValues(alpha: 0.12))
-              : null,
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: activeColor.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : (isDark
-                          ? Colors.white.withValues(alpha: 0.08)
-                          : Colors.white.withValues(alpha: 0.7)),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                size: 18,
-                color: isSelected
-                    ? Colors.white
-                    : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
-              ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isSelected
+                  ? wine.withValues(alpha: isDark ? 0.0 : 0.06)
+                  : (isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : const Color(0xFFE8E8E8)),
             ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: isSelected
-                        ? Colors.white
-                        : (isDark
-                              ? Colors.grey.shade300
-                              : Colors.grey.shade800),
+          ),
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? wine
+                          : (isDark
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : const Color(0xFFF3F3F3)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 20,
+                      color: isSelected
+                          ? Colors.white
+                          : (isDark
+                                ? Colors.grey.shade400
+                                : Colors.grey.shade700),
+                    ),
                   ),
+                  if (isSelected)
+                    Positioned(
+                      top: -2,
+                      right: -2,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: wine,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        height: 1.1,
+                        color: titleColor,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: subtitleColor,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    color: isSelected
-                        ? Colors.white.withValues(alpha: 0.72)
-                        : (isDark
-                              ? Colors.grey.shade500
-                              : Colors.grey.shade600),
-                  ),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -37,6 +37,16 @@ abstract final class PlacePredictionDisplay {
     );
   }
 
+  /// Dirección para mostrar en hojas/mapas: quita ruido de geocoder
+  /// ("Perímetro Urbano Popayán, Cauca, Colombia") sin recortar el resto.
+  static String readableAddress(String? raw) {
+    final full = raw?.trim() ?? '';
+    if (full.isEmpty) return '';
+    final parts = _meaningfulParts(full);
+    if (parts.isEmpty) return full;
+    return parts.join(', ');
+  }
+
   static String _fullText({
     String? name,
     String? address,

@@ -17,6 +17,8 @@ class LocationSearchField extends StatelessWidget {
   final VoidCallback onClear;
   final FocusNode? focusNode;
   final VoidCallback? onTap;
+  final String? hintText;
+  final bool autofocus;
 
   /// Enter / acción de teclado (ej. buscar dirección escrita)
   final ValueChanged<String>? onFieldSubmitted;
@@ -33,6 +35,8 @@ class LocationSearchField extends StatelessWidget {
     required this.onClear,
     this.focusNode,
     this.onTap,
+    this.hintText,
+    this.autofocus = false,
     this.onFieldSubmitted,
   });
 
@@ -48,8 +52,8 @@ class LocationSearchField extends StatelessWidget {
           decoration: BoxDecoration(
             color: isDark
                 ? Colors.white.withValues(alpha: 0.04)
-                : AppColors.primary.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(22),
+                : AppColors.primary.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: controller.text.isNotEmpty
                   ? AppColors.primary.withValues(alpha: 0.18)
@@ -79,6 +83,7 @@ class LocationSearchField extends StatelessWidget {
                 child: TextField(
                   controller: controller,
                   focusNode: focusNode,
+                  autofocus: autofocus,
                   onTap: onTap,
                   textInputAction: onFieldSubmitted != null
                       ? TextInputAction.search
@@ -99,13 +104,15 @@ class LocationSearchField extends StatelessWidget {
                           ? Colors.grey.shade400
                           : AppColors.primary.withValues(alpha: 0.7),
                     ),
-                    hintText: label == 'Origen'
-                        ? 'Tu ubicación actual'
-                        : '¿A dónde vamos?',
+                    hintText: hintText ??
+                        (label.toLowerCase().contains('recogida') ||
+                                label.toLowerCase().contains('origen')
+                            ? 'Tu ubicación actual'
+                            : '¿A dónde vamos?'),
                     hintStyle: TextStyle(
-                      fontSize: 17,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade500,
+                      color: Colors.grey.shade400,
                     ),
                     suffixIcon: controller.text.isNotEmpty
                         ? IconButton(

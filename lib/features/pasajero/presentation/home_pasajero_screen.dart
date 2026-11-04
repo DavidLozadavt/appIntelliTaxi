@@ -25,7 +25,6 @@ import 'package:intellitaxi/features/pasajero/presentation/pasajero_esperando_co
 import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 // import 'package:intellitaxi/features/pasajero/travel_assistant/travel_assistant_screen.dart';
 import 'package:intellitaxi/features/pasajero/widgets/no_drivers_available_dialog.dart';
-import 'package:intellitaxi/features/pasajero/widgets/ride_request_floating_cta.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
@@ -82,12 +81,12 @@ class _HomePasajeroState extends State<HomePasajero>
   // Para el bottom sheet con snap
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
-  static const double _sheetMinSize = 0.16;
-  static const double _sheetMidSize = 0.52;
-  static const double _sheetMaxSize = 0.88;
-  final ValueNotifier<double> _sheetExtent = ValueNotifier(_sheetMinSize);
-  double _sheetSize = _sheetMinSize;
-  _SheetVisualState _sheetVisualState = _SheetVisualState.compact;
+  static const double _sheetMinSize = 0.48;
+  static const double _sheetMidSize = 0.58;
+  static const double _sheetMaxSize = 0.90;
+  final ValueNotifier<double> _sheetExtent = ValueNotifier(_sheetMidSize);
+  double _sheetSize = _sheetMidSize;
+  _SheetVisualState _sheetVisualState = _SheetVisualState.middle;
   _SheetVisualState? _lastHapticSnap;
 
   // Para las búsquedas
@@ -102,6 +101,7 @@ class _HomePasajeroState extends State<HomePasajero>
   );
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
+  final FocusNode _originFocusNode = FocusNode();
   final FocusNode _destinationFocusNode = FocusNode();
 
   TripLocation? _selectedOrigin;
@@ -156,6 +156,9 @@ class _HomePasajeroState extends State<HomePasajero>
   String? _currentLocationStreet;
   bool _prefsLoaded = false;
   List<TripLocation> _recentDestinations = [];
+  TripLocation? _favoriteHome;
+  TripLocation? _favoriteWork;
+  bool _editingPickup = false;
   bool _notificationPermissionRequestedInSession = false;
 
   /// Suscripción al stream de GPS: mantiene la ubicación viva mientras
@@ -185,12 +188,6 @@ class _HomePasajeroState extends State<HomePasajero>
   bool get _canRequestRide =>
       _hasOrigin &&
       (_serviceType == 'taxi' || (_hasDestination && _hasRoute));
-
-  bool get _showFloatingRequestCta =>
-      _canRequestRide ||
-      _needsRouteRetry ||
-      _isSubmittingRide ||
-      (_isDrawingRoute && _serviceType != 'taxi');
 
   @override
   void initState() {
@@ -335,6 +332,7 @@ class _HomePasajeroState extends State<HomePasajero>
     _driversRefreshTimer?.cancel();
     _originController.dispose();
     _destinationController.dispose();
+    _originFocusNode.dispose();
     _destinationFocusNode.dispose();
     _placesService.clearAutocompleteSession();
 
@@ -827,7 +825,7 @@ class _HomePasajeroState extends State<HomePasajero>
           Positioned.fill(
             child: DraggableScrollableSheet(
               controller: _sheetController,
-              initialChildSize: _sheetMinSize,
+              initialChildSize: _sheetMidSize,
               minChildSize: _sheetMinSize,
               maxChildSize: _sheetMaxSize,
               expand: false,
@@ -835,9 +833,9 @@ class _HomePasajeroState extends State<HomePasajero>
               snapAnimationDuration: const Duration(milliseconds: 320),
               snapSizes: const [_sheetMinSize, _sheetMidSize, _sheetMaxSize],
               builder: (context, scrollController) {
+                final cta = _requestCtaState();
                 return PasajeroHomeRideSheet(
                   scrollController: scrollController,
-                  sheetExtent: _sheetExtent,
                   serviceType: _serviceType,
                   selectedOrigin: _selectedOrigin,
                   selectedDestination: _selectedDestination,
@@ -847,31 +845,29 @@ class _HomePasajeroState extends State<HomePasajero>
                   pickupStreetDetail: _pickupOriginDetail,
                   originController: _originController,
                   destinationController: _destinationController,
+                  originFocusNode: _originFocusNode,
                   destinationFocusNode: _destinationFocusNode,
                   originPredictions: _originPredictions,
                   destinationPredictions: _destinationPredictions,
                   isSearchingOrigin: _isSearchingOrigin,
                   isSearchingDestination: _isSearchingDestination,
                   recentDestinations: _recentDestinations,
+                  favoriteHome: _favoriteHome,
+                  favoriteWork: _favoriteWork,
                   destinationSummaryText: _destinationSummaryText,
                   onToggleSheet: _toggleSheet,
-                  onOpenQuickRequest: _openQuickRequestFlow,
                   onServiceTypeChanged: (type) {
                     _setStateSafe(() {
                       _serviceType = type;
                       _clearRoute();
                     });
                   },
-                  onSelectOrigin: _selectOrigin,
-                  onSelectDestination: _selectDestination,
-                  onClearOrigin: () {
-                    _setStateSafe(() {
-                      _originController.clear();
-                      _selectedOrigin = null;
-                      _originPredictions = [];
-                      _originEditedByUser = false;
-                    });
+                  onSelectOrigin: (prediction) async {
+                    await _selectOrigin(prediction);
+                    _setStateSafe(() => _editingPickup = false);
                   },
+                  onSelectDestination: _selectDestination,
+                  onClearOrigin: _restoreGpsPickup,
                   onClearDestination: () {
                     _setStateSafe(() {
                       _destinationController.clear();
@@ -883,24 +879,16 @@ class _HomePasajeroState extends State<HomePasajero>
                   },
                   onRecentDestinationTap: _applyDestinationLocation,
                   onSaveFavoriteDestination: _saveFavoriteDestination,
+                  editingPickup: _editingPickup,
+                  onEditPickup: _startEditingPickup,
+                  ctaLabel: cta.label,
+                  ctaTrailing: cta.trailing,
+                  onCtaPressed: cta.onPressed,
+                  ctaLoading: cta.isLoading,
+                  ctaColor: cta.color,
                 );
               },
             ),
-          ),
-
-        // CTA flotante estilo inDrive (siempre visible cuando el viaje está listo).
-        if (_currentPosition != null && _showFloatingRequestCta)
-          ValueListenableBuilder<double>(
-            valueListenable: _sheetExtent,
-            builder: (context, extent, _) {
-              final bottom = MediaQuery.sizeOf(context).height * extent + 10;
-              return Positioned(
-                left: 16,
-                right: 16,
-                bottom: bottom,
-                child: _buildFloatingRequestCta(),
-              );
-            },
           ),
 
         // Tarjeta de contraoferta flotante (estilo InDrive)
@@ -922,53 +910,105 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
-  Widget _buildFloatingRequestCta() {
-    String label;
-    String? subtitle;
-    VoidCallback? onPressed;
-    Color color;
+  ({
+    String label,
+    String? trailing,
+    VoidCallback? onPressed,
+    bool isLoading,
+    Color color,
+  }) _requestCtaState() {
     final isLoading = _isSubmittingRide ||
         (_isDrawingRoute && _serviceType != 'taxi');
+    final eta = _nearbyDrivers.nearestEtaMinutes(
+      fromLat: _currentPosition?.latitude,
+      fromLng: _currentPosition?.longitude,
+    );
+    final etaText = eta == null ? null : 'Llega en ~$eta min';
 
     if (_needsRouteRetry) {
-      label = _isDrawingRoute ? 'Calculando ruta...' : 'Calcular ruta';
-      subtitle = 'Confirma el trayecto del domicilio';
-      onPressed = isLoading ? null : _drawRoute;
-      color = Colors.deepOrange;
-    } else if (_canRequestRide) {
-      label = _isSubmittingRide
-          ? 'Buscando conductor...'
-          : (_serviceType == 'taxi' ? 'Pedir taxi' : 'Pedir domicilio');
-      if (_routeInfo != null) {
-        subtitle = '${_routeInfo!.distance} · ${_routeInfo!.duration} · Taxímetro';
-      } else if (_hasDestination) {
-        subtitle = 'Destino confirmado · Taxímetro';
-      } else {
-        final pickup = _pickupDisplayLabel;
-        subtitle = pickup != 'Mi ubicación'
-            ? 'Recogida en $pickup · Taxímetro'
-            : 'Recogida en tu ubicación · Taxímetro';
-      }
-      onPressed = isLoading ? null : _requestRide;
-      color = _serviceType == 'taxi'
-          ? AppColors.primary
-          : Colors.orange.shade600;
-    } else {
-      label = _serviceType == 'taxi'
-          ? 'Elige destino o pide desde aquí'
-          : 'Elige origen y destino';
-      subtitle = null;
-      onPressed = _hasOrigin ? _openQuickRequestFlow : null;
-      color = Colors.grey;
+      return (
+        label: _isDrawingRoute ? 'Calculando ruta...' : 'Calcular ruta',
+        trailing: null,
+        onPressed: isLoading ? null : _drawRoute,
+        isLoading: isLoading,
+        color: Colors.deepOrange,
+      );
     }
-
-    return RideRequestFloatingCta(
-      label: label,
-      subtitle: subtitle,
-      onPressed: onPressed,
+    if (_canRequestRide) {
+      return (
+        label: _isSubmittingRide
+            ? 'Buscando conductor...'
+            : (_serviceType == 'taxi'
+                ? 'Pedir taxi ahora'
+                : 'Pedir domicilio ahora'),
+        trailing: _isSubmittingRide ? null : etaText,
+        onPressed: isLoading ? null : _requestRide,
+        isLoading: isLoading,
+        color: _serviceType == 'taxi'
+            ? AppColors.primary
+            : Colors.orange.shade600,
+      );
+    }
+    return (
+      label: _serviceType == 'taxi'
+          ? 'Pedir taxi ahora'
+          : 'Elige origen y destino',
+      trailing: etaText,
+      onPressed: _hasOrigin ? _requestRide : null,
       isLoading: isLoading,
-      color: color,
+      color: _hasOrigin ? AppColors.primary : Colors.grey,
     );
+  }
+
+  void _startEditingPickup() {
+    _originController.removeListener(_onOriginChanged);
+    _originController.clear();
+    _originController.addListener(_onOriginChanged);
+    _setStateSafe(() {
+      _editingPickup = true;
+      _originEditedByUser = true;
+      _originPredictions = [];
+      _isSearchingOrigin = false;
+    });
+    unawaited(_focusPickupEditor());
+  }
+
+  Future<void> _focusPickupEditor() async {
+    if (_sheetController.isAttached) {
+      await _sheetController.animateTo(
+        _sheetMaxSize,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    if (!mounted || _isDisposed) return;
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    if (!mounted || _isDisposed) return;
+    _originFocusNode.requestFocus();
+    final ctx = _originFocusNode.context;
+    if (ctx != null && ctx.mounted) {
+      await Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.05,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _restoreGpsPickup() {
+    final position = _currentPosition;
+    FocusScope.of(context).unfocus();
+    _setStateSafe(() {
+      _editingPickup = false;
+      _originPredictions = [];
+      _isSearchingOrigin = false;
+      _originEditedByUser = false;
+    });
+    if (position != null) {
+      _applyOriginFromGps(position, markReady: true);
+      unawaited(_refineOriginAddress(position));
+    }
   }
 
   // Métodos de funcionalidad
@@ -1329,6 +1369,7 @@ class _HomePasajeroState extends State<HomePasajero>
   /// El origen no debe ser tocado por el GPS: el usuario lo eligió
   /// manualmente o lo está escribiendo en el campo.
   bool get _originLockedByUser =>
+      _editingPickup ||
       _originEditedByUser ||
       (_selectedOrigin != null && !_selectedOrigin!.isCurrentLocation);
 
@@ -1612,7 +1653,7 @@ class _HomePasajeroState extends State<HomePasajero>
     }
   }
 
-  Future<void> _expandSheet() async {
+  Future<void> _expandSheet({bool focusDestination = true}) async {
     if (!_sheetController.isAttached) return;
     await _sheetController.animateTo(
       _sheetMidSize,
@@ -1622,7 +1663,9 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!mounted) return;
     await Future.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
-    _destinationFocusNode.requestFocus();
+    if (focusDestination && !_editingPickup) {
+      _destinationFocusNode.requestFocus();
+    }
   }
 
   Future<void> _minimizeSheet() async {
@@ -1633,10 +1676,6 @@ class _HomePasajeroState extends State<HomePasajero>
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
     );
-  }
-
-  Future<void> _openQuickRequestFlow() async {
-    await _expandSheet();
   }
 
   Future<void> _onMapTap(LatLng latLng) async {
@@ -1844,9 +1883,28 @@ class _HomePasajeroState extends State<HomePasajero>
         recent = list;
       }
 
+      TripLocation? home;
+      TripLocation? work;
+      try {
+        final homeRaw = prefs.getString(_prefKey('home'));
+        final workRaw = prefs.getString(_prefKey('work'));
+        if (homeRaw != null && homeRaw.isNotEmpty) {
+          home = _tripLocationFromMap(
+            (jsonDecode(homeRaw) as Map).cast<String, dynamic>(),
+          );
+        }
+        if (workRaw != null && workRaw.isNotEmpty) {
+          work = _tripLocationFromMap(
+            (jsonDecode(workRaw) as Map).cast<String, dynamic>(),
+          );
+        }
+      } catch (_) {}
+
       if (!mounted) return;
       _setStateSafe(() {
         _recentDestinations = recent;
+        _favoriteHome = home;
+        _favoriteWork = work;
       });
     } catch (e) {
       AppLogger.w('No se pudieron cargar ubicaciones guardadas: $e');
@@ -1863,6 +1921,13 @@ class _HomePasajeroState extends State<HomePasajero>
         jsonEncode(_tripLocationToMap(selected)),
       );
       if (!mounted) return;
+      _setStateSafe(() {
+        if (type == 'home') {
+          _favoriteHome = selected;
+        } else {
+          _favoriteWork = selected;
+        }
+      });
       _scaffoldMessenger?.showSnackBar(
         SnackBar(
           content: Text(
@@ -2059,7 +2124,7 @@ class _HomePasajeroState extends State<HomePasajero>
       _scaffoldMessenger?.showSnackBar(
         const SnackBar(
           content: Text(
-            'La recogida debe estar dentro del perímetro urbano de Popayán.',
+            'No pudimos ubicar esa recogida en Popayán. Prueba otra sugerencia.',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -2106,7 +2171,7 @@ class _HomePasajeroState extends State<HomePasajero>
       _scaffoldMessenger?.showSnackBar(
         const SnackBar(
           content: Text(
-            'El destino debe estar dentro del perímetro urbano de Popayán.',
+            'No pudimos ubicar ese destino en Popayán. Prueba otra sugerencia.',
           ),
           behavior: SnackBarBehavior.floating,
         ),

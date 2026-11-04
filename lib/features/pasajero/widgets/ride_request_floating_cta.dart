@@ -3,10 +3,10 @@ import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 
-/// Botón flotante estilo inDrive para pedir viaje.
+/// Botón de pedir: título a la izquierda, ETA a la derecha.
 class RideRequestFloatingCta extends StatelessWidget {
   final String label;
-  final String? subtitle;
+  final String? trailing;
   final VoidCallback? onPressed;
   final bool isLoading;
   final Color color;
@@ -14,7 +14,7 @@ class RideRequestFloatingCta extends StatelessWidget {
   const RideRequestFloatingCta({
     super.key,
     required this.label,
-    this.subtitle,
+    this.trailing,
     required this.onPressed,
     this.isLoading = false,
     this.color = AppColors.primary,
@@ -25,65 +25,55 @@ class RideRequestFloatingCta extends StatelessWidget {
     final enabled = onPressed != null && !isLoading;
 
     return Material(
-      elevation: enabled ? 8 : 0,
-      shadowColor: color.withValues(alpha: 0.35),
-      borderRadius: BorderRadius.circular(16),
+      color: enabled ? color : Colors.grey.shade500,
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: enabled ? onPressed : null,
-        borderRadius: BorderRadius.circular(16),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          width: double.infinity,
-          height: 58,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          decoration: BoxDecoration(
-            color: enabled ? color : Colors.grey.shade500,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (isLoading)
-                const AppBrandLoaderCompact(
-                  ringSize: 22,
-                  theme: AppLoaderTheme.dark,
-                )
-              else
-                const Icon(Iconsax.car_copy, color: Colors.white, size: 22),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.2,
-                      ),
+        borderRadius: BorderRadius.circular(18),
+        child: SizedBox(
+          height: 56,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                if (isLoading)
+                  const AppBrandLoaderCompact(
+                    ringSize: 22,
+                    theme: AppLoaderTheme.dark,
+                  )
+                else
+                  const Icon(Iconsax.car_copy, color: Colors.white, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w800,
                     ),
-                    if (subtitle != null && subtitle!.isNotEmpty) ...[
-                      Text(
-                        subtitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
-            ],
+                if (trailing != null && trailing!.isNotEmpty && !isLoading) ...[
+                  Text(
+                    trailing!,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),

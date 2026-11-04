@@ -36,6 +36,23 @@ class PasajeroNearbyDriversController {
 
   bool get hasConductores => conductores.isNotEmpty;
 
+  /// Minutos al taxi más cercano (~21 km/h en ciudad).
+  int? nearestEtaMinutes({double? fromLat, double? fromLng}) {
+    double? bestKm;
+    for (final c in conductores.values) {
+      if (!c.debeMostrarseEnMapa) continue;
+      final km = c.distanciaKm ??
+          ((fromLat != null && fromLng != null)
+              ? Geolocator.distanceBetween(fromLat, fromLng, c.lat, c.lng) /
+                  1000
+              : null);
+      if (km == null) continue;
+      if (bestKm == null || km < bestKm) bestKm = km;
+    }
+    if (bestKm == null) return null;
+    return (bestKm / 0.35).ceil().clamp(1, 25);
+  }
+
   Future<void> connectSocket({
     int idEmpresa = 1,
     required void Function(Conductor conductor) onDriverUpdate,

@@ -9,6 +9,7 @@ import 'package:intellitaxi/core/geo/place_precision.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
+import 'package:intellitaxi/features/taxi/data/taxi_maps_models.dart';
 import 'package:intellitaxi/features/taxi/services/taxi_maps_api_service.dart';
 import 'package:uuid/uuid.dart';
 
@@ -218,17 +219,19 @@ class PlacesService {
     final normalized = input.trim();
     if (normalized.length < _minAutocompleteChars) return [];
 
-    final googleAuto = _autocompleteGoogle(normalized, sessionToken);
-    final googlePoi = _predictionsFromGoogleTextSearch(normalized);
-    final google = _mergePredictions([
-      await googlePoi,
-      await googleAuto,
+    // Google autocomplete no trae lat/lng; el backend sí. Mezclar ambos
+    // evita que un POI de Google esconda calles locales, y al elegir se
+    // geocodifica lo que no traiga coordenadas.
+    final googlePoiFuture = _predictionsFromGoogleTextSearch(normalized);
+    final googleAutoFuture = _autocompleteGoogle(normalized, sessionToken);
+    final backendFuture = MapsConfig.useBackendProxy
+        ? _autocompleteBackend(normalized)
+        : Future<List<PlacePrediction>>.value(const []);
+    return _mergePredictions([
+      await googlePoiFuture,
+      await backendFuture,
+      await googleAutoFuture,
     ]);
-    if (google.isNotEmpty) return google;
-    if (MapsConfig.useBackendProxy) {
-      return _autocompleteBackend(normalized);
-    }
-    return [];
   }
 
   Future<List<PlacePrediction>> _predictionsFromGoogleTextSearch(
@@ -540,21 +543,81 @@ class PlacesService {
   }
 
   /// Predicción del backend ya trae lat/lng — sin place details extra.
+  ///
+  /// Las sugerencias de Google Autocomplete no traen coordenadas y, con el
+  /// proxy activo, el place_id `ChIJ…` no se puede pedir a Nominatim. En
+  /// esos casos se geocodifica la descripción para no rechazar direcciones
+  /// locales como si estuvieran fuera del perímetro.
   Future<PlaceDetails?> resolvePrediction(PlacePrediction prediction) async {
-    if (MapsConfig.useBackendProxy && prediction.hasCoordinates) {
-      if (!PopayanUrbanArea.contains(prediction.lat!, prediction.lng!)) {
+    if (prediction.hasCoordinates) {
+      if (PopayanUrbanArea.contains(prediction.lat!, prediction.lng!)) {
+        return PlaceDetails(
+          name: prediction.mainText.isNotEmpty
+              ? prediction.mainText
+              : prediction.description,
+          address: prediction.description,
+          lat: prediction.lat!,
+          lng: prediction.lng!,
+        );
+      }
+      if (!PopayanUrbanArea.mentionsPopayan(prediction.description) &&
+          !PopayanUrbanArea.mentionsPopayan(prediction.mainText)) {
         return null;
       }
-      return PlaceDetails(
-        name: prediction.mainText.isNotEmpty
-            ? prediction.mainText
-            : prediction.description,
-        address: prediction.description,
-        lat: prediction.lat!,
-        lng: prediction.lng!,
-      );
     }
-    return getPlaceDetails(prediction.placeId);
+
+    if (MapsConfig.useBackendProxy) {
+      final fromNominatim = await _placeDetailsFromNominatimIdAsync(
+        prediction.placeId,
+      );
+      if (fromNominatim != null) return fromNominatim;
+      return _geocodePrediction(prediction);
+    }
+
+    final fromGoogle = await getPlaceDetails(prediction.placeId);
+    if (fromGoogle != null) return fromGoogle;
+    return _geocodePrediction(prediction);
+  }
+
+  Future<PlaceDetails?> _geocodePrediction(PlacePrediction prediction) async {
+    final query = prediction.description.trim().isNotEmpty
+        ? prediction.description
+        : prediction.mainText;
+    if (query.trim().isEmpty) return null;
+
+    final results = await _taxiMaps.forwardGeocode(
+      PlacePrecision.withAreaContext(query),
+      limit: _backendCandidateLimit,
+    );
+
+    TaxiForwardGeocodeResult? best;
+    var bestMeters = double.infinity;
+    final context = _searchContext;
+    for (final result in results) {
+      if (!_isInsideServiceArea(result.lat, result.lng, result.address)) {
+        continue;
+      }
+      final meters = context == null
+          ? 0.0
+          : PlacePrecision.distanceMeters(
+              context.lat,
+              context.lng,
+              result.lat,
+              result.lng,
+            );
+      if (best == null || meters < bestMeters) {
+        best = result;
+        bestMeters = meters;
+      }
+    }
+    if (best == null) return null;
+
+    return PlaceDetails(
+      name: prediction.mainText.isNotEmpty ? prediction.mainText : best.name,
+      address: best.address.isNotEmpty ? best.address : prediction.description,
+      lat: best.lat,
+      lng: best.lng,
+    );
   }
 
   Future<PlaceDetails?> getPlaceDetails(

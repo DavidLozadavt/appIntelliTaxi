@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intellitaxi/core/widgets/app_loading_indicator.dart';
+import 'package:intellitaxi/core/places/place_prediction_display.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
@@ -56,6 +57,7 @@ class _PasajeroEsperandoConductorScreenState
 
   // 📏 Bottom sheet: se ajusta al contenido (el mapa ocupa el resto).
   bool _sheetExpandido = false;
+  double _buscandoSheetHeight = 320;
 
   @override
   void initState() {
@@ -432,8 +434,15 @@ class _PasajeroEsperandoConductorScreenState
   }
 
   double _mapBottomPadding(PasajeroServicioActivoProvider provider) {
-    if (provider.isBuscando) return 200;
+    if (provider.isBuscando) return _buscandoSheetHeight + 12;
     return _sheetExpandido ? 260 : 200;
+  }
+
+  void _reportBuscandoSheetHeight(Size size) {
+    final next = size.height;
+    if (next <= 0) return;
+    if ((next - _buscandoSheetHeight).abs() < 12) return;
+    setState(() => _buscandoSheetHeight = next);
   }
 
   void _tryUpdateMapCamera(PasajeroServicioActivoProvider provider) {
@@ -519,132 +528,170 @@ class _PasajeroEsperandoConductorScreenState
     final remainingSeconds = provider.remainingSeconds;
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final origenAddr =
-        widget.datosServicio['origen_address']?.toString().trim() ?? '';
+    final origenAddr = PlacePredictionDisplay.readableAddress(
+      widget.datosServicio['origen_address']?.toString(),
+    );
+    final destinoRaw =
+        widget.datosServicio['destino_address']?.toString().trim() ?? '';
+    final destinoAddr = destinoRaw.toLowerCase().contains('no definido')
+        ? ''
+        : PlacePredictionDisplay.readableAddress(destinoRaw);
     final cerca = provider.conductoresCercanosCount;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      decoration: BoxDecoration(
-        color: theme.cardColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 14,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(2),
-              ),
+    return _HeightReporter(
+      onChange: _reportBuscandoSheetHeight,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 14,
+              offset: const Offset(0, -3),
             ),
-          ),
-          const SizedBox(height: 14),
-          if (provider.conductorRechazoReciente) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
-              child: Row(
+              const SizedBox(height: 16),
+              if (provider.conductorRechazoReciente) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Iconsax.info_circle_copy,
+                        size: 20,
+                        color: Colors.orange.shade800,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'El conductor rechazó el viaje. Reiniciamos la búsqueda desde 0:00.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: Colors.orange.shade900,
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Iconsax.info_circle_copy,
-                    size: 20,
-                    color: Colors.orange.shade800,
+                  _buildCustomLoader(
+                    size: 52,
+                    progress: (elapsed / maxSec).clamp(0.0, 1.0),
+                    color: remainingSeconds > 30
+                        ? AppColors.accent
+                        : Colors.orange,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 14),
                   Expanded(
-                    child: Text(
-                      'El conductor rechazó el viaje. Reiniciamos la búsqueda desde 0:00.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.orange.shade900,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$minutes:${seconds.toString().padLeft(2, '0')}',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          'Tiempo de búsqueda',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.textTheme.bodySmall?.color
+                                ?.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                  _buildConductoresCercaChip(
+                    theme: theme,
+                    count: cerca,
+                    loading: provider.cargandoConductoresCercanos,
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildCustomLoader(
-                size: 52,
-                progress: (elapsed / maxSec).clamp(0.0, 1.0),
-                color: remainingSeconds > 30 ? AppColors.accent : Colors.orange,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$minutes:${seconds.toString().padLeft(2, '0')}',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text(
-                      'Tiempo de búsqueda',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.textTheme.bodySmall?.color
-                            ?.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
+              if (origenAddr.isNotEmpty || destinoAddr.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                if (origenAddr.isNotEmpty)
+                  _buildDireccionResumen(
+                    label: 'Recogida',
+                    address: origenAddr,
+                    color: AppColors.green,
+                    icon: Iconsax.location_copy,
+                  ),
+                if (origenAddr.isNotEmpty && destinoAddr.isNotEmpty)
+                  const SizedBox(height: 12),
+                if (destinoAddr.isNotEmpty)
+                  _buildDireccionResumen(
+                    label: 'Destino',
+                    address: destinoAddr,
+                    color: AppColors.primary,
+                    icon: Iconsax.flag_copy,
+                  ),
+              ],
+              const SizedBox(height: 14),
+              Text(
+                provider.mensajeActividadBusqueda,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
                 ),
               ),
-              _buildConductoresCercaChip(
-                theme: theme,
-                count: cerca,
-                loading: provider.cargandoConductoresCercanos,
+              const SizedBox(height: 6),
+              Text(
+                provider.subtituloActividadBusqueda,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.textTheme.bodySmall?.color?.withValues(
+                    alpha: 0.78,
+                  ),
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () => _cancelarServicio(provider),
+                icon: const Icon(Iconsax.close_circle_copy, size: 18),
+                label: const Text('Cancelar búsqueda'),
+                style: TextButton.styleFrom(foregroundColor: cs.error),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          if (origenAddr.isNotEmpty) ...[
-            _buildDireccionResumen(
-              label: 'Recogida',
-              address: origenAddr,
-              color: AppColors.green,
-              icon: Iconsax.location_copy,
-            ),
-            const SizedBox(height: 8),
-          ],
-          Text(
-            provider.mensajeActividadBusqueda,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          TextButton.icon(
-            onPressed: () => _cancelarServicio(provider),
-            icon: const Icon(Iconsax.close_circle_copy, size: 18),
-            label: const Text('Cancelar búsqueda'),
-            style: TextButton.styleFrom(foregroundColor: cs.error),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -703,7 +750,10 @@ class _PasajeroEsperandoConductorScreenState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: color),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 18, color: color),
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Column(
@@ -718,13 +768,13 @@ class _PasajeroEsperandoConductorScreenState
                   letterSpacing: 0.4,
                 ),
               ),
+              const SizedBox(height: 2),
               Text(
                 address,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
+                  height: 1.35,
                 ),
               ),
             ],
@@ -1046,5 +1096,24 @@ class _PasajeroEsperandoConductorScreenState
     );
     _mapController?.dispose();
     super.dispose();
+  }
+}
+
+class _HeightReporter extends StatelessWidget {
+  const _HeightReporter({required this.onChange, required this.child});
+
+  final ValueChanged<Size> onChange;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      final box = context.findRenderObject();
+      if (box is RenderBox && box.hasSize) {
+        onChange(box.size);
+      }
+    });
+    return child;
   }
 }

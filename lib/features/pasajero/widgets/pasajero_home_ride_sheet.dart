@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/features/pasajero/model/place_details_model.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart';
+import 'package:intellitaxi/features/pasajero/widgets/ride_request_floating_cta.dart';
 import 'package:intellitaxi/features/pasajero/widgets/route_info_card.dart';
 import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
 import 'package:intellitaxi/features/rides/data/trip_location.dart';
 
-/// Bottom sheet de solicitud de viaje en home pasajero (arrastre + formulario).
+/// Bottom sheet de solicitud: taxi/domicilio, destino, recogida y CTA.
 class PasajeroHomeRideSheet extends StatelessWidget {
   const PasajeroHomeRideSheet({
     super.key,
     required this.scrollController,
-    required this.sheetExtent,
     required this.serviceType,
     required this.selectedOrigin,
     required this.selectedDestination,
@@ -22,15 +23,17 @@ class PasajeroHomeRideSheet extends StatelessWidget {
     this.pickupStreetDetail,
     required this.originController,
     required this.destinationController,
+    required this.originFocusNode,
     required this.destinationFocusNode,
     required this.originPredictions,
     required this.destinationPredictions,
     required this.isSearchingOrigin,
     required this.isSearchingDestination,
     required this.recentDestinations,
+    this.favoriteHome,
+    this.favoriteWork,
     required this.destinationSummaryText,
     required this.onToggleSheet,
-    required this.onOpenQuickRequest,
     required this.onServiceTypeChanged,
     required this.onSelectOrigin,
     required this.onSelectDestination,
@@ -38,10 +41,16 @@ class PasajeroHomeRideSheet extends StatelessWidget {
     required this.onClearDestination,
     required this.onRecentDestinationTap,
     required this.onSaveFavoriteDestination,
+    required this.editingPickup,
+    required this.onEditPickup,
+    required this.ctaLabel,
+    this.ctaTrailing,
+    required this.onCtaPressed,
+    this.ctaLoading = false,
+    this.ctaColor = AppColors.primary,
   });
 
   final ScrollController scrollController;
-  final ValueNotifier<double> sheetExtent;
   final String serviceType;
   final TripLocation? selectedOrigin;
   final TripLocation? selectedDestination;
@@ -51,15 +60,17 @@ class PasajeroHomeRideSheet extends StatelessWidget {
   final String? pickupStreetDetail;
   final TextEditingController originController;
   final TextEditingController destinationController;
+  final FocusNode originFocusNode;
   final FocusNode destinationFocusNode;
   final List<PlacePrediction> originPredictions;
   final List<PlacePrediction> destinationPredictions;
   final bool isSearchingOrigin;
   final bool isSearchingDestination;
   final List<TripLocation> recentDestinations;
+  final TripLocation? favoriteHome;
+  final TripLocation? favoriteWork;
   final String Function(TripLocation destination) destinationSummaryText;
   final VoidCallback onToggleSheet;
-  final VoidCallback onOpenQuickRequest;
   final ValueChanged<String> onServiceTypeChanged;
   final Future<void> Function(PlacePrediction prediction) onSelectOrigin;
   final Future<void> Function(PlacePrediction prediction) onSelectDestination;
@@ -67,19 +78,27 @@ class PasajeroHomeRideSheet extends StatelessWidget {
   final VoidCallback onClearDestination;
   final void Function(TripLocation location) onRecentDestinationTap;
   final Future<void> Function(String kind) onSaveFavoriteDestination;
+  final bool editingPickup;
+  final VoidCallback onEditPickup;
+  final String ctaLabel;
+  final String? ctaTrailing;
+  final VoidCallback? onCtaPressed;
+  final bool ctaLoading;
+  final Color ctaColor;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return RepaintBoundary(
       child: Container(
         decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          color: isDark ? const Color(0xFF161616) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 18,
-              offset: const Offset(0, -4),
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 24,
+              offset: const Offset(0, -6),
             ),
           ],
         ),
@@ -89,13 +108,13 @@ class PasajeroHomeRideSheet extends StatelessWidget {
               onTap: onToggleSheet,
               behavior: HitTestBehavior.opaque,
               child: Padding(
-                padding: const EdgeInsets.only(top: 10, bottom: 8),
+                padding: const EdgeInsets.only(top: 10, bottom: 6),
                 child: Center(
                   child: Container(
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
+                      color: isDark ? Colors.grey.shade700 : const Color(0xFFE0E0E0),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -108,172 +127,25 @@ class PasajeroHomeRideSheet extends StatelessWidget {
                 physics: const ClampingScrollPhysics(),
                 keyboardDismissBehavior:
                     ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                children: [
-                  ValueListenableBuilder<double>(
-                    valueListenable: sheetExtent,
-                    builder: (context, extent, _) {
-                      final showFormOnly = extent >= 0.24;
-                      if (showFormOnly) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            ..._tripFormChildren(context),
-                            const SizedBox(height: 88),
-                          ],
-                        );
-                      }
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _minimizedContent(context),
-                          const SizedBox(height: 72),
-                        ],
-                      );
-                    },
-                  ),
-                ],
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                children: _tripFormChildren(context),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _minimizedContent(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final originText = pickupDisplayLabel;
-    final originDetail = pickupStreetDetail?.trim();
-    final hasDestination = selectedDestination != null;
-    final destinationText = hasDestination
-        ? destinationSummaryText(selectedDestination!)
-        : (serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?');
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: onOpenQuickRequest,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.grey.shade900 : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: hasDestination
-                ? AppColors.primary.withValues(alpha: 0.25)
-                : (isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : AppColors.primary.withValues(alpha: 0.12)),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                4,
+                16,
+                10 + MediaQuery.paddingOf(context).bottom,
+              ),
+              child: RideRequestFloatingCta(
+                label: ctaLabel,
+                trailing: ctaTrailing,
+                onPressed: onCtaPressed,
+                isLoading: ctaLoading,
+                color: ctaColor,
+              ),
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (hasDestination) ...[
-              Text(
-                destinationText,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  height: 1.15,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-              ),
-              if (routeInfo != null) ...[
-                const SizedBox(height: 8),
-                RouteInfoCard(routeInfo: routeInfo!, compact: true),
-              ],
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Icon(
-                    Icons.my_location,
-                    size: 14,
-                    color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      originDetail != null && originDetail.isNotEmpty
-                          ? 'Desde: $originText · $originDetail'
-                          : 'Desde: $originText',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.edit_outlined,
-                    size: 16,
-                    color: AppColors.primary.withValues(alpha: 0.8),
-                  ),
-                ],
-              ),
-            ] else ...[
-              Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.search,
-                      color: AppColors.primary,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          destinationText,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          originDetail != null && originDetail.isNotEmpty
-                              ? 'Desde: $originText · $originDetail'
-                              : 'Desde: $originText',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark
-                                ? Colors.grey.shade500
-                                : Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.keyboard_arrow_up,
-                    color: AppColors.primary.withValues(alpha: 0.8),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),
@@ -287,9 +159,34 @@ class PasajeroHomeRideSheet extends StatelessWidget {
         onTypeChanged: onServiceTypeChanged,
       ),
       const SizedBox(height: 16),
+      if (editingPickup) ...[
+        LocationSearchField(
+          controller: originController,
+          label: 'Recogida en',
+          hintText: '¿Dónde te recogemos?',
+          icon: Icons.my_location,
+          iconColor: AppColors.green,
+          focusNode: originFocusNode,
+          autofocus: true,
+          predictions: originPredictions,
+          isSearching: isSearchingOrigin,
+          onSelectPrediction: onSelectOrigin,
+          onClear: onClearOrigin,
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onClearOrigin,
+            icon: const Icon(Icons.gps_fixed, size: 16),
+            label: const Text('Usar mi ubicación'),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
       LocationSearchField(
         controller: destinationController,
         label: serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?',
+        hintText: serviceType == 'taxi' ? '¿A dónde vamos?' : '¿Qué enviamos?',
         icon: Icons.location_on,
         iconColor: AppColors.primary,
         focusNode: destinationFocusNode,
@@ -298,21 +195,14 @@ class PasajeroHomeRideSheet extends StatelessWidget {
         onSelectPrediction: onSelectDestination,
         onClear: onClearDestination,
       ),
-      if (recentDestinations.isNotEmpty) ...[
-        const SizedBox(height: 12),
-        _recentDestinationChips(),
+      if (_shortcutChips().isNotEmpty) ...[
+        const SizedBox(height: 10),
+        _shortcutChipsRow(),
       ],
-      const SizedBox(height: 14),
-      LocationSearchField(
-        controller: originController,
-        label: 'Recogida en',
-        icon: Icons.my_location,
-        iconColor: AppColors.green,
-        predictions: originPredictions,
-        isSearching: isSearchingOrigin,
-        onSelectPrediction: onSelectOrigin,
-        onClear: onClearOrigin,
-      ),
+      if (!editingPickup) ...[
+        const SizedBox(height: 12),
+        _pickupCard(context),
+      ],
       if (selectedDestination != null && routeInfo == null) ...[
         const SizedBox(height: 10),
         _selectedDestinationSummary(context),
@@ -342,11 +232,145 @@ class PasajeroHomeRideSheet extends StatelessWidget {
         ),
       ],
       if (routeInfo != null) ...[
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         RouteInfoCard(routeInfo: routeInfo!),
       ],
-      const SizedBox(height: 16),
     ];
+  }
+
+  Widget _pickupCard(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final detail = pickupStreetDetail?.trim();
+    return Material(
+      color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF7F7F7),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onEditPickup,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.green.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.my_location,
+                  color: AppColors.green,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'RECOGIDA EN',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.7,
+                        color: isDark
+                            ? Colors.grey.shade400
+                            : Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      pickupDisplayLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w800,
+                        color: isDark ? Colors.white : const Color(0xFF1C1C1C),
+                      ),
+                    ),
+                    if (detail != null &&
+                        detail.isNotEmpty &&
+                        detail.toLowerCase() !=
+                            pickupDisplayLabel.toLowerCase())
+                      Text(
+                        detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark
+                              ? Colors.grey.shade500
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: onEditPickup,
+                tooltip: 'Cambiar recogida',
+                icon: Icon(
+                  Icons.close,
+                  size: 20,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<(IconData, String, TripLocation)> _shortcutChips() {
+    final chips = <(IconData, String, TripLocation)>[];
+    final seen = <String>{};
+
+    void add(IconData icon, String label, TripLocation loc) {
+      final key = loc.placeId ?? '${loc.lat.toStringAsFixed(4)},${loc.lng.toStringAsFixed(4)}';
+      if (seen.contains(key)) return;
+      seen.add(key);
+      chips.add((icon, label, loc));
+    }
+
+    if (favoriteWork != null) add(Icons.work_outline, 'Trabajo', favoriteWork!);
+    if (favoriteHome != null) add(Icons.home_outlined, 'Casa', favoriteHome!);
+    for (final item in recentDestinations) {
+      if (chips.length >= 4) break;
+      add(Iconsax.location_copy, item.name, item);
+    }
+    return chips;
+  }
+
+  Widget _shortcutChipsRow() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final chip in _shortcutChips())
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ActionChip(
+                visualDensity: VisualDensity.compact,
+                backgroundColor: Colors.transparent,
+                side: BorderSide(color: Colors.grey.shade300),
+                avatar: Icon(chip.$1, size: 16, color: Colors.grey.shade700),
+                label: Text(
+                  chip.$2,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                onPressed: () => onRecentDestinationTap(chip.$3),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _selectedDestinationSummary(BuildContext context) {
@@ -433,36 +457,6 @@ class PasajeroHomeRideSheet extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _recentDestinationChips() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Recientes',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: recentDestinations
-                .map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ActionChip(
-                      label: Text(item.name),
-                      avatar: const Icon(Icons.history, size: 16),
-                      onPressed: () => onRecentDestinationTap(item),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-      ],
     );
   }
 }

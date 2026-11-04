@@ -17,55 +17,87 @@ class PopayanUrbanArea {
   static const double northEastLat = 2.58;
   static const double northEastLng = -76.42;
 
-  /// Radio máximo desde el centro (~20 km) como las apps de transporte.
-  static const double maxRadiusKm = 20.0;
+  /// Radio de sesgo para Places. No se usa como veto: las esquinas del
+  /// bbox quedan a ~27 km y exigir radio **y** rectángulo rechazaba
+  /// barrios/veredas reales (El Tambo, Calibío, vías de ingreso).
+  static const double maxRadiusKm = 30.0;
 
   static const String searchNotice =
-      'Servicio disponible en Popayán y zonas cercanas (hasta ~20 km del centro).';
+      'Servicio disponible en Popayán y zonas cercanas.';
 
   /// Parámetro `bounds` de Places Autocomplete (legacy): sw|ne.
   static const String autocompleteBounds =
       '$southWestLat,$southWestLng|$northEastLat,$northEastLng';
 
   static bool contains(double lat, double lng) {
-    if (lat < southWestLat || lat > northEastLat) return false;
-    if (lng < southWestLng || lng > northEastLng) return false;
-    return distanceFromCenterKm(lat, lng) <= maxRadiusKm;
+    if (!lat.isFinite || !lng.isFinite) return false;
+    return lat >= southWestLat &&
+        lat <= northEastLat &&
+        lng >= southWestLng &&
+        lng <= northEastLng;
   }
 
   static double distanceFromCenterKm(double lat, double lng) {
     return _haversineKm(centerLat, centerLng, lat, lng);
   }
 
-  /// Filtra sugerencias cuya descripción apunta fuera del casco urbano.
+  static bool mentionsPopayan(String text) {
+    final folded = _fold(text);
+    return folded.contains('popayan');
+  }
+
+  /// Filtra sugerencias cuya descripción apunta a otra ciudad.
+  ///
+  /// Si el texto nombra Popayán, se acepta: "Vía Totoró, Popayán" es una
+  /// vía local y no el municipio de Totoró.
   static bool isPredictionAllowed(String description) {
-    final text = description.toLowerCase();
+    final text = _fold(description);
+    if (text.contains('popayan')) return true;
     const excluded = [
       'cali,',
       'cali ',
       'pasto,',
       'bogotá',
       'bogota,',
+      'bogota ',
       'pereira,',
       'armenia,',
       'ibagué',
       'ibague,',
       'neiva,',
       'santander de quilichao',
-      'puracé',
-      'purace',
       'silvia,',
       'morroa,',
-      'totoró',
-      'totoro',
       'el bordo',
       'puerto tejada',
       'villa rica',
     ];
     for (final token in excluded) {
-      if (text.contains(token)) return false;
+      if (text.contains(_fold(token))) return false;
     }
+    if (_isForeignMunicipality(text)) return false;
     return true;
+  }
+
+  static bool _isForeignMunicipality(String folded) {
+    const towns = ['totoro', 'purace', 'piendamo'];
+    for (final town in towns) {
+      if (!folded.contains(town)) continue;
+      if (RegExp('via\\s+(a\\s+)?$town').hasMatch(folded)) continue;
+      return true;
+    }
+    return false;
+  }
+
+  static String _fold(String value) {
+    return value
+        .toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ü', 'u');
   }
 
   static double _haversineKm(
