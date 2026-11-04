@@ -1,4 +1,9 @@
-.PHONY: deps format format-check analyze test quality apk-release aab-release apk-install-monitor
+.PHONY: deps format format-check analyze test quality apk apk-release aab-release apk-install-monitor
+
+# pubspec.yaml: version: 1.0.5+2  →  dist/TaxbelUrbano-1.0.5+2.apk
+APP_LABEL := TaxbelUrbano
+APP_VERSION := $(shell awk '/^version:/{print $$2; exit}' pubspec.yaml)
+APK_OUT := dist/$(APP_LABEL)-$(APP_VERSION).apk
 
 deps:
 	flutter pub get
@@ -18,8 +23,17 @@ test:
 
 quality: format-check analyze test
 
-apk-release:
+# Genera el APK release y lo copia con nombre y versión.
+# Ejemplo: dist/TaxbelUrbano-1.0.5+2.apk
+apk:
+	dart run tool/sync_app_version.dart
 	flutter build apk --release
+	@mkdir -p dist
+	cp build/app/outputs/flutter-apk/app-release.apk "$(APK_OUT)"
+	@echo ""
+	@echo "APK listo: $(APK_OUT)"
+
+apk-release: apk
 
 # Instala APK release en dispositivo USB y monitorea overlay en logcat.
 apk-install-monitor:

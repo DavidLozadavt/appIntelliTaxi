@@ -370,6 +370,58 @@ class PlacesService {
     return [];
   }
 
+  /// Misma resolución que WhatsApp/central: geocodifica el texto de la calle
+  /// y se queda con el candidato más cercano al GPS.
+  Future<PlaceResult?> geocodeNearestAddress(
+    String query, {
+    required double nearLat,
+    required double nearLng,
+    double maxDistanceMeters = 120,
+  }) async {
+    final q = query.trim();
+    if (q.isEmpty) return null;
+
+    var results = <PlaceResult>[];
+    if (MapsConfig.useBackendProxy) {
+      final raw = await _taxiMaps.forwardGeocode(
+        q,
+        limit: _backendCandidateLimit,
+      );
+      for (final r in raw) {
+        if (!_isInsideServiceArea(r.lat, r.lng, r.address)) continue;
+        results.add(
+          PlaceResult(
+            placeId: r.placeId,
+            name: r.name.isNotEmpty ? r.name : r.address.split(',').first,
+            address: r.address,
+            lat: r.lat,
+            lng: r.lng,
+          ),
+        );
+      }
+    }
+    if (results.isEmpty) {
+      results = await _searchPlacesGoogle(q);
+    }
+
+    PlaceResult? best;
+    var bestMeters = double.infinity;
+    for (final place in results) {
+      final meters = PlacePrecision.distanceMeters(
+        nearLat,
+        nearLng,
+        place.lat,
+        place.lng,
+      );
+      if (meters < bestMeters) {
+        bestMeters = meters;
+        best = place;
+      }
+    }
+    if (best == null || bestMeters > maxDistanceMeters) return null;
+    return best;
+  }
+
   /// Lugar cercano al punto, para nombrar el punto de recogida.
   ///
   /// En modo proxy no hay Places Nearby, así que se resuelve con el

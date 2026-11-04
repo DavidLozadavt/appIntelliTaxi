@@ -40,6 +40,8 @@ class RideRequestService {
       'origin_address': origin.address,
       'origin_name': origin.name,
       'origin_place_id': origin.placeId,
+      if (origin.barrio != null && origin.barrio!.trim().isNotEmpty)
+        'origin_barrio': origin.barrio!.trim(),
 
       // Información del destino
       'destination_lat': destination?.lat,
@@ -144,6 +146,8 @@ class RideRequestService {
       'origin_address': origin.address,
       'origin_name': origin.name,
       'origin_place_id': origin.placeId,
+      if (origin.barrio != null && origin.barrio!.trim().isNotEmpty)
+        'origin_barrio': origin.barrio!.trim(),
       'destination_lat': destination?.lat,
       'destination_lng': destination?.lng,
       'destination_address': destination?.address,
@@ -208,6 +212,10 @@ class RideRequestService {
       'destino': destination?.address,
       'origen_lat': origin.lat,
       'origen_lng': origin.lng,
+      'origin_name': origin.name,
+      'origin_address': origin.address,
+      if (origin.barrio != null && origin.barrio!.trim().isNotEmpty)
+        'origin_barrio': origin.barrio!.trim(),
       'destino_lat': destination?.lat,
       'destino_lng': destination?.lng,
       'precio_ofrecido': precioOfrecido,

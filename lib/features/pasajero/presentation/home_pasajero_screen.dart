@@ -16,6 +16,7 @@ import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 import 'package:intellitaxi/features/pasajero/services/ride_request_service.dart';
+import 'package:intellitaxi/features/pasajero/services/precise_pickup_builder.dart';
 import 'package:intellitaxi/features/pasajero/services/repeat_trip_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -33,7 +34,6 @@ import 'package:intellitaxi/core/services/service_navigation_helper.dart';
 import 'package:intellitaxi/core/services/servicio_payload_adapter.dart';
 import 'package:intellitaxi/features/taxi/exceptions/taxi_en_servicio_exception.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
-import 'package:intellitaxi/core/services/geocode_memory_cache.dart';
 import 'package:intellitaxi/core/widgets/map_dot_marker_factory.dart';
 import 'package:intellitaxi/core/widgets/location_status_view.dart';
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_active_service_controller.dart';
@@ -42,6 +42,7 @@ import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_socket_offers_controller.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/device_location_service.dart';
+import 'package:intellitaxi/core/services/gps_address_hold.dart';
 import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/utils/safe_image_decode.dart';
@@ -68,6 +69,8 @@ class _HomePasajeroState extends State<HomePasajero>
 
   GoogleMapController? _mapController;
   Position? _currentPosition;
+  Position? _rawGpsPosition;
+  final GpsAddressHold _gpsHold = GpsAddressHold();
   bool _isLoadingLocation = true;
   String _locationMessage =
       'Verificando tu ubicación actual con GPS de alta precisión...';
@@ -92,6 +95,10 @@ class _HomePasajeroState extends State<HomePasajero>
   final RideRequestService _rideRequestService = RideRequestService();
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
+  late final PrecisePickupBuilder _precisePickup = PrecisePickupBuilder(
+    geocoding: _reverseGeocodingService,
+    places: _placesService,
+  );
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final FocusNode _destinationFocusNode = FocusNode();
@@ -146,7 +153,6 @@ class _HomePasajeroState extends State<HomePasajero>
   String _currentLocationAddress = 'Mi ubicación actual';
   String? _currentLocationArea;
   String? _currentLocationStreet;
-  String? _lastOriginGeocodeGridKey;
   bool _prefsLoaded = false;
   List<TripLocation> _recentDestinations = [];
   bool _notificationPermissionRequestedInSession = false;
@@ -1217,11 +1223,12 @@ class _HomePasajeroState extends State<HomePasajero>
         lng: position.longitude,
       );
 
+      _rawGpsPosition = position;
       await _refineOriginAddress(position);
 
       if (!mounted) return;
 
-      _applyOriginFromGps(position, markReady: true);
+      _applyOriginFromGps(_gpsHold.apply(position), markReady: true);
       _startGpsStream();
 
       if (_mapController != null) {
@@ -1294,12 +1301,14 @@ class _HomePasajeroState extends State<HomePasajero>
 
   void _onGpsStreamPosition(Position position) {
     if (!mounted || _isDisposed) return;
-    if (!PreciseGps.shouldAccept(position, _currentPosition)) return;
+    if (!PreciseGps.shouldAccept(position, _rawGpsPosition)) return;
+    _rawGpsPosition = position;
+    final shown = _gpsHold.apply(position);
 
     // La búsqueda de lugares se ordena por cercanía a este punto.
     _placesService.updateSearchContext(
-      lat: position.latitude,
-      lng: position.longitude,
+      lat: shown.latitude,
+      lng: shown.longitude,
     );
 
     // GPS recuperado y el usuario aún no escribió nada → modo manual caduca.
@@ -1309,8 +1318,10 @@ class _HomePasajeroState extends State<HomePasajero>
       _setStateSafe(() => _manualMode = false);
     }
 
-    _applyOriginFromGps(position, markReady: _currentPosition == null);
-    unawaited(_refineOriginAddress(position));
+    _applyOriginFromGps(shown, markReady: _currentPosition == null);
+    if (_gpsHold.shouldRefresh(position.latitude, position.longitude)) {
+      unawaited(_refineOriginAddress(position));
+    }
     _syncMarkersOnMap(force: true);
   }
 
@@ -1347,7 +1358,6 @@ class _HomePasajeroState extends State<HomePasajero>
       _currentLocationStreet = null;
       _selectedOrigin = null;
       _originEditedByUser = false;
-      _lastOriginGeocodeGridKey = null;
       _originController.removeListener(_onOriginChanged);
       _originController.text = '';
       _originController.addListener(_onOriginChanged);
@@ -1423,22 +1433,34 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _refineOriginAddress(Position position) async {
-    final gridKey = GeocodeMemoryCache.gridKey(
-      position.latitude,
-      position.longitude,
-      decimals: 3,
-    );
-    if (_lastOriginGeocodeGridKey == gridKey &&
-        _currentLocationName != 'Mi ubicación' &&
-        _currentLocationAddress != 'Mi ubicación actual') {
-      return;
-    }
-
+    _gpsHold.markPending();
+    var absorbed = false;
+    try {
     final locationData = await _getAddressFromCoordinates(
       position.latitude,
       position.longitude,
     );
     if (!mounted) return;
+
+    absorbed = true;
+    final movedPin = _gpsHold.absorb(
+      position.latitude,
+      position.longitude,
+      locationData.anchorLat,
+      locationData.anchorLng,
+    );
+    final shown = _gpsHold.apply(position);
+    if (movedPin && _rawGpsPosition != null) {
+      final stillHere = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        _rawGpsPosition!.latitude,
+        _rawGpsPosition!.longitude,
+      );
+      if (stillHere <= GpsAddressHold.releaseMeters) {
+        _applyOriginFromGps(_gpsHold.apply(_rawGpsPosition!), markReady: false);
+      }
+    }
 
     final resolvedLabel = _passengerOriginLabelFrom(locationData);
     final needsPoiLookup = resolvedLabel == 'Mi ubicación' ||
@@ -1449,7 +1471,7 @@ class _HomePasajeroState extends State<HomePasajero>
       nearby = await _placesService.findNearestPlaceAt(
         position.latitude,
         position.longitude,
-        maxDistanceMeters: 100,
+        maxDistanceMeters: PreciseGps.maxPickupAccuracyMeters,
       );
     }
 
@@ -1461,9 +1483,10 @@ class _HomePasajeroState extends State<HomePasajero>
         !SolicitudDisplayHelper.looksLikeStreetAddress(poiName);
 
     final lockOrigin = _originLockedByUser;
+    final pin = shown;
 
-    _lastOriginGeocodeGridKey = gridKey;
     _setStateSafe(() {
+      _currentPosition = pin;
       _currentLocationName = usePoiName
           ? poiName
           : _passengerOriginLabelFrom(locationData);
@@ -1480,8 +1503,8 @@ class _HomePasajeroState extends State<HomePasajero>
           placeId: nearby?.placeId,
           name: _currentLocationName,
           address: _currentLocationAddress,
-          lat: position.latitude,
-          lng: position.longitude,
+          lat: pin.latitude,
+          lng: pin.longitude,
           isCurrentLocation: true,
         );
         _originController.removeListener(_onOriginChanged);
@@ -1491,6 +1514,16 @@ class _HomePasajeroState extends State<HomePasajero>
 
       _syncMarkersOnMap();
     });
+    } finally {
+      if (!absorbed) {
+        _gpsHold.absorb(
+          position.latitude,
+          position.longitude,
+          null,
+          null,
+        );
+      }
+    }
   }
 
   Future<void> _requestNotificationPermissionAfterLocation() async {
@@ -2217,56 +2250,48 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
-  /// Fix GPS fresco y preciso justo antes de enviar el pedido de taxi.
+  /// Recogida al pedir taxi: misma resolución que WhatsApp (calle geocodificada).
   ///
-  /// Solo se aplica si la recogida sigue siendo "Mi ubicación" (si el usuario
-  /// escribió/pidió un punto, no se mueve). Si el fix sale imposiblemente
-  /// lejos del punto mostrado (>200 m), se conserva el original.
+  /// El GPS del teléfono no se manda. Se usa solo para saber qué calle
+  /// geocodificar. Si el usuario escribió el punto, ese pin se conserva.
   Future<TripLocation> _originForRequest(TripLocation origin) async {
-    if (_originLockedByUser || !origin.isCurrentLocation) return origin;
+    var lat = origin.lat;
+    var lng = origin.lng;
+    final isGps = origin.isCurrentLocation && !_originLockedByUser;
 
-    try {
-      final position = await PreciseGps.waitForReliableFix(
-            timeout: const Duration(seconds: 8),
-            maxAccuracyMeters: PreciseGps.maxPickupAccuracyMeters,
-            use: PreciseGpsUse.pickup,
-          ) ??
-          await Geolocator.getCurrentPosition(
-            locationSettings: PreciseGps.currentPosition(
-              timeLimit: const Duration(seconds: 8),
-              use: PreciseGpsUse.pickup,
-            ),
-          ).timeout(const Duration(seconds: 9));
-      if (!mounted || _isDisposed) return origin;
-
+    if (isGps && _rawGpsPosition != null) {
       final drift = Geolocator.distanceBetween(
         origin.lat,
         origin.lng,
-        position.latitude,
-        position.longitude,
+        _rawGpsPosition!.latitude,
+        _rawGpsPosition!.longitude,
       );
-      if (drift > 200) {
-        AppLogger.d(
-          'Fix de recogida descartado (desplazamiento ${drift.round()} m)',
-          tag: 'HomePasajero',
-        );
-        return origin;
+      if (drift <= 200) {
+        lat = _rawGpsPosition!.latitude;
+        lng = _rawGpsPosition!.longitude;
       }
+    }
 
-      final precise = TripLocation.currentLocation(
-        lat: position.latitude,
-        lng: position.longitude,
-        name: origin.name,
-        address: origin.address,
+    try {
+      final precise = await _precisePickup.build(
+        lat: lat,
+        lng: lng,
+        placeId: origin.placeId,
+        isCurrentLocation: origin.isCurrentLocation,
+        existingName: origin.name,
+        existingAddress: origin.address,
+        keepExistingName: !isGps,
       );
       _setStateSafe(() {
-        _currentPosition = position;
         _selectedOrigin = precise;
+        if (precise.barrio != null && precise.barrio!.isNotEmpty) {
+          _currentLocationArea = precise.barrio;
+        }
       });
       _syncMarkersOnMap(force: true);
       return precise;
     } catch (e) {
-      AppLogger.d('Fix fresco al pedir taxi: $e', tag: 'HomePasajero');
+      AppLogger.d('Etiqueta precisa de recogida: $e', tag: 'HomePasajero');
       return origin;
     }
   }
@@ -2374,9 +2399,12 @@ class _HomePasajeroState extends State<HomePasajero>
             datosServicio: {
               if (selectedConductor != null)
                 'conductor_id': selectedConductor.conductorId,
-              'origen_lat': origin.lat,
-              'origen_lng': origin.lng,
-              'origen_address': origin.address,
+              'origen_lat': preciseOrigin.lat,
+              'origen_lng': preciseOrigin.lng,
+              'origen_address': preciseOrigin.address,
+              'origen_name': preciseOrigin.name,
+              if (preciseOrigin.barrio != null)
+                'origen_barrio': preciseOrigin.barrio,
               'destino_lat': destination?.lat,
               'destino_lng': destination?.lng,
               'destino_address': destination?.address ?? 'Destino no definido',

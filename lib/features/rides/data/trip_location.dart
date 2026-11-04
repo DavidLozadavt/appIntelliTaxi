@@ -5,6 +5,7 @@ class TripLocation {
   final double lat;
   final double lng;
   final bool isCurrentLocation;
+  final String? barrio;
 
   TripLocation({
     this.placeId,
@@ -13,6 +14,7 @@ class TripLocation {
     required this.lat,
     required this.lng,
     this.isCurrentLocation = false,
+    this.barrio,
   });
 
   factory TripLocation.currentLocation({
@@ -20,6 +22,7 @@ class TripLocation {
     required double lng,
     String name = 'Mi ubicación',
     String address = 'Mi ubicación actual',
+    String? barrio,
   }) {
     return TripLocation(
       name: name,
@@ -27,6 +30,7 @@ class TripLocation {
       lat: lat,
       lng: lng,
       isCurrentLocation: true,
+      barrio: barrio,
     );
   }
 
@@ -36,6 +40,7 @@ class TripLocation {
     required String address,
     required double lat,
     required double lng,
+    String? barrio,
   }) {
     return TripLocation(
       placeId: placeId,
@@ -43,6 +48,7 @@ class TripLocation {
       address: address,
       lat: lat,
       lng: lng,
+      barrio: barrio,
     );
   }
 

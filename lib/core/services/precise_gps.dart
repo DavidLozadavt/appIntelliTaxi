@@ -10,10 +10,11 @@ enum PreciseGpsUse { pickup, navigation }
 
 /// Política única de GPS de máxima precisión (recogida + flota).
 ///
-/// Geolocator `high` en Android es el mismo fused provider que `best`,
-/// pero sin `intervalDuration` el sistema entrega un punto cada varios
-/// segundos y con radio de error grande. Aquí se fuerza GNSS de
-/// navegación, intervalo de 1 s y se descartan fixes ruidosos.
+/// En Android el proveedor fusionado (wifi/celda) suele devolver un punto
+/// a una cuadra con un radio de error mentiroso. El chip GPS
+/// (`forceLocationManager`) es el que cae sobre la misma puerta que
+/// el geocoder de WhatsApp. Además se descarta un fix peor si el
+/// teléfono no se movió fuera de su radio de error.
 abstract final class PreciseGps {
   static const LocationAccuracy accuracy = LocationAccuracy.bestForNavigation;
 
@@ -67,6 +68,10 @@ abstract final class PreciseGps {
       }
     }
 
+    // Un fix más burdo no pisa uno fino si el salto cabe en su propio error.
+    // Eso era el pin que saltaba a la cuadra de al lado.
+    if (nextErr > prevErr + 8 && meters < nextErr) return false;
+
     if (nextErr <= maxAccuracyMeters) return true;
     // En movimiento un radio un poco peor sigue siendo mejor que congelar.
     if (meters >= 15 && nextErr <= maxAccuracyMeters * 2) return true;
@@ -109,7 +114,9 @@ abstract final class PreciseGps {
         distanceFilter: distanceFilter,
         intervalDuration: interval,
         timeLimit: timeLimit,
-        forceLocationManager: false,
+        // Chip GPS, no el punto fusionado de wifi. Ese es el que queda
+        // a una cuadra mientras WhatsApp muestra la puerta correcta.
+        forceLocationManager: true,
       );
     }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {

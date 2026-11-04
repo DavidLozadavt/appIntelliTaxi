@@ -11,6 +11,7 @@ import 'package:intellitaxi/core/services/fleet_emergency_alert_service.dart';
 import 'package:intellitaxi/core/services/incoming_service_notification_service.dart';
 import 'package:intellitaxi/config/maps_config.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
+import 'package:intellitaxi/core/services/gps_address_hold.dart';
 import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/services/reverse_geocoding_service.dart';
 import 'package:intellitaxi/core/services/voice_alert_service.dart';
@@ -62,6 +63,8 @@ class ConductorHomeProvider extends ChangeNotifier {
   final ConductorService _conductorService = ConductorService();
   // Estado de ubicación
   Position? _currentPosition;
+  Position? _rawGpsPosition;
+  final GpsAddressHold _gpsHold = GpsAddressHold();
   bool _isLoadingLocation = true;
   String _locationMessage =
       'Estableciendo conexión satelital para rastreo en tiempo real...';
@@ -4138,14 +4141,34 @@ class ConductorHomeProvider extends ChangeNotifier {
 
   void _onPositionUpdate(Position position, {bool forceUi = false}) {
     if (_isDisposed) return;
-    if (!forceUi &&
-        !PreciseGps.shouldAccept(position, _currentPosition)) {
+    if (!forceUi && !PreciseGps.shouldAccept(position, _rawGpsPosition)) {
       return;
     }
-    _aplicarPosicionLocal(position, forceUi: forceUi);
-    unawaited(_sendMapHeartbeat(position));
+    _rawGpsPosition = position;
+    final shown = _gpsHold.apply(position);
+    _aplicarPosicionLocal(shown, forceUi: forceUi);
+    unawaited(_sendMapHeartbeat(shown));
+    if (_gpsHold.shouldRefresh(position.latitude, position.longitude)) {
+      unawaited(_alinearGpsConDireccion(position));
+    }
     _purgarSolicitudesFueraDeRadio();
     _reintentarOverlaysPendientesRadio();
+  }
+
+  /// Mueve el pin del conductor al punto de vía que usa WhatsApp.
+  Future<void> _alinearGpsConDireccion(Position raw) async {
+    final changed = await _gpsHold.refresh(_reverseGeocodingService, raw);
+    if (_isDisposed || !changed) return;
+    final latest = _rawGpsPosition;
+    if (latest == null) return;
+    final moved = Geolocator.distanceBetween(
+      raw.latitude,
+      raw.longitude,
+      latest.latitude,
+      latest.longitude,
+    );
+    if (moved > GpsAddressHold.releaseMeters) return;
+    _aplicarPosicionLocal(_gpsHold.apply(latest), forceUi: true);
   }
 
   /// Evita rebuild del home en cada tick GPS; el mapa sigue fluido con intervalo corto.

@@ -33,6 +33,26 @@ class ReverseGeocodingService {
     caseSensitive: false,
   );
 
+  /// El geocoder (el mismo de WhatsApp/central) engancha el GPS a la vía.
+  /// Más de esto es otro lugar: no se mueve el pin.
+  static const double addressSnapMaxMeters = 60;
+
+  /// Punto de dirección si cae dentro del error típico del GPS.
+  /// Devuelve null cuando el geocoder respondió otro sector.
+  static ({double lat, double lng})? snapIfClose({
+    required double fromLat,
+    required double fromLng,
+    double? toLat,
+    double? toLng,
+    double maxMeters = addressSnapMaxMeters,
+  }) {
+    if (toLat == null || toLng == null) return null;
+    if (!toLat.isFinite || !toLng.isFinite) return null;
+    final meters = Geolocator.distanceBetween(fromLat, fromLng, toLat, toLng);
+    if (meters > maxMeters) return null;
+    return (lat: toLat, lng: toLng);
+  }
+
   /// Distancia máxima (m) entre el punto consultado y la respuesta del proxy
   /// para aceptar su barrio.
   ///
@@ -754,7 +774,7 @@ class ReverseGeocodingService {
 
     if (MapsConfig.useBackendProxy) {
       final cacheKey =
-          'driver|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+          'driver3|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
       final cached = _getCachedLocationData(cacheKey);
       if (cached != null) return cached;
       final data = await _locationDataFromBackend(
@@ -771,7 +791,7 @@ class ReverseGeocodingService {
     }
 
     final cacheKey =
-        'driver|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+        'driver3|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 4)}';
     final cached = _getCachedLocationData(cacheKey);
     if (cached != null) return cached;
 
@@ -795,6 +815,7 @@ class ReverseGeocodingService {
             ? placeNameFromAddressForDriver(fullAddress)
             : (area ?? fallback.name));
 
+    final anchor = _anchorFromGeocodeResults(results, lat: lat, lng: lng);
     final data = CurrentLocationData(
       name: name,
       address: fullAddress?.trim().isNotEmpty == true
@@ -802,6 +823,8 @@ class ReverseGeocodingService {
           : name,
       area: area,
       streetLine: streetLine,
+      anchorLat: anchor?.lat,
+      anchorLng: anchor?.lng,
     );
     _putCachedLocationData(cacheKey, data);
     return data;
@@ -831,7 +854,7 @@ class ReverseGeocodingService {
 
     if (MapsConfig.useBackendProxy) {
       final cacheKey =
-          'label|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+          'label3|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
       final cached = _getCachedLocationData(cacheKey);
       if (cached != null) return cached;
       final data = await _locationDataFromBackend(lat, lng, fallback: fallback);
@@ -843,7 +866,7 @@ class ReverseGeocodingService {
     }
 
     final cacheKey =
-        'label|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
+        'label3|${GeocodeMemoryCache.gridKey(lat, lng, decimals: 3)}';
     final cached = _getCachedLocationData(cacheKey);
     if (cached != null) return cached;
 
@@ -891,11 +914,14 @@ class ReverseGeocodingService {
       displayName = 'Mi ubicación';
     }
 
+    final anchor = _anchorFromGeocodeResults(results, lat: lat, lng: lng);
     final data = CurrentLocationData(
       name: displayName,
       address: fullAddress ?? displayName,
       area: area,
       streetLine: streetLine,
+      anchorLat: anchor?.lat,
+      anchorLng: anchor?.lng,
     );
     _putCachedLocationData(cacheKey, data);
     return data;
@@ -943,7 +969,62 @@ class ReverseGeocodingService {
       address: addr.isNotEmpty ? addr : name,
       area: barrio.isEmpty ? null : barrio,
       streetLine: streetIsStreet ? street : null,
+      anchorLat: r.lat,
+      anchorLng: r.lng,
     );
+  }
+
+  /// Coordenada de la puerta o de la vía, la misma que guarda WhatsApp.
+  ///
+  /// Se prefiere `street_address` / predio. Si no hay número, la vía cuyo
+  /// punto cae a menos de [addressSnapMaxMeters]. Un centroide lejano
+  /// (otra calle) no se usa.
+  ({double lat, double lng})? _anchorFromGeocodeResults(
+    List<Map<String, dynamic>> results, {
+    required double lat,
+    required double lng,
+  }) {
+    ({double lat, double lng})? door;
+    var doorMeters = double.infinity;
+    ({double lat, double lng})? road;
+    var roadMeters = double.infinity;
+
+    for (final result in results) {
+      final geo = result['geometry'];
+      if (geo is! Map) continue;
+      final loc = geo['location'];
+      if (loc is! Map) continue;
+      final rLat = (loc['lat'] as num?)?.toDouble();
+      final rLng = (loc['lng'] as num?)?.toDouble();
+      if (rLat == null || rLng == null) continue;
+
+      final locationType = geo['location_type']?.toString().toUpperCase() ?? '';
+      if (locationType == 'APPROXIMATE') continue;
+
+      final meters = Geolocator.distanceBetween(lat, lng, rLat, rLng);
+      if (!meters.isFinite || meters > addressSnapMaxMeters) continue;
+
+      final types = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+      if (types.length == 1 && types.contains('plus_code')) continue;
+
+      final point = (lat: rLat, lng: rLng);
+      final isDoor = types.contains('street_address') ||
+          types.contains('premise') ||
+          types.contains('subpremise');
+      if (isDoor && meters < doorMeters) {
+        door = point;
+        doorMeters = meters;
+        continue;
+      }
+      if (types.contains('route') && meters < roadMeters) {
+        road = point;
+        roadMeters = meters;
+      }
+    }
+
+    return door ?? road;
   }
 
   String? _areaFromCachedFetch(double lat, double lng) {
@@ -962,6 +1043,8 @@ class ReverseGeocodingService {
       address: raw['address']?.toString() ?? '',
       area: raw['area']?.toString(),
       streetLine: raw['streetLine']?.toString(),
+      anchorLat: (raw['anchorLat'] as num?)?.toDouble(),
+      anchorLng: (raw['anchorLng'] as num?)?.toDouble(),
     );
   }
 
@@ -973,6 +1056,8 @@ class ReverseGeocodingService {
         'address': data.address,
         'area': data.area,
         'streetLine': data.streetLine,
+        'anchorLat': data.anchorLat,
+        'anchorLng': data.anchorLng,
       },
       _labelCacheTtl,
     );
@@ -1569,11 +1654,17 @@ class CurrentLocationData {
   final String? area;
   final String? streetLine;
 
+  /// Coordenada de la dirección (puerta o vía), no el GPS crudo.
+  final double? anchorLat;
+  final double? anchorLng;
+
   const CurrentLocationData({
     required this.name,
     required this.address,
     this.area,
     this.streetLine,
+    this.anchorLat,
+    this.anchorLng,
   });
 
   /// Etiqueta corta para recogida: barrio primero, calle como detalle.

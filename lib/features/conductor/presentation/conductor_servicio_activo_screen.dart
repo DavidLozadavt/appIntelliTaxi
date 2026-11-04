@@ -33,6 +33,7 @@ import 'package:dio/dio.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/navigation/app_root_navigation.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
+import 'package:intellitaxi/core/services/gps_address_hold.dart';
 import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/geo/map_marker_bearing_helper.dart';
 import 'package:intellitaxi/core/services/keep_screen_on_service.dart';
@@ -72,6 +73,7 @@ class _ConductorServicioActivoScreenState
 
   String _estadoActual = 'aceptado';
   Position? _lastGpsPosition;
+  final GpsAddressHold _gpsHold = GpsAddressHold();
   LatLng? _miUbicacion;
   double _miBearing = 0;
   bool _miBearingInicializado = false;
@@ -570,7 +572,9 @@ class _ConductorServicioActivoScreenState
       // Verificar que el widget siga montado antes de llamar setState
       if (!mounted) return;
 
-      _aplicarUbicacionConductor(position);
+      _lastGpsPosition = position;
+      _aplicarUbicacionConductor(_gpsHold.apply(position));
+      unawaited(_alinearPinConDireccion(position));
 
       // Actualizar marcadores y ruta
       _actualizarMarcadores();
@@ -600,8 +604,11 @@ class _ConductorServicioActivoScreenState
           if (!PreciseGps.shouldAccept(position, _lastGpsPosition)) return;
           _lastGpsPosition = position;
 
-          _aplicarUbicacionConductor(position);
+          _aplicarUbicacionConductor(_gpsHold.apply(position));
           _actualizarMarcadores();
+          if (_gpsHold.shouldRefresh(position.latitude, position.longitude)) {
+            unawaited(_alinearPinConDireccion(position));
+          }
 
           // Redibujar ruta máximo cada 30 segundos para no abusar de la API
           final ahora = DateTime.now();
@@ -610,6 +617,25 @@ class _ConductorServicioActivoScreenState
             _dibujarRuta();
           }
         });
+  }
+
+  Future<void> _alinearPinConDireccion(Position raw) async {
+    final changed = await _gpsHold.refresh(
+      ReverseGeocodingService.shared,
+      raw,
+    );
+    if (!changed || !mounted) return;
+    final latest = _lastGpsPosition;
+    if (latest == null) return;
+    final moved = Geolocator.distanceBetween(
+      raw.latitude,
+      raw.longitude,
+      latest.latitude,
+      latest.longitude,
+    );
+    if (moved > GpsAddressHold.releaseMeters) return;
+    _aplicarUbicacionConductor(_gpsHold.apply(latest));
+    _actualizarMarcadores();
   }
 
   void _aplicarUbicacionConductor(Position position) {

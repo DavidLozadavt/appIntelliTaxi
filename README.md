@@ -36,7 +36,7 @@ El workflow `.github/workflows/quality.yml` valida automáticamente:
 1. Crear `android/key.properties` a partir de `android/key.properties.example`.
 2. Configurar `storeFile`, `storePassword`, `keyAlias`, `keyPassword` y `MAPS_API_KEY`.
 3. Generar build:
-   - `make apk-release`
+   - `make apk` (deja `dist/TaxbelUrbano-<version>.apk`, por ejemplo `dist/TaxbelUrbano-1.0.5+2.apk`)
    - `make aab-release`
 
 Notas:

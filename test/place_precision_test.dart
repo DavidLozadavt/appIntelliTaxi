@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intellitaxi/core/geo/place_precision.dart';
+import 'package:intellitaxi/features/pasajero/services/precise_pickup_builder.dart';
 
 void main() {
   group('PlacePrecision.isPlausibleNeighborhood', () {
@@ -280,6 +281,28 @@ void main() {
 
     test('sin resultados no hay calle', () {
       expect(PlacePrecision.hasMappedStreet(const []), isFalse);
+    });
+  });
+
+  group('PrecisePickupBuilder.streetSearchQuery', () {
+    test('arma la misma consulta de calle que WhatsApp', () {
+      expect(
+        PrecisePickupBuilder.streetSearchQuery(
+          street: 'Cra. 9 # 20-15',
+          barrio: 'Pandiguando',
+        ),
+        'Cra. 9 # 20-15, Pandiguando, Popayán, Cauca, Colombia',
+      );
+    });
+
+    test('no geocodifica un barrio suelto', () {
+      expect(
+        PrecisePickupBuilder.streetSearchQuery(
+          street: 'Pandiguando',
+          barrio: 'Pandiguando',
+        ),
+        isNull,
+      );
     });
   });
 
