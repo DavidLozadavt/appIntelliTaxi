@@ -40,8 +40,7 @@ class RideRequestService {
       'origin_address': origin.address,
       'origin_name': origin.name,
       'origin_place_id': origin.placeId,
-      if (origin.barrio != null && origin.barrio!.trim().isNotEmpty)
-        'origin_barrio': origin.barrio!.trim(),
+      ..._pinFields(origin, prefix: 'origin'),
 
       // Información del destino
       'destination_lat': destination?.lat,
@@ -49,6 +48,7 @@ class RideRequestService {
       'destination_address': destination?.address,
       'destination_name': destination?.name,
       'destination_place_id': destination?.placeId,
+      if (destination != null) ..._pinFields(destination, prefix: 'destination'),
 
       // Información de la ruta
       'distance': distance, // Ej: "8,7 km"
@@ -214,8 +214,8 @@ class RideRequestService {
       'origen_lng': origin.lng,
       'origin_name': origin.name,
       'origin_address': origin.address,
-      if (origin.barrio != null && origin.barrio!.trim().isNotEmpty)
-        'origin_barrio': origin.barrio!.trim(),
+      ..._pinFields(origin, prefix: 'origin'),
+      if (destination != null) ..._pinFields(destination, prefix: 'destination'),
       'destino_lat': destination?.lat,
       'destino_lng': destination?.lng,
       'precio_ofrecido': precioOfrecido,
@@ -502,6 +502,21 @@ class RideRequestService {
         ),
       );
     }
+  }
+
+  Map<String, dynamic> _pinFields(TripLocation loc, {required String prefix}) {
+    return {
+      if (loc.barrio != null && loc.barrio!.trim().isNotEmpty)
+        '${prefix}_barrio': loc.barrio!.trim(),
+      if (loc.barrioId != null) '${prefix}_barrio_id': loc.barrioId,
+      '${prefix}_barrio_confirmado_por_usuario': loc.barrioConfirmadoPorUsuario,
+      if (loc.referencia != null && loc.referencia!.trim().isNotEmpty)
+        '${prefix}_referencia': loc.referencia!.trim(),
+      if (loc.precisionGpsM != null)
+        '${prefix}_precision_gps_m': loc.precisionGpsM,
+      if (loc.origenDelPin != null && loc.origenDelPin!.isNotEmpty)
+        '${prefix}_pin_origen': loc.origenDelPin,
+    };
   }
 
   /// 📌 CANCELAR SERVICIO ACTIVO (motivo opcional).

@@ -16,7 +16,6 @@ import 'package:intellitaxi/features/rides/data/trip_location.dart';
 import 'package:intellitaxi/features/pasajero/services/routes_service.dart';
 import 'package:intellitaxi/features/pasajero/services/places_service.dart';
 import 'package:intellitaxi/features/pasajero/services/ride_request_service.dart';
-import 'package:intellitaxi/features/pasajero/services/precise_pickup_builder.dart';
 import 'package:intellitaxi/features/pasajero/services/repeat_trip_service.dart';
 import 'package:intellitaxi/features/auth/providers/auth_provider.dart';
 import 'package:intellitaxi/core/theme/app_colors.dart';
@@ -44,10 +43,18 @@ import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/device_location_service.dart';
 import 'package:intellitaxi/core/services/gps_address_hold.dart';
 import 'package:intellitaxi/core/services/precise_gps.dart';
+import 'package:intellitaxi/core/geo/barrios/barrio.dart';
+import 'package:intellitaxi/core/geo/barrios/barrios_catalog.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/utils/safe_image_decode.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
+import 'package:intellitaxi/features/pasajero/data/service_pin.dart';
+import 'package:intellitaxi/features/pasajero/services/barrios_api_service.dart';
+import 'package:intellitaxi/features/pasajero/widgets/barrio_referencia_panel.dart';
+import 'package:intellitaxi/features/pasajero/widgets/barrio_search_sheet.dart';
+import 'package:intellitaxi/features/pasajero/widgets/map_center_pin.dart';
 import 'package:intellitaxi/features/pasajero/widgets/pasajero_home_ride_sheet.dart';
+import 'package:intellitaxi/features/pasajero/widgets/pedido_resumen_sheet.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -95,10 +102,6 @@ class _HomePasajeroState extends State<HomePasajero>
   final RideRequestService _rideRequestService = RideRequestService();
   final ReverseGeocodingService _reverseGeocodingService =
       ReverseGeocodingService();
-  late final PrecisePickupBuilder _precisePickup = PrecisePickupBuilder(
-    geocoding: _reverseGeocodingService,
-    places: _placesService,
-  );
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final FocusNode _originFocusNode = FocusNode();
@@ -161,6 +164,19 @@ class _HomePasajeroState extends State<HomePasajero>
   bool _editingPickup = false;
   bool _notificationPermissionRequestedInSession = false;
 
+  final BarrioResolver _barrioResolver = BarrioResolver();
+  late final ServicePin _pickupPin = ServicePin(
+    lat: PopayanUrbanArea.centerLat,
+    lng: PopayanUrbanArea.centerLng,
+  );
+  ServicePin? _destPin;
+  final TextEditingController _pickupRefController = TextEditingController();
+  final TextEditingController _destRefController = TextEditingController();
+  bool _mapMoving = false;
+  bool _programmaticCamera = false;
+  LatLng? _lastCameraTarget;
+  Timer? _barrioDebounce;
+
   /// Suscripción al stream de GPS: mantiene la ubicación viva mientras
   /// la app está abierta (antes solo se tomaba un fix al iniciar).
   StreamSubscription<Position>? _gpsStreamSub;
@@ -185,15 +201,25 @@ class _HomePasajeroState extends State<HomePasajero>
   bool get _needsRouteRetry =>
       _serviceType != 'taxi' && _hasOrigin && _hasDestination && !_hasRoute;
 
-  bool get _canRequestRide =>
-      _hasOrigin &&
-      (_serviceType == 'taxi' || (_hasDestination && _hasRoute));
+  bool get _canRequestRide {
+    if (!_hasOrigin || !_pickupPin.gpsListo) return false;
+    if (_pickupPin.necesitaElegirBarrio) return false;
+    if (_pickupRefController.text.trim().length < 6) return false;
+    if (_serviceType != 'taxi') {
+      return _hasDestination && _hasRoute && !(_destPin?.necesitaElegirBarrio ?? false);
+    }
+    if (_destPin != null && _destPin!.necesitaElegirBarrio) return false;
+    return true;
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _placesSearch = PasajeroPlacesSearchController(placesService: _placesService);
+    unawaited(BarriosCatalog.instance());
+    _pickupRefController.addListener(_onPickupReferenciaChanged);
+    _destRefController.addListener(_onDestReferenciaChanged);
     _createUserMarkerIcon();
     unawaited(_nearbyDrivers.loadDriverMarkerIcon().then((_) {
       if (mounted) _setStateSafe(() {});
@@ -330,6 +356,9 @@ class _HomePasajeroState extends State<HomePasajero>
     _sheetExtent.dispose();
     _driverMarkersTicker?.dispose();
     _driversRefreshTimer?.cancel();
+    _barrioDebounce?.cancel();
+    _pickupRefController.dispose();
+    _destRefController.dispose();
     _originController.dispose();
     _destinationController.dispose();
     _originFocusNode.dispose();
@@ -757,12 +786,36 @@ class _HomePasajeroState extends State<HomePasajero>
                   tiltGesturesEnabled: false,
                   polylines: _polylines,
                   markers: _markers,
+                  mapPadding: EdgeInsets.only(
+                    bottom: MediaQuery.sizeOf(context).height * _sheetMidSize,
+                  ),
                   onTap: _onMapTap,
+                  onCameraMoveStarted: () {
+                    if (_programmaticCamera) return;
+                    _setStateSafe(() {
+                      _mapMoving = true;
+                      _pickupPin.origen = PinOrigen.ajusteManual;
+                      _originEditedByUser = true;
+                    });
+                  },
+                  onCameraMove: (pos) => _lastCameraTarget = pos.target,
+                  onCameraIdle: _onPickupCameraIdle,
                   onMapCreated: (controller) {
                     _mapController = controller;
                   },
                 ),
               ),
+
+        if (_currentPosition != null)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: MediaQuery.sizeOf(context).height * _sheetMidSize,
+            child: IgnorePointer(
+              child: Center(child: MapCenterPin(moving: _mapMoving)),
+            ),
+          ),
 
         // Overlay del mapa: solo escucha el extent, sin rebuild del árbol completo.
         if (_currentPosition != null)
@@ -881,6 +934,31 @@ class _HomePasajeroState extends State<HomePasajero>
                   onSaveFavoriteDestination: _saveFavoriteDestination,
                   editingPickup: _editingPickup,
                   onEditPickup: _startEditingPickup,
+                  locatingGps: !_pickupPin.gpsListo,
+                  pickupPinPanel: BarrioReferenciaPanel(
+                    title: 'RECOGIDA',
+                    pin: _pickupPin,
+                    referenciaController: _pickupRefController,
+                    referenciaRequired: true,
+                    onCambiarBarrio: () => unawaited(_cambiarBarrioPickup()),
+                    onElegirCandidato: _elegirBarrioPickup,
+                  ),
+                  destinationPinPanel: _selectedDestination == null
+                      ? null
+                      : BarrioReferenciaPanel(
+                          title: _serviceType == 'taxi' ? 'DESTINO' : 'ENTREGA',
+                          pin: _destPin ??
+                              ServicePin(
+                                lat: _selectedDestination!.lat,
+                                lng: _selectedDestination!.lng,
+                                origen: PinOrigen.ajusteManual,
+                              ),
+                          referenciaController: _destRefController,
+                          referenciaRequired: false,
+                          onCambiarBarrio: () =>
+                              unawaited(_cambiarBarrioDestino()),
+                          onElegirCandidato: _elegirBarrioDestino,
+                        ),
                   ctaLabel: cta.label,
                   ctaTrailing: cta.trailing,
                   onCtaPressed: cta.onPressed,
@@ -1426,8 +1504,13 @@ class _HomePasajeroState extends State<HomePasajero>
     }
 
     _applyOriginFromGps(shown, markReady: _currentPosition == null);
-    if (_gpsHold.shouldRefresh(position.latitude, position.longitude)) {
-      unawaited(_refineOriginAddress(position));
+    if (_pickupPin.origen == PinOrigen.gps) {
+      _pickupPin
+        ..lat = shown.latitude
+        ..lng = shown.longitude
+        ..precisionGpsM = position.accuracy;
+      unawaited(_animateCameraTo(shown.latitude, shown.longitude));
+      _schedulePickupBarrioResolve();
     }
     _syncMarkersOnMap(force: true);
   }
@@ -1511,11 +1594,9 @@ class _HomePasajeroState extends State<HomePasajero>
       // El usuario definió su recogida a mano: solo se actualiza la posición,
       // nunca su origen ni el texto del campo.
       if (!lockOrigin) {
-        _selectedOrigin = TripLocation.currentLocation(
+        _selectedOrigin = _tripFromPickupPin(
           lat: position.latitude,
           lng: position.longitude,
-          name: _currentLocationName,
-          address: _currentLocationAddress,
         );
 
         if (_originController.text.trim().isEmpty ||
@@ -2132,21 +2213,20 @@ class _HomePasajeroState extends State<HomePasajero>
       return;
     }
 
+    _pickupPin
+      ..lat = details.lat
+      ..lng = details.lng
+      ..origen = PinOrigen.ajusteManual
+      ..confirmadoPorUsuario = false;
     _setStateSafe(() {
-      _selectedOrigin = TripLocation.fromPlaceDetails(
-        placeId: prediction.placeId,
-        name: details.name,
-        address: details.address,
-        lat: details.lat,
-        lng: details.lng,
-      );
-      _originController.removeListener(_onOriginChanged);
-      _originController.text = prediction.mainText;
+      _originEditedByUser = true;
       _originPredictions = [];
       _isSearchingOrigin = false;
-      _originEditedByUser = true;
+      _editingPickup = false;
     });
     _originController.addListener(_onOriginChanged);
+    unawaited(_animateCameraTo(details.lat, details.lng));
+    unawaited(_resolvePickupBarrio());
     unawaited(_ajustarHojaParaSugerencias(false));
 
     if (_selectedDestination != null) {
@@ -2196,6 +2276,7 @@ class _HomePasajeroState extends State<HomePasajero>
       _upsertDestinationMarker(destination);
     });
     unawaited(_ajustarHojaParaSugerencias(false));
+    unawaited(_resolveDestBarrio(destination.lat, destination.lng));
 
     if (mounted) {
       unawaited(_saveRecentDestination(destination));
@@ -2349,9 +2430,202 @@ class _HomePasajeroState extends State<HomePasajero>
     }
   }
 
+  void _onPickupReferenciaChanged() {
+    _pickupPin.referencia = _pickupRefController.text;
+    _syncOriginFromPickupPin();
+  }
+
+  void _onDestReferenciaChanged() {
+    _destPin?.referencia = _destRefController.text;
+  }
+
+  TripLocation _tripFromPickupPin({double? lat, double? lng}) {
+    final pinLat = lat ?? _pickupPin.lat;
+    final pinLng = lng ?? _pickupPin.lng;
+    final barrio = _pickupPin.barrioEfectivo;
+    final ref = _pickupRefController.text.trim();
+    return TripLocation(
+      name: _pickupPin.barrioNombre,
+      address: ref.isNotEmpty ? ref : _pickupPin.barrioNombre,
+      lat: pinLat,
+      lng: pinLng,
+      isCurrentLocation: _pickupPin.origen == PinOrigen.gps,
+      barrio: barrio?.nombre,
+      barrioId: barrio?.id,
+      barrioConfirmadoPorUsuario: _pickupPin.confirmadoPorUsuario,
+      referencia: ref.isEmpty ? null : ref,
+      precisionGpsM: _pickupPin.precisionGpsM,
+      origenDelPin: _pickupPin.origenDelPinKey,
+    );
+  }
+
+  void _syncOriginFromPickupPin() {
+    if (!mounted) return;
+    _selectedOrigin = _tripFromPickupPin();
+    _currentLocationName = _pickupPin.barrioNombre;
+    _currentLocationArea = _pickupPin.barrioEfectivo?.nombre;
+  }
+
+  void _schedulePickupBarrioResolve() {
+    _barrioDebounce?.cancel();
+    _barrioDebounce = Timer(const Duration(milliseconds: 280), () {
+      unawaited(_resolvePickupBarrio());
+    });
+  }
+
+  Future<void> _resolvePickupBarrio() async {
+    final result = await _barrioResolver.resolve(_pickupPin.lat, _pickupPin.lng);
+    if (!mounted) return;
+    _setStateSafe(() {
+      _pickupPin.resolve = result;
+      if (!_pickupPin.confirmadoPorUsuario) {
+        _pickupPin.elegido =
+            result.kind == BarrioResolveKind.inside ? result.match : null;
+      }
+      _syncOriginFromPickupPin();
+    });
+  }
+
+  Future<void> _resolveDestBarrio(double lat, double lng) async {
+    final result = await _barrioResolver.resolve(lat, lng);
+    if (!mounted) return;
+    _setStateSafe(() {
+      _destPin ??= ServicePin(lat: lat, lng: lng, origen: PinOrigen.ajusteManual);
+      _destPin!
+        ..lat = lat
+        ..lng = lng
+        ..origen = PinOrigen.ajusteManual
+        ..resolve = result
+        ..elegido = result.kind == BarrioResolveKind.inside ? result.match : null
+        ..confirmadoPorUsuario = result.kind == BarrioResolveKind.inside;
+    });
+  }
+
+  Future<void> _animateCameraTo(double lat, double lng) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    _programmaticCamera = true;
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(lat, lng),
+            zoom: _mapZoomPasajero,
+            tilt: _mapTiltPasajero,
+            bearing: _mapBearingPasajero,
+          ),
+        ),
+      );
+    } catch (_) {
+    } finally {
+      _programmaticCamera = false;
+    }
+  }
+
+  Future<void> _onPickupCameraIdle() async {
+    if (_programmaticCamera) {
+      _setStateSafe(() => _mapMoving = false);
+      return;
+    }
+    final target = _lastCameraTarget;
+    if (target == null) {
+      _setStateSafe(() => _mapMoving = false);
+      return;
+    }
+    if (!mounted) return;
+    _pickupPin
+      ..lat = target.latitude
+      ..lng = target.longitude
+      ..origen = PinOrigen.ajusteManual
+      ..confirmadoPorUsuario = false;
+    _setStateSafe(() {
+      _mapMoving = false;
+      _originEditedByUser = true;
+      _syncOriginFromPickupPin();
+    });
+    _schedulePickupBarrioResolve();
+  }
+
+  Future<void> _cambiarBarrioPickup() async {
+    final chosen = await showBarrioSearchSheet(
+      context: context,
+      resolver: _barrioResolver,
+      currentName: _pickupPin.barrioEfectivo?.nombre,
+    );
+    if (!mounted) return;
+    _setStateSafe(() {
+      if (chosen != null) {
+        _pickupPin.elegido = chosen;
+        _pickupPin.confirmadoPorUsuario = true;
+      } else {
+        _pickupPin.elegido = null;
+        _pickupPin.confirmadoPorUsuario = true;
+      }
+      _syncOriginFromPickupPin();
+    });
+  }
+
+  void _elegirBarrioPickup(Barrio barrio) {
+    _setStateSafe(() {
+      _pickupPin.elegido = barrio;
+      _pickupPin.confirmadoPorUsuario = true;
+      _syncOriginFromPickupPin();
+    });
+  }
+
+  Future<void> _cambiarBarrioDestino() async {
+    final pin = _destPin;
+    if (pin == null) return;
+    final chosen = await showBarrioSearchSheet(
+      context: context,
+      resolver: _barrioResolver,
+      currentName: pin.barrioEfectivo?.nombre,
+    );
+    if (!mounted) return;
+    _setStateSafe(() {
+      if (chosen != null) {
+        pin.elegido = chosen;
+        pin.confirmadoPorUsuario = true;
+      } else {
+        pin.elegido = null;
+        pin.confirmadoPorUsuario = true;
+      }
+    });
+  }
+
+  void _elegirBarrioDestino(Barrio barrio) {
+    _setStateSafe(() {
+      _destPin?.elegido = barrio;
+      _destPin?.confirmadoPorUsuario = true;
+    });
+  }
+
   void _requestRide() {
     if (_isSubmittingRide) return;
-    _handleRideConfirmation();
+    unawaited(_confirmAndRequestRide());
+  }
+
+  Future<void> _confirmAndRequestRide() async {
+    if (!_canRequestRide) {
+      final reason = !_pickupPin.gpsListo
+          ? 'Espera a que el GPS baje de 30 m o mueve el pin a mano.'
+          : _pickupPin.necesitaElegirBarrio
+              ? 'Elige el barrio de recogida. No adivinamos el límite.'
+              : _pickupRefController.text.trim().length < 6
+                  ? 'Escribe una referencia (casa, portón, frente a…).'
+                  : 'Completa destino y barrio para continuar.';
+      _scaffoldMessenger?.showSnackBar(SnackBar(content: Text(reason)));
+      return;
+    }
+    final confirmed = await showPedidoResumenSheet(
+      context: context,
+      serviceType: _serviceType,
+      pickup: _pickupPin,
+      destination: _destPin,
+      precioTexto: _routeInfo?.duration,
+    );
+    if (!confirmed || !mounted) return;
+    await _handleRideConfirmation();
   }
 
   bool _isNoDriversAvailableMessage(String message) {
@@ -2381,50 +2655,17 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
-  /// Recogida al pedir taxi: misma resolución que WhatsApp (calle geocodificada).
-  ///
-  /// El GPS del teléfono no se manda. Se usa solo para saber qué calle
-  /// geocodificar. Si el usuario escribió el punto, ese pin se conserva.
+  /// Recogida = pin (lat/lng) + barrio de polígono + referencia.
+  /// No se geocodifica calle: en Popayán esa nomenclatura no se usa.
   Future<TripLocation> _originForRequest(TripLocation origin) async {
-    var lat = origin.lat;
-    var lng = origin.lng;
-    final isGps = origin.isCurrentLocation && !_originLockedByUser;
-
-    if (isGps && _rawGpsPosition != null) {
-      final drift = Geolocator.distanceBetween(
-        origin.lat,
-        origin.lng,
-        _rawGpsPosition!.latitude,
-        _rawGpsPosition!.longitude,
-      );
-      if (drift <= 200) {
-        lat = _rawGpsPosition!.latitude;
-        lng = _rawGpsPosition!.longitude;
-      }
-    }
-
-    try {
-      final precise = await _precisePickup.build(
-        lat: lat,
-        lng: lng,
-        placeId: origin.placeId,
-        isCurrentLocation: origin.isCurrentLocation,
-        existingName: origin.name,
-        existingAddress: origin.address,
-        keepExistingName: !isGps,
-      );
-      _setStateSafe(() {
-        _selectedOrigin = precise;
-        if (precise.barrio != null && precise.barrio!.isNotEmpty) {
-          _currentLocationArea = precise.barrio;
-        }
-      });
-      _syncMarkersOnMap(force: true);
-      return precise;
-    } catch (e) {
-      AppLogger.d('Etiqueta precisa de recogida: $e', tag: 'HomePasajero');
-      return origin;
-    }
+    _pickupPin.referencia = _pickupRefController.text.trim();
+    final pin = _tripFromPickupPin();
+    _setStateSafe(() {
+      _selectedOrigin = pin;
+      _currentLocationArea = pin.barrio;
+      _currentLocationName = pin.name;
+    });
+    return pin;
   }
 
   Future<void> _handleRideConfirmation() async {
@@ -2432,7 +2673,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
     final isDelivery = _serviceType == 'domicilio';
     final origin = _selectedOrigin;
-    final destination = _selectedDestination;
+    var destination = _selectedDestination;
     final route = _routeInfo;
     final pasajeroId =
         Provider.of<AuthProvider>(context, listen: false).idPersona ?? 0;
@@ -2481,9 +2722,23 @@ class _HomePasajeroState extends State<HomePasajero>
     _setStateSafe(() => _isSubmittingRide = true);
 
     try {
-      // Recogida por GPS: toma un fix fresco de máxima precisión para que el
-      // conductor reciba el punto exacto (el último puede tener minutos).
       final preciseOrigin = await _originForRequest(origin);
+      final destPin = _destPin;
+      if (destination != null && destPin != null) {
+        final ref = _destRefController.text.trim();
+        destination = TripLocation(
+          placeId: destination.placeId,
+          name: destPin.barrioNombre,
+          address: ref.isNotEmpty ? ref : destPin.barrioNombre,
+          lat: destination.lat,
+          lng: destination.lng,
+          barrio: destPin.barrioEfectivo?.nombre,
+          barrioId: destPin.barrioEfectivo?.id,
+          barrioConfirmadoPorUsuario: destPin.confirmadoPorUsuario,
+          referencia: ref.isEmpty ? null : ref,
+          origenDelPin: destPin.origenDelPinKey,
+        );
+      }
 
       final response = isDirectFlow
           ? await _rideRequestService.sendDirectOffer(
@@ -2536,9 +2791,23 @@ class _HomePasajeroState extends State<HomePasajero>
               'origen_name': preciseOrigin.name,
               if (preciseOrigin.barrio != null)
                 'origen_barrio': preciseOrigin.barrio,
+              if (preciseOrigin.barrioId != null)
+                'origen_barrio_id': preciseOrigin.barrioId,
+              'origen_barrio_confirmado_por_usuario':
+                  preciseOrigin.barrioConfirmadoPorUsuario,
+              if (preciseOrigin.referencia != null)
+                'origen_referencia': preciseOrigin.referencia,
+              if (preciseOrigin.precisionGpsM != null)
+                'origen_precision_gps_m': preciseOrigin.precisionGpsM,
+              if (preciseOrigin.origenDelPin != null)
+                'origen_pin_origen': preciseOrigin.origenDelPin,
               'destino_lat': destination?.lat,
               'destino_lng': destination?.lng,
               'destino_address': destination?.address ?? 'Destino no definido',
+              if (destination?.barrio != null)
+                'destino_barrio': destination!.barrio,
+              if (destination?.referencia != null)
+                'destino_referencia': destination!.referencia,
               'precio_ofrecido': 0,
             },
           ),
@@ -2651,7 +2920,7 @@ class _HomePasajeroState extends State<HomePasajero>
       return;
     }
 
-    await _handleRideConfirmation();
+    await _confirmAndRequestRide();
   }
 
   void _showDriverSelectionToast(String message, {required bool isSelected}) {

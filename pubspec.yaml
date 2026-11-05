@@ -103,6 +103,7 @@ flutter:
     - assets/images/taxi.png
     - assets/images/carMarker.png
     - assets/sound/
+    - assets/geo/barrios_popayan.json
     - .env
 
 

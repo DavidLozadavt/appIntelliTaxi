@@ -6,6 +6,11 @@ class TripLocation {
   final double lng;
   final bool isCurrentLocation;
   final String? barrio;
+  final int? barrioId;
+  final bool barrioConfirmadoPorUsuario;
+  final String? referencia;
+  final double? precisionGpsM;
+  final String? origenDelPin;
 
   TripLocation({
     this.placeId,
@@ -15,6 +20,11 @@ class TripLocation {
     required this.lng,
     this.isCurrentLocation = false,
     this.barrio,
+    this.barrioId,
+    this.barrioConfirmadoPorUsuario = false,
+    this.referencia,
+    this.precisionGpsM,
+    this.origenDelPin,
   });
 
   factory TripLocation.currentLocation({
@@ -23,6 +33,11 @@ class TripLocation {
     String name = 'Mi ubicación',
     String address = 'Mi ubicación actual',
     String? barrio,
+    int? barrioId,
+    bool barrioConfirmadoPorUsuario = false,
+    String? referencia,
+    double? precisionGpsM,
+    String? origenDelPin,
   }) {
     return TripLocation(
       name: name,
@@ -31,6 +46,11 @@ class TripLocation {
       lng: lng,
       isCurrentLocation: true,
       barrio: barrio,
+      barrioId: barrioId,
+      barrioConfirmadoPorUsuario: barrioConfirmadoPorUsuario,
+      referencia: referencia,
+      precisionGpsM: precisionGpsM,
+      origenDelPin: origenDelPin,
     );
   }
 
@@ -41,6 +61,11 @@ class TripLocation {
     required double lat,
     required double lng,
     String? barrio,
+    int? barrioId,
+    bool barrioConfirmadoPorUsuario = false,
+    String? referencia,
+    double? precisionGpsM,
+    String? origenDelPin,
   }) {
     return TripLocation(
       placeId: placeId,
@@ -49,6 +74,11 @@ class TripLocation {
       lat: lat,
       lng: lng,
       barrio: barrio,
+      barrioId: barrioId,
+      barrioConfirmadoPorUsuario: barrioConfirmadoPorUsuario,
+      referencia: referencia,
+      precisionGpsM: precisionGpsM,
+      origenDelPin: origenDelPin,
     );
   }
 

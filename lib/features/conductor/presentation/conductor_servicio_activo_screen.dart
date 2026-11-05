@@ -1320,6 +1320,7 @@ class _ConductorServicioActivoScreenState
                           onChat: _abrirChatPasajero,
                           onAccionPrincipal: _onPanelAccionPrincipal,
                           onRechazar: _rechazarViajeActivo,
+                          onNavegarAlPin: _abrirNavegacion,
                           isLoading: _isLoading,
                         ),
                       ),

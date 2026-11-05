@@ -43,6 +43,9 @@ class PasajeroHomeRideSheet extends StatelessWidget {
     required this.onSaveFavoriteDestination,
     required this.editingPickup,
     required this.onEditPickup,
+    this.pickupPinPanel,
+    this.destinationPinPanel,
+    this.locatingGps = false,
     required this.ctaLabel,
     this.ctaTrailing,
     required this.onCtaPressed,
@@ -80,6 +83,9 @@ class PasajeroHomeRideSheet extends StatelessWidget {
   final Future<void> Function(String kind) onSaveFavoriteDestination;
   final bool editingPickup;
   final VoidCallback onEditPickup;
+  final Widget? pickupPinPanel;
+  final Widget? destinationPinPanel;
+  final bool locatingGps;
   final String ctaLabel;
   final String? ctaTrailing;
   final VoidCallback? onCtaPressed;
@@ -158,6 +164,13 @@ class PasajeroHomeRideSheet extends StatelessWidget {
         selectedType: serviceType,
         onTypeChanged: onServiceTypeChanged,
       ),
+      if (locatingGps) ...[
+        const SizedBox(height: 12),
+        const Text(
+          'Ubicando… espera un GPS de ≤ 30 m o mueve el pin a mano.',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ],
       const SizedBox(height: 16),
       if (editingPickup) ...[
         LocationSearchField(
@@ -199,9 +212,16 @@ class PasajeroHomeRideSheet extends StatelessWidget {
         const SizedBox(height: 10),
         _shortcutChipsRow(),
       ],
-      if (!editingPickup) ...[
+      if (pickupPinPanel != null) ...[
+        const SizedBox(height: 12),
+        pickupPinPanel!,
+      ] else if (!editingPickup) ...[
         const SizedBox(height: 12),
         _pickupCard(context),
+      ],
+      if (destinationPinPanel != null) ...[
+        const SizedBox(height: 12),
+        destinationPinPanel!,
       ],
       if (selectedDestination != null && routeInfo == null) ...[
         const SizedBox(height: 10),

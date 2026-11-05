@@ -24,6 +24,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     required this.onChat,
     required this.onAccionPrincipal,
     required this.onRechazar,
+    this.onNavegarAlPin,
     this.servicioId,
     this.isLoading = false,
   });
@@ -41,6 +42,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
   final VoidCallback onChat;
   final VoidCallback onAccionPrincipal;
   final VoidCallback onRechazar;
+  final VoidCallback? onNavegarAlPin;
   final int? servicioId;
   final bool isLoading;
 
@@ -153,6 +155,26 @@ class ConductorServicioBottomPanel extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (onNavegarAlPin != null) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onNavegarAlPin,
+                    icon: const Icon(Iconsax.routing_2, size: 20),
+                    label: const Text(
+                      'Navegar al pin',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               if (accion != null)
                 _BotonAccionPrincipal(
                   label: accion.label,
