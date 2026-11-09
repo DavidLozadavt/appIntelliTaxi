@@ -11,7 +11,6 @@ class ServicePin {
     this.resolve,
     this.elegido,
     this.confirmadoPorUsuario = false,
-    this.referencia = '',
   });
 
   double lat;
@@ -21,7 +20,6 @@ class ServicePin {
   BarrioResolveResult? resolve;
   Barrio? elegido;
   bool confirmadoPorUsuario;
-  String referencia;
 
   static const double gpsReadyMeters = 30;
 

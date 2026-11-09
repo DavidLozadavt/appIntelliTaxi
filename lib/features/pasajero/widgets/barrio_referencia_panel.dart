@@ -8,21 +8,14 @@ class BarrioReferenciaPanel extends StatelessWidget {
     super.key,
     required this.title,
     required this.pin,
-    required this.referenciaController,
-    required this.referenciaRequired,
     required this.onCambiarBarrio,
     required this.onElegirCandidato,
-    this.placeholder =
-        'Casa blanca, portón negro, frente a la droguería',
   });
 
   final String title;
   final ServicePin pin;
-  final TextEditingController referenciaController;
-  final bool referenciaRequired;
   final VoidCallback onCambiarBarrio;
   final ValueChanged<Barrio> onElegirCandidato;
-  final String placeholder;
 
   @override
   Widget build(BuildContext context) {
@@ -102,28 +95,6 @@ class BarrioReferenciaPanel extends StatelessWidget {
               onTap: () => onElegirCandidato(candidate),
             ),
         ],
-        const SizedBox(height: 8),
-        TextField(
-          controller: referenciaController,
-          maxLines: 2,
-          minLines: 1,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: InputDecoration(
-            labelText: referenciaRequired
-                ? 'Referencia (obligatoria)'
-                : 'Referencia (opcional)',
-            hintText: placeholder,
-            hintMaxLines: 2,
-            filled: true,
-            fillColor: isDark
-                ? Colors.white.withValues(alpha: 0.04)
-                : const Color(0xFFF7F7F7),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide.none,
-            ),
-          ),
-        ),
       ],
     );
   }

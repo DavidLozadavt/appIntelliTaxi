@@ -6,7 +6,11 @@ Future<bool> showPedidoResumenSheet({
   required BuildContext context,
   required String serviceType,
   required ServicePin pickup,
+  String? pickupLabel,
+  String? pickupAddress,
   ServicePin? destination,
+  String? destinationLabel,
+  String? destinationAddress,
   String? precioTexto,
 }) async {
   final ok = await showModalBottomSheet<bool>(
@@ -31,12 +35,20 @@ Future<bool> showPedidoResumenSheet({
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
-            _PinResumen(title: 'Recogida', pin: pickup, color: AppColors.green),
+            _PinResumen(
+              title: 'Recogida',
+              pin: pickup,
+              label: pickupLabel,
+              address: pickupAddress,
+              color: AppColors.green,
+            ),
             if (destination != null) ...[
               const SizedBox(height: 12),
               _PinResumen(
                 title: isTaxi ? 'Destino' : 'Entrega',
                 pin: destination,
+                label: destinationLabel,
+                address: destinationAddress,
                 color: AppColors.primary,
               ),
             ],
@@ -85,11 +97,15 @@ class _PinResumen extends StatelessWidget {
   const _PinResumen({
     required this.title,
     required this.pin,
+    this.label,
+    this.address,
     required this.color,
   });
 
   final String title;
   final ServicePin pin;
+  final String? label;
+  final String? address;
   final Color color;
 
   @override
@@ -112,14 +128,20 @@ class _PinResumen extends StatelessWidget {
                 ),
               ),
               Text(
-                pin.barrioNombre,
+                label?.trim().isNotEmpty == true ? label! : pin.barrioNombre,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
                 ),
               ),
-              if (pin.referencia.trim().isNotEmpty)
-                Text(pin.referencia.trim()),
+              if (address?.trim().isNotEmpty == true && address != label)
+                Text(
+                  address!,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                ),
             ],
           ),
         ),

@@ -10,11 +10,11 @@ enum PreciseGpsUse { pickup, navigation }
 
 /// Política única de GPS de máxima precisión (recogida + flota).
 ///
-/// En Android el proveedor fusionado (wifi/celda) suele devolver un punto
-/// a una cuadra con un radio de error mentiroso. El chip GPS
-/// (`forceLocationManager`) es el que cae sobre la misma puerta que
-/// el geocoder de WhatsApp. Además se descarta un fix peor si el
-/// teléfono no se movió fuera de su radio de error.
+/// En Android se usa el proveedor fusionado del sistema (GNSS, Wi-Fi y red),
+/// igual que las apps de mapas y mensajería. Forzar LocationManager deja fuera
+/// esas fuentes y puede empeorar el punto, sobre todo en interiores.
+/// Además se descarta un fix peor si el teléfono no se movió fuera de su radio
+/// de error.
 abstract final class PreciseGps {
   static const LocationAccuracy accuracy = LocationAccuracy.bestForNavigation;
 
@@ -114,9 +114,11 @@ abstract final class PreciseGps {
         distanceFilter: distanceFilter,
         intervalDuration: interval,
         timeLimit: timeLimit,
-        // Chip GPS, no el punto fusionado de wifi. Ese es el que queda
-        // a una cuadra mientras WhatsApp muestra la puerta correcta.
-        forceLocationManager: true,
+        // false conserva FusedLocationProvider: GNSS + Wi-Fi + red celular.
+        // No forzar LocationManager, que suele tardar más y pierde cobertura
+        // en interiores. La precisión reportada sigue validándose al recibir
+        // cada fix.
+        forceLocationManager: false,
       );
     }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {

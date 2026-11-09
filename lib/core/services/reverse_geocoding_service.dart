@@ -158,6 +158,27 @@ class ReverseGeocodingService {
     return weakArea;
   }
 
+  /// Barrio de Google Maps estrictamente cercano al pin.
+  ///
+  /// No usa el nombre que devuelve el proxy: el endpoint actual refleja las
+  /// coordenadas consultadas en `lat/lng`, así que esas coordenadas no sirven
+  /// para comprobar que el barrio esté alineado con el punto.
+  Future<String?> resolveNearbyGoogleAreaName({
+    required double lat,
+    required double lng,
+    double maxDistanceMeters = 500,
+  }) async {
+    final results = await _fetchGeocodeResults(lat: lat, lng: lng);
+    if (results == null || results.isEmpty) return null;
+
+    final nearby = results.where((result) {
+      final distance = _geocodeResultRawMeters(result, lat: lat, lng: lng);
+      return distance.isFinite && distance <= maxDistanceMeters;
+    }).toList();
+
+    return _extractAreaFromResults(nearby, lat: lat, lng: lng);
+  }
+
   /// Barrio ya resuelto más cercano al punto (dentro de [_areaLabelReuseMeters]).
   String? _nearestKnownAreaLabel(double lat, double lng) {
     String? best;

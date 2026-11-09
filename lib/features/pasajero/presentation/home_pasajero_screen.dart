@@ -41,20 +41,16 @@ import 'package:intellitaxi/features/pasajero/controllers/pasajero_places_search
 import 'package:intellitaxi/features/pasajero/controllers/pasajero_socket_offers_controller.dart';
 import 'package:intellitaxi/core/perf/runtime_perf_flags.dart';
 import 'package:intellitaxi/core/services/device_location_service.dart';
-import 'package:intellitaxi/core/services/gps_address_hold.dart';
 import 'package:intellitaxi/core/services/precise_gps.dart';
 import 'package:intellitaxi/core/geo/barrios/barrio.dart';
-import 'package:intellitaxi/core/geo/barrios/barrios_catalog.dart';
 import 'package:intellitaxi/core/geo/popayan_urban_area.dart';
 import 'package:intellitaxi/core/utils/safe_image_decode.dart';
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/pasajero/data/service_pin.dart';
 import 'package:intellitaxi/features/pasajero/services/barrios_api_service.dart';
-import 'package:intellitaxi/features/pasajero/widgets/barrio_referencia_panel.dart';
 import 'package:intellitaxi/features/pasajero/widgets/barrio_search_sheet.dart';
 import 'package:intellitaxi/features/pasajero/widgets/map_center_pin.dart';
 import 'package:intellitaxi/features/pasajero/widgets/pasajero_home_ride_sheet.dart';
-import 'package:intellitaxi/features/pasajero/widgets/pedido_resumen_sheet.dart';
 
 class HomePasajero extends StatefulWidget {
   final List<dynamic> stories;
@@ -77,7 +73,6 @@ class _HomePasajeroState extends State<HomePasajero>
   GoogleMapController? _mapController;
   Position? _currentPosition;
   Position? _rawGpsPosition;
-  final GpsAddressHold _gpsHold = GpsAddressHold();
   bool _isLoadingLocation = true;
   String _locationMessage =
       'Verificando tu ubicación actual con GPS de alta precisión...';
@@ -170,10 +165,18 @@ class _HomePasajeroState extends State<HomePasajero>
     lng: PopayanUrbanArea.centerLng,
   );
   ServicePin? _destPin;
-  final TextEditingController _pickupRefController = TextEditingController();
-  final TextEditingController _destRefController = TextEditingController();
   bool _mapMoving = false;
   bool _programmaticCamera = false;
+  int _programmaticCameraDepth = 0;
+  LatLng? _programmaticTarget;
+
+  /// `onCameraIdle` de un movimiento nuestro llega después de `animateCamera`.
+  /// Solo se ignora si la cámara sigue en el punto al que la mandamos.
+  DateTime _programmaticIdleUntil = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// El usuario eligió una dirección de recogida. Ni el GPS ni el encuadre
+  /// de la ruta pueden reemplazarla.
+  bool _namedPickupLocked = false;
   LatLng? _lastCameraTarget;
   Timer? _barrioDebounce;
 
@@ -203,12 +206,20 @@ class _HomePasajeroState extends State<HomePasajero>
 
   bool get _canRequestRide {
     if (!_hasOrigin || !_pickupPin.gpsListo) return false;
-    if (_pickupPin.necesitaElegirBarrio) return false;
-    if (_pickupRefController.text.trim().length < 6) return false;
-    if (_serviceType != 'taxi') {
-      return _hasDestination && _hasRoute && !(_destPin?.necesitaElegirBarrio ?? false);
+    if (!_pinCanContinue(_pickupPin)) {
+      return false;
     }
-    if (_destPin != null && _destPin!.necesitaElegirBarrio) return false;
+    if (_serviceType != 'taxi') {
+      return _hasDestination &&
+          _hasRoute &&
+          _pinCanContinue(_destPin);
+    }
+    return _pinCanContinue(_destPin);
+  }
+
+  bool _pinCanContinue(ServicePin? pin) {
+    if (pin == null) return true;
+    if (pin.necesitaElegirBarrio && !pin.barrioPorConfirmar) return false;
     return true;
   }
 
@@ -217,9 +228,6 @@ class _HomePasajeroState extends State<HomePasajero>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _placesSearch = PasajeroPlacesSearchController(placesService: _placesService);
-    unawaited(BarriosCatalog.instance());
-    _pickupRefController.addListener(_onPickupReferenciaChanged);
-    _destRefController.addListener(_onDestReferenciaChanged);
     _createUserMarkerIcon();
     unawaited(_nearbyDrivers.loadDriverMarkerIcon().then((_) {
       if (mounted) _setStateSafe(() {});
@@ -357,8 +365,6 @@ class _HomePasajeroState extends State<HomePasajero>
     _driverMarkersTicker?.dispose();
     _driversRefreshTimer?.cancel();
     _barrioDebounce?.cancel();
-    _pickupRefController.dispose();
-    _destRefController.dispose();
     _originController.dispose();
     _destinationController.dispose();
     _originFocusNode.dispose();
@@ -404,6 +410,7 @@ class _HomePasajeroState extends State<HomePasajero>
       if (origin != null) {
         _selectedOrigin = origin;
         _originEditedByUser = true;
+        _namedPickupLocked = !origin.isCurrentLocation;
         _originController.removeListener(_onOriginChanged);
         _originController.text = origin.name;
         _originController.addListener(_onOriginChanged);
@@ -426,7 +433,7 @@ class _HomePasajeroState extends State<HomePasajero>
     });
 
     if (_selectedOrigin != null) {
-      await _drawRoute(showLoadingSnack: false);
+      await _drawRoute();
     }
 
     if (mounted && _sheetController.isAttached) {
@@ -791,9 +798,10 @@ class _HomePasajeroState extends State<HomePasajero>
                   ),
                   onTap: _onMapTap,
                   onCameraMoveStarted: () {
-                    if (_programmaticCamera) return;
+                    if (_cameraOwnedByApp || _puntosBloqueados) return;
                     _setStateSafe(() {
                       _mapMoving = true;
+                      _namedPickupLocked = false;
                       _pickupPin.origen = PinOrigen.ajusteManual;
                       _originEditedByUser = true;
                     });
@@ -808,18 +816,23 @@ class _HomePasajeroState extends State<HomePasajero>
 
         if (_currentPosition != null)
           Positioned(
+            key: const ValueKey('center-pin'),
             top: 0,
             left: 0,
             right: 0,
             bottom: MediaQuery.sizeOf(context).height * _sheetMidSize,
             child: IgnorePointer(
-              child: Center(child: MapCenterPin(moving: _mapMoving)),
+              child: Opacity(
+                opacity: _showCenterPin ? 1 : 0,
+                child: Center(child: MapCenterPin(moving: _mapMoving)),
+              ),
             ),
           ),
 
         // Overlay del mapa: solo escucha el extent, sin rebuild del árbol completo.
         if (_currentPosition != null)
           Positioned.fill(
+            key: const ValueKey('map-dim'),
             child: IgnorePointer(
               child: ValueListenableBuilder<double>(
                 valueListenable: _sheetExtent,
@@ -840,6 +853,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
         if (_viajeActivoId != null)
           Positioned(
+            key: const ValueKey('active-trip'),
             top: MediaQuery.paddingOf(context).top + 8,
             left: 12,
             right: 12,
@@ -876,6 +890,7 @@ class _HomePasajeroState extends State<HomePasajero>
         // Bottom sheet de viaje: un solo scroll continuo (sin saltos de layout).
         if (_currentPosition != null)
           Positioned.fill(
+            key: const ValueKey('ride-sheet'),
             child: DraggableScrollableSheet(
               controller: _sheetController,
               initialChildSize: _sheetMidSize,
@@ -890,10 +905,6 @@ class _HomePasajeroState extends State<HomePasajero>
                 return PasajeroHomeRideSheet(
                   scrollController: scrollController,
                   serviceType: _serviceType,
-                  selectedOrigin: _selectedOrigin,
-                  selectedDestination: _selectedDestination,
-                  selectedDestinationArea: _selectedDestinationArea,
-                  routeInfo: _routeInfo,
                   pickupDisplayLabel: _pickupDisplayLabel,
                   pickupStreetDetail: _pickupOriginDetail,
                   originController: _originController,
@@ -904,10 +915,6 @@ class _HomePasajeroState extends State<HomePasajero>
                   destinationPredictions: _destinationPredictions,
                   isSearchingOrigin: _isSearchingOrigin,
                   isSearchingDestination: _isSearchingDestination,
-                  recentDestinations: _recentDestinations,
-                  favoriteHome: _favoriteHome,
-                  favoriteWork: _favoriteWork,
-                  destinationSummaryText: _destinationSummaryText,
                   onToggleSheet: _toggleSheet,
                   onServiceTypeChanged: (type) {
                     _setStateSafe(() {
@@ -930,35 +937,9 @@ class _HomePasajeroState extends State<HomePasajero>
                       _clearRoute();
                     });
                   },
-                  onRecentDestinationTap: _applyDestinationLocation,
-                  onSaveFavoriteDestination: _saveFavoriteDestination,
                   editingPickup: _editingPickup,
                   onEditPickup: _startEditingPickup,
                   locatingGps: !_pickupPin.gpsListo,
-                  pickupPinPanel: BarrioReferenciaPanel(
-                    title: 'RECOGIDA',
-                    pin: _pickupPin,
-                    referenciaController: _pickupRefController,
-                    referenciaRequired: true,
-                    onCambiarBarrio: () => unawaited(_cambiarBarrioPickup()),
-                    onElegirCandidato: _elegirBarrioPickup,
-                  ),
-                  destinationPinPanel: _selectedDestination == null
-                      ? null
-                      : BarrioReferenciaPanel(
-                          title: _serviceType == 'taxi' ? 'DESTINO' : 'ENTREGA',
-                          pin: _destPin ??
-                              ServicePin(
-                                lat: _selectedDestination!.lat,
-                                lng: _selectedDestination!.lng,
-                                origen: PinOrigen.ajusteManual,
-                              ),
-                          referenciaController: _destRefController,
-                          referenciaRequired: false,
-                          onCambiarBarrio: () =>
-                              unawaited(_cambiarBarrioDestino()),
-                          onElegirCandidato: _elegirBarrioDestino,
-                        ),
                   ctaLabel: cta.label,
                   ctaTrailing: cta.trailing,
                   onCtaPressed: cta.onPressed,
@@ -1082,9 +1063,18 @@ class _HomePasajeroState extends State<HomePasajero>
       _originPredictions = [];
       _isSearchingOrigin = false;
       _originEditedByUser = false;
+      _namedPickupLocked = false;
     });
     if (position != null) {
+      _selectedOrigin = null;
+      _pickupPin
+        ..lat = position.latitude
+        ..lng = position.longitude
+        ..origen = PinOrigen.gps
+        ..elegido = null
+        ..confirmadoPorUsuario = false;
       _applyOriginFromGps(position, markReady: true);
+      _schedulePickupBarrioResolve();
       unawaited(_refineOriginAddress(position));
     }
   }
@@ -1412,18 +1402,12 @@ class _HomePasajeroState extends State<HomePasajero>
 
       if (!mounted) return;
 
-      _applyOriginFromGps(_gpsHold.apply(position), markReady: true);
+      _applyOriginFromGps(position, markReady: true);
       _startGpsStream();
 
-      if (_mapController != null) {
-        _mapController!.animateCamera(
-          CameraUpdate.newCameraPosition(
-            _overheadCamera(
-              LatLng(position.latitude, position.longitude),
-            ),
-          ),
-        );
-      }
+      unawaited(
+        _animateCameraTo(position.latitude, position.longitude),
+      );
 
       unawaited(_loadAvailableDrivers(force: true));
       _startDriversRefreshTimer();
@@ -1447,9 +1431,32 @@ class _HomePasajeroState extends State<HomePasajero>
   /// El origen no debe ser tocado por el GPS: el usuario lo eligió
   /// manualmente o lo está escribiendo en el campo.
   bool get _originLockedByUser =>
+      _namedPickupLocked ||
       _editingPickup ||
       _originEditedByUser ||
       (_selectedOrigin != null && !_selectedOrigin!.isCurrentLocation);
+
+  bool get _cameraOwnedByApp => _programmaticCamera;
+
+  /// Recogida y destino ya elegidos: arrastrar el mapa solo lo mueve,
+  /// no cambia el marcador.
+  bool get _puntosBloqueados => _hasOrigin && _hasDestination;
+
+  /// El pin del centro solo sirve para colocar la recogida. Con una
+  /// dirección ya elegida, o con la ruta en pantalla, el punto queda en
+  /// su marcador y la cámara puede moverse sin llevárselo.
+  bool get _showCenterPin {
+    if (_puntosBloqueados) return false;
+    if (_mapMoving && !_cameraOwnedByApp) return true;
+    if (_routeInfo != null || _namedPickupLocked) return false;
+    final origin = _selectedOrigin;
+    if (_pickupPin.origen == PinOrigen.ajusteManual &&
+        origin != null &&
+        !origin.isCurrentLocation) {
+      return false;
+    }
+    return true;
+  }
 
   /// Mantiene la ubicación actualizándose sola mientras la app está abierta.
   void _startGpsStream() {
@@ -1488,7 +1495,7 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!mounted || _isDisposed) return;
     if (!PreciseGps.shouldAccept(position, _rawGpsPosition)) return;
     _rawGpsPosition = position;
-    final shown = _gpsHold.apply(position);
+    final shown = position;
 
     // La búsqueda de lugares se ordena por cercanía a este punto.
     _placesService.updateSearchContext(
@@ -1621,96 +1628,64 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _refineOriginAddress(Position position) async {
-    _gpsHold.markPending();
-    var absorbed = false;
     try {
-    final locationData = await _getAddressFromCoordinates(
-      position.latitude,
-      position.longitude,
-    );
-    if (!mounted) return;
-
-    absorbed = true;
-    final movedPin = _gpsHold.absorb(
-      position.latitude,
-      position.longitude,
-      locationData.anchorLat,
-      locationData.anchorLng,
-    );
-    final shown = _gpsHold.apply(position);
-    if (movedPin && _rawGpsPosition != null) {
-      final stillHere = Geolocator.distanceBetween(
+      final locationData = await _getAddressFromCoordinates(
         position.latitude,
         position.longitude,
-        _rawGpsPosition!.latitude,
-        _rawGpsPosition!.longitude,
       );
-      if (stillHere <= GpsAddressHold.releaseMeters) {
-        _applyOriginFromGps(_gpsHold.apply(_rawGpsPosition!), markReady: false);
-      }
-    }
+      if (!mounted) return;
 
-    final resolvedLabel = _passengerOriginLabelFrom(locationData);
-    final needsPoiLookup = resolvedLabel == 'Mi ubicación' ||
-        !SolicitudDisplayHelper.looksLikeStreetAddress(resolvedLabel);
+      final resolvedLabel = _passengerOriginLabelFrom(locationData);
+      final needsPoiLookup = resolvedLabel == 'Mi ubicación' ||
+          !SolicitudDisplayHelper.looksLikeStreetAddress(resolvedLabel);
 
-    PlaceResult? nearby;
-    if (needsPoiLookup) {
-      nearby = await _placesService.findNearestPlaceAt(
-        position.latitude,
-        position.longitude,
-        maxDistanceMeters: PreciseGps.maxPickupAccuracyMeters,
-      );
-    }
-
-    if (!mounted) return;
-
-    final poiName = nearby?.name.trim();
-    final usePoiName = poiName != null &&
-        poiName.isNotEmpty &&
-        !SolicitudDisplayHelper.looksLikeStreetAddress(poiName);
-
-    final lockOrigin = _originLockedByUser;
-    final pin = shown;
-
-    _setStateSafe(() {
-      _currentPosition = pin;
-      _currentLocationName = usePoiName
-          ? poiName
-          : _passengerOriginLabelFrom(locationData);
-      _currentLocationArea = locationData.area;
-      _currentLocationStreet = locationData.streetLine;
-      _currentLocationAddress = nearby?.address.trim().isNotEmpty == true
-          ? nearby!.address
-          : locationData.address;
-
-      // Con origen manual/escrito solo se refrescan las etiquetas GPS;
-      // el punto de recogida del usuario queda intacto.
-      if (!lockOrigin) {
-        _selectedOrigin = TripLocation(
-          placeId: nearby?.placeId,
-          name: _currentLocationName,
-          address: _currentLocationAddress,
-          lat: pin.latitude,
-          lng: pin.longitude,
-          isCurrentLocation: true,
-        );
-        _originController.removeListener(_onOriginChanged);
-        _originController.text = _currentLocationName;
-        _originController.addListener(_onOriginChanged);
-      }
-
-      _syncMarkersOnMap();
-    });
-    } finally {
-      if (!absorbed) {
-        _gpsHold.absorb(
+      PlaceResult? nearby;
+      if (needsPoiLookup) {
+        nearby = await _placesService.findNearestPlaceAt(
           position.latitude,
           position.longitude,
-          null,
-          null,
+          maxDistanceMeters: PreciseGps.maxPickupAccuracyMeters,
         );
       }
+      if (!mounted) return;
+
+      final poiName = nearby?.name.trim();
+      final usePoiName = poiName != null &&
+          poiName.isNotEmpty &&
+          !SolicitudDisplayHelper.looksLikeStreetAddress(poiName);
+
+      final lockOrigin = _originLockedByUser;
+      _setStateSafe(() {
+        // Geocoder y Places mejoran las etiquetas; el punto sigue siendo el
+        // GPS recibido, sin desplazarlo a las coordenadas de una vía cercana.
+        _currentPosition = position;
+        _currentLocationName = usePoiName
+            ? poiName
+            : _passengerOriginLabelFrom(locationData);
+        _currentLocationArea = locationData.area;
+        _currentLocationStreet = locationData.streetLine;
+        _currentLocationAddress = nearby?.address.trim().isNotEmpty == true
+            ? nearby!.address
+            : locationData.address;
+
+        if (!lockOrigin) {
+          _selectedOrigin = TripLocation(
+            placeId: nearby?.placeId,
+            name: _currentLocationName,
+            address: _currentLocationAddress,
+            lat: position.latitude,
+            lng: position.longitude,
+            isCurrentLocation: true,
+          );
+          _originController.removeListener(_onOriginChanged);
+          _originController.text = _currentLocationName;
+          _originController.addListener(_onOriginChanged);
+        }
+
+        _syncMarkersOnMap();
+      });
+    } catch (e) {
+      AppLogger.d('No se pudo refinar la etiqueta del origen: $e');
     }
   }
 
@@ -1760,6 +1735,7 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _onMapTap(LatLng latLng) async {
+    if (_buscandoPunto) return;
     await _setDestinationFromMap(latLng);
   }
 
@@ -1866,18 +1842,6 @@ class _HomePasajeroState extends State<HomePasajero>
       // onDragEnd: _onDestinationMarkerDragged,
       zIndexInt: 6,
     );
-  }
-
-  String _destinationSummaryText(TripLocation destination) {
-    final area = _selectedDestinationArea?.trim();
-    if (area != null && area.isNotEmpty) {
-      return '${destination.name} • Barrio: $area';
-    }
-    if (destination.address.trim().isNotEmpty &&
-        destination.address != destination.name) {
-      return '${destination.name} • ${destination.address}';
-    }
-    return destination.name;
   }
 
   String _destinationMarkerSnippet(TripLocation destination) {
@@ -2150,6 +2114,7 @@ class _HomePasajeroState extends State<HomePasajero>
   void _onOriginChanged() {
     if (!mounted) return;
     _originEditedByUser = true;
+    _hidePolyline();
     final query = _originController.text.trim();
     _placesSearch.clearSessionIfBothEmpty(
       originQuery: query,
@@ -2170,6 +2135,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
   void _onDestinationChanged() {
     if (!mounted) return;
+    _hidePolyline();
     final query = _destinationController.text.trim();
     _placesSearch.clearSessionIfBothEmpty(
       originQuery: _originController.text.trim(),
@@ -2191,13 +2157,14 @@ class _HomePasajeroState extends State<HomePasajero>
   Future<void> _selectOrigin(PlacePrediction prediction) async {
     // Remover listener temporalmente
     _originController.removeListener(_onOriginChanged);
+    _placesSearch.cancelOriginSearch();
 
     final details = await _placesSearch.resolvePlace(prediction);
 
     if (!mounted) return;
-    _originController.addListener(_onOriginChanged);
 
     if (details == null) {
+      _originController.addListener(_onOriginChanged);
       _setStateSafe(() {
         _originPredictions = [];
         _isSearchingOrigin = false;
@@ -2217,14 +2184,36 @@ class _HomePasajeroState extends State<HomePasajero>
       ..lat = details.lat
       ..lng = details.lng
       ..origen = PinOrigen.ajusteManual
+      ..resolve = null
+      ..elegido = null
       ..confirmadoPorUsuario = false;
+
+    final placeName = details.name.trim().isNotEmpty
+        ? details.name.trim()
+        : prediction.mainText;
+    final placeAddress = details.address.trim().isNotEmpty
+        ? details.address.trim()
+        : prediction.description;
+    _originController.text = placeName;
+    _originController.addListener(_onOriginChanged);
     _setStateSafe(() {
+      _selectedOrigin = TripLocation(
+        placeId: prediction.placeId,
+        name: placeName,
+        address: placeAddress,
+        lat: details.lat,
+        lng: details.lng,
+        isCurrentLocation: false,
+      );
+      _currentLocationName = placeName;
+      _currentLocationAddress = placeAddress;
       _originEditedByUser = true;
+      _namedPickupLocked = true;
       _originPredictions = [];
       _isSearchingOrigin = false;
       _editingPickup = false;
     });
-    _originController.addListener(_onOriginChanged);
+    _syncMarkersOnMap(force: true);
     unawaited(_animateCameraTo(details.lat, details.lng));
     unawaited(_resolvePickupBarrio());
     unawaited(_ajustarHojaParaSugerencias(false));
@@ -2237,13 +2226,14 @@ class _HomePasajeroState extends State<HomePasajero>
   Future<void> _selectDestination(PlacePrediction prediction) async {
     // Remover listener temporalmente
     _destinationController.removeListener(_onDestinationChanged);
+    _placesSearch.cancelDestinationSearch();
 
     final details = await _placesSearch.resolvePlace(prediction);
 
     if (!mounted) return;
-    _destinationController.addListener(_onDestinationChanged);
 
     if (details == null) {
+      _destinationController.addListener(_onDestinationChanged);
       _setStateSafe(() {
         _destinationPredictions = [];
         _isSearchingDestination = false;
@@ -2267,10 +2257,12 @@ class _HomePasajeroState extends State<HomePasajero>
       lng: details.lng,
     );
 
+    _destinationController.text = prediction.mainText;
+    _destinationController.addListener(_onDestinationChanged);
+
     _setStateSafe(() {
       _selectedDestination = destination;
       _selectedDestinationArea = null;
-      _destinationController.text = prediction.mainText;
       _destinationPredictions = [];
       _isSearchingDestination = false;
       _upsertDestinationMarker(destination);
@@ -2303,59 +2295,96 @@ class _HomePasajeroState extends State<HomePasajero>
     }
   }
 
-  Future<void> _drawRoute({bool showLoadingSnack = false}) async {
-    if (_selectedOrigin == null || _selectedDestination == null) return;
+  /// Sugerencias abiertas: el usuario todavía no eligió el punto.
+  bool get _eligiendoEnBusqueda =>
+      _isSearchingOrigin ||
+      _isSearchingDestination ||
+      _originPredictions.isNotEmpty ||
+      _destinationPredictions.isNotEmpty;
+
+  /// Hay un campo de búsqueda abierto: todavía no están elegidos los dos puntos.
+  bool get _buscandoPunto =>
+      _editingPickup ||
+      _eligiendoEnBusqueda ||
+      _originFocusNode.hasFocus ||
+      _destinationFocusNode.hasFocus;
+
+  Future<void> _drawRoute({bool fitCamera = true}) async {
+    final origin = _selectedOrigin;
+    final destination = _selectedDestination;
+    if (origin == null || destination == null || _eligiendoEnBusqueda) return;
+
+    final originLatLng = LatLng(origin.lat, origin.lng);
+    final destinationLatLng = LatLng(destination.lat, destination.lng);
 
     _setStateSafe(() => _isDrawingRoute = true);
 
     try {
-      final originLatLng = LatLng(_selectedOrigin!.lat, _selectedOrigin!.lng);
-      final destinationLatLng = LatLng(
-        _selectedDestination!.lat,
-        _selectedDestination!.lng,
-      );
-
       final routeInfo = await _routesService.getRoute(
         origin: originLatLng,
         destination: destinationLatLng,
       );
 
-      if (routeInfo != null && mounted) {
-        _setStateSafe(() {
-          _routeInfo = routeInfo;
-          _polylines = {
-            Polyline(
-              polylineId: const PolylineId('route'),
-              points: routeInfo.polylinePoints,
-              color: Colors.deepOrange,
-              width: 5,
-              startCap: Cap.roundCap,
-              endCap: Cap.roundCap,
-              jointType: JointType.round,
-            ),
-          };
-        });
+      if (!mounted || _eligiendoEnBusqueda) return;
+      if (_selectedOrigin != origin || _selectedDestination != destination) {
+        return;
+      }
+      final drawn = routeInfo != null && routeInfo.polylinePoints.length >= 2
+          ? routeInfo
+          : _straightRoute(originLatLng, destinationLatLng);
+      _setStateSafe(() {
+        _routeInfo = drawn;
+        _polylines = {_routePolyline(drawn.polylinePoints)};
+      });
 
-        _syncMarkersOnMap();
-        _fitCameraToBounds(routeInfo.polylinePoints);
-
+      _syncMarkersOnMap(force: true);
+      if (fitCamera) {
+        unawaited(_fitCameraToBounds(drawn.polylinePoints));
         FocusScope.of(context).unfocus();
         if (_isExpanded) {
           unawaited(_minimizeSheet());
         }
-      } else if (mounted && showLoadingSnack) {
-        _scaffoldMessenger?.showSnackBar(
-          const SnackBar(
-            content: Text('No se pudo calcular la ruta'),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     } finally {
       if (mounted) {
         _setStateSafe(() => _isDrawingRoute = false);
       }
     }
+  }
+
+  Polyline _routePolyline(List<LatLng> points) {
+    return Polyline(
+      polylineId: const PolylineId('route'),
+      points: points,
+      color: Colors.deepOrange,
+      width: 5,
+      geodesic: true,
+      startCap: Cap.roundCap,
+      endCap: Cap.roundCap,
+      jointType: JointType.round,
+    );
+  }
+
+  /// Línea entre los dos puntos. Se pinta al instante y se reemplaza si
+  /// el servicio de rutas responde.
+  RouteInfo _straightRoute(LatLng origin, LatLng destination) {
+    final meters = Geolocator.distanceBetween(
+      origin.latitude,
+      origin.longitude,
+      destination.latitude,
+      destination.longitude,
+    );
+    final km = meters / 1000;
+    final minutes = (meters / 500).ceil().clamp(1, 180);
+    return RouteInfo(
+      polylinePoints: [origin, destination],
+      distance: km >= 1 ? '${km.toStringAsFixed(1)} km' : '${meters.round()} m',
+      distanceValue: meters.round(),
+      duration: '$minutes min',
+      durationValue: minutes * 60,
+      startAddress: '',
+      endAddress: '',
+    );
   }
 
   CameraPosition _overheadCamera(LatLng target, {double? zoom}) {
@@ -2367,8 +2396,9 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
-  void _fitCameraToBounds(List<LatLng> points) {
-    if (_mapController == null || points.isEmpty) return;
+  Future<void> _fitCameraToBounds(List<LatLng> points) async {
+    final controller = _mapController;
+    if (controller == null || points.isEmpty) return;
 
     double minLat = points.first.latitude;
     double maxLat = points.first.latitude;
@@ -2387,16 +2417,28 @@ class _HomePasajeroState extends State<HomePasajero>
       northeast: LatLng(maxLat, maxLng),
     );
 
-    _mapController!.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
-    // Tras encuadrar la ruta, volver a vista plana (sin tilt 3D).
-    Future.delayed(const Duration(milliseconds: 450), () {
+    final center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+    _beginProgrammaticCamera(center);
+    try {
+      await controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
+      await Future<void>.delayed(const Duration(milliseconds: 480));
       if (!mounted || _mapController == null) return;
-      final center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
-      _mapController!.animateCamera(
+      await _mapController!.animateCamera(
         CameraUpdate.newCameraPosition(
           _overheadCamera(center, zoom: 15.5),
         ),
       );
+    } catch (_) {
+    } finally {
+      _endProgrammaticCamera();
+    }
+  }
+
+  void _hidePolyline() {
+    if (_polylines.isEmpty && _routeInfo == null) return;
+    _setStateSafe(() {
+      _routeInfo = null;
+      _polylines = {};
     });
   }
 
@@ -2409,51 +2451,32 @@ class _HomePasajeroState extends State<HomePasajero>
       _selectedDestinationArea = null;
       _destinationController.clear();
     });
+    _syncMarkersOnMap(force: true);
 
-    if (_currentPosition != null) {
+    if (_pickupPin.origen == PinOrigen.gps && _currentPosition != null) {
       _centerToCurrentLocation();
     }
   }
 
   void _centerToCurrentLocation() {
-    if (_mapController != null && _currentPosition != null) {
-      _mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          _overheadCamera(
-            LatLng(
-              _currentPosition!.latitude,
-              _currentPosition!.longitude,
-            ),
-          ),
-        ),
-      );
-    }
-  }
-
-  void _onPickupReferenciaChanged() {
-    _pickupPin.referencia = _pickupRefController.text;
-    _syncOriginFromPickupPin();
-  }
-
-  void _onDestReferenciaChanged() {
-    _destPin?.referencia = _destRefController.text;
+    final position = _currentPosition;
+    if (position == null) return;
+    unawaited(_animateCameraTo(position.latitude, position.longitude));
   }
 
   TripLocation _tripFromPickupPin({double? lat, double? lng}) {
     final pinLat = lat ?? _pickupPin.lat;
     final pinLng = lng ?? _pickupPin.lng;
     final barrio = _pickupPin.barrioEfectivo;
-    final ref = _pickupRefController.text.trim();
     return TripLocation(
       name: _pickupPin.barrioNombre,
-      address: ref.isNotEmpty ? ref : _pickupPin.barrioNombre,
+      address: _pickupPin.barrioNombre,
       lat: pinLat,
       lng: pinLng,
       isCurrentLocation: _pickupPin.origen == PinOrigen.gps,
       barrio: barrio?.nombre,
-      barrioId: barrio?.id,
+      barrioId: barrio != null && barrio.id > 0 ? barrio.id : null,
       barrioConfirmadoPorUsuario: _pickupPin.confirmadoPorUsuario,
-      referencia: ref.isEmpty ? null : ref,
       precisionGpsM: _pickupPin.precisionGpsM,
       origenDelPin: _pickupPin.origenDelPinKey,
     );
@@ -2461,9 +2484,33 @@ class _HomePasajeroState extends State<HomePasajero>
 
   void _syncOriginFromPickupPin() {
     if (!mounted) return;
-    _selectedOrigin = _tripFromPickupPin();
-    _currentLocationName = _pickupPin.barrioNombre;
-    _currentLocationArea = _pickupPin.barrioEfectivo?.nombre;
+    final previous = _selectedOrigin;
+    final selectedPlace = _namedPickupLocked &&
+        _pickupPin.origen == PinOrigen.ajusteManual &&
+        previous != null &&
+        !previous.isCurrentLocation;
+    final barrio = _pickupPin.barrioEfectivo;
+    final name = selectedPlace
+        ? previous.name
+        : (barrio?.nombre ?? 'Punto seleccionado en el mapa');
+    final address = selectedPlace ? previous.address : name;
+
+    _selectedOrigin = TripLocation(
+      placeId: selectedPlace ? previous.placeId : null,
+      name: name,
+      address: address,
+      lat: _pickupPin.lat,
+      lng: _pickupPin.lng,
+      isCurrentLocation: _pickupPin.origen == PinOrigen.gps,
+      barrio: barrio?.nombre,
+      barrioId: barrio != null && barrio.id > 0 ? barrio.id : null,
+      barrioConfirmadoPorUsuario: _pickupPin.confirmadoPorUsuario,
+      precisionGpsM: _pickupPin.precisionGpsM,
+      origenDelPin: _pickupPin.origenDelPinKey,
+    );
+    _currentLocationName = name;
+    _currentLocationArea = barrio?.nombre;
+    if (selectedPlace) _currentLocationAddress = address;
   }
 
   void _schedulePickupBarrioResolve() {
@@ -2497,19 +2544,56 @@ class _HomePasajeroState extends State<HomePasajero>
         ..origen = PinOrigen.ajusteManual
         ..resolve = result
         ..elegido = result.kind == BarrioResolveKind.inside ? result.match : null
-        ..confirmadoPorUsuario = result.kind == BarrioResolveKind.inside;
+        ..confirmadoPorUsuario = false;
     });
+  }
+
+  void _beginProgrammaticCamera(LatLng target) {
+    _programmaticCameraDepth++;
+    _programmaticCamera = true;
+    _programmaticTarget = target;
+    _programmaticIdleUntil =
+        DateTime.now().add(const Duration(milliseconds: 1200));
+  }
+
+  void _endProgrammaticCamera() {
+    if (_programmaticCameraDepth > 0) _programmaticCameraDepth--;
+    if (_programmaticCameraDepth == 0) {
+      _programmaticCamera = false;
+      _programmaticIdleUntil =
+          DateTime.now().add(const Duration(milliseconds: 800));
+    }
+  }
+
+  /// El idle que llega al terminar un movimiento nuestro no es un pin nuevo.
+  /// Si el usuario ya arrastró el mapa, la cámara no está en ese punto y sí
+  /// se toma como recogida manual.
+  bool _idleBelongsToProgrammaticMove(LatLng target) {
+    if (_programmaticCamera) return true;
+    final programmed = _programmaticTarget;
+    if (programmed == null ||
+        !DateTime.now().isBefore(_programmaticIdleUntil)) {
+      return false;
+    }
+    return Geolocator.distanceBetween(
+          target.latitude,
+          target.longitude,
+          programmed.latitude,
+          programmed.longitude,
+        ) <
+        25;
   }
 
   Future<void> _animateCameraTo(double lat, double lng) async {
     final controller = _mapController;
     if (controller == null) return;
-    _programmaticCamera = true;
+    final target = LatLng(lat, lng);
+    _beginProgrammaticCamera(target);
     try {
       await controller.animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
-            target: LatLng(lat, lng),
+            target: target,
             zoom: _mapZoomPasajero,
             tilt: _mapTiltPasajero,
             bearing: _mapBearingPasajero,
@@ -2518,31 +2602,39 @@ class _HomePasajeroState extends State<HomePasajero>
       );
     } catch (_) {
     } finally {
-      _programmaticCamera = false;
+      _endProgrammaticCamera();
     }
   }
 
   Future<void> _onPickupCameraIdle() async {
-    if (_programmaticCamera) {
+    if (_puntosBloqueados) {
       _setStateSafe(() => _mapMoving = false);
       return;
     }
     final target = _lastCameraTarget;
+    if (target != null && _idleBelongsToProgrammaticMove(target)) {
+      _setStateSafe(() => _mapMoving = false);
+      return;
+    }
     if (target == null) {
       _setStateSafe(() => _mapMoving = false);
       return;
     }
     if (!mounted) return;
+    _namedPickupLocked = false;
     _pickupPin
       ..lat = target.latitude
       ..lng = target.longitude
       ..origen = PinOrigen.ajusteManual
+      ..resolve = null
+      ..elegido = null
       ..confirmadoPorUsuario = false;
     _setStateSafe(() {
       _mapMoving = false;
       _originEditedByUser = true;
       _syncOriginFromPickupPin();
     });
+    _syncMarkersOnMap(force: true);
     _schedulePickupBarrioResolve();
   }
 
@@ -2609,22 +2701,13 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!_canRequestRide) {
       final reason = !_pickupPin.gpsListo
           ? 'Espera a que el GPS baje de 30 m o mueve el pin a mano.'
-          : _pickupPin.necesitaElegirBarrio
-              ? 'Elige el barrio de recogida. No adivinamos el límite.'
-              : _pickupRefController.text.trim().length < 6
-                  ? 'Escribe una referencia (casa, portón, frente a…).'
+          : _pickupPin.necesitaElegirBarrio &&
+                  !_pickupPin.barrioPorConfirmar
+                  ? 'Elige el barrio de recogida para continuar.'
                   : 'Completa destino y barrio para continuar.';
       _scaffoldMessenger?.showSnackBar(SnackBar(content: Text(reason)));
       return;
     }
-    final confirmed = await showPedidoResumenSheet(
-      context: context,
-      serviceType: _serviceType,
-      pickup: _pickupPin,
-      destination: _destPin,
-      precioTexto: _routeInfo?.duration,
-    );
-    if (!confirmed || !mounted) return;
     await _handleRideConfirmation();
   }
 
@@ -2655,17 +2738,33 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
-  /// Recogida = pin (lat/lng) + barrio de polígono + referencia.
+  /// Recogida = pin (lat/lng) + barrio detectado o pendiente de confirmar.
   /// No se geocodifica calle: en Popayán esa nomenclatura no se usa.
   Future<TripLocation> _originForRequest(TripLocation origin) async {
-    _pickupPin.referencia = _pickupRefController.text.trim();
     final pin = _tripFromPickupPin();
+    final chosenPlace = _pickupPin.origen == PinOrigen.ajusteManual &&
+        !origin.isCurrentLocation;
+    final requestOrigin = chosenPlace
+        ? TripLocation(
+            placeId: origin.placeId,
+            name: origin.name,
+            address: origin.address,
+            lat: pin.lat,
+            lng: pin.lng,
+            isCurrentLocation: false,
+            barrio: pin.barrio,
+            barrioId: pin.barrioId,
+            barrioConfirmadoPorUsuario: pin.barrioConfirmadoPorUsuario,
+            precisionGpsM: pin.precisionGpsM,
+            origenDelPin: pin.origenDelPin,
+          )
+        : pin;
     _setStateSafe(() {
-      _selectedOrigin = pin;
-      _currentLocationArea = pin.barrio;
-      _currentLocationName = pin.name;
+      _selectedOrigin = requestOrigin;
+      _currentLocationArea = requestOrigin.barrio;
+      _currentLocationName = requestOrigin.name;
     });
-    return pin;
+    return requestOrigin;
   }
 
   Future<void> _handleRideConfirmation() async {
@@ -2725,17 +2824,17 @@ class _HomePasajeroState extends State<HomePasajero>
       final preciseOrigin = await _originForRequest(origin);
       final destPin = _destPin;
       if (destination != null && destPin != null) {
-        final ref = _destRefController.text.trim();
         destination = TripLocation(
           placeId: destination.placeId,
           name: destPin.barrioNombre,
-          address: ref.isNotEmpty ? ref : destPin.barrioNombre,
+          address: destPin.barrioNombre,
           lat: destination.lat,
           lng: destination.lng,
           barrio: destPin.barrioEfectivo?.nombre,
-          barrioId: destPin.barrioEfectivo?.id,
+          barrioId: (destPin.barrioEfectivo?.id ?? 0) > 0
+              ? destPin.barrioEfectivo!.id
+              : null,
           barrioConfirmadoPorUsuario: destPin.confirmadoPorUsuario,
-          referencia: ref.isEmpty ? null : ref,
           origenDelPin: destPin.origenDelPinKey,
         );
       }
@@ -2795,8 +2894,6 @@ class _HomePasajeroState extends State<HomePasajero>
                 'origen_barrio_id': preciseOrigin.barrioId,
               'origen_barrio_confirmado_por_usuario':
                   preciseOrigin.barrioConfirmadoPorUsuario,
-              if (preciseOrigin.referencia != null)
-                'origen_referencia': preciseOrigin.referencia,
               if (preciseOrigin.precisionGpsM != null)
                 'origen_precision_gps_m': preciseOrigin.precisionGpsM,
               if (preciseOrigin.origenDelPin != null)
@@ -2806,8 +2903,6 @@ class _HomePasajeroState extends State<HomePasajero>
               'destino_address': destination?.address ?? 'Destino no definido',
               if (destination?.barrio != null)
                 'destino_barrio': destination!.barrio,
-              if (destination?.referencia != null)
-                'destino_referencia': destination!.referencia,
               'precio_ofrecido': 0,
             },
           ),

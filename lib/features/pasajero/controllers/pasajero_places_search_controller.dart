@@ -23,6 +23,16 @@ class PasajeroPlacesSearchController {
     _destinationDebounce?.cancel();
   }
 
+  void cancelOriginSearch() {
+    _originDebounce?.cancel();
+    _originRequestId++;
+  }
+
+  void cancelDestinationSearch() {
+    _destinationDebounce?.cancel();
+    _destinationRequestId++;
+  }
+
   void clearSessionIfBothEmpty({
     required String originQuery,
     required String destinationQuery,
