@@ -2464,6 +2464,62 @@ class _HomePasajeroState extends State<HomePasajero>
     unawaited(_animateCameraTo(position.latitude, position.longitude));
   }
 
+  static const _etiquetasGenericas = {
+    'punto seleccionado en el mapa',
+    'barrio por confirmar',
+    'mi ubicación',
+    'mi ubicación actual',
+    'escribe tu dirección',
+    'ingresa la recogida manualmente',
+  };
+
+  /// Nombre que el usuario eligió. Los textos de relleno no sirven en el panel.
+  String? _etiquetaElegida(String? value) {
+    final texto = value?.trim() ?? '';
+    if (texto.isEmpty) return null;
+    if (_etiquetasGenericas.contains(texto.toLowerCase())) return null;
+    return texto;
+  }
+
+  String _primeraEtiqueta(List<String?> candidatas, String respaldo) {
+    for (final candidata in candidatas) {
+      final elegida = _etiquetaElegida(candidata);
+      if (elegida != null) return elegida;
+    }
+    return respaldo;
+  }
+
+  TripLocation _ubicacionParaPedido(
+    TripLocation loc, {
+    String? textoCampo,
+    ServicePin? pin,
+  }) {
+    final barrioPin = pin?.barrioEfectivo;
+    final name = _primeraEtiqueta(
+      [loc.name, textoCampo, loc.address, barrioPin?.nombre],
+      loc.name,
+    );
+    final address = _primeraEtiqueta(
+      [loc.address, textoCampo, loc.name],
+      name,
+    );
+    return TripLocation(
+      placeId: loc.placeId,
+      name: name,
+      address: address,
+      lat: pin?.lat ?? loc.lat,
+      lng: pin?.lng ?? loc.lng,
+      isCurrentLocation: loc.isCurrentLocation,
+      barrio: _etiquetaElegida(loc.barrio) ?? barrioPin?.nombre,
+      barrioId: loc.barrioId ??
+          (barrioPin != null && barrioPin.id > 0 ? barrioPin.id : null),
+      barrioConfirmadoPorUsuario:
+          loc.barrioConfirmadoPorUsuario || (pin?.confirmadoPorUsuario ?? false),
+      precisionGpsM: loc.precisionGpsM ?? pin?.precisionGpsM,
+      origenDelPin: loc.origenDelPin ?? pin?.origenDelPinKey,
+    );
+  }
+
   TripLocation _tripFromPickupPin({double? lat, double? lng}) {
     final pinLat = lat ?? _pickupPin.lat;
     final pinLng = lng ?? _pickupPin.lng;
@@ -2485,10 +2541,19 @@ class _HomePasajeroState extends State<HomePasajero>
   void _syncOriginFromPickupPin() {
     if (!mounted) return;
     final previous = _selectedOrigin;
-    final selectedPlace = _namedPickupLocked &&
-        _pickupPin.origen == PinOrigen.ajusteManual &&
-        previous != null &&
-        !previous.isCurrentLocation;
+    final moved = previous == null
+        ? true
+        : Geolocator.distanceBetween(
+              previous.lat,
+              previous.lng,
+              _pickupPin.lat,
+              _pickupPin.lng,
+            ) >
+            40;
+    final selectedPlace = previous != null &&
+        !previous.isCurrentLocation &&
+        !moved &&
+        _etiquetaElegida(previous.name) != null;
     final barrio = _pickupPin.barrioEfectivo;
     final name = selectedPlace
         ? previous.name
@@ -2738,27 +2803,13 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
-  /// Recogida = pin (lat/lng) + barrio detectado o pendiente de confirmar.
-  /// No se geocodifica calle: en Popayán esa nomenclatura no se usa.
+  /// Recogida = el lugar que eligió el pasajero, con el barrio aparte.
   Future<TripLocation> _originForRequest(TripLocation origin) async {
-    final pin = _tripFromPickupPin();
-    final chosenPlace = _pickupPin.origen == PinOrigen.ajusteManual &&
-        !origin.isCurrentLocation;
-    final requestOrigin = chosenPlace
-        ? TripLocation(
-            placeId: origin.placeId,
-            name: origin.name,
-            address: origin.address,
-            lat: pin.lat,
-            lng: pin.lng,
-            isCurrentLocation: false,
-            barrio: pin.barrio,
-            barrioId: pin.barrioId,
-            barrioConfirmadoPorUsuario: pin.barrioConfirmadoPorUsuario,
-            precisionGpsM: pin.precisionGpsM,
-            origenDelPin: pin.origenDelPin,
-          )
-        : pin;
+    final requestOrigin = _ubicacionParaPedido(
+      origin,
+      textoCampo: _originController.text,
+      pin: _pickupPin,
+    );
     _setStateSafe(() {
       _selectedOrigin = requestOrigin;
       _currentLocationArea = requestOrigin.barrio;
@@ -2822,20 +2873,11 @@ class _HomePasajeroState extends State<HomePasajero>
 
     try {
       final preciseOrigin = await _originForRequest(origin);
-      final destPin = _destPin;
-      if (destination != null && destPin != null) {
-        destination = TripLocation(
-          placeId: destination.placeId,
-          name: destPin.barrioNombre,
-          address: destPin.barrioNombre,
-          lat: destination.lat,
-          lng: destination.lng,
-          barrio: destPin.barrioEfectivo?.nombre,
-          barrioId: (destPin.barrioEfectivo?.id ?? 0) > 0
-              ? destPin.barrioEfectivo!.id
-              : null,
-          barrioConfirmadoPorUsuario: destPin.confirmadoPorUsuario,
-          origenDelPin: destPin.origenDelPinKey,
+      if (destination != null) {
+        destination = _ubicacionParaPedido(
+          destination,
+          textoCampo: _destinationController.text,
+          pin: _destPin,
         );
       }
 
