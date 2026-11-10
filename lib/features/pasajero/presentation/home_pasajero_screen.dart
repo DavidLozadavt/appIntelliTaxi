@@ -216,7 +216,7 @@ class _HomePasajeroState extends State<HomePasajero>
           _hasRoute &&
           _pinCanContinue(_destPin);
     }
-    return _pinCanContinue(_destPin);
+    return true;
   }
 
   bool _pinCanContinue(ServicePin? pin) {
@@ -394,47 +394,55 @@ class _HomePasajeroState extends State<HomePasajero>
 
     final originRaw = pending['origen'];
     final destinationRaw = pending['destino'];
-    if (originRaw is! Map || destinationRaw is! Map) {
+    if (originRaw is! Map) {
       RepeatTripService.instance.clearPending();
       return;
     }
 
     final origin = _tripLocationFromMap(Map<String, dynamic>.from(originRaw));
-    final destination = _tripLocationFromMap(
-      Map<String, dynamic>.from(destinationRaw),
-    );
-    if (destination == null) {
+    if (origin == null) {
       RepeatTripService.instance.clearPending();
       return;
     }
 
+    // El taxi solo usa el punto de recogida. El destino queda para domicilio.
+    TripLocation? destination;
+    if (_serviceType != 'taxi' && destinationRaw is Map) {
+      destination = _tripLocationFromMap(
+        Map<String, dynamic>.from(destinationRaw),
+      );
+    }
+
     _setStateSafe(() {
-      if (origin != null) {
-        _selectedOrigin = origin;
-        _originEditedByUser = true;
-        _namedPickupLocked = !origin.isCurrentLocation;
-        _originController.removeListener(_onOriginChanged);
-        _originController.text = origin.name;
-        _originController.addListener(_onOriginChanged);
+      _selectedOrigin = origin;
+      _originEditedByUser = true;
+      _namedPickupLocked = !origin.isCurrentLocation;
+      _originController.removeListener(_onOriginChanged);
+      _originController.text = origin.name;
+      _originController.addListener(_onOriginChanged);
+      if (destination != null) {
+        _selectedDestination = destination;
+        _selectedDestinationArea = null;
+        _destinationController.text = destination.name;
+        _destinationPredictions = [];
+        _isSearchingDestination = false;
+        _upsertDestinationMarker(destination);
       }
-      _selectedDestination = destination;
-      _selectedDestinationArea = null;
-      _destinationController.text = destination.name;
-      _destinationPredictions = [];
-      _isSearchingDestination = false;
-      _upsertDestinationMarker(destination);
     });
 
     _updateAllDriverMarkers();
-    await _saveRecentDestination(destination);
-    final area = await _resolveDestinationArea(destination);
-    if (!mounted || _selectedDestination != destination) return;
-    _setStateSafe(() {
-      _selectedDestinationArea = area;
-      _upsertDestinationMarker(destination);
-    });
+    if (destination != null) {
+      final destino = destination;
+      await _saveRecentDestination(destino);
+      final area = await _resolveDestinationArea(destino);
+      if (!mounted || _selectedDestination != destino) return;
+      _setStateSafe(() {
+        _selectedDestinationArea = area;
+        _upsertDestinationMarker(destino);
+      });
+    }
 
-    if (_selectedOrigin != null) {
+    if (_selectedOrigin != null && destination != null) {
       await _drawRoute();
     }
 
@@ -1721,7 +1729,7 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!mounted) return;
     await Future.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
-    if (focusDestination && !_editingPickup) {
+    if (focusDestination && !_editingPickup && _serviceType != 'taxi') {
       _destinationFocusNode.requestFocus();
     }
   }
@@ -1737,7 +1745,7 @@ class _HomePasajeroState extends State<HomePasajero>
   }
 
   Future<void> _onMapTap(LatLng latLng) async {
-    if (_buscandoPunto) return;
+    if (_buscandoPunto || _serviceType == 'taxi') return;
     await _setDestinationFromMap(latLng);
   }
 
@@ -2823,10 +2831,12 @@ class _HomePasajeroState extends State<HomePasajero>
     if (!_canRequestRide) {
       final reason = !_pickupPin.gpsListo
           ? 'Espera a que el GPS baje de 30 m o mueve el pin a mano.'
-          : _pickupPin.necesitaElegirBarrio &&
+                  : _pickupPin.necesitaElegirBarrio &&
                   !_pickupPin.barrioPorConfirmar
                   ? 'Elige el barrio de recogida para continuar.'
-                  : 'Completa destino y barrio para continuar.';
+                  : (_serviceType == 'taxi'
+                      ? 'Confirma el punto de recogida para continuar.'
+                      : 'Completa destino y barrio para continuar.');
       _scaffoldMessenger?.showSnackBar(SnackBar(content: Text(reason)));
       return;
     }
@@ -2880,7 +2890,7 @@ class _HomePasajeroState extends State<HomePasajero>
 
     final isDelivery = _serviceType == 'domicilio';
     final origin = _selectedOrigin;
-    var destination = _selectedDestination;
+    var destination = isDelivery ? _selectedDestination : null;
     final route = _routeInfo;
     final pasajeroId =
         Provider.of<AuthProvider>(context, listen: false).idPersona ?? 0;

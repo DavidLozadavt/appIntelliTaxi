@@ -27,6 +27,8 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     this.onNavegarAlPin,
     this.servicioId,
     this.isLoading = false,
+    this.scrollController,
+    this.topInset = 0,
   });
 
   final Map<String, dynamic> servicio;
@@ -45,6 +47,8 @@ class ConductorServicioBottomPanel extends StatelessWidget {
   final VoidCallback? onNavegarAlPin;
   final int? servicioId;
   final bool isLoading;
+  final ScrollController? scrollController;
+  final double topInset;
 
   @override
   Widget build(BuildContext context) {
@@ -52,178 +56,203 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     final enCurso = estadoUi == 'en_curso';
     final llegue = estadoUi == 'llegue';
     final soloDestino = enCurso || llegue;
-    final recogidaActiva = !soloDestino;
 
-    final etiquetaEstado = enCurso
-        ? (SolicitudDisplayHelper.hasDestination(servicio)
-            ? 'VIAJE EN CURSO'
-            : 'DIRIGIÉNDOSE AL LUGAR DEL USUARIO')
-        : (llegue
-            ? (SolicitudDisplayHelper.hasDestination(servicio)
-                ? 'ESPERANDO PASAJERO'
-                : 'DIRIGIÉNDOSE AL LUGAR DEL USUARIO')
-            : null);
-
-    final recogidaHeadline =
-        SolicitudDisplayHelper.pickupHeadline(servicio);
-    final destinoHeadline = SolicitudDisplayHelper.hasDestination(servicio)
-        ? SolicitudDisplayHelper.destinationHeadline(servicio)
-        : '';
-    final detalleRecogida =
-        SolicitudDisplayHelper.pickupDetailForDriver(servicio);
-    final subtituloRecogida = detalleRecogida.trim().isNotEmpty
-        ? detalleRecogida
-        : SolicitudDisplayHelper.pickupSubtitle(servicio);
-    final subtituloDestino =
-        SolicitudDisplayHelper.destinationSubtitle(servicio);
+    final recogidaClara =
+        SolicitudDisplayHelper.direccionClara(servicio, destino: false);
+    final destinoClara = SolicitudDisplayHelper.hasDestination(servicio)
+        ? SolicitudDisplayHelper.direccionClara(servicio, destino: true)
+        : (principal: '', detalle: '');
+    final recogidaHeadline = recogidaClara.principal;
+    final destinoHeadline = destinoClara.principal;
+    final subtituloRecogida = recogidaClara.detalle;
+    final subtituloDestino = destinoClara.detalle;
 
     final telefono = telefonoPasajero?.trim() ?? '';
     final canalOrigen =
         SolicitudDisplayHelper.etiquetaOrigenServicio(servicio);
     final accion = _accionPrincipal(estadoUi);
     final muestraDestino = SolicitudDisplayHelper.hasDestination(servicio);
-    final tieneContenidoRuta =
-        !soloDestino || (muestraDestino && destinoHeadline.isNotEmpty);
+    final tieneContenidoRuta = recogidaHeadline.trim().isNotEmpty ||
+        (muestraDestino && destinoHeadline.isNotEmpty);
 
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _EstadoYOrigenBar(
-                  etiquetaEstado: etiquetaEstado,
-                  etiquetaOrigen: etiquetaOrigen,
-                  esGestionadoPorIa: esGestionadoPorIa,
-                  soloDestino: soloDestino,
+    final calificacion = _calificacionPasajero(servicio);
+
+    final puedeRechazar = estadoUi != 'en_curso' &&
+        estadoUi != 'finalizado' &&
+        estadoUi != 'cancelado';
+
+    return SingleChildScrollView(
+      controller: scrollController,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: ClampingScrollPhysics(),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 4 + topInset, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : const Color(0xFFD1D5DB),
+                  borderRadius: BorderRadius.circular(4),
                 ),
-                if (canalOrigen != null) ...[
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OrigenServicioBadge(
+              ),
+            ),
+            _PasajeroHeader(
+              nombre: nombrePasajero,
+              telefono: telefono,
+              fotoUrl: fotoPasajeroUrl,
+              esGestionadoPorIa: esGestionadoPorIa,
+              calificacion: calificacion,
+              isDark: isDark,
+              onCopiarTelefono: onCopiarTelefono,
+              onChat: esGestionadoPorIa ? null : onChat,
+              insignia: canalOrigen == null
+                  ? null
+                  : OrigenServicioBadge(
                       solicitud: servicio,
                       onDark: isDark,
-                      mostrarTelefono: true,
+                      compact: true,
                     ),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                _ContactoCard(
-                  nombre: nombrePasajero,
-                  telefono: telefono,
-                  fotoUrl: fotoPasajeroUrl,
-                  esGestionadoPorIa: esGestionadoPorIa,
-                  isDark: isDark,
-                  onLlamar: onLlamar,
-                  onWhatsApp: onWhatsApp,
-                  onCopiarTelefono: onCopiarTelefono,
-                  onChat: onChat,
-                  servicioId: servicioId,
-                  compacto: true,
-                ),
-                if (tieneContenidoRuta) ...[
-                  const SizedBox(height: 10),
-                  _RutaCard(
-                    soloDestino: soloDestino,
-                    recogidaActiva: recogidaActiva,
-                    recogidaHeadline: recogidaHeadline,
-                    subtituloRecogida: subtituloRecogida,
-                    destinoHeadline: destinoHeadline,
-                    subtituloDestino: subtituloDestino,
-                    muestraDestino: muestraDestino,
-                    isDark: isDark,
-                    destacada: recogidaActiva || soloDestino,
-                  ),
-                ],
-              ],
             ),
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            4,
-            16,
-            12 + MediaQuery.paddingOf(context).bottom,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (onNavegarAlPin != null) ...[
-                SizedBox(
-                  width: double.infinity,
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: onNavegarAlPin,
-                    icon: const Icon(Iconsax.routing_2, size: 20),
+                    onPressed: telefono.isEmpty ? null : onLlamar,
+                    icon: const Icon(Iconsax.call, size: 18),
                     label: const Text(
-                      'Navegar al pin',
+                      'Llamar',
                       style: TextStyle(fontWeight: FontWeight.w800),
                     ),
                     style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
+                      foregroundColor:
+                          isDark ? Colors.white : const Color(0xFF1F2937),
+                      minimumSize: const Size(0, 42),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.white24
+                            : const Color(0xFFE5E7EB),
+                      ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-              ],
-              if (accion != null)
-                _BotonAccionPrincipal(
-                  label: accion.label,
-                  icon: accion.icon,
-                  isLoading: isLoading,
-                  onPressed: onAccionPrincipal,
-                  palpita: llegue && !isLoading,
+                const SizedBox(width: 8),
+                ChatUnreadBadge(
+                  servicioId: servicioId ?? 0,
+                  child: Material(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: onChat,
+                      borderRadius: BorderRadius.circular(14),
+                      child: const SizedBox(
+                        width: 46,
+                        height: 42,
+                        child: Icon(
+                          Iconsax.messages_copy,
+                          color: AppColors.primary,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              if (estadoUi != 'en_curso' &&
-                  estadoUi != 'finalizado' &&
-                  estadoUi != 'cancelado') ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: onRechazar,
-                    icon: Icon(
-                      Iconsax.close_circle,
-                      color: Colors.red.shade600,
-                      size: 20,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: telefono.isEmpty ? null : onWhatsApp,
+                    icon: const WhatsAppBrandIcon(
+                      size: 18,
+                      solid: false,
+                      color: Colors.white,
                     ),
-                    label: Text(
-                      'Rechazar',
-                      style: TextStyle(
-                        color: Colors.red.shade600,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
+                    label: const Text(
+                      'WhatsApp',
+                      style: TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red.shade600,
-                      side: BorderSide(color: Colors.red.shade600, width: 1.5),
-                      minimumSize: const Size(double.infinity, 48),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF1FA855),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 42),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                   ),
                 ),
               ],
+            ),
+            if (tieneContenidoRuta) ...[
+              const SizedBox(height: 12),
+              _ItinerarioCard(
+                recogidaTitulo: recogidaHeadline,
+                recogidaDetalle: subtituloRecogida,
+                destinoTitulo: destinoHeadline,
+                destinoDetalle: subtituloDestino,
+                muestraDestino: muestraDestino && destinoHeadline.isNotEmpty,
+                estadoDestino: soloDestino ? 'En curso' : 'En espera',
+                isDark: isDark,
+                onAbrirGps: onNavegarAlPin,
+              ),
             ],
-          ),
+            if (accion != null) ...[
+              const SizedBox(height: 12),
+              _BotonAccionPrincipal(
+                label: accion.label,
+                icon: accion.icon,
+                isLoading: isLoading,
+                onPressed: onAccionPrincipal,
+                palpita: llegue && !isLoading,
+              ),
+            ],
+            if (puedeRechazar)
+              TextButton.icon(
+                onPressed: onRechazar,
+                icon: Icon(
+                  Iconsax.close_circle,
+                  color: Colors.red.shade400,
+                  size: 16,
+                ),
+                label: Text(
+                  'Rechazar o cancelar servicio',
+                  style: TextStyle(
+                    color: Colors.red.shade400,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                ),
+              ),
+            SizedBox(height: MediaQuery.paddingOf(context).bottom + 4),
+          ],
         ),
-      ],
+      ),
     );
+  }
+
+  static String? _calificacionPasajero(Map<String, dynamic> servicio) {
+    final pasajero = servicio['pasajero'];
+    final raw = servicio['pasajero_calificacion'] ??
+        servicio['calificacion_pasajero'] ??
+        (pasajero is Map ? pasajero['calificacion'] : null);
+    if (raw == null) return null;
+    final texto = raw.toString().trim();
+    final valor = double.tryParse(texto);
+    if (valor == null || valor <= 0) return null;
+    return valor.toStringAsFixed(1);
   }
 
   _AccionPrincipal? _accionPrincipal(String estado) {
@@ -329,8 +358,8 @@ class _BotonAccionPrincipalState extends State<_BotonAccionPrincipal>
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 56),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          minimumSize: const Size(double.infinity, 50),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -366,555 +395,319 @@ class _BotonAccionPrincipalState extends State<_BotonAccionPrincipal>
   }
 }
 
-class _EstadoYOrigenBar extends StatelessWidget {
-  const _EstadoYOrigenBar({
-    this.etiquetaEstado,
-    this.etiquetaOrigen,
-    required this.esGestionadoPorIa,
-    required this.soloDestino,
-  });
-
-  final String? etiquetaEstado;
-  final String? etiquetaOrigen;
-  final bool esGestionadoPorIa;
-  final bool soloDestino;
-
-  @override
-  Widget build(BuildContext context) {
-    final tieneEstado =
-        etiquetaEstado != null && etiquetaEstado!.trim().isNotEmpty;
-    final tieneOrigen =
-        etiquetaOrigen != null && etiquetaOrigen!.trim().isNotEmpty;
-    if (!tieneEstado && !tieneOrigen) {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (tieneEstado)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: soloDestino ? AppColors.green : AppColors.accent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              etiquetaEstado!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        if (tieneOrigen) ...[
-          SizedBox(height: tieneEstado ? 6 : 0),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: esGestionadoPorIa
-                  ? Colors.deepPurple.withValues(alpha: 0.18)
-                  : Colors.blue.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: esGestionadoPorIa
-                    ? Colors.deepPurple.withValues(alpha: 0.45)
-                    : Colors.blue.withValues(alpha: 0.35),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  esGestionadoPorIa ? Iconsax.cpu : Iconsax.building,
-                  size: 14,
-                  color: esGestionadoPorIa
-                      ? Colors.deepPurple.shade300
-                      : Colors.blue.shade700,
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    etiquetaOrigen ?? '',
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: esGestionadoPorIa
-                          ? Colors.deepPurple.shade200
-                          : Colors.blue.shade800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _ContactoCard extends StatelessWidget {
-  const _ContactoCard({
+class _PasajeroHeader extends StatelessWidget {
+  const _PasajeroHeader({
     required this.nombre,
     required this.telefono,
-    this.fotoUrl,
+    required this.fotoUrl,
     required this.esGestionadoPorIa,
+    required this.calificacion,
     required this.isDark,
-    required this.onLlamar,
-    required this.onWhatsApp,
     required this.onCopiarTelefono,
     required this.onChat,
-    this.servicioId,
-    this.compacto = false,
+    this.insignia,
   });
 
   final String nombre;
   final String telefono;
   final String? fotoUrl;
   final bool esGestionadoPorIa;
+  final String? calificacion;
   final bool isDark;
-  final VoidCallback onLlamar;
-  final VoidCallback onWhatsApp;
   final VoidCallback onCopiarTelefono;
-  final VoidCallback onChat;
-  final int? servicioId;
-  final bool compacto;
-
-  @override
-  Widget build(BuildContext context) {
-    final tieneTelefono = telefono.isNotEmpty;
-
-    return Container(
-      padding: EdgeInsets.all(compacto ? 10 : 12),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.black.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.25),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              SafeCircleAvatar(
-                radius: 22,
-                imageUrl: fotoUrl,
-                backgroundColor: esGestionadoPorIa
-                    ? Colors.deepPurple.shade700
-                    : AppColors.primary,
-                fallback: Icon(
-                  esGestionadoPorIa ? Iconsax.cpu : Icons.person,
-                  color: Colors.white,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      esGestionadoPorIa ? 'CLIENTE' : 'PASAJERO',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
-                        color: AppColors.accent,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      nombre,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              _AccionRapida(
-                icon: Iconsax.call,
-                color: AppColors.green,
-                onTap: onLlamar,
-                tooltip: 'Llamar',
-                enabled: tieneTelefono,
-              ),
-              const SizedBox(width: 6),
-              _WhatsAppAccionRapida(
-                onTap: onWhatsApp,
-                enabled: tieneTelefono,
-              ),
-              const SizedBox(width: 6),
-              if (!esGestionadoPorIa)
-                _AccionRapida(
-                  icon: Iconsax.messages_copy,
-                  color: AppColors.accent,
-                  onTap: onChat,
-                  tooltip: 'Chat en app',
-                  servicioIdBadge: servicioId,
-                ),
-            ],
-          ),
-          if (tieneTelefono || !compacto) ...[
-            SizedBox(height: compacto ? 8 : 10),
-            Material(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              child: InkWell(
-                onTap: tieneTelefono ? onCopiarTelefono : null,
-                borderRadius: BorderRadius.circular(10),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: compacto ? 10 : 12,
-                    vertical: compacto ? 8 : 10,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Iconsax.call,
-                        size: compacto ? 16 : 18,
-                        color: tieneTelefono
-                            ? AppColors.green
-                            : Colors.grey.shade500,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (!compacto)
-                              Text(
-                                'Teléfono de contacto',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                            if (!compacto) const SizedBox(height: 2),
-                            Text(
-                              tieneTelefono ? telefono : 'No disponible',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: compacto ? 15 : 17,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.3,
-                                color: tieneTelefono
-                                    ? (isDark
-                                        ? Colors.white
-                                        : Colors.black87)
-                                    : Colors.grey.shade500,
-                              ),
-                            ),
-                            if (compacto && tieneTelefono)
-                              Text(
-                                'Toca para copiar',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      if (tieneTelefono)
-                        IconButton(
-                          onPressed: onCopiarTelefono,
-                          icon: Icon(
-                            Iconsax.copy,
-                            size: compacto ? 18 : 20,
-                          ),
-                          tooltip: 'Copiar teléfono',
-                          visualDensity: VisualDensity.compact,
-                          color: AppColors.accent,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-          if (tieneTelefono) ...[
-            SizedBox(height: compacto ? 8 : 10),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onWhatsApp,
-                style: FilledButton.styleFrom(
-                  backgroundColor: WhatsAppBrandIcon.brandGreen,
-                  foregroundColor: Colors.white,
-                  minimumSize: Size(double.infinity, compacto ? 50 : 52),
-                  padding: EdgeInsets.symmetric(vertical: compacto ? 11 : 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: WhatsAppBrandIcon(
-                  size: compacto ? 20 : 18,
-                  solid: false,
-                  color: Colors.white,
-                ),
-                label: Text(
-                  'Escribir por WhatsApp',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: compacto ? 16 : 15,
-                  ),
-                ),
-              ),
-            ),
-            if (!compacto) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Toca el número arriba para copiarlo',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _WhatsAppAccionRapida extends StatelessWidget {
-  const _WhatsAppAccionRapida({
-    required this.onTap,
-    this.enabled = true,
-  });
-
-  final VoidCallback onTap;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Tooltip(
-          message: 'WhatsApp',
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Opacity(
-              opacity: enabled ? 1 : 0.45,
-              child: const WhatsAppBrandIcon(size: 32, solid: true),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AccionRapida extends StatelessWidget {
-  const _AccionRapida({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-    required this.tooltip,
-    this.servicioIdBadge,
-    this.enabled = true,
-  });
-
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-  final String tooltip;
-  final int? servicioIdBadge;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget iconWidget = Icon(
-      icon,
-      color: enabled ? color : Colors.grey.shade500,
-      size: 24,
-    );
-    if (servicioIdBadge != null && servicioIdBadge! > 0) {
-      iconWidget = ChatUnreadBadge(
-        servicioId: servicioIdBadge!,
-        child: iconWidget,
-      );
-    }
-
-    return Material(
-      color: (enabled ? color : Colors.grey).withValues(alpha: 0.14),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Tooltip(
-          message: tooltip,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: iconWidget,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RutaCard extends StatelessWidget {
-  const _RutaCard({
-    required this.soloDestino,
-    required this.recogidaActiva,
-    required this.recogidaHeadline,
-    required this.subtituloRecogida,
-    required this.destinoHeadline,
-    required this.subtituloDestino,
-    required this.muestraDestino,
-    required this.isDark,
-    this.destacada = false,
-  });
-
-  final bool soloDestino;
-  final bool recogidaActiva;
-  final String recogidaHeadline;
-  final String subtituloRecogida;
-  final String destinoHeadline;
-  final String subtituloDestino;
-  final bool muestraDestino;
-  final bool isDark;
-  final bool destacada;
-
-  @override
-  Widget build(BuildContext context) {
-    final accentColor = soloDestino ? AppColors.green : AppColors.accent;
-    return Container(
-      padding: EdgeInsets.fromLTRB(14, destacada ? 14 : 12, 14, destacada ? 14 : 14),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: destacada ? 0.08 : 0.05)
-            : Colors.black.withValues(alpha: destacada ? 0.05 : 0.03),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: accentColor.withValues(alpha: destacada ? 0.55 : 0.3),
-          width: destacada ? 1.5 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (!soloDestino) ...[
-            _ParadaViaje(
-              icon: Iconsax.location_add,
-              color: AppColors.accent,
-              headline: recogidaHeadline,
-              detalle: subtituloRecogida,
-              activa: recogidaActiva,
-              isDark: isDark,
-            ),
-            if (muestraDestino && destinoHeadline.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.only(left: 10, top: 8, bottom: 8),
-                child: Container(
-                  width: 2,
-                  height: 16,
-                  color: Colors.grey.withValues(alpha: 0.35),
-                ),
-              ),
-              _ParadaViaje(
-                icon: Iconsax.location,
-                color: AppColors.green,
-                headline: destinoHeadline,
-                detalle: subtituloDestino,
-                activa: false,
-                isDark: isDark,
-              ),
-            ],
-          ] else if (muestraDestino && destinoHeadline.isNotEmpty)
-            _ParadaViaje(
-              icon: Iconsax.location,
-              color: AppColors.green,
-              headline: destinoHeadline,
-              detalle: subtituloDestino,
-              activa: true,
-              isDark: isDark,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ParadaViaje extends StatelessWidget {
-  const _ParadaViaje({
-    required this.icon,
-    required this.color,
-    required this.headline,
-    required this.detalle,
-    required this.activa,
-    required this.isDark,
-  });
-
-  final IconData icon;
-  final Color color;
-  final String headline;
-  final String detalle;
-  final bool activa;
-  final bool isDark;
+  final VoidCallback? onChat;
+  final Widget? insignia;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: color),
-        const SizedBox(width: 10),
+        SafeCircleAvatar(
+          radius: 24,
+          imageUrl: fotoUrl,
+          backgroundColor: esGestionadoPorIa
+              ? Colors.deepPurple.shade700
+              : AppColors.primary,
+          fallback: Icon(
+            esGestionadoPorIa ? Iconsax.cpu : Icons.person,
+            color: Colors.white,
+            size: 26,
+          ),
+        ),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                headline,
-                softWrap: true,
+                esGestionadoPorIa ? 'CLIENTE' : 'PASAJERO',
                 style: TextStyle(
-                  fontSize: activa ? 17 : 15,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
-                  height: 1.25,
-                  color: isDark ? Colors.white : Colors.black87,
+                  letterSpacing: 0.6,
+                  color: Colors.grey.shade500,
                 ),
               ),
-              if (detalle.isNotEmpty) ...[
-                const SizedBox(height: 4),
+              Text(
+                nombre,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 17,
+                  height: 1.15,
+                  fontWeight: FontWeight.w800,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+              ),
+              if (telefono.isNotEmpty)
+                InkWell(
+                  onTap: onCopiarTelefono,
+                  onLongPress: onChat,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Iconsax.call,
+                          size: 14,
+                          color: AppColors.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            telefono,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              color: isDark
+                                  ? Colors.white
+                                  : const Color(0xFF374151),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (calificacion != null)
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 16,
+                      color: Color(0xFFF5B400),
+                    ),
+                    Text(
+                      calificacion!,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+        if (insignia != null) ...[
+          const SizedBox(width: 8),
+          insignia!,
+        ],
+      ],
+    );
+  }
+}
+
+class _ItinerarioCard extends StatelessWidget {
+  const _ItinerarioCard({
+    required this.recogidaTitulo,
+    required this.recogidaDetalle,
+    required this.destinoTitulo,
+    required this.destinoDetalle,
+    required this.muestraDestino,
+    required this.estadoDestino,
+    required this.isDark,
+    required this.onAbrirGps,
+  });
+
+  final String recogidaTitulo;
+  final String recogidaDetalle;
+  final String destinoTitulo;
+  final String destinoDetalle;
+  final bool muestraDestino;
+  final String estadoDestino;
+  final bool isDark;
+  final VoidCallback? onAbrirGps;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : const Color(0xFFF7F7F8),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ITINERARIO DEL VIAJE',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+              color: Colors.grey.shade500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _ParadaItinerario(
+            color: AppColors.primary,
+            etiqueta: 'Punto de recogida',
+            titulo: recogidaTitulo,
+            detalle: recogidaDetalle,
+            isDark: isDark,
+            trailing: onAbrirGps == null
+                ? null
+                : TextButton.icon(
+                    onPressed: onAbrirGps,
+                    icon: const Icon(Iconsax.gps, size: 16),
+                    label: const Text('Abrir GPS'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF6D28D9),
+                      backgroundColor: const Color(0xFFF3EEFF),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+          ),
+          if (muestraDestino) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 7, top: 2, bottom: 2),
+              child: Container(
+                width: 2,
+                height: 10,
+                color: const Color(0xFFE5E7EB),
+              ),
+            ),
+            _ParadaItinerario(
+              color: const Color(0xFF22C55E),
+              etiqueta: 'Punto de llegada',
+              titulo: destinoTitulo,
+              detalle: destinoDetalle,
+              isDark: isDark,
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white10 : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Text(
+                  estadoDestino,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ParadaItinerario extends StatelessWidget {
+  const _ParadaItinerario({
+    required this.color,
+    required this.etiqueta,
+    required this.titulo,
+    required this.detalle,
+    required this.isDark,
+    required this.trailing,
+  });
+
+  final Color color;
+  final String etiqueta;
+  final String titulo;
+  final String detalle;
+  final bool isDark;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: color, width: 4),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                etiqueta,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            if (trailing != null) trailing!,
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 26, top: 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                titulo,
+                softWrap: true,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
+                  color: isDark ? Colors.white : const Color(0xFF111827),
+                ),
+              ),
+              if (detalle.trim().isNotEmpty)
                 Text(
                   detalle,
                   softWrap: true,
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    height: 1.3,
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.72)
-                        : Colors.black54,
+                    height: 1.25,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white70 : const Color(0xFF6B7280),
                   ),
                 ),
-              ],
             ],
           ),
         ),
@@ -922,3 +715,4 @@ class _ParadaViaje extends StatelessWidget {
     );
   }
 }
+

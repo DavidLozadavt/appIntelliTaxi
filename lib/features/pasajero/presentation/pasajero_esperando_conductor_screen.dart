@@ -55,9 +55,7 @@ class _PasajeroEsperandoConductorScreenState
   /// volver del background (el State vive encima del ChangeNotifierProvider).
   PasajeroServicioActivoProvider? _servicioProvider;
 
-  // 📏 Bottom sheet: se ajusta al contenido (el mapa ocupa el resto).
   bool _sheetExpandido = false;
-  double _buscandoSheetHeight = 320;
 
   @override
   void initState() {
@@ -129,6 +127,14 @@ class _PasajeroEsperandoConductorScreenState
       context: context,
       emptyMessage: 'No hay teléfono del conductor disponible',
     );
+  }
+
+  String get _direccionRecogida {
+    final raw = widget.datosServicio['origen_address']?.toString();
+    final readable = PlacePredictionDisplay.readableAddress(raw);
+    if (readable.isNotEmpty) return readable;
+    final name = widget.datosServicio['origen_name']?.toString().trim() ?? '';
+    return name;
   }
 
   /// ⏰ Muestra diálogo cuando se agota el tiempo de espera
@@ -380,49 +386,36 @@ class _PasajeroEsperandoConductorScreenState
                 ),
                 automaticallyImplyLeading: false,
               ),
-              body: Stack(
+              body: Column(
                 children: [
-                  // Mapa de Google Maps
-                  StandardMap(
-                    initialPosition: LatLng(
-                      _parseDouble(widget.datosServicio['origen_lat']) != 0.0
-                          ? _parseDouble(widget.datosServicio['origen_lat'])
-                          : -12.0464, // Lima, Perú como fallback
-                      _parseDouble(widget.datosServicio['origen_lng']) != 0.0
-                          ? _parseDouble(widget.datosServicio['origen_lng'])
-                          : -77.0428,
+                  Expanded(
+                    flex: 2,
+                    child: StandardMap(
+                      initialPosition: LatLng(
+                        _parseDouble(widget.datosServicio['origen_lat']) != 0.0
+                            ? _parseDouble(widget.datosServicio['origen_lat'])
+                            : -12.0464,
+                        _parseDouble(widget.datosServicio['origen_lng']) != 0.0
+                            ? _parseDouble(widget.datosServicio['origen_lng'])
+                            : -77.0428,
+                      ),
+                      zoom: 14,
+                      markers: provider.markers,
+                      polylines: provider.polylines,
+                      mapPadding: const EdgeInsets.all(12),
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                        _lastMapCameraKey = null;
+                        _tryUpdateMapCamera(provider);
+                      },
                     ),
-                    zoom: 14,
-                    markers: provider.markers,
-                    polylines: provider.polylines,
-                    mapPadding: EdgeInsets.only(
-                      top: 12,
-                      bottom: _mapBottomPadding(provider),
-                    ),
-                    onMapCreated: (controller) {
-                      _mapController = controller;
-                      _lastMapCameraKey = null;
-                      _tryUpdateMapCamera(provider);
-                    },
                   ),
-
-                  // Panel de información: altura = contenido, no % de pantalla
-                  if (!provider.isBuscando)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _buildPanelInfo(provider),
-                    ),
-
-                  // Loading mientras busca conductor
-                  if (provider.isBuscando)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _buildBuscandoConductor(provider),
-                    ),
+                  Expanded(
+                    flex: 3,
+                    child: provider.isBuscando
+                        ? _buildBuscandoConductor(provider)
+                        : _buildPanelInfo(provider),
+                  ),
                 ],
               ),
             ),
@@ -431,18 +424,6 @@ class _PasajeroEsperandoConductorScreenState
         },
       ),
     );
-  }
-
-  double _mapBottomPadding(PasajeroServicioActivoProvider provider) {
-    if (provider.isBuscando) return _buscandoSheetHeight + 12;
-    return _sheetExpandido ? 260 : 200;
-  }
-
-  void _reportBuscandoSheetHeight(Size size) {
-    final next = size.height;
-    if (next <= 0) return;
-    if ((next - _buscandoSheetHeight).abs() < 12) return;
-    setState(() => _buscandoSheetHeight = next);
   }
 
   void _tryUpdateMapCamera(PasajeroServicioActivoProvider provider) {
@@ -538,38 +519,31 @@ class _PasajeroEsperandoConductorScreenState
         : PlacePredictionDisplay.readableAddress(destinoRaw);
     final cerca = provider.conductoresCercanosCount;
 
-    return _HeightReporter(
-      onChange: _reportBuscandoSheetHeight,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-        decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 14,
-              offset: const Offset(0, -3),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+    return Material(
+      color: theme.cardColor,
+      elevation: 8,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 10),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(height: 16),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                children: [
               if (provider.conductorRechazoReciente) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -653,6 +627,7 @@ class _PasajeroEsperandoConductorScreenState
                     address: origenAddr,
                     color: AppColors.green,
                     icon: Iconsax.location_copy,
+                    large: true,
                   ),
                 if (origenAddr.isNotEmpty && destinoAddr.isNotEmpty)
                   const SizedBox(height: 12),
@@ -689,8 +664,10 @@ class _PasajeroEsperandoConductorScreenState
                 label: const Text('Cancelar búsqueda'),
                 style: TextButton.styleFrom(foregroundColor: cs.error),
               ),
-            ],
-          ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -746,13 +723,14 @@ class _PasajeroEsperandoConductorScreenState
     required String address,
     required Color color,
     required IconData icon,
+    bool large = false,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Icon(icon, size: 18, color: color),
+          padding: EdgeInsets.only(top: large ? 3 : 2),
+          child: Icon(icon, size: large ? 22 : 18, color: color),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -762,7 +740,7 @@ class _PasajeroEsperandoConductorScreenState
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: large ? 12 : 11,
                   fontWeight: FontWeight.w700,
                   color: color,
                   letterSpacing: 0.4,
@@ -771,9 +749,10 @@ class _PasajeroEsperandoConductorScreenState
               const SizedBox(height: 2),
               Text(
                 address,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                softWrap: true,
+                style: TextStyle(
+                  fontSize: large ? 17 : 15,
+                  fontWeight: FontWeight.w700,
                   height: 1.35,
                 ),
               ),
@@ -816,53 +795,58 @@ class _PasajeroEsperandoConductorScreenState
           'icono': Iconsax.info_circle_copy,
         };
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 15,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
+    final recogida = _direccionRecogida;
+
+    return Material(
+      color: Theme.of(context).cardColor,
+      elevation: 8,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () {
-                  setState(() => _sheetExpandido = !_sheetExpandido);
-                },
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: () {
+                setState(() => _sheetExpandido = !_sheetExpandido);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-              _buildEstadoRow(info, provider),
-              if (_sheetExpandido) ...[
-                const SizedBox(height: 8),
-                _buildConductorInfo(provider),
-                const SizedBox(height: 4),
-                _buildCancelarButton(provider),
-              ] else ...[
-                const SizedBox(height: 6),
-                _buildConductorInfo(provider),
-              ],
-            ],
-          ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                children: [
+                  _buildEstadoRow(info, provider),
+                  const SizedBox(height: 10),
+                  _buildConductorInfo(provider),
+                  if (recogida.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _buildDireccionResumen(
+                      label: 'Recogida',
+                      address: recogida,
+                      color: AppColors.green,
+                      icon: Iconsax.location_copy,
+                      large: true,
+                    ),
+                  ],
+                  if (_sheetExpandido) ...[
+                    const SizedBox(height: 8),
+                    _buildCancelarButton(provider),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1099,21 +1083,3 @@ class _PasajeroEsperandoConductorScreenState
   }
 }
 
-class _HeightReporter extends StatelessWidget {
-  const _HeightReporter({required this.onChange, required this.child});
-
-  final ValueChanged<Size> onChange;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) return;
-      final box = context.findRenderObject();
-      if (box is RenderBox && box.hasSize) {
-        onChange(box.size);
-      }
-    });
-    return child;
-  }
-}

@@ -18,7 +18,6 @@ import 'package:intellitaxi/features/conductor/utils/conductor_servicio_pasajero
 import 'package:intellitaxi/features/conductor/utils/solicitud_display_helper.dart';
 import 'package:intellitaxi/features/conductor/widgets/conductor_servicio_bottom_panel.dart';
 import 'package:intellitaxi/features/conductor/widgets/ofertas_en_ruta_panel.dart';
-import 'package:intellitaxi/core/theme/app_colors.dart';
 import 'package:intellitaxi/core/utils/phone_launcher.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
@@ -97,14 +96,36 @@ class _ConductorServicioActivoScreenState
 
   bool get _canUpdateUi => mounted && !_terminalNavigationInProgress;
 
-  // 📏 Control de altura del BottomSheet (deja ver carro → cliente)
-  double _sheetHeight = 0.32;
-  final double _minHeight = 0.26;
-  final double _maxHeight = 0.50;
+  final DraggableScrollableController _sheetController =
+      DraggableScrollableController();
+  static const double _sheetMax = 1;
+  static const double _sheetMin = 0.22;
+  /// Alto que cubre contacto, itinerario y acción sin bandas vacías.
+  static const double _sheetInicial = 0.68;
+  double _sheetSize = _sheetInicial;
+  bool _hojaCompactada = false;
+
+  void _compactarHojaSiEstaEstirada() {
+    if (!_sheetController.isAttached) return;
+    if (_sheetController.size < 0.9) return;
+    _sheetController.animateTo(
+      _sheetInicial,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _onSheetChanged() {
+    if (!_sheetController.isAttached || !mounted) return;
+    final size = _sheetController.size;
+    if ((size - _sheetSize).abs() < 0.012) return;
+    setState(() => _sheetSize = size);
+  }
 
   @override
   void initState() {
     super.initState();
+    _sheetController.addListener(_onSheetChanged);
     WidgetsBinding.instance.addObserver(this);
     unawaited(KeepScreenOnService.acquire('conductor_servicio_activo'));
     _requestOverlayPermissionSafely();
@@ -145,6 +166,8 @@ class _ConductorServicioActivoScreenState
   @override
   void dispose() {
     _terminalNavigationInProgress = true;
+    _sheetController.removeListener(_onSheetChanged);
+    _sheetController.dispose();
     _estadoPollTimer?.cancel();
     _estadoPollTimer = null;
     if (ActiveServiceScreenRegistry.onRemoteTerminal != null) {
@@ -1169,8 +1192,123 @@ class _ConductorServicioActivoScreenState
     await launchUrl(webUrl, mode: LaunchMode.externalApplication);
   }
 
+  Widget _barraMapa() {
+    final ia = ConductorServicioPasajeroHelper.esGestionadoPorIa(
+      widget.servicio,
+    );
+    final titulo = switch (_estadoUiEfectivo) {
+      'en_curso' => 'Viaje en curso',
+      'llegue' => 'En el punto',
+      _ => 'Servicio en curso',
+    };
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF22C55E),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                titulo,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Spacer(),
+        if (ia) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3EEFF),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Iconsax.cpu, size: 14, color: Color(0xFF6D28D9)),
+                SizedBox(width: 6),
+                Text(
+                  'IA Activa',
+                  style: TextStyle(
+                    color: Color(0xFF6D28D9),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        PopupMenuButton<String>(
+          tooltip: 'Más',
+          onSelected: (value) {
+            switch (value) {
+              case 'chat':
+                _abrirChatPasajero();
+              case 'navegar':
+                _abrirNavegacion();
+              case 'copiar':
+                unawaited(_copiarTelefonoPasajero());
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'chat', child: Text('Chat')),
+            PopupMenuItem(value: 'navegar', child: Text('Navegar')),
+            PopupMenuItem(value: 'copiar', child: Text('Copiar teléfono')),
+          ],
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 8,
+                ),
+              ],
+            ),
+            child: const Icon(Icons.more_horiz, size: 20),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_hojaCompactada) {
+      _hojaCompactada = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _compactarHojaSiEstaEstirada();
+      });
+    }
     final puntoRuta = _puntoReferenciaRuta();
 
     return ChatBadgeLifecycle(
@@ -1178,163 +1316,111 @@ class _ConductorServicioActivoScreenState
       child: PopScope(
       canPop: false,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Servicio en Curso'),
-          automaticallyImplyLeading: false,
-          actions: [
-            // Botón de navegación (Waze / Google Maps)
-            IconButton(
-              onPressed: _abrirNavegacion,
-              icon: const Icon(Iconsax.routing_2_copy),
-              tooltip: 'Navegar',
-            ),
-          ],
-        ),
         body: Stack(
           children: [
-            // Mapa
-            if (_miUbicacion != null)
-              StandardMap(
-                initialPosition: _miUbicacion!,
-                zoom: 15,
-                markers: _markers,
-                polylines: _polylines,
-                mapPadding: EdgeInsets.only(
-                  top: 12,
-                  bottom:
-                      MediaQuery.sizeOf(context).height * _sheetHeight + 8,
-                ),
-                onMapCreated: (controller) {
-                  _mapController = controller;
-                  _ajustarCamaraARuta();
-                },
-              )
-            else
-              const Center(child: AppLoadingIndicator()),
-
-            if (puntoRuta != null)
-              Positioned(
-                top: 8,
-                left: 12,
-                right: 12,
-                child: SafeArea(
-                  bottom: false,
-                  child: OfertasEnRutaPanel(
-                    haciaLat: puntoRuta.latitude,
-                    haciaLng: puntoRuta.longitude,
-                    excluirServicioId: _servicioActivoId,
-                    onAceptar: _aceptarOfertaEnRuta,
-                    onRechazar: _rechazarOfertaEnRuta,
-                    onLlamar: _llamarOfertaEnRuta,
+            Positioned.fill(
+              child: _miUbicacion != null
+                  ? StandardMap(
+                      initialPosition: _miUbicacion!,
+                      zoom: 15,
+                      markers: _markers,
+                      polylines: _polylines,
+                      mapPadding: EdgeInsets.fromLTRB(
+                        12,
+                        72,
+                        16,
+                        MediaQuery.sizeOf(context).height * _sheetSize + 16,
+                      ),
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                        _ajustarCamaraARuta();
+                      },
+                    )
+                  : const Center(child: AppLoadingIndicator()),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: Column(
+                    children: [
+                      _barraMapa(),
+                    ],
                   ),
                 ),
               ),
-
-            // Panel de información y botones (draggable)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: GestureDetector(
-                onVerticalDragUpdate: (details) {
-                  if (!_canUpdateUi) return;
-                  _safeSetState(() {
-                    final screenHeight = MediaQuery.of(context).size.height;
-                    final delta = -details.primaryDelta! / screenHeight;
-                    _sheetHeight = (_sheetHeight + delta).clamp(
-                      _minHeight,
-                      _maxHeight,
-                    );
-                  });
-                },
-                onVerticalDragEnd: (details) {
-                  if (!_canUpdateUi) return;
-                  final velocity = details.primaryVelocity ?? 0;
-                  if (velocity.abs() > 500) {
-                    _safeSetState(() {
-                      if (velocity > 0) {
-                        _sheetHeight = _minHeight;
-                      } else {
-                        _sheetHeight = _maxHeight;
-                      }
-                    });
-                  }
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  height: MediaQuery.of(context).size.height * _sheetHeight,
+            ),
+            if (puntoRuta != null)
+              Positioned(
+                top: 72,
+                left: 12,
+                right: 12,
+                child: OfertasEnRutaPanel(
+                  haciaLat: puntoRuta.latitude,
+                  haciaLng: puntoRuta.longitude,
+                  excluirServicioId: _servicioActivoId,
+                  onAceptar: _aceptarOfertaEnRuta,
+                  onRechazar: _rechazarOfertaEnRuta,
+                  onLlamar: _llamarOfertaEnRuta,
+                ),
+              ),
+            DraggableScrollableSheet(
+              controller: _sheetController,
+              initialChildSize: _sheetInicial,
+              minChildSize: _sheetMin,
+              maxChildSize: _sheetMax,
+              snap: true,
+              snapSizes: const [_sheetMin, _sheetInicial, _sheetMax],
+              builder: (context, scrollController) {
+                return DecoratedBox(
                   decoration: BoxDecoration(
                     color: Theme.of(context).cardColor,
                     borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(20),
+                      top: Radius.circular(28),
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 15,
-                        offset: const Offset(0, -3),
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 18,
+                        offset: const Offset(0, -4),
                       ),
                     ],
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Handle draggable
-                      GestureDetector(
-                        onTap: () {
-                          if (!_canUpdateUi) return;
-                          _safeSetState(() {
-                            _sheetHeight = _sheetHeight > _minHeight + 0.02
-                                ? _minHeight
-                                : 0.32;
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Container(
-                            width: 50,
-                            height: 5,
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      Expanded(
-                        child: ConductorServicioBottomPanel(
-                          servicio: widget.servicio,
-                          servicioId: _safeServiceId(),
-                          estadoUi: _estadoUiEfectivo,
-                          nombrePasajero: _getNombrePasajero(),
-                          telefonoPasajero: _getTelefonoPasajero(),
-                          etiquetaOrigen: ConductorServicioPasajeroHelper
-                              .etiquetaOrigenServicio(widget.servicio),
-                          esGestionadoPorIa: ConductorServicioPasajeroHelper
-                              .esGestionadoPorIa(widget.servicio),
-                          fotoPasajeroUrl: _getFotoPasajero(),
-                          onLlamar: _llamarPasajero,
-                          onWhatsApp: _whatsappPasajero,
-                          onCopiarTelefono: _copiarTelefonoPasajero,
-                          onChat: _abrirChatPasajero,
-                          onAccionPrincipal: _onPanelAccionPrincipal,
-                          onRechazar: _rechazarViajeActivo,
-                          onNavegarAlPin: _abrirNavegacion,
-                          isLoading: _isLoading,
-                        ),
-                      ),
-                    ],
+                  child: ConductorServicioBottomPanel(
+                    servicio: widget.servicio,
+                    servicioId: _safeServiceId(),
+                    estadoUi: _estadoUiEfectivo,
+                    nombrePasajero: _getNombrePasajero(),
+                    telefonoPasajero: _getTelefonoPasajero(),
+                    etiquetaOrigen: ConductorServicioPasajeroHelper
+                        .etiquetaOrigenServicio(widget.servicio),
+                    esGestionadoPorIa: ConductorServicioPasajeroHelper
+                        .esGestionadoPorIa(widget.servicio),
+                    fotoPasajeroUrl: _getFotoPasajero(),
+                    onLlamar: _llamarPasajero,
+                    onWhatsApp: _whatsappPasajero,
+                    onCopiarTelefono: _copiarTelefonoPasajero,
+                    onChat: _abrirChatPasajero,
+                    onAccionPrincipal: _onPanelAccionPrincipal,
+                    onRechazar: _rechazarViajeActivo,
+                    onNavegarAlPin: _abrirNavegacion,
+                    isLoading: _isLoading,
+                    scrollController: scrollController,
+                    topInset: _sheetSize > 0.92
+                        ? MediaQuery.paddingOf(context).top
+                        : 0,
                   ),
-                ),
-              ),
+                );
+              },
             ),
-
-            // Loading overlay
             if (_isLoading)
-              Container(
-                color: Colors.black54,
-                child: const Center(child: AppLoadingIndicator()),
+              const ColoredBox(
+                color: Color(0x66000000),
+                child: Center(child: AppLoadingIndicator()),
               ),
           ],
         ),

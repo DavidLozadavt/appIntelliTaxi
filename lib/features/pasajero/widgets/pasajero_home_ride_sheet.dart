@@ -5,7 +5,7 @@ import 'package:intellitaxi/features/pasajero/widgets/location_search_field.dart
 import 'package:intellitaxi/features/pasajero/widgets/ride_request_floating_cta.dart';
 import 'package:intellitaxi/features/pasajero/widgets/service_type_selector.dart';
 
-/// Bottom sheet de solicitud: taxi/domicilio, destino, recogida y CTA.
+/// Bottom sheet de solicitud: taxi (solo recogida) o domicilio (recogida y destino).
 class PasajeroHomeRideSheet extends StatelessWidget {
   const PasajeroHomeRideSheet({
     super.key,
@@ -169,20 +169,21 @@ class PasajeroHomeRideSheet extends StatelessWidget {
         ),
         const SizedBox(height: 8),
       ],
-      LocationSearchField(
-        controller: destinationController,
-        label: serviceType == 'taxi' ? '¿A dónde vas?' : '¿Qué necesitas enviar?',
-        hintText: serviceType == 'taxi' ? '¿A dónde vamos?' : '¿Qué enviamos?',
-        icon: Icons.location_on,
-        iconColor: AppColors.primary,
-        focusNode: destinationFocusNode,
-        predictions: destinationPredictions,
-        isSearching: isSearchingDestination,
-        onSelectPrediction: onSelectDestination,
-        onClear: onClearDestination,
-      ),
+      if (serviceType != 'taxi')
+        LocationSearchField(
+          controller: destinationController,
+          label: '¿Qué necesitas enviar?',
+          hintText: '¿Qué enviamos?',
+          icon: Icons.location_on,
+          iconColor: AppColors.primary,
+          focusNode: destinationFocusNode,
+          predictions: destinationPredictions,
+          isSearching: isSearchingDestination,
+          onSelectPrediction: onSelectDestination,
+          onClear: onClearDestination,
+        ),
       if (!editingPickup) ...[
-        const SizedBox(height: 12),
+        if (serviceType != 'taxi') const SizedBox(height: 12),
         _pickupCard(context),
       ],
     ];
@@ -233,10 +234,11 @@ class PasajeroHomeRideSheet extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       pickupDisplayLabel,
-                      maxLines: 1,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 15.5,
+                        fontSize: 16.5,
+                        height: 1.25,
                         fontWeight: FontWeight.w800,
                         color: isDark ? Colors.white : const Color(0xFF1C1C1C),
                       ),
@@ -247,7 +249,7 @@ class PasajeroHomeRideSheet extends StatelessWidget {
                             pickupDisplayLabel.toLowerCase())
                       Text(
                         detail,
-                        maxLines: 1,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,

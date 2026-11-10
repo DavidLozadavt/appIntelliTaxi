@@ -302,13 +302,17 @@ class CustomDrawer extends StatelessWidget {
                       ),
                       title: const Text(
                         'Cambiar rol',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       subtitle: Text(
-                        'Actual: ${auth.activeRole ?? 'SIN SELECCIONAR'}',
+                        'Actual: ${auth.activeRole ?? 'sin seleccionar'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 12),
                       ),
                       trailing: Icon(
@@ -415,7 +419,8 @@ class CustomDrawer extends StatelessWidget {
                                   16,
                                   12,
                                 ),
-                                child: Container(
+                                child: SingleChildScrollView(
+                                  child: Container(
                                   decoration: BoxDecoration(
                                     color: isDark
                                         ? AppColors.darkSurface
@@ -489,6 +494,7 @@ class CustomDrawer extends StatelessWidget {
                                       ],
                                     ),
                                   ),
+                                ),
                                 ),
                               ),
                             );

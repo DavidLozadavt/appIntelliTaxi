@@ -133,74 +133,87 @@ class _HomeScreenState extends State<HomeScreen> {
 
         return Scaffold(
               appBar: AppBar(
-                // backgroundColor: Colors.white,
+                centerTitle: false,
                 elevation: 0,
-                title: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text("Hola,", style: TextStyle(fontSize: 14)),
-                          Text(
-                            user.persona.nombre1,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ],
-                      ),
+                    const Text(
+                      'Hola,',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13),
                     ),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.notifications_none),
-                          onPressed: () =>
-                              Navigator.pushNamed(context, '/notifications'),
-                        ),
-                        if (authProvider.canSwitchRole)
-                          IconButton(
-                            tooltip: 'Cambiar rol',
-                            icon: const Icon(Icons.swap_horiz),
-                            onPressed: () {
-                              _mostrarSelectorRol(
-                                context,
-                                authProvider,
-                                canDismiss: true,
-                              );
-                            },
-                          ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ProfileTab(),
-                              ),
-                            );
-                          },
-                          child: SafeCircleAvatar(
-                            radius: 18,
-                            imageUrl: user.persona.rutaFotoUrl,
-                            backgroundColor: Colors.blue.shade100,
-                            fallback: Text(
-                              user.persona.nombre1.isNotEmpty
-                                  ? user.persona.nombre1[0].toUpperCase()
-                                  : '?',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      user.persona.nombre1,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 17,
+                      ),
                     ),
                   ],
                 ),
+                actions: [
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 40,
+                      minHeight: 40,
+                    ),
+                    icon: const Icon(Icons.notifications_none),
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/notifications'),
+                  ),
+                  if (authProvider.canSwitchRole)
+                    IconButton(
+                      tooltip: 'Cambiar rol',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 40,
+                        minHeight: 40,
+                      ),
+                      icon: const Icon(Icons.swap_horiz),
+                      onPressed: () {
+                        _mostrarSelectorRol(
+                          context,
+                          authProvider,
+                          canDismiss: true,
+                        );
+                      },
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12, left: 2),
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfileTab(),
+                          ),
+                        );
+                      },
+                      child: SafeCircleAvatar(
+                        radius: 16,
+                        imageUrl: user.persona.rutaFotoUrl,
+                        backgroundColor: Colors.blue.shade100,
+                        fallback: Text(
+                          user.persona.nombre1.isNotEmpty
+                              ? user.persona.nombre1[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               drawer: const CustomDrawer(),
               body: body,
@@ -314,7 +327,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            child: Container(
+            child: SingleChildScrollView(
+              child: Container(
               decoration: BoxDecoration(
                 color: isDark ? AppColors.darkSurface : Colors.white,
                 borderRadius: BorderRadius.circular(24),
@@ -376,6 +390,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+            ),
             ),
           ),
         );

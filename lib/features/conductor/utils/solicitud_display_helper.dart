@@ -364,6 +364,178 @@ class SolicitudDisplayHelper {
     return line;
   }
 
+  /// Dirección lista para el conductor: lugar grande y solo el contexto útil.
+  ///
+  /// De «Estadio Ciro López, Carrera 4A, Ciudad jardin, Comuna 3, Perímetro
+  /// Urbano Popayán, Popayán, Centro, Cauca, RAP Pacífico, 190002, Colombia»
+  /// deja «Estadio Ciro López» y «Carrera 4A · Ciudad Jardín · Comuna 3 · Centro».
+  static ({String principal, String detalle}) direccionClara(
+    Map<String, dynamic> data, {
+    required bool destino,
+  }) {
+    final partes = (_textoMasCompleto(data, destino: destino) ?? '')
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final utiles = <String>[];
+    final contexto = <String>[];
+    for (final parte in partes) {
+      if (_esRuidoDireccion(parte)) continue;
+      final limpio = _presentarParte(parte);
+      if (_esCiudadConocida(parte) || _esDepartamento(parte)) {
+        if (!_contieneIgual(contexto, limpio)) contexto.add(limpio);
+        continue;
+      }
+      if (!_contieneIgual(utiles, limpio)) utiles.add(limpio);
+    }
+
+    var principal = utiles.isEmpty ? '' : utiles.first;
+    final detallePartes = utiles.length <= 1
+        ? <String>[]
+        : _detalleEnOrden(utiles.sublist(1), callePrimero: true);
+
+    final nombre = _nombreLugar(data, destino: destino);
+    if (nombre != null &&
+        (principal.isEmpty || looksLikeStreetAddress(principal)) &&
+        !_contieneIgual([principal, ...detallePartes], nombre)) {
+      if (principal.isNotEmpty) detallePartes.insert(0, principal);
+      principal = nombre;
+    }
+
+    if (principal.isEmpty && contexto.isNotEmpty) {
+      principal = contexto.removeAt(0);
+    }
+    if (principal.isEmpty) {
+      principal = destino ? 'Punto de llegada' : 'Punto de recogida';
+    }
+
+    final referencia = referenciaFromPayload(data, destino: destino)?.trim();
+    if (referencia != null &&
+        referencia.isNotEmpty &&
+        !_contieneIgual([principal, ...detallePartes], referencia)) {
+      detallePartes.add(_presentarParte(referencia));
+    }
+
+    final detalle = detallePartes.isNotEmpty
+        ? detallePartes.take(4).join(' · ')
+        : contexto.take(2).join(', ');
+    return (principal: principal, detalle: detalle);
+  }
+
+  static List<String> _detalleEnOrden(
+    List<String> partes, {
+    required bool callePrimero,
+  }) {
+    if (!callePrimero) return partes;
+    final calles = partes.where(looksLikeStreetAddress).toList();
+    final resto = partes.where((p) => !looksLikeStreetAddress(p)).toList();
+    return [...calles, ...resto];
+  }
+
+  static String? _textoMasCompleto(
+    Map<String, dynamic> data, {
+    required bool destino,
+  }) {
+    const origen = [
+      'origen',
+      'origen_address',
+      'origenAddress',
+      'origin_address',
+      'originAddress',
+      'direccion_origen',
+      'origen_direccion',
+      'punto_recogida',
+    ];
+    const llegada = [
+      'destino',
+      'destino_address',
+      'destinoAddress',
+      'destination_address',
+      'destinationAddress',
+      'direccion_destino',
+      'destino_direccion',
+    ];
+    String? mejor;
+    for (final key in destino ? llegada : origen) {
+      final valor = data[key]?.toString().trim() ?? '';
+      if (valor.isEmpty) continue;
+      if (mejor == null || valor.length > mejor.length) mejor = valor;
+    }
+    return mejor;
+  }
+
+  static String? _nombreLugar(
+    Map<String, dynamic> data, {
+    required bool destino,
+  }) {
+    final raw = destino
+        ? _firstNonEmpty(data, const [
+            'destino_name',
+            'destinoName',
+            'destino_nombre',
+            'destination_name',
+          ])
+        : _firstNonEmpty(data, const [
+            'origen_name',
+            'origenName',
+            'origen_nombre',
+            'origin_name',
+          ]);
+    if (raw == null) return null;
+    final nombre = _presentarParte(raw);
+    if (nombre.isEmpty || looksLikeStreetAddress(nombre)) return null;
+    if (destino ? isPlaceholderDestino(nombre) : isPlaceholderPickup(nombre)) {
+      return null;
+    }
+    return nombre;
+  }
+
+  static bool _esRuidoDireccion(String part) {
+    final p = _normalizarGeoToken(part);
+    if (p.isEmpty) return true;
+    if (RegExp(r'^\d{4,8}$').hasMatch(p)) return true;
+    if (p == 'colombia' || p.startsWith('colombia ')) return true;
+    if (p.contains('perimetro')) return true;
+    if (p == 'rap pacifico' || p.startsWith('rap ')) return true;
+    return false;
+  }
+
+  static bool _esCiudadConocida(String part) {
+    return _normalizarGeoToken(part) == 'popayan';
+  }
+
+  static bool _esDepartamento(String part) {
+    return _normalizarGeoToken(part) == 'cauca';
+  }
+
+  static bool _contieneIgual(List<String> partes, String valor) {
+    final objetivo = _normalizeCompare(valor);
+    if (objetivo.isEmpty) return false;
+    return partes.any((p) => _normalizeCompare(p) == objetivo);
+  }
+
+  static String _presentarParte(String part) {
+    final t = part.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (t.isEmpty) return t;
+    final letters = t.replaceAll(RegExp(r'[^A-Za-zÁÉÍÓÚáéíóúÑñÜü]'), '');
+    if (letters.length < 2) return t;
+    final uniforme =
+        letters == letters.toLowerCase() || letters == letters.toUpperCase();
+    if (!uniforme) return t;
+    const menores = {'de', 'del', 'la', 'las', 'el', 'los', 'y', 'e'};
+    return t
+        .split(' ')
+        .map((word) {
+          final lower = word.toLowerCase();
+          if (menores.contains(lower)) return lower;
+          if (word.isEmpty) return word;
+          return '${lower[0].toUpperCase()}${lower.substring(1)}';
+        })
+        .join(' ');
+  }
+
   /// Calle/número (Carrera 38, Cl. 16 #17-11) — no usar como título si hay barrio.
   static bool looksLikeStreetAddress(String value) {
     final v = value.trim().toLowerCase();
