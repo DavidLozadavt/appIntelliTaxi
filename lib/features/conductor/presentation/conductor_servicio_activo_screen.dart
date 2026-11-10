@@ -98,21 +98,19 @@ class _ConductorServicioActivoScreenState
 
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
-  static const double _sheetMax = 1;
   static const double _sheetMin = 0.22;
-  /// Alto que cubre contacto, itinerario y acción sin bandas vacías.
-  static const double _sheetInicial = 0.68;
-  double _sheetSize = _sheetInicial;
-  bool _hojaCompactada = false;
+  /// Tope si el contenido no cabe en la pantalla. El alto real lo marca el panel.
+  static const double _sheetTope = 0.92;
+  double _sheetFit = 0.78;
+  double _sheetSize = 0.78;
 
-  void _compactarHojaSiEstaEstirada() {
-    if (!_sheetController.isAttached) return;
-    if (_sheetController.size < 0.9) return;
-    _sheetController.animateTo(
-      _sheetInicial,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-    );
+  void _alMedirContenido(double alto) {
+    if (!mounted) return;
+    final pantalla = MediaQuery.sizeOf(context).height;
+    if (pantalla <= 0 || alto <= 0) return;
+    final fraccion = (alto / pantalla).clamp(_sheetMin + 0.04, _sheetTope);
+    if ((fraccion - _sheetFit).abs() < 0.012) return;
+    setState(() => _sheetFit = fraccion);
   }
 
   void _onSheetChanged() {
@@ -1303,12 +1301,6 @@ class _ConductorServicioActivoScreenState
 
   @override
   Widget build(BuildContext context) {
-    if (!_hojaCompactada) {
-      _hojaCompactada = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _compactarHojaSiEstaEstirada();
-      });
-    }
     final puntoRuta = _puntoReferenciaRuta();
 
     return ChatBadgeLifecycle(
@@ -1370,11 +1362,10 @@ class _ConductorServicioActivoScreenState
               ),
             DraggableScrollableSheet(
               controller: _sheetController,
-              initialChildSize: _sheetInicial,
+              initialChildSize: _sheetFit,
               minChildSize: _sheetMin,
-              maxChildSize: _sheetMax,
+              maxChildSize: _sheetFit,
               snap: true,
-              snapSizes: const [_sheetMin, _sheetInicial, _sheetMax],
               builder: (context, scrollController) {
                 return DecoratedBox(
                   decoration: BoxDecoration(
@@ -1413,6 +1404,7 @@ class _ConductorServicioActivoScreenState
                     topInset: _sheetSize > 0.92
                         ? MediaQuery.paddingOf(context).top
                         : 0,
+                    onAltoContenido: _alMedirContenido,
                   ),
                 );
               },

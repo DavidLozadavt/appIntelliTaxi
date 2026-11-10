@@ -29,6 +29,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
     this.isLoading = false,
     this.scrollController,
     this.topInset = 0,
+    this.onAltoContenido,
   });
 
   final Map<String, dynamic> servicio;
@@ -49,6 +50,7 @@ class ConductorServicioBottomPanel extends StatelessWidget {
   final bool isLoading;
   final ScrollController? scrollController;
   final double topInset;
+  final ValueChanged<double>? onAltoContenido;
 
   @override
   Widget build(BuildContext context) {
@@ -86,23 +88,25 @@ class ConductorServicioBottomPanel extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: ClampingScrollPhysics(),
       ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 4 + topInset, 16, 0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white24 : const Color(0xFFD1D5DB),
-                  borderRadius: BorderRadius.circular(4),
+      child: _AltoContenido(
+        onChanged: onAltoContenido,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 4 + topInset, 16, 0),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : const Color(0xFFD1D5DB),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            _PasajeroHeader(
+                _PasajeroHeader(
               nombre: nombrePasajero,
               telefono: telefono,
               fotoUrl: fotoPasajeroUrl,
@@ -193,53 +197,55 @@ class ConductorServicioBottomPanel extends StatelessWidget {
                 ),
               ],
             ),
-            if (tieneContenidoRuta) ...[
-              const SizedBox(height: 12),
-              _ItinerarioCard(
-                recogidaTitulo: recogidaHeadline,
-                recogidaDetalle: subtituloRecogida,
-                destinoTitulo: destinoHeadline,
-                destinoDetalle: subtituloDestino,
-                muestraDestino: muestraDestino && destinoHeadline.isNotEmpty,
-                estadoDestino: soloDestino ? 'En curso' : 'En espera',
-                isDark: isDark,
-                onAbrirGps: onNavegarAlPin,
-              ),
-            ],
-            if (accion != null) ...[
-              const SizedBox(height: 12),
-              _BotonAccionPrincipal(
-                label: accion.label,
-                icon: accion.icon,
-                isLoading: isLoading,
-                onPressed: onAccionPrincipal,
-                palpita: llegue && !isLoading,
-              ),
-            ],
-            if (puedeRechazar)
-              TextButton.icon(
-                onPressed: onRechazar,
-                icon: Icon(
-                  Iconsax.close_circle,
-                  color: Colors.red.shade400,
-                  size: 16,
-                ),
-                label: Text(
-                  'Rechazar o cancelar servicio',
-                  style: TextStyle(
-                    color: Colors.red.shade400,
-                    fontWeight: FontWeight.w700,
+                if (tieneContenidoRuta) ...[
+                  const SizedBox(height: 12),
+                  _ItinerarioCard(
+                      recogidaTitulo: recogidaHeadline,
+                      recogidaDetalle: subtituloRecogida,
+                      destinoTitulo: destinoHeadline,
+                      destinoDetalle: subtituloDestino,
+                      muestraDestino:
+                          muestraDestino && destinoHeadline.isNotEmpty,
+                      estadoDestino: soloDestino ? 'En curso' : 'En espera',
+                      isDark: isDark,
+                      onAbrirGps: onNavegarAlPin,
+                    ),
+                ],
+                if (accion != null) ...[
+                  const SizedBox(height: 12),
+                  _BotonAccionPrincipal(
+                    label: accion.label,
+                    icon: accion.icon,
+                    isLoading: isLoading,
+                    onPressed: onAccionPrincipal,
+                    palpita: llegue && !isLoading,
                   ),
-                ),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                ),
-              ),
-            SizedBox(height: MediaQuery.paddingOf(context).bottom + 4),
-          ],
+                ],
+                if (puedeRechazar)
+                  TextButton.icon(
+                    onPressed: onRechazar,
+                    icon: Icon(
+                      Iconsax.close_circle,
+                      color: Colors.red.shade400,
+                      size: 16,
+                    ),
+                    label: Text(
+                      'Rechazar o cancelar servicio',
+                      style: TextStyle(
+                        color: Colors.red.shade400,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                    ),
+                  ),
+                SizedBox(height: MediaQuery.paddingOf(context).bottom + 4),
+              ],
+            ),
+          ),
         ),
-      ),
     );
   }
 
@@ -267,6 +273,39 @@ class ConductorServicioBottomPanel extends StatelessWidget {
       default:
         return null;
     }
+  }
+}
+
+class _AltoContenido extends StatefulWidget {
+  const _AltoContenido({required this.child, this.onChanged});
+
+  final Widget child;
+  final ValueChanged<double>? onChanged;
+
+  @override
+  State<_AltoContenido> createState() => _AltoContenidoState();
+}
+
+class _AltoContenidoState extends State<_AltoContenido> {
+  final GlobalKey _key = GlobalKey();
+  double? _ultimo;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.onChanged != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reportar());
+    }
+    return KeyedSubtree(key: _key, child: widget.child);
+  }
+
+  void _reportar() {
+    if (!mounted) return;
+    final box = _key.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final alto = box.size.height;
+    if (_ultimo != null && (alto - _ultimo!).abs() < 1) return;
+    _ultimo = alto;
+    widget.onChanged?.call(alto);
   }
 }
 
@@ -598,12 +637,12 @@ class _ItinerarioCard extends StatelessWidget {
                   ),
           ),
           if (muestraDestino) ...[
-            Padding(
-              padding: const EdgeInsets.only(left: 7, top: 2, bottom: 2),
-              child: Container(
+            const Padding(
+              padding: EdgeInsets.only(left: 7, top: 2, bottom: 2),
+              child: SizedBox(
                 width: 2,
                 height: 10,
-                color: const Color(0xFFE5E7EB),
+                child: ColoredBox(color: Color(0xFFE5E7EB)),
               ),
             ),
             _ParadaItinerario(
