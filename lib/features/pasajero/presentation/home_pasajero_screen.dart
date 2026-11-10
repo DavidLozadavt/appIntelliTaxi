@@ -1670,10 +1670,14 @@ class _HomePasajeroState extends State<HomePasajero>
           ? poiName
           : ((barrio != null && barrio.isNotEmpty)
               ? barrio
-              : locationData.name);
-      final subtitle = usePoi
-          ? barrio
-          : (street != null && street.isNotEmpty ? street : null);
+              : (street != null && street.isNotEmpty
+                  ? street
+                  : locationData.name));
+      final subtitle = _detalleRecogida(
+        titulo: title,
+        calle: street,
+        barrio: barrio,
+      );
 
       final lockOrigin = _namedPickupLocked || _editingPickup;
       _setStateSafe(() {
@@ -1686,8 +1690,10 @@ class _HomePasajeroState extends State<HomePasajero>
         _currentLocationArea = barrio;
         _currentLocationStreet = street;
         _currentLocationAddress = _direccionParaEnviar(
-          lugar: title,
-          geocode: locationData.address,
+          lugar: usePoi ? poiName : null,
+          calle: street,
+          barrio: barrio,
+          respaldo: title,
         );
 
         if (!lockOrigin) {
@@ -2539,15 +2545,48 @@ class _HomePasajeroState extends State<HomePasajero>
         .replaceAll('ú', 'u');
   }
 
-  /// La dirección del pedido es el lugar (polideportivo, barrio), no la ciudad.
-  String _direccionParaEnviar({required String lugar, String? geocode}) {
-    final sitio = lugar.trim();
-    final calle = geocode?.trim() ?? '';
-    if (sitio.isNotEmpty && !_textoGenerico(sitio)) return sitio;
-    if (calle.isNotEmpty && !_soloCiudad(calle) && !_etiquetasGenericas.contains(calle.toLowerCase())) {
-      return calle;
+  /// Junta lugar, calle y barrio. Omite «Popayán, Cauca» y lo que ya va dicho.
+  String _direccionParaEnviar({
+    String? lugar,
+    String? calle,
+    String? barrio,
+    String? respaldo,
+  }) {
+    final linea = _unirPartesRecogida([lugar, calle, barrio, respaldo]);
+    return linea.isEmpty ? (respaldo?.trim() ?? '') : linea;
+  }
+
+  /// Lo que va debajo del título: calle y barrio, sin repetir el título.
+  String? _detalleRecogida({
+    required String titulo,
+    String? calle,
+    String? barrio,
+  }) {
+    final detalle = _unirPartesRecogida([calle, barrio], yaMostrado: titulo);
+    return detalle.isEmpty ? null : detalle;
+  }
+
+  String _unirPartesRecogida(List<String?> partes, {String? yaMostrado}) {
+    final salida = <String>[];
+    final vistos = <String>[];
+    void tomar(String? raw) {
+      final texto = raw?.trim() ?? '';
+      if (texto.isEmpty || _soloCiudad(texto)) return;
+      if (_etiquetasGenericas.contains(texto.toLowerCase())) return;
+      final norm = _sinTildes(texto.toLowerCase());
+      for (final ya in vistos) {
+        if (ya == norm || ya.contains(norm) || norm.contains(ya)) return;
+      }
+      vistos.add(norm);
+      salida.add(texto);
     }
-    return sitio.isNotEmpty ? sitio : calle;
+
+    tomar(yaMostrado);
+    final desde = salida.length;
+    for (final parte in partes) {
+      tomar(parte);
+    }
+    return salida.skip(desde).join(' · ');
   }
 
   /// Nombre que el usuario eligió. Los textos de relleno no sirven en el panel.
@@ -2577,11 +2616,9 @@ class _HomePasajeroState extends State<HomePasajero>
       loc.name,
     );
     final address = _direccionParaEnviar(
-      lugar: _primeraEtiqueta(
-        [_soloCiudad(loc.address) ? null : loc.address, textoCampo, loc.name],
-        name,
-      ),
-      geocode: loc.address,
+      lugar: _soloCiudad(loc.address) ? null : loc.address,
+      barrio: _etiquetaElegida(loc.barrio) ?? barrioPin?.nombre,
+      respaldo: name,
     );
     return TripLocation(
       placeId: loc.placeId,
@@ -3053,18 +3090,20 @@ class _HomePasajeroState extends State<HomePasajero>
       final poi = landmark?.name.trim();
       final placeName = (poi != null && poi.isNotEmpty && !_textoGenerico(poi))
           ? poi
-          : _etiquetaElegida(data.area) ?? _etiquetaElegida(data.name);
-      final geocoded = placeName ??
-          (_soloCiudad(data.address) ? null : _etiquetaElegida(data.address));
-      if (placeName == null && (geocoded == null || _textoGenerico(geocoded))) {
-        return loc;
-      }
+          : null;
+      final calle = data.streetLine?.trim();
+      final barrio = _etiquetaElegida(data.area) ?? _etiquetaElegida(loc.barrio);
+      final geocoded = _direccionParaEnviar(
+        lugar: placeName,
+        calle: calle,
+        barrio: barrio,
+        respaldo: _etiquetaElegida(data.name),
+      );
+      if (geocoded.isEmpty) return loc;
       final name = _textoGenerico(loc.name)
-          ? (placeName ?? geocoded!)
+          ? (placeName ?? barrio ?? calle ?? geocoded)
           : loc.name;
-      final address = _textoGenerico(loc.address)
-          ? (geocoded ?? name)
-          : loc.address;
+      final address = _textoGenerico(loc.address) ? geocoded : loc.address;
       return TripLocation(
         placeId: landmark?.placeId ?? loc.placeId,
         name: name,
