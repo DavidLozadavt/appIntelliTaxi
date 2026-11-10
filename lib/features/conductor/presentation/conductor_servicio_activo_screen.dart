@@ -108,9 +108,25 @@ class _ConductorServicioActivoScreenState
     if (!mounted) return;
     final pantalla = MediaQuery.sizeOf(context).height;
     if (pantalla <= 0 || alto <= 0) return;
-    final fraccion = (alto / pantalla).clamp(_sheetMin + 0.04, _sheetTope);
+    // Un poco más alta que el contenido, para que el mapa no se coma el viaje.
+    final fraccion =
+        ((alto + 96) / pantalla).clamp(_sheetMin + 0.04, _sheetTope);
     if ((fraccion - _sheetFit).abs() < 0.012) return;
+    final anterior = _sheetFit;
     setState(() => _sheetFit = fraccion);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_sheetController.isAttached || !mounted) return;
+      final actual = _sheetController.size;
+      if ((actual - anterior).abs() > 0.06 && actual < fraccion - 0.02) {
+        return;
+      }
+      if ((actual - fraccion).abs() < 0.012) return;
+      _sheetController.animateTo(
+        fraccion,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   void _onSheetChanged() {

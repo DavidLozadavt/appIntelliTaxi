@@ -737,21 +737,44 @@ class _ParadaItinerario extends StatelessWidget {
                 ),
               ),
               if (detalle.trim().isNotEmpty)
-                Text(
-                  detalle,
+                Text.rich(
+                  _detalleConBarrio(detalle, isDark),
                   softWrap: true,
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.25,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white70 : const Color(0xFF6B7280),
-                  ),
                 ),
             ],
           ),
         ),
       ],
     );
+  }
+
+  /// La calle sigue en gris. El barrio, el primer tramo que no es calle, va en negrita.
+  TextSpan _detalleConBarrio(String detalle, bool isDark) {
+    final base = TextStyle(
+      fontSize: 13,
+      height: 1.25,
+      fontWeight: FontWeight.w600,
+      color: isDark ? Colors.white70 : const Color(0xFF6B7280),
+    );
+    final barrio = base.copyWith(
+      fontWeight: FontWeight.w800,
+      color: isDark ? Colors.white : const Color(0xFF111827),
+    );
+    final partes = detalle.split(' · ');
+    final indiceBarrio = partes.indexWhere(
+      (p) => !SolicitudDisplayHelper.looksLikeStreetAddress(p),
+    );
+    final spans = <InlineSpan>[];
+    for (var i = 0; i < partes.length; i++) {
+      if (i > 0) spans.add(TextSpan(text: ' · ', style: base));
+      spans.add(
+        TextSpan(
+          text: partes[i],
+          style: i == indiceBarrio ? barrio : base,
+        ),
+      );
+    }
+    return TextSpan(children: spans);
   }
 }
 

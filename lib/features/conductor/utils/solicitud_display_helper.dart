@@ -368,7 +368,8 @@ class SolicitudDisplayHelper {
   ///
   /// De «Estadio Ciro López, Carrera 4A, Ciudad jardin, Comuna 3, Perímetro
   /// Urbano Popayán, Popayán, Centro, Cauca, RAP Pacífico, 190002, Colombia»
-  /// deja «Estadio Ciro López» y «Carrera 4A · Ciudad Jardín · Comuna 3 · Centro».
+  /// deja «Estadio Ciro López» y «Carrera 4A · Ciudad Jardín · Centro».
+  /// La comuna no se muestra.
   static ({String principal, String detalle}) direccionClara(
     Map<String, dynamic> data, {
     required bool destino,
@@ -499,6 +500,7 @@ class SolicitudDisplayHelper {
     if (p == 'colombia' || p.startsWith('colombia ')) return true;
     if (p.contains('perimetro')) return true;
     if (p == 'rap pacifico' || p.startsWith('rap ')) return true;
+    if (RegExp(r'^comuna\s*\d+$').hasMatch(p)) return true;
     return false;
   }
 
