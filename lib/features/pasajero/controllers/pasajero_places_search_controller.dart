@@ -56,7 +56,9 @@ class PasajeroPlacesSearchController {
     onResult(const [], true);
     final requestId = ++_originRequestId;
     _originDebounce = Timer(debounceDuration, () async {
-      final predictions = await _placesService.getAutocompletePredictions(query);
+      final predictions = await _placesService.getAutocompletePredictions(
+        query,
+      );
       if (requestId != _originRequestId) return;
       onResult(predictions, false);
     });
@@ -76,13 +78,22 @@ class PasajeroPlacesSearchController {
     onResult(const [], true);
     final requestId = ++_destinationRequestId;
     _destinationDebounce = Timer(debounceDuration, () async {
-      final predictions = await _placesService.getAutocompletePredictions(query);
+      final predictions = await _placesService.getAutocompletePredictions(
+        query,
+        preferNearby: false,
+      );
       if (requestId != _destinationRequestId) return;
       onResult(predictions, false);
     });
   }
 
-  Future<PlaceDetails?> resolvePlace(PlacePrediction prediction) {
-    return _placesService.resolvePrediction(prediction);
+  Future<PlaceDetails?> resolvePlace(
+    PlacePrediction prediction, {
+    bool preferNearby = true,
+  }) {
+    return _placesService.resolvePrediction(
+      prediction,
+      preferNearby: preferNearby,
+    );
   }
 }

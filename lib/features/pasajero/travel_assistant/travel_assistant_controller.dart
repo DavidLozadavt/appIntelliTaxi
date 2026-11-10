@@ -177,7 +177,10 @@ class TravelAssistantController extends ChangeNotifier {
     notifyListeners();
     final id = ++_destReq;
     _destDebounce = Timer(const Duration(milliseconds: 350), () async {
-      final preds = await _places.getAutocompletePredictions(q);
+      final preds = await _places.getAutocompletePredictions(
+        q,
+        preferNearby: false,
+      );
       if (id != _destReq) return;
       destinationPredictions = preds;
       isSearchingDestination = false;
@@ -300,7 +303,7 @@ class TravelAssistantController extends ChangeNotifier {
     isConfirmingAddressSearch = true;
     notifyListeners();
     try {
-      final results = await _places.searchPlaces(q);
+      final results = await _places.searchPlaces(q, preferNearby: false);
       if (results.isEmpty) {
         lastError =
             'No encontramos ese destino en el urbano de Popayán. Revisa el texto o elige una sugerencia.';
@@ -332,7 +335,7 @@ class TravelAssistantController extends ChangeNotifier {
   }
 
   Future<void> pickDestinationFromPrediction(PlacePrediction p) async {
-    final details = await _places.resolvePrediction(p);
+    final details = await _places.resolvePrediction(p, preferNearby: false);
     if (details == null) {
       lastError =
           'Esa dirección está fuera del perímetro urbano de Popayán.';

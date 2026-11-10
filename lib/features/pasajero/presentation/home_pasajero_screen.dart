@@ -25,6 +25,7 @@ import 'package:intellitaxi/features/conductor/data/conductor_model.dart';
 // import 'package:intellitaxi/features/pasajero/travel_assistant/travel_assistant_screen.dart';
 import 'package:intellitaxi/features/pasajero/widgets/no_drivers_available_dialog.dart';
 import 'package:intellitaxi/shared/widgets/standard_map.dart';
+import 'package:intellitaxi/core/geo/place_precision.dart';
 import 'package:intellitaxi/core/services/app_logger.dart';
 import 'package:intellitaxi/core/services/active_service_restoration_service.dart';
 import 'package:intellitaxi/core/services/active_service_screen_registry.dart';
@@ -165,6 +166,7 @@ class _HomePasajeroState extends State<HomePasajero>
     lng: PopayanUrbanArea.centerLng,
   );
   ServicePin? _destPin;
+  int _destPinGeneration = 0;
   bool _mapMoving = false;
   bool _programmaticCamera = false;
   int _programmaticCameraDepth = 0;
@@ -2028,6 +2030,7 @@ class _HomePasajeroState extends State<HomePasajero>
       _destinationPredictions = [];
       _upsertDestinationMarker(destination);
     });
+    unawaited(_resolveDestBarrio(destination.lat, destination.lng));
     await _saveRecentDestination(destination);
     _updateAllDriverMarkers();
     if (_selectedOrigin != null) {
@@ -2228,7 +2231,10 @@ class _HomePasajeroState extends State<HomePasajero>
     _destinationController.removeListener(_onDestinationChanged);
     _placesSearch.cancelDestinationSearch();
 
-    final details = await _placesSearch.resolvePlace(prediction);
+    final details = await _placesSearch.resolvePlace(
+      prediction,
+      preferNearby: false,
+    );
 
     if (!mounted) return;
 
@@ -2520,6 +2526,39 @@ class _HomePasajeroState extends State<HomePasajero>
     );
   }
 
+  /// El destino del pedido es el lugar elegido. El pin solo aporta el barrio
+  /// si sigue en ese mismo punto; si quedó de una selección anterior, no
+  /// mueve las coordenadas.
+  TripLocation _destinoParaPedido(TripLocation destination) {
+    final pin = _destPin;
+    final pedido = _ubicacionParaPedido(
+      destination,
+      textoCampo: _destinationController.text,
+      pin: pin,
+    );
+    if (pin == null) return pedido;
+    final drift = PlacePrecision.distanceMeters(
+      pin.lat,
+      pin.lng,
+      destination.lat,
+      destination.lng,
+    );
+    if (drift <= 80) return pedido;
+    return TripLocation(
+      placeId: pedido.placeId,
+      name: pedido.name,
+      address: pedido.address,
+      lat: destination.lat,
+      lng: destination.lng,
+      isCurrentLocation: pedido.isCurrentLocation,
+      barrio: pedido.barrio,
+      barrioId: pedido.barrioId,
+      barrioConfirmadoPorUsuario: pedido.barrioConfirmadoPorUsuario,
+      precisionGpsM: pedido.precisionGpsM,
+      origenDelPin: pedido.origenDelPin,
+    );
+  }
+
   TripLocation _tripFromPickupPin({double? lat, double? lng}) {
     final pinLat = lat ?? _pickupPin.lat;
     final pinLng = lng ?? _pickupPin.lng;
@@ -2598,15 +2637,33 @@ class _HomePasajeroState extends State<HomePasajero>
     });
   }
 
+  void _fijarDestinoPin(double lat, double lng) {
+    _destPin ??= ServicePin(
+      lat: lat,
+      lng: lng,
+      origen: PinOrigen.ajusteManual,
+    );
+    _destPin!
+      ..lat = lat
+      ..lng = lng
+      ..origen = PinOrigen.ajusteManual
+      ..resolve = null
+      ..elegido = null
+      ..confirmadoPorUsuario = false;
+  }
+
   Future<void> _resolveDestBarrio(double lat, double lng) async {
+    final generation = ++_destPinGeneration;
+    _fijarDestinoPin(lat, lng);
     final result = await _barrioResolver.resolve(lat, lng);
-    if (!mounted) return;
+    if (!mounted || generation != _destPinGeneration) return;
     _setStateSafe(() {
-      _destPin ??= ServicePin(lat: lat, lng: lng, origen: PinOrigen.ajusteManual);
-      _destPin!
-        ..lat = lat
-        ..lng = lng
-        ..origen = PinOrigen.ajusteManual
+      final pin = _destPin;
+      if (pin == null) return;
+      if (PlacePrecision.distanceMeters(pin.lat, pin.lng, lat, lng) > 40) {
+        return;
+      }
+      pin
         ..resolve = result
         ..elegido = result.kind == BarrioResolveKind.inside ? result.match : null
         ..confirmadoPorUsuario = false;
@@ -2874,11 +2931,7 @@ class _HomePasajeroState extends State<HomePasajero>
     try {
       final preciseOrigin = await _originForRequest(origin);
       if (destination != null) {
-        destination = _ubicacionParaPedido(
-          destination,
-          textoCampo: _destinationController.text,
-          pin: _destPin,
-        );
+        destination = _destinoParaPedido(destination);
       }
 
       final response = isDirectFlow

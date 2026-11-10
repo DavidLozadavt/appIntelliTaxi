@@ -111,87 +111,113 @@ class PlacesService {
   }
 
   /// Búsqueda por texto: Google Places (POIs) primero; Nominatim solo si Google no da.
-  Future<List<PlaceResult>> searchPlaces(String query) async {
+  ///
+  /// [preferNearby] acerca los resultados al GPS. Sirve para la recogida.
+  /// En el destino tiene que quedar en false: si no, una dirección del otro
+  /// lado de la ciudad se reemplaza por un homónimo junto al pasajero.
+  Future<List<PlaceResult>> searchPlaces(
+    String query, {
+    bool preferNearby = true,
+  }) async {
     final normalized = query.trim();
     if (normalized.isEmpty) return [];
 
-    final google = await _searchPlacesGoogle(normalized);
+    final google = await _searchPlacesGoogle(
+      normalized,
+      preferNearby: preferNearby,
+    );
     if (google.isNotEmpty) return google;
     if (MapsConfig.useBackendProxy) {
-      return _searchPlacesBackend(normalized);
+      return _searchPlacesBackend(normalized, preferNearby: preferNearby);
     }
     return [];
   }
 
-  Future<List<PlaceResult>> _searchPlacesBackend(String normalized) async {
-    final cacheKey = normalized.toLowerCase();
-    final cached = _getCached(_searchCache, cacheKey);
-    if (cached != null) return cached;
+  Future<List<PlaceResult>> _searchPlacesBackend(
+    String normalized, {
+    bool preferNearby = true,
+  }) async {
+    final cacheKey = 'b:${normalized.toLowerCase()}';
+    var places = _getCached(_searchCache, cacheKey);
 
-    // El backend ya ancla la búsqueda a Popayán (verificado: "carrera 5"
-    // devuelve 10 resultados locales). Aquí solo se filtran los que caen
-    // fuera del área y se ordenan por cercanía.
-    final results = await _taxiMaps.forwardGeocode(
-      normalized,
-      limit: _backendCandidateLimit,
-    );
-
-    final places = <PlaceResult>[];
-    for (final r in results) {
-      if (!_isInsideServiceArea(r.lat, r.lng, r.address)) continue;
-      places.add(
-        PlaceResult(
-          placeId: r.placeId,
-          name: r.name.isNotEmpty ? r.name : r.address.split(',').first,
-          address: r.address,
-          lat: r.lat,
-          lng: r.lng,
-        ),
+    if (places == null) {
+      // El backend ya ancla la búsqueda a Popayán (verificado: "carrera 5"
+      // devuelve 10 resultados locales). Aquí solo se filtran los que caen
+      // fuera del área. El orden del geocoder se conserva en caché; la
+      // cercanía al pasajero se aplica solo si [preferNearby] es true.
+      final results = await _taxiMaps.forwardGeocode(
+        normalized,
+        limit: _backendCandidateLimit,
       );
-    }
 
-    final ranked = _rankByProximity(places);
-    _searchCache[cacheKey] = _CacheEntry(
-      value: ranked,
-      expiresAt: DateTime.now().add(_cacheTtl),
-    );
-    return ranked;
-  }
-
-  Future<List<PlaceResult>> _searchPlacesGoogle(String normalized) async {
-    final cacheKey = normalized.toLowerCase();
-    final cached = _getCached(_searchCache, cacheKey);
-    if (cached != null) return cached;
-
-    try {
-      final url = Uri.parse(
-        '$_googleBaseUrl/place/textsearch/json?'
-        'query=${Uri.encodeComponent(PlacePrecision.withAreaContext(normalized))}'
-        '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
-        '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
-        '&key=${AppConfig.googleMapsApiKey}'
-        '&language=es',
-      );
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['status'] == 'OK') {
-          final results = (data['results'] as List)
-              .map((place) => PlaceResult.fromJson(place))
-              .where((p) => PopayanUrbanArea.contains(p.lat, p.lng))
-              .toList();
-          final ranked = _rankByProximity(results);
-          _searchCache[cacheKey] = _CacheEntry(
-            value: ranked,
-            expiresAt: DateTime.now().add(_cacheTtl),
-          );
-          return ranked;
-        }
+      places = <PlaceResult>[];
+      for (final r in results) {
+        if (!_isInsideServiceArea(r.lat, r.lng, r.address)) continue;
+        places.add(
+          PlaceResult(
+            placeId: r.placeId,
+            name: r.name.isNotEmpty ? r.name : r.address.split(',').first,
+            address: r.address,
+            lat: r.lat,
+            lng: r.lng,
+          ),
+        );
       }
-    } catch (e) {
-      AppLogger.d('❌ Error buscando lugares: $e');
+      _searchCache[cacheKey] = _CacheEntry(
+        value: places,
+        expiresAt: DateTime.now().add(_cacheTtl),
+      );
     }
-    return [];
+
+    if (!preferNearby) return places.take(_maxResults).toList();
+    return _rankByProximity(places);
+  }
+
+  Future<List<PlaceResult>> _searchPlacesGoogle(
+    String normalized, {
+    bool preferNearby = true,
+  }) async {
+    final cacheKey = 'g:${normalized.toLowerCase()}';
+    var results = _getCached(_searchCache, cacheKey);
+
+    if (results == null) {
+      List<PlaceResult>? fetched;
+      try {
+        final url = Uri.parse(
+          '$_googleBaseUrl/place/textsearch/json?'
+          'query=${Uri.encodeComponent(PlacePrecision.withAreaContext(normalized))}'
+          '&location=${PopayanUrbanArea.centerLat},${PopayanUrbanArea.centerLng}'
+          '&radius=${(PopayanUrbanArea.maxRadiusKm * 1000).round()}'
+          '&key=${AppConfig.googleMapsApiKey}'
+          '&language=es',
+        );
+        final response = await http.get(url);
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          final status = data['status']?.toString();
+          if (status == 'OK') {
+            fetched = (data['results'] as List)
+                .map((place) => PlaceResult.fromJson(place))
+                .where((p) => PopayanUrbanArea.contains(p.lat, p.lng))
+                .toList();
+          } else if (status == 'ZERO_RESULTS') {
+            fetched = <PlaceResult>[];
+          }
+        }
+      } catch (e) {
+        AppLogger.d('❌ Error buscando lugares: $e');
+      }
+      if (fetched == null) return [];
+      results = fetched;
+      _searchCache[cacheKey] = _CacheEntry(
+        value: results,
+        expiresAt: DateTime.now().add(_cacheTtl),
+      );
+    }
+
+    if (results.isEmpty) return [];
+    if (!preferNearby) return results.take(_maxResults).toList();
+    return _rankByProximity(results);
   }
 
   String? get currentAutocompleteSessionToken => _autocompleteSessionToken;
@@ -215,6 +241,7 @@ class PlacesService {
   Future<List<PlacePrediction>> getAutocompletePredictions(
     String input, {
     String? sessionToken,
+    bool preferNearby = true,
   }) async {
     final normalized = input.trim();
     if (normalized.length < _minAutocompleteChars) return [];
@@ -222,22 +249,35 @@ class PlacesService {
     // Google autocomplete no trae lat/lng; el backend sí. Mezclar ambos
     // evita que un POI de Google esconda calles locales, y al elegir se
     // geocodifica lo que no traiga coordenadas.
-    final googlePoiFuture = _predictionsFromGoogleTextSearch(normalized);
+    //
+    // En destino [preferNearby] va en false: si se ordena por el GPS, la
+    // lista se queda con homónimos junto al pasajero y el pin cae ahí.
+    final googlePoiFuture = _predictionsFromGoogleTextSearch(
+      normalized,
+      preferNearby: preferNearby,
+    );
     final googleAutoFuture = _autocompleteGoogle(normalized, sessionToken);
     final backendFuture = MapsConfig.useBackendProxy
-        ? _autocompleteBackend(normalized)
+        ? _autocompleteBackend(normalized, preferNearby: preferNearby)
         : Future<List<PlacePrediction>>.value(const []);
-    return _mergePredictions([
-      await googlePoiFuture,
-      await backendFuture,
-      await googleAutoFuture,
-    ]);
+    return _mergePredictions(
+      [
+        await googlePoiFuture,
+        await backendFuture,
+        await googleAutoFuture,
+      ],
+      preferNearby: preferNearby,
+    );
   }
 
   Future<List<PlacePrediction>> _predictionsFromGoogleTextSearch(
-    String normalized,
-  ) async {
-    final places = await _searchPlacesGoogle(normalized);
+    String normalized, {
+    bool preferNearby = true,
+  }) async {
+    final places = await _searchPlacesGoogle(
+      normalized,
+      preferNearby: preferNearby,
+    );
     return [
       for (final p in places)
         PlacePrediction(
@@ -252,8 +292,9 @@ class PlacesService {
   }
 
   List<PlacePrediction> _mergePredictions(
-    List<List<PlacePrediction>> buckets,
-  ) {
+    List<List<PlacePrediction>> buckets, {
+    bool preferNearby = true,
+  }) {
     final seen = <String>{};
     final merged = <PlacePrediction>[];
     for (final bucket in buckets) {
@@ -265,46 +306,55 @@ class PlacesService {
         merged.add(p);
       }
     }
+    if (!preferNearby) return merged.take(_maxResults).toList();
     return _rankPredictionsByProximity(merged);
   }
 
-  Future<List<PlacePrediction>> _autocompleteBackend(String normalized) async {
-    final cacheKey = normalized.toLowerCase();
-    final cached = _getCached(_autocompleteCache, cacheKey);
-    if (cached != null) {
-      _metrics.autocompleteCacheHits++;
-      return cached;
-    }
-
-    AppLogger.d('🔍 Autocomplete backend: "$normalized"');
-    final dtos = await _taxiMaps.autocomplete(
-      normalized,
-      limit: _backendCandidateLimit,
-    );
-    _metrics.autocompleteApiCalls++;
-
-    final predictions = <PlacePrediction>[];
-    for (final d in dtos) {
-      // Filtro por coordenadas reales: el texto puede no mencionar la
-      // ciudad y el geocoder igual devuelve un punto de Cali o Bogotá.
-      if (!_isInsideServiceArea(d.lat, d.lng, d.description)) continue;
-      if (!PopayanUrbanArea.isPredictionAllowed(d.description)) continue;
-
-      predictions.add(
-        PlacePrediction.fromBackendJson({
-          'place_id': d.placeId,
-          'description': d.description,
-          'address': d.address,
-          'name': d.name,
-          'lat': d.lat,
-          'lng': d.lng,
-        }),
+  Future<List<PlacePrediction>> _autocompleteBackend(
+    String normalized, {
+    bool preferNearby = true,
+  }) async {
+    final cacheKey = 'raw:${normalized.toLowerCase()}';
+    var predictions = _getCached(_autocompleteCache, cacheKey);
+    if (predictions == null) {
+      AppLogger.d('🔍 Autocomplete backend: "$normalized"');
+      final dtos = await _taxiMaps.autocomplete(
+        normalized,
+        limit: _backendCandidateLimit,
       );
+      _metrics.autocompleteApiCalls++;
+
+      predictions = <PlacePrediction>[];
+      for (final d in dtos) {
+        // Filtro por coordenadas reales: el texto puede no mencionar la
+        // ciudad y el geocoder igual devuelve un punto de Cali o Bogotá.
+        if (!_isInsideServiceArea(d.lat, d.lng, d.description)) continue;
+        if (!PopayanUrbanArea.isPredictionAllowed(d.description)) continue;
+
+        predictions.add(
+          PlacePrediction.fromBackendJson({
+            'place_id': d.placeId,
+            'description': d.description,
+            'address': d.address,
+            'name': d.name,
+            'lat': d.lat,
+            'lng': d.lng,
+          }),
+        );
+      }
+      _autocompleteCache[cacheKey] = _CacheEntry(
+        value: predictions,
+        expiresAt: DateTime.now().add(_cacheTtl),
+      );
+    } else {
+      _metrics.autocompleteCacheHits++;
     }
 
-    final ranked = _rankPredictionsByProximity(predictions);
-    if (ranked.isNotEmpty) {
-      final detalle = ranked
+    final visible = preferNearby
+        ? _rankPredictionsByProximity(predictions)
+        : predictions.take(_maxResults).toList();
+    if (visible.isNotEmpty) {
+      final detalle = visible
           .take(3)
           .map(
             (p) =>
@@ -314,11 +364,7 @@ class PlacesService {
           .join(' · ');
       AppLogger.d('   → $detalle');
     }
-    _autocompleteCache[cacheKey] = _CacheEntry(
-      value: ranked,
-      expiresAt: DateTime.now().add(_cacheTtl),
-    );
-    return ranked;
+    return visible;
   }
 
   Future<List<PlacePrediction>> _autocompleteGoogle(
@@ -548,7 +594,10 @@ class PlacesService {
   /// proxy activo, el place_id `ChIJ…` no se puede pedir a Nominatim. En
   /// esos casos se geocodifica la descripción para no rechazar direcciones
   /// locales como si estuvieran fuera del perímetro.
-  Future<PlaceDetails?> resolvePrediction(PlacePrediction prediction) async {
+  Future<PlaceDetails?> resolvePrediction(
+    PlacePrediction prediction, {
+    bool preferNearby = true,
+  }) async {
     if (prediction.hasCoordinates) {
       if (PopayanUrbanArea.contains(prediction.lat!, prediction.lng!)) {
         return PlaceDetails(
@@ -571,15 +620,18 @@ class PlacesService {
         prediction.placeId,
       );
       if (fromNominatim != null) return fromNominatim;
-      return _geocodePrediction(prediction);
+      return _geocodePrediction(prediction, preferNearby: preferNearby);
     }
 
     final fromGoogle = await getPlaceDetails(prediction.placeId);
     if (fromGoogle != null) return fromGoogle;
-    return _geocodePrediction(prediction);
+    return _geocodePrediction(prediction, preferNearby: preferNearby);
   }
 
-  Future<PlaceDetails?> _geocodePrediction(PlacePrediction prediction) async {
+  Future<PlaceDetails?> _geocodePrediction(
+    PlacePrediction prediction, {
+    bool preferNearby = true,
+  }) async {
     final query = prediction.description.trim().isNotEmpty
         ? prediction.description
         : prediction.mainText;
@@ -590,27 +642,44 @@ class PlacesService {
       limit: _backendCandidateLimit,
     );
 
-    TaxiForwardGeocodeResult? best;
-    var bestMeters = double.infinity;
-    final context = _searchContext;
+    final inside = <TaxiForwardGeocodeResult>[];
     for (final result in results) {
       if (!_isInsideServiceArea(result.lat, result.lng, result.address)) {
         continue;
       }
-      final meters = context == null
-          ? 0.0
-          : PlacePrecision.distanceMeters(
-              context.lat,
-              context.lng,
-              result.lat,
-              result.lng,
-            );
-      if (best == null || meters < bestMeters) {
-        best = result;
-        bestMeters = meters;
-      }
+      inside.add(result);
     }
-    if (best == null) return null;
+    if (inside.isEmpty) return null;
+
+    final TaxiForwardGeocodeResult best;
+    if (!preferNearby) {
+      final index = PlacePrecision.indexBestTextMatch(
+        names: [for (final result in inside) result.name],
+        addresses: [for (final result in inside) result.address],
+        queryName: prediction.mainText,
+        queryDescription: prediction.description,
+      );
+      best = inside[index < 0 ? 0 : index];
+    } else {
+      TaxiForwardGeocodeResult? nearest;
+      var bestMeters = double.infinity;
+      final context = _searchContext;
+      for (final result in inside) {
+        final meters = context == null
+            ? 0.0
+            : PlacePrecision.distanceMeters(
+                context.lat,
+                context.lng,
+                result.lat,
+                result.lng,
+              );
+        if (nearest == null || meters < bestMeters) {
+          nearest = result;
+          bestMeters = meters;
+        }
+      }
+      best = nearest!;
+    }
 
     return PlaceDetails(
       name: prediction.mainText.isNotEmpty ? prediction.mainText : best.name,

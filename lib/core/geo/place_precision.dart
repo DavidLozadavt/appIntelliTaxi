@@ -184,6 +184,53 @@ abstract final class PlacePrecision {
     return earthRadius * 2 * math.asin(math.sqrt(a));
   }
 
+  /// Índice del geocódigo que corresponde al texto elegido.
+  ///
+  /// En empate se queda el primero: ese es el orden del geocoder. No se
+  /// usa la distancia al pasajero, porque en el destino eso mueve el pin
+  /// al lugar cercano al origen en vez del que se seleccionó.
+  static int indexBestTextMatch({
+    required List<String> names,
+    required List<String> addresses,
+    required String queryName,
+    required String queryDescription,
+  }) {
+    final count = names.length < addresses.length
+        ? names.length
+        : addresses.length;
+    if (count == 0) return -1;
+
+    final query = _normalizeKey(queryName);
+    final description = _normalizeKey(queryDescription);
+    var best = 0;
+    var bestScore = -1;
+    for (var i = 0; i < count; i++) {
+      final name = _normalizeKey(names[i]);
+      final address = _normalizeKey(addresses[i]);
+      var score = 0;
+      if (query.isNotEmpty) {
+        if (name == query || address == query) {
+          score += 100;
+        } else if (name.startsWith(query) || address.startsWith(query)) {
+          score += 70;
+        } else if (name.contains(query) || address.contains(query)) {
+          score += 40;
+        }
+      }
+      if (description.isNotEmpty &&
+          (address == description ||
+              address.contains(description) ||
+              name.contains(description))) {
+        score += 15;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    return best;
+  }
+
   /// Ordena por cercanía al origen, conservando el orden original entre
   /// empates (estable) para no cambiar la preferencia del geocoder.
   static List<T> sortByProximity<T>(

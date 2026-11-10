@@ -318,4 +318,35 @@ void main() {
       );
     });
   });
+
+  group('PlacePrecision.indexBestTextMatch', () {
+    test('el destino queda en el texto elegido, no en el más cercano', () {
+      final index = PlacePrecision.indexBestTextMatch(
+        names: const [
+          'Calle 5',
+          'Terminal de Transportes',
+        ],
+        addresses: const [
+          'Calle 5, Popayán',
+          'Terminal de Transportes, Popayán',
+        ],
+        queryName: 'Terminal de Transportes',
+        queryDescription: 'Terminal de Transportes, Popayán, Cauca',
+      );
+      expect(index, 1);
+    });
+
+    test('si el texto empata, se queda el primer resultado del geocoder', () {
+      final index = PlacePrecision.indexBestTextMatch(
+        names: const ['Carrera 9', 'Carrera 9'],
+        addresses: const [
+          'Carrera 9, Norte, Popayán',
+          'Carrera 9, Sur, Popayán',
+        ],
+        queryName: 'Carrera 9',
+        queryDescription: 'Carrera 9, Popayán',
+      );
+      expect(index, 0);
+    });
+  });
 }

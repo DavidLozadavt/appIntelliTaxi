@@ -131,7 +131,12 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
 
     setState(() => _isSearchingDestination = true);
 
-    _placesService.getAutocompletePredictions(_destinationController.text).then(
+    _placesService
+        .getAutocompletePredictions(
+          _destinationController.text,
+          preferNearby: false,
+        )
+        .then(
       (predictions) {
         if (mounted) {
           setState(() {
@@ -162,7 +167,10 @@ class _RideRequestBottomSheetState extends State<RideRequestBottomSheet>
   }
 
   Future<void> _selectDestination(PlacePrediction prediction) async {
-    final details = await _placesService.resolvePrediction(prediction);
+    final details = await _placesService.resolvePrediction(
+      prediction,
+      preferNearby: false,
+    );
 
     if (details != null && mounted) {
       setState(() {
