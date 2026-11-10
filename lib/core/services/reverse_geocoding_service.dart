@@ -863,6 +863,145 @@ class ReverseGeocodingService {
     return list.first;
   }
 
+  /// Recogida del pasajero: solo resultados de Google a ≤150 m del GPS.
+  ///
+  /// Descarta RANGE_INTERPOLATED y GEOMETRIC_CENTER cuando hay ROOFTOP u
+  /// otra puerta. Si no hay calle confiable, no inventa «Carrera XX»: deja
+  /// el barrio.
+  Future<CurrentLocationData> resolveTrustedPickup({
+    required double lat,
+    required double lng,
+    double? accuracyMeters,
+  }) async {
+    debugPrint(
+      '[PickupGeo] gps=$lat,$lng '
+      'accuracy=${accuracyMeters?.toStringAsFixed(0) ?? '?'}m',
+    );
+    const fallback = CurrentLocationData(
+      name: 'Mi ubicación',
+      address: 'Ubicación actual',
+    );
+
+    final results = await _fetchGeocodeResults(
+      lat: lat,
+      lng: lng,
+      logLabel: 'pickup',
+    );
+    if (results == null || results.isEmpty) {
+      debugPrint('[PickupGeo] sin resultados de Google');
+      return fallback;
+    }
+
+    final within = <({Map<String, dynamic> result, double meters, String locationType, List<String> types})>[];
+    for (final result in results) {
+      final types = (result['types'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
+      if (types.length == 1 && types.contains('plus_code')) continue;
+      final geo = result['geometry'];
+      final locationType = geo is Map
+          ? (geo['location_type']?.toString().toUpperCase() ?? '')
+          : '';
+      final meters = _geocodeResultRawMeters(result, lat: lat, lng: lng);
+      debugPrint(
+        '[PickupGeo] candidato location_type=$locationType types=$types '
+        'dist=${meters.isFinite ? meters.toStringAsFixed(0) : 'inf'}m',
+      );
+      if (!meters.isFinite || meters > 150) continue;
+      within.add((
+        result: result,
+        meters: meters,
+        locationType: locationType,
+        types: types,
+      ));
+    }
+
+    bool isDoor(
+      ({Map<String, dynamic> result, double meters, String locationType, List<String> types}) item,
+    ) {
+      return item.locationType == 'ROOFTOP' ||
+          item.types.contains('street_address') ||
+          item.types.contains('premise') ||
+          item.types.contains('subpremise');
+    }
+
+    final hasDoor = within.any(isDoor);
+    final pool = within.where((item) {
+      if (item.locationType == 'APPROXIMATE') return false;
+      if (hasDoor &&
+          (item.locationType == 'RANGE_INTERPOLATED' ||
+              item.locationType == 'GEOMETRIC_CENTER')) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    if (pool.isEmpty) {
+      debugPrint('[PickupGeo] ningún resultado a ≤150 m; no se muestra calle');
+      final area = await resolveNearbyGoogleAreaName(
+        lat: lat,
+        lng: lng,
+        maxDistanceMeters: 150,
+      );
+      if (area == null || area.trim().isEmpty) return fallback;
+      return CurrentLocationData(name: area.trim(), address: area.trim(), area: area.trim());
+    }
+
+    pool.sort((a, b) {
+      int rank(String type) {
+        switch (type) {
+          case 'ROOFTOP':
+            return 0;
+          case 'RANGE_INTERPOLATED':
+            return 2;
+          case 'GEOMETRIC_CENTER':
+            return 3;
+          default:
+            return 1;
+        }
+      }
+
+      final byType = rank(a.locationType).compareTo(rank(b.locationType));
+      if (byType != 0) return byType;
+      return a.meters.compareTo(b.meters);
+    });
+
+    final chosen = pool.first;
+    final components = chosen.result['address_components'] as List<dynamic>? ?? [];
+    final barrio = _firstComponentValue(
+      components,
+      acceptedTypes: const ['neighborhood', 'sublocality_level_1'],
+    );
+    final streetReliable = isDoor(chosen);
+    final route = streetReliable
+        ? _firstComponentValue(components, acceptedTypes: const ['route'])
+        : null;
+    final number = streetReliable
+        ? _firstComponentValue(components, acceptedTypes: const ['street_number'])
+        : null;
+    final street = streetReliable ? _formatStreetLine(route, number) : null;
+    final area = (barrio != null && barrio.trim().isNotEmpty)
+        ? barrio.trim()
+        : _extractAreaFromResults([chosen.result], lat: lat, lng: lng);
+    final formatted = _stripPlusCodes(
+      chosen.result['formatted_address']?.toString() ?? '',
+    );
+    final name = (area != null && area.isNotEmpty)
+        ? area
+        : (street ?? fallback.name);
+    debugPrint(
+      '[PickupGeo] elegido location_type=${chosen.locationType} '
+      'types=${chosen.types} dist=${chosen.meters.toStringAsFixed(0)}m '
+      'barrio=$area calle=${street ?? '-'}',
+    );
+    return CurrentLocationData(
+      name: name,
+      address: streetReliable && formatted.isNotEmpty ? formatted : name,
+      area: area,
+      streetLine: street,
+    );
+  }
+
   /// Devuelve nombre corto y legible para mostrar como origen (barrio + calle).
   Future<CurrentLocationData> resolveCurrentLocationLabel({
     required double lat,

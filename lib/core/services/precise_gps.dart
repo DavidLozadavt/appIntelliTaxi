@@ -81,12 +81,14 @@ abstract final class PreciseGps {
   static LocationSettings currentPosition({
     Duration timeLimit = defaultTimeLimit,
     PreciseGpsUse use = PreciseGpsUse.navigation,
+    LocationAccuracy? accuracy,
   }) {
     return platform(
       use: use,
       distanceFilter: 0,
       timeLimit: timeLimit,
       interval: const Duration(seconds: 1),
+      accuracy: accuracy,
     );
   }
 
@@ -107,10 +109,12 @@ abstract final class PreciseGps {
     int distanceFilter = 0,
     Duration? timeLimit,
     Duration interval = const Duration(seconds: 1),
+    LocationAccuracy? accuracy,
   }) {
+    final resolvedAccuracy = accuracy ?? PreciseGps.accuracy;
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
-        accuracy: accuracy,
+        accuracy: resolvedAccuracy,
         distanceFilter: distanceFilter,
         intervalDuration: interval,
         timeLimit: timeLimit,
@@ -124,7 +128,7 @@ abstract final class PreciseGps {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       final driving = use == PreciseGpsUse.navigation;
       return AppleSettings(
-        accuracy: accuracy,
+        accuracy: resolvedAccuracy,
         distanceFilter: distanceFilter,
         timeLimit: timeLimit,
         pauseLocationUpdatesAutomatically: false,
@@ -136,7 +140,7 @@ abstract final class PreciseGps {
       );
     }
     return LocationSettings(
-      accuracy: accuracy,
+      accuracy: resolvedAccuracy,
       distanceFilter: distanceFilter,
       timeLimit: timeLimit,
     );

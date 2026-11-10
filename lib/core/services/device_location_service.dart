@@ -88,7 +88,10 @@ class DeviceLocationService {
     Duration timeout = resolveTimeout,
     Duration lastKnownMaxAge = const Duration(seconds: 30),
     double lastKnownMaxAccuracyMeters = 25,
+    bool forPickup = false,
   }) async {
+    if (forPickup) return _resolvePickupPosition();
+
     Position? lastKnown;
     try {
       lastKnown = await Geolocator.getLastKnownPosition();
@@ -173,6 +176,50 @@ class DeviceLocationService {
     }
 
     return null;
+  }
+
+  /// Recogida del pasajero: GPS fresco, nunca la última posición guardada.
+  /// Si el error pasa de 50 m, se escucha el stream hasta 8 s y se queda
+  /// la lectura de menor radio (objetivo ≤ 30 m).
+  static Future<DeviceLocationResult?> _resolvePickupPosition() async {
+    await PreciseGps.requestFullAccuracyIfNeeded();
+
+    Position? position;
+    try {
+      position = await Geolocator.getCurrentPosition(
+        locationSettings: PreciseGps.currentPosition(
+          timeLimit: const Duration(seconds: 8),
+          use: PreciseGpsUse.pickup,
+          accuracy: LocationAccuracy.best,
+        ),
+      ).timeout(const Duration(seconds: 10));
+    } catch (e) {
+      AppLogger.d('getCurrentPosition recogida: $e', tag: 'DeviceLocation');
+    }
+
+    final coarse = position == null ||
+        !position.accuracy.isFinite ||
+        position.accuracy > 50;
+    if (coarse) {
+      final streamed = await PreciseGps.waitForReliableFix(
+        timeout: const Duration(seconds: 8),
+        maxAccuracyMeters: 30,
+        use: PreciseGpsUse.pickup,
+      );
+      if (streamed != null &&
+          (position == null ||
+              !position.accuracy.isFinite ||
+              streamed.accuracy < position.accuracy)) {
+        position = streamed;
+      }
+    }
+
+    if (position == null) return null;
+    debugPrint(
+      '[PickupGps] ${position.latitude},${position.longitude} '
+      'accuracy=${position.accuracy.toStringAsFixed(0)}m',
+    );
+    return DeviceLocationResult(position: position);
   }
 
   /// Ubicación de prueba dentro del urbano de Popayán (desarrollo).

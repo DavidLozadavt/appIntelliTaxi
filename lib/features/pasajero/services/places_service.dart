@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:intellitaxi/config/app_config.dart';
@@ -469,6 +470,72 @@ class PlacesService {
     }
     if (best == null || bestMeters > maxDistanceMeters) return null;
     return best;
+  }
+
+  static const Set<String> _landmarkTypes = {
+    'park',
+    'stadium',
+    'gym',
+    'church',
+    'place_of_worship',
+    'school',
+    'university',
+    'gas_station',
+  };
+
+  /// Parque, polideportivo, iglesia, colegio o estación a ≤150 m.
+  /// No usa el proxy: ese devuelve una calle que puede estar en otro barrio.
+  Future<PlaceResult?> findNearestLandmark(double lat, double lng) async {
+    if (!PopayanUrbanArea.contains(lat, lng)) return null;
+    try {
+      final url = Uri.parse(
+        '$_googleBaseUrl/place/nearbysearch/json?'
+        'location=$lat,$lng'
+        '&radius=150'
+        '&key=${AppConfig.googleMapsApiKey}'
+        '&language=es',
+      );
+      final response = await http.get(url);
+      if (response.statusCode != 200) return null;
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final status = data['status']?.toString() ?? '';
+      if (status != 'OK') {
+        debugPrint('[PickupGeo] nearby status=$status');
+        return null;
+      }
+
+      PlaceResult? best;
+      var bestMeters = double.infinity;
+      for (final raw in data['results'] as List<dynamic>? ?? []) {
+        if (raw is! Map) continue;
+        final map = Map<String, dynamic>.from(raw);
+        final types = (map['types'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toSet();
+        final name = map['name']?.toString().trim() ?? '';
+        final looksLandmark = types.any(_landmarkTypes.contains) ||
+            RegExp(
+              r'polideportivo|parque|iglesia|colegio|estaci[oó]n',
+              caseSensitive: false,
+            ).hasMatch(name);
+        if (!looksLandmark || name.isEmpty) continue;
+        final place = PlaceResult.fromJson(map);
+        final meters = Geolocator.distanceBetween(lat, lng, place.lat, place.lng);
+        if (!meters.isFinite || meters > 150 || meters >= bestMeters) continue;
+        best = place;
+        bestMeters = meters;
+      }
+      if (best != null) {
+        debugPrint(
+          '[PickupGeo] referencia=${best.name} '
+          'dist=${bestMeters.toStringAsFixed(0)}m',
+        );
+      }
+      return best;
+    } catch (e) {
+      debugPrint('[PickupGeo] nearby error=$e');
+      return null;
+    }
   }
 
   /// Lugar cercano al punto, para nombrar el punto de recogida.

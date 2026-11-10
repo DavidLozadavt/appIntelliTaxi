@@ -13,6 +13,7 @@ class PasajeroHomeRideSheet extends StatelessWidget {
     required this.serviceType,
     required this.pickupDisplayLabel,
     this.pickupStreetDetail,
+    this.onUseCurrentLocation,
     required this.originController,
     required this.destinationController,
     required this.originFocusNode,
@@ -29,7 +30,6 @@ class PasajeroHomeRideSheet extends StatelessWidget {
     required this.onClearDestination,
     required this.editingPickup,
     required this.onEditPickup,
-    this.locatingGps = false,
     required this.ctaLabel,
     this.ctaTrailing,
     required this.onCtaPressed,
@@ -41,6 +41,7 @@ class PasajeroHomeRideSheet extends StatelessWidget {
   final String serviceType;
   final String pickupDisplayLabel;
   final String? pickupStreetDetail;
+  final VoidCallback? onUseCurrentLocation;
   final TextEditingController originController;
   final TextEditingController destinationController;
   final FocusNode originFocusNode;
@@ -57,7 +58,6 @@ class PasajeroHomeRideSheet extends StatelessWidget {
   final VoidCallback onClearDestination;
   final bool editingPickup;
   final VoidCallback onEditPickup;
-  final bool locatingGps;
   final String ctaLabel;
   final String? ctaTrailing;
   final VoidCallback? onCtaPressed;
@@ -136,13 +136,6 @@ class PasajeroHomeRideSheet extends StatelessWidget {
         selectedType: serviceType,
         onTypeChanged: onServiceTypeChanged,
       ),
-      if (locatingGps) ...[
-        const SizedBox(height: 12),
-        const Text(
-          'Ubicando… espera un GPS de ≤ 30 m o mueve el pin a mano.',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ],
       const SizedBox(height: 16),
       if (editingPickup) ...[
         LocationSearchField(
@@ -185,6 +178,7 @@ class PasajeroHomeRideSheet extends StatelessWidget {
       if (!editingPickup) ...[
         if (serviceType != 'taxi') const SizedBox(height: 12),
         _pickupCard(context),
+        _pickupExtras(context),
       ],
     ];
   }
@@ -272,6 +266,23 @@ class PasajeroHomeRideSheet extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pickupExtras(BuildContext context) {
+    if (onUseCurrentLocation == null) return const SizedBox.shrink();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onUseCurrentLocation,
+        icon: const Icon(Icons.my_location, size: 18),
+        label: const Text('Usar mi ubicación actual'),
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.green,
+          visualDensity: VisualDensity.compact,
+          textStyle: const TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
     );
