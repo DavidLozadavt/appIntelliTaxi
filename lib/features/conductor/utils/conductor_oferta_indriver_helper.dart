@@ -137,7 +137,7 @@ abstract final class ConductorOfertaIndriverHelper {
 
   static bool esActualizarFase(Map<String, dynamic> raw) {
     final accion = raw['evento_accion']?.toString().toLowerCase() ?? '';
-    return accion == 'actualizar_fase';
+    return accion == 'actualizar_fase' || accion == 'mover_a_espera';
   }
 
   static bool debeReemplazarExistente(Map<String, dynamic> raw) {

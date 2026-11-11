@@ -376,6 +376,9 @@ class _HomeConductorState extends State<HomeConductor>
 
   void _onProviderUiMensajes() {
     if (!mounted) return;
+    if (_provider.takeIrATabEspera()) {
+      _irATabEnEspera();
+    }
     final msg = _provider.takeLastRadioDismissMessage();
     if (msg == null || msg.isEmpty) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -757,20 +760,20 @@ class _HomeConductorState extends State<HomeConductor>
     }
   }
 
-  /// Rechaza para este conductor (cola «Llegando» / «En espera»); no cancela el viaje del pasajero.
+  /// Rechaza para este conductor: sale de Llegando y queda en En espera.
   void _rechazarSolicitud(String solicitudId) async {
-    AppLogger.d('❌ Rechazo local conductor: $solicitudId');
+    AppLogger.d('❌ Rechazo conductor, pasa a espera: $solicitudId');
 
     final okRemoto = await _provider.rechazarSolicitudParaConductor(solicitudId);
-    _pendientesProvider.quitarPorId(solicitudId);
 
     if (!mounted) return;
 
     if (okRemoto) {
+      _irATabEnEspera();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'No te volverá a salir este servicio. Sigue disponible para otros conductores.',
+            'Pasó a En espera. Lo puedes tomar después si sigue disponible.',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -779,7 +782,7 @@ class _HomeConductorState extends State<HomeConductor>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Ocultado en la app. Si vuelve a aparecer, revisa tu conexión.',
+            'No se pudo rechazar. El servicio sigue en la lista.',
           ),
           backgroundColor: Colors.orange,
         ),

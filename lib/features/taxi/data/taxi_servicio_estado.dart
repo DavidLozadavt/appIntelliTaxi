@@ -259,12 +259,20 @@ class TaxiSolicitudesRechazadasResult {
   final int total;
   final Set<int> servicioIds;
 
+  /// False si el GET falló. Una lista vacía con [ok] true es la lista real.
+  final bool ok;
+
   const TaxiSolicitudesRechazadasResult({
     required this.total,
     required this.servicioIds,
+    this.ok = true,
   });
 
   factory TaxiSolicitudesRechazadasResult.empty() {
-    return const TaxiSolicitudesRechazadasResult(total: 0, servicioIds: {});
+    return const TaxiSolicitudesRechazadasResult(
+      total: 0,
+      servicioIds: {},
+      ok: false,
+    );
   }
 }

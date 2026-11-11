@@ -344,6 +344,14 @@ class _ConductorOfertaExclusivaScreenState
     if (!mounted) return;
     setState(() => _procesando = false);
     if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Pasó a En espera. Lo puedes tomar después si sigue disponible.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
       Navigator.of(context).pop();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(

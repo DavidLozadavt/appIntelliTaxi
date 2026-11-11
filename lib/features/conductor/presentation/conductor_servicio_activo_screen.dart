@@ -1490,8 +1490,8 @@ class _ConductorServicioActivoScreenState
       SnackBar(
         content: Text(
           okRemoto
-              ? 'No te volverá a salir este servicio. Sigue disponible para otros conductores.'
-              : 'Ocultado en la app. Si vuelve a aparecer, revisa tu conexión.',
+              ? 'Lo soltaste. Quedó en En espera por si lo quieres tomar después.'
+              : 'No se pudo rechazar el viaje. Revisa tu conexión.',
         ),
         backgroundColor: Colors.orange,
       ),

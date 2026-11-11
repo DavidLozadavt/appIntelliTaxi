@@ -997,14 +997,19 @@ class ConductorHomeProvider extends ChangeNotifier {
     await sincronizarSolicitudesPublicadasConductor();
   }
 
-  /// Sync rechazos: `GET /conductor/solicitudes-rechazadas` + cache local.
+  /// Sync de lo que hay que ocultar. El API solo manda servicios que ya no se pueden tomar.
+  /// Un rechazo de uno todavía publicado no entra: ese queda en Espera.
   Future<void> cargarSolicitudesRechazadas() async {
-    _serviciosRechazados.addAll(
-      await ConductorSessionHelper.cargarServiciosRechazadosLocal(),
-    );
-
     final remoto = await _conductorService.getSolicitudesRechazadas();
-    _serviciosRechazados.addAll(remoto.servicioIds);
+    if (remoto.ok) {
+      _serviciosRechazados
+        ..clear()
+        ..addAll(remoto.servicioIds);
+    } else {
+      _serviciosRechazados.addAll(
+        await ConductorSessionHelper.cargarServiciosRechazadosLocal(),
+      );
+    }
 
     await ConductorSessionHelper.guardarServiciosRechazados(_serviciosRechazados);
 
@@ -1046,28 +1051,91 @@ class ConductorHomeProvider extends ChangeNotifier {
     return false;
   }
 
-  /// Rechaza en backend y oculta en app (no vuelve en pendientes ni Pusher).
+  bool _irATabEsperaPendiente = false;
+
+  /// La home abre la pestaña En espera tras un rechazo (una sola vez).
+  bool takeIrATabEspera() {
+    if (!_irATabEsperaPendiente) return false;
+    _irATabEsperaPendiente = false;
+    return true;
+  }
+
+  /// Rechaza en backend y mueve la tarjeta a En espera. No la borra.
   Future<bool> rechazarSolicitudParaConductor(String solicitudId) async {
     final servicioId = servicioIdNumerico(solicitudId);
-    var exitoRemoto = true;
+    if (servicioId == null) return false;
 
-    if (servicioId != null) {
-      try {
-        await _conductorService.rechazarSolicitud(servicioId: servicioId);
-        _serviciosRechazados.add(servicioId);
-        await ConductorSessionHelper.agregarServicioRechazado(servicioId);
-      } catch (e) {
-        exitoRemoto = false;
-        AppLogger.d('⚠️ Error POST solicitud/rechazar: $e');
-        _serviciosRechazados.add(servicioId);
-        await ConductorSessionHelper.agregarServicioRechazado(servicioId);
-      }
+    Map<String, dynamic> respuesta;
+    try {
+      respuesta = await _conductorService.rechazarSolicitud(servicioId: servicioId);
+    } catch (e) {
+      AppLogger.d('⚠️ Error POST solicitud/rechazar: $e');
+      if (!_isDisposed) notifyListeners();
+      return false;
     }
 
-    rechazarSolicitud(solicitudId);
-    if (exitoRemoto) _programarSyncSolicitudesTrasEvento();
+    final ocultar = respuesta['ocultar'] == true;
+    if (ocultar) {
+      _serviciosRechazados.add(servicioId);
+      await ConductorSessionHelper.agregarServicioRechazado(servicioId);
+      rechazarSolicitud(solicitudId);
+    } else {
+      _serviciosRechazados.remove(servicioId);
+      await ConductorSessionHelper.guardarServiciosRechazados(_serviciosRechazados);
+      _moverRechazoAEspera(solicitudId, respuesta);
+    }
+
+    _programarSyncSolicitudesTrasEvento();
     if (!_isDisposed) notifyListeners();
-    return exitoRemoto;
+    return true;
+  }
+
+  /// El rechazo sale de Llegando y queda en Espera, con el tiempo que le queda al servicio.
+  void _moverRechazoAEspera(String solicitudId, Map<String, dynamic> respuesta) {
+    unawaited(detenerAlertasSolicitudEntrante());
+
+    Map<String, dynamic>? base = _solicitudesPorId[solicitudId];
+    if (base == null && _ofertaExclusiva?.solicitudId == solicitudId) {
+      base = _ofertaExclusiva!.toSolicitudMap();
+    }
+
+    if (_ofertaExclusiva?.solicitudId == solicitudId) {
+      _limpiarOfertaExclusivaLocal(cerrarPantalla: false);
+    }
+
+    if (base == null) {
+      _irATabEsperaPendiente = true;
+      return;
+    }
+
+    final actualizada = Map<String, dynamic>.from(base);
+    actualizada['conductor_tab'] = 'espera';
+    actualizada['en_lista_espera'] = true;
+    actualizada['movido_a_espera'] = true;
+    actualizada['ocultar'] = false;
+    actualizada['rechazado_por_mi'] = true;
+    actualizada['evento_accion'] = 'mover_a_espera';
+    actualizada['reemplazar_existente'] = true;
+    actualizada['oferta_exclusiva'] = false;
+    actualizada['fullscreen'] = false;
+    actualizada['countdown_modo'] = 'espera_abierta';
+    actualizada['puede_aceptar'] =
+        respuesta['puede_aceptar'] ?? actualizada['puede_aceptar'] ?? true;
+    actualizada['aceptar_rechazar'] = true;
+
+    final seg = actualizada['segundos_restantes_cola_total'] ??
+        actualizada['segundos_restantes_hasta_cancelar'] ??
+        actualizada['segundos_restantes_fase_abierta'] ??
+        actualizada['countdown_segundos'];
+    if (seg != null) {
+      actualizada['countdown_segundos'] = seg;
+      actualizada['segundos_restantes'] = seg;
+      actualizada['ttl_segundos'] = seg;
+    }
+
+    _solicitudesPorId[solicitudId] = actualizada;
+    _aplicarActualizacionFaseBroadcast(solicitudId, actualizada);
+    _irATabEsperaPendiente = true;
   }
 
   /// Bootstrap taxi: estado-actual → servicio activo si aplica.
